@@ -5,6 +5,8 @@ import type { IMarketplaceRiskGate } from '../../domain/contracts/IMarketplaceRi
 import type { OfferAffiliateCredential } from '../../domain/contracts/IAffiliateCredentialResolver';
 import type { IAffiliateCredentialGateway } from '../../domain/contracts/IAffiliateCredentialGateway';
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
+import type { MarketplaceRiskScope } from '../../../integrations/domain/enums/MarketplaceRiskScope';
+import { DEFAULT_MARKETPLACE_RISK_SCOPE } from '../../../integrations/domain/enums/MarketplaceRiskScope';
 import type { TenantAffiliateLinkComposer } from '../services/TenantAffiliateLinkComposer';
 import { detectMarketplace, isSupportedProductUrl } from '../../domain/services/detectMarketplace';
 import { parseProductRef, type ProductRef } from '../../domain/services/parseProductRef';
@@ -46,6 +48,14 @@ export interface ResolveAffiliateProductDeps {
   riskGate: IMarketplaceRiskGate;
 }
 
+export interface ResolveAffiliateProductOptions {
+  /**
+   * Aviso de risco cobrado (ausente = `AFFILIATE_LINK`). O caçador passa `OFFER_HUNTER`: só o aceite
+   * dele é cobrado, aqui e no composer. Os demais chamadores não passam nada.
+   */
+  riskScope?: MarketplaceRiskScope;
+}
+
 export interface ResolvedAffiliateProduct {
   provider: AffiliateProvider;
   /** URL colada, normalizada (nunca a canônica usada para recriar). */
@@ -70,7 +80,8 @@ export interface ResolvedAffiliateProduct {
 export class ResolveAffiliateProductUseCase {
   constructor(private readonly deps: ResolveAffiliateProductDeps) {}
 
-  async execute(tenantId: string, rawUrl: string): Promise<ResolvedAffiliateProduct> {
+  async execute(tenantId: string, rawUrl: string, options: ResolveAffiliateProductOptions = {}): Promise<ResolvedAffiliateProduct> {
+    const riskScope = options.riskScope ?? DEFAULT_MARKETPLACE_RISK_SCOPE;
     // 1. URL: allowlist antes de qualquer requisição; expande e revalida
     const source = parseUrl(rawUrl);
     if (!isSupportedProductUrl(source)) throw new OfferUrlUnsupportedError();
@@ -93,9 +104,9 @@ export class ResolveAffiliateProductUseCase {
     if (state.state === 'rejected') throw new AffiliateCredentialRejectedError(provider);
     const cred = state.cred;
 
-    // 3. Aceite do aviso de risco
-    if (requiresRiskAcceptance(provider) && !(await this.deps.riskGate.isAccepted(tenantId, provider))) {
-      throw new MarketplaceRiskNotAcceptedError(provider, currentRiskNoticeVersion(provider) ?? '');
+    // 3. Aceite do aviso de risco (do escopo pedido)
+    if (requiresRiskAcceptance(provider, riskScope) && !(await this.deps.riskGate.isAccepted(tenantId, provider, riskScope))) {
+      throw new MarketplaceRiskNotAcceptedError(provider, currentRiskNoticeVersion(provider, riskScope) ?? '', riskScope);
     }
 
     // 4. Etiqueta da própria conta ML ainda não vinculada: bloqueia (não recria com a principal)
@@ -115,14 +126,16 @@ export class ResolveAffiliateProductUseCase {
 
     // 6. Recria com a credencial do tenant (ML: etiqueta vinculada do link, senão a principal)
     const mlTag = check === 'verified' ? this.linkedMlTag(provider, urls, cred, owned.identifiers) : undefined;
-    const composed = await this.deps.composer.compose({ tenantId, provider, final, cred, ...(mlTag ? { mlTag } : {}) });
+    const composed = await this.deps.composer.compose({
+      tenantId, provider, final, cred, ...(mlTag ? { mlTag } : {}), ...(options.riskScope ? { riskScope } : {}),
+    });
     switch (composed.kind) {
       case 'unsupported':
         throw new OfferUrlUnsupportedError('Product not recognized');
       case 'credential_missing':
         throw new AffiliateCredentialRequiredError(provider);
       case 'risk_not_accepted':
-        throw new MarketplaceRiskNotAcceptedError(provider, currentRiskNoticeVersion(provider) ?? '');
+        throw new MarketplaceRiskNotAcceptedError(provider, currentRiskNoticeVersion(provider, riskScope) ?? '', riskScope);
       case 'failed':
         throw new OfferLinkRebuildFailedError(provider, composed.code);
       case 'ok':

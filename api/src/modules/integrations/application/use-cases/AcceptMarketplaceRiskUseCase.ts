@@ -1,6 +1,8 @@
 import type { IMarketplaceRiskAcceptanceRepository } from '../../domain/contracts/IMarketplaceRiskAcceptanceRepository';
 import type { IAuditLogRepository } from '../../../../shared/audit/IAuditLogRepository';
 import type { AffiliateProvider } from '../../domain/enums/AffiliateProvider';
+import type { MarketplaceRiskScope } from '../../domain/enums/MarketplaceRiskScope';
+import { DEFAULT_MARKETPLACE_RISK_SCOPE } from '../../domain/enums/MarketplaceRiskScope';
 import { currentRiskNoticeVersion } from '../../domain/services/marketplaceRiskNotice';
 import { ForbiddenError } from '../../../../shared/errors/internal/AuthErrors';
 import { AffiliateCredentialInvalidError } from '../../../../shared/errors/internal/AffiliateCredentialErrors';
@@ -15,6 +17,8 @@ export interface AcceptMarketplaceRiskInput {
   role: string;
   isSuperAdmin: boolean;
   provider: AffiliateProvider;
+  /** Padrão `AFFILIATE_LINK`. `OFFER_HUNTER` só existe para SHEIN. */
+  scope?: MarketplaceRiskScope;
   noticeVersion: string;
   locale: string;
 }
@@ -27,6 +31,7 @@ export type MarketplaceRiskAcceptTransaction = <T>(
 export interface AcceptMarketplaceRiskOutput {
   acceptedAt: Date;
   noticeVersion: string;
+  scope: MarketplaceRiskScope;
 }
 
 /**
@@ -40,12 +45,15 @@ export class AcceptMarketplaceRiskUseCase {
     if (input.isSuperAdmin || input.role !== 'ADMIN') {
       throw new ForbiddenError('Only a tenant admin can accept the marketplace risk notice');
     }
-    const current = currentRiskNoticeVersion(input.provider);
+    const scope = input.scope ?? DEFAULT_MARKETPLACE_RISK_SCOPE;
+    const current = currentRiskNoticeVersion(input.provider, scope);
     if (current === null) {
-      throw new AffiliateCredentialInvalidError('Provider has no risk notice', 'provider');
+      throw scope === DEFAULT_MARKETPLACE_RISK_SCOPE
+        ? new AffiliateCredentialInvalidError('Provider has no risk notice', 'provider')
+        : new AffiliateCredentialInvalidError('Provider has no risk notice for this scope', 'scope');
     }
     if (input.noticeVersion !== current) {
-      throw new MarketplaceRiskNoticeOutdatedError(input.provider, current);
+      throw new MarketplaceRiskNoticeOutdatedError(input.provider, current, scope);
     }
     if (!LOCALE_PATTERN.test(input.locale)) {
       throw new AffiliateCredentialInvalidError('Invalid locale', 'locale');
@@ -55,6 +63,7 @@ export class AcceptMarketplaceRiskUseCase {
       const { acceptance, created } = await acceptances.create({
         tenantId: input.tenantId,
         provider: input.provider,
+        scope,
         noticeVersion: current,
         acceptedByUserId: input.userId,
         locale: input.locale,
@@ -64,10 +73,10 @@ export class AcceptMarketplaceRiskUseCase {
           tenantId: input.tenantId,
           userId: input.userId,
           action: 'MARKETPLACE_RISK_ACCEPTED',
-          meta: { provider: input.provider, noticeVersion: current, locale: input.locale },
+          meta: { provider: input.provider, scope, noticeVersion: current, locale: input.locale },
         });
       }
-      return { acceptedAt: acceptance.acceptedAt, noticeVersion: acceptance.noticeVersion };
+      return { acceptedAt: acceptance.acceptedAt, noticeVersion: acceptance.noticeVersion, scope: acceptance.scope };
     });
   }
 }

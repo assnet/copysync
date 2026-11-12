@@ -81,10 +81,10 @@ const credentialGateway = lazy((): IAffiliateCredentialGateway => {
     markRejected: (t, p, code) => mark.execute(t, p, code),
   };
 });
-// Aceite do aviso de risco (versão vigente) pelo repositório de integrations
+// Aceite do aviso de risco (versão vigente do escopo) pelo repositório de integrations
 const riskGate = lazy((): IMarketplaceRiskGate => {
   const repo = createMarketplaceRiskAcceptanceRepository();
-  return { isAccepted: (t, p) => isMarketplaceRiskAccepted(repo, t, p) };
+  return { isAccepted: (t, p, scope) => isMarketplaceRiskAccepted(repo, t, p, scope) };
 });
 // Uma instância para os três use cases (gerador, monitoramento, vitrine/story)
 const shein        = lazy(() => new SheinAffiliateClient());

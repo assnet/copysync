@@ -10,7 +10,7 @@ const seg = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url')
 const tokenFor = (m: unknown) => `${seg({ a: 1 })}.${seg({ b: 7, t: 2, m, l: 1 })}.sig.x`;
 const AT = tokenFor(Number(MEMBER));
 const VERSION = MARKETPLACE_RISK_NOTICE_VERSION.SHEIN!;
-const acceptance = { id: 'a1', tenantId: 't1', provider: 'SHEIN' as const, noticeVersion: VERSION, acceptedByUserId: 'u1', locale: 'pt-BR', acceptedAt: new Date() };
+const acceptance = { id: 'a1', tenantId: 't1', provider: 'SHEIN' as const, scope: 'AFFILIATE_LINK' as const, noticeVersion: VERSION, acceptedByUserId: 'u1', locale: 'pt-BR', acceptedAt: new Date() };
 
 function riskRepo(accepted = true): IMarketplaceRiskAcceptanceRepository {
   return { findCurrent: vi.fn(async () => (accepted ? acceptance : null)), create: vi.fn(), listByTenant: vi.fn() };

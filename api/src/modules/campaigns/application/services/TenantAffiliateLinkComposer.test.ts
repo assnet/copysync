@@ -26,12 +26,12 @@ function setup(accepted = true) {
     },
     pageReader: { read: vi.fn().mockResolvedValue({ title: 'Kit', imageUrl: null, priceCents: 1990, originalPriceCents: null, productRef: 'MLB998877' }) },
     shein: { getProductShare: vi.fn().mockResolvedValue(SHARE) },
-    riskGate: { isAccepted: vi.fn(async () => accepted) },
+    riskGate: { isAccepted: vi.fn(async (_t: string, _p: AffiliateProvider, _scope?: string) => accepted) },
   };
   const composer = new TenantAffiliateLinkComposer(deps);
   const compose = (provider: AffiliateProvider, href: string, cred: OfferAffiliateCredential = CREDS[provider], mlTag?: string) =>
     composer.compose({ tenantId: 't1', provider, final: new URL(href), cred, ...(mlTag ? { mlTag } : {}) });
-  return { deps, compose };
+  return { deps, compose, composer };
 }
 
 describe('TenantAffiliateLinkComposer — ok com productRef', () => {
@@ -122,7 +122,24 @@ describe('TenantAffiliateLinkComposer — sem link', () => {
   it('Shein sem aceite do aviso: risk_not_accepted sem chamar a Shein', async () => {
     const s = setup(false);
     expect(await s.compose('SHEIN', SHEIN_URL)).toEqual({ kind: 'risk_not_accepted', provider: 'SHEIN' });
-    expect(s.deps.riskGate.isAccepted).toHaveBeenCalledWith('t1', 'SHEIN');
+    expect(s.deps.riskGate.isAccepted).toHaveBeenCalledWith('t1', 'SHEIN', 'AFFILIATE_LINK');
+    expect(s.deps.shein.getProductShare).not.toHaveBeenCalled();
+  });
+
+  it('riskScope OFFER_HUNTER: cobra só o aceite do caçador', async () => {
+    const s = setup();
+    s.deps.riskGate.isAccepted.mockImplementation(async (_t: string, _p: AffiliateProvider, scope?: string) => scope === 'OFFER_HUNTER');
+    const out = await s.composer.compose({ tenantId: 't1', provider: 'SHEIN', final: new URL(SHEIN_URL), cred: CREDS.SHEIN, riskScope: 'OFFER_HUNTER' });
+    expect(out).toMatchObject({ kind: 'ok', provider: 'SHEIN', affiliateUrl: SHARE.affiliateUrl });
+    expect(s.deps.riskGate.isAccepted).toHaveBeenCalledTimes(1);
+    expect(s.deps.riskGate.isAccepted).toHaveBeenCalledWith('t1', 'SHEIN', 'OFFER_HUNTER');
+  });
+
+  it('riskScope OFFER_HUNTER sem aceite do caçador (só o do link): risk_not_accepted sem chamar a Shein', async () => {
+    const s = setup();
+    s.deps.riskGate.isAccepted.mockImplementation(async (_t: string, _p: AffiliateProvider, scope?: string) => scope === 'AFFILIATE_LINK');
+    const out = await s.composer.compose({ tenantId: 't1', provider: 'SHEIN', final: new URL(SHEIN_URL), cred: CREDS.SHEIN, riskScope: 'OFFER_HUNTER' });
+    expect(out).toEqual({ kind: 'risk_not_accepted', provider: 'SHEIN' });
     expect(s.deps.shein.getProductShare).not.toHaveBeenCalled();
   });
 

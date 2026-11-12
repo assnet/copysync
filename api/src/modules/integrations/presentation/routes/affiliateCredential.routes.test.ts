@@ -82,7 +82,7 @@ describe('GET / — marketplaceAvailability', () => {
       { planSlug: 'COPYSYNC_LITE', key: 'marketplace_shein_enabled', value: null },
     ]);
     vi.spyOn(PrismaMarketplaceRiskAcceptanceRepository.prototype, 'findCurrent').mockResolvedValue({
-      id: 'a1', tenantId: 't1', provider: 'SHEIN', noticeVersion: VERSION, acceptedByUserId: 'u1', locale: 'pt-BR', acceptedAt: AT,
+      id: 'a1', tenantId: 't1', provider: 'SHEIN', scope: 'AFFILIATE_LINK', noticeVersion: VERSION, acceptedByUserId: 'u1', locale: 'pt-BR', acceptedAt: AT,
     });
 
     const res = await call('GET', '/');
@@ -108,9 +108,9 @@ describe('GET / — marketplaceAvailability', () => {
     const find = vi.spyOn(PrismaMarketplaceRiskAcceptanceRepository.prototype, 'findCurrent').mockResolvedValue(null);
     const none = (await call('GET', '/')).json().data.marketplaceAvailability.SHEIN;
     expect(none).toEqual({ enabled: true, plans: [], riskNotice: { version: VERSION, acceptedAt: null, acceptedByMe: false } });
-    expect(find).toHaveBeenCalledWith('t1', 'SHEIN', VERSION);
+    expect(find).toHaveBeenCalledWith('t1', 'SHEIN', 'AFFILIATE_LINK', VERSION);
 
-    find.mockResolvedValue({ id: 'a1', tenantId: 't1', provider: 'SHEIN', noticeVersion: VERSION, acceptedByUserId: 'u9', locale: 'pt-BR', acceptedAt: AT });
+    find.mockResolvedValue({ id: 'a1', tenantId: 't1', provider: 'SHEIN', scope: 'AFFILIATE_LINK', noticeVersion: VERSION, acceptedByUserId: 'u9', locale: 'pt-BR', acceptedAt: AT });
     expect((await call('GET', '/')).json().data.marketplaceAvailability.SHEIN.riskNotice.acceptedByMe).toBe(false);
   });
 });

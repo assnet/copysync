@@ -5,7 +5,7 @@ import { UnauthorizedError } from '../../../../shared/errors/internal/AuthErrors
 import { PrismaAuditLogRepository } from '../../../../shared/audit/PrismaAuditLogRepository';
 import { PrismaMarketplaceRiskAcceptanceRepository } from '../../infrastructure/repositories/PrismaMarketplaceRiskAcceptanceRepository';
 import { affiliateCredentialItemSchema } from '../schemas/affiliateCredential.schema';
-import { MARKETPLACE_RISK_NOTICE_VERSION } from '../../domain/services/marketplaceRiskNotice';
+import { MARKETPLACE_RISK_NOTICE_VERSION, OFFER_HUNTER_RISK_NOTICE_VERSION } from '../../domain/services/marketplaceRiskNotice';
 import { affiliateCredentialRoutes } from './affiliateCredential.routes';
 import { marketplaceRiskAdminRoutes } from './marketplaceRiskAdmin.routes';
 
@@ -33,8 +33,9 @@ vi.mock('../../../../shared/http/hooks/authHook', () => ({
 }));
 
 const VERSION = MARKETPLACE_RISK_NOTICE_VERSION.SHEIN!;
+const HUNTER_VERSION = OFFER_HUNTER_RISK_NOTICE_VERSION.SHEIN!;
 const AT = new Date('2026-11-10T12:00:00.000Z');
-const row = { id: 'a1', tenantId: 't1', provider: 'SHEIN' as const, noticeVersion: VERSION, acceptedByUserId: 'u1', locale: 'pt-BR', acceptedAt: AT };
+const row = { id: 'a1', tenantId: 't1', provider: 'SHEIN' as const, scope: 'AFFILIATE_LINK' as const, noticeVersion: VERSION, acceptedByUserId: 'u1', locale: 'pt-BR', acceptedAt: AT };
 
 let app: FastifyInstance;
 
@@ -73,8 +74,8 @@ describe('POST /:provider/risk-acceptance', () => {
     const audit = vi.spyOn(PrismaAuditLogRepository.prototype, 'create').mockResolvedValue(undefined);
     const res = await accept('u1', { noticeVersion: VERSION, locale: 'pt-BR' });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ success: true, data: { acceptedAt: AT.toISOString(), noticeVersion: VERSION } });
-    expect(create).toHaveBeenCalledWith({ tenantId: 't1', provider: 'SHEIN', noticeVersion: VERSION, acceptedByUserId: 'u1', locale: 'pt-BR' });
+    expect(res.json()).toEqual({ success: true, data: { acceptedAt: AT.toISOString(), noticeVersion: VERSION, scope: 'AFFILIATE_LINK' } });
+    expect(create).toHaveBeenCalledWith({ tenantId: 't1', provider: 'SHEIN', scope: 'AFFILIATE_LINK', noticeVersion: VERSION, acceptedByUserId: 'u1', locale: 'pt-BR' });
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ action: 'MARKETPLACE_RISK_ACCEPTED', tenantId: 't1', userId: 'u1' }));
   });
 
@@ -109,6 +110,28 @@ describe('POST /:provider/risk-acceptance', () => {
     expect((await accept('u1', { noticeVersion: VERSION })).statusCode).toBe(400);
     expect(create).not.toHaveBeenCalled();
   });
+
+  it('scope OFFER_HUNTER: grava no escopo do caçador com a versão dele', async () => {
+    db.members.set('u1:t1', { role: 'ADMIN', tenant: { status: 'ACTIVE' } });
+    const hunterRow = { ...row, scope: 'OFFER_HUNTER' as const, noticeVersion: HUNTER_VERSION };
+    const create = vi.spyOn(PrismaMarketplaceRiskAcceptanceRepository.prototype, 'create').mockResolvedValue({ acceptance: hunterRow, created: true });
+    vi.spyOn(PrismaAuditLogRepository.prototype, 'create').mockResolvedValue(undefined);
+    const res = await accept('u1', { noticeVersion: HUNTER_VERSION, locale: 'pt-BR', scope: 'OFFER_HUNTER' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toEqual({ acceptedAt: AT.toISOString(), noticeVersion: HUNTER_VERSION, scope: 'OFFER_HUNTER' });
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ scope: 'OFFER_HUNTER', noticeVersion: HUNTER_VERSION }));
+  });
+
+  it('scope inválido → 400; OFFER_HUNTER fora da SHEIN → 422; super admin → 403', async () => {
+    db.members.set('u1:t1', { role: 'ADMIN', tenant: { status: 'ACTIVE' } });
+    const create = vi.spyOn(PrismaMarketplaceRiskAcceptanceRepository.prototype, 'create');
+    expect((await accept('u1', { noticeVersion: HUNTER_VERSION, locale: 'pt-BR', scope: 'OTHER' })).statusCode).toBe(400);
+    const shopee = await accept('u1', { noticeVersion: HUNTER_VERSION, locale: 'pt-BR', scope: 'OFFER_HUNTER' }, 'SHOPEE');
+    expect([shopee.statusCode, shopee.json().error.code]).toEqual([422, 'AFFILIATE_CREDENTIAL_INVALID']);
+    const sa = await accept('sa:root', { noticeVersion: HUNTER_VERSION, locale: 'pt-BR', scope: 'OFFER_HUNTER' });
+    expect(sa.statusCode).toBe(403);
+    expect(create).not.toHaveBeenCalled();
+  });
 });
 
 describe('GET /admin/tenants/:tenantId/marketplace-risk-acceptances', () => {
@@ -126,7 +149,7 @@ describe('GET /admin/tenants/:tenantId/marketplace-risk-acceptances', () => {
     expect(spy).toHaveBeenCalledWith('t1');
     expect(res.json()).toEqual({
       success: true,
-      data: [{ provider: 'SHEIN', noticeVersion: VERSION, acceptedByUserId: 'u1', locale: 'pt-BR', acceptedAt: AT.toISOString() }],
+      data: [{ provider: 'SHEIN', scope: 'AFFILIATE_LINK', noticeVersion: VERSION, acceptedByUserId: 'u1', locale: 'pt-BR', acceptedAt: AT.toISOString() }],
     });
   });
 

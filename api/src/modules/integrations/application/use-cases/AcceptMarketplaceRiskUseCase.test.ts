@@ -8,6 +8,7 @@ import { ListMarketplaceRiskAcceptancesUseCase } from './ListMarketplaceRiskAcce
 import { isMarketplaceRiskAccepted, requireMarketplaceRiskAccepted } from '../services/requireMarketplaceRiskAccepted';
 import {
   MARKETPLACE_RISK_NOTICE_VERSION,
+  OFFER_HUNTER_RISK_NOTICE_VERSION,
   currentRiskNoticeVersion,
   requiresRiskAcceptance,
 } from '../../domain/services/marketplaceRiskNotice';
@@ -20,17 +21,18 @@ import type { IAuditLogRepository } from '../../../../shared/audit/IAuditLogRepo
 import type { AppError } from '../../../../shared/errors/AppError';
 
 const VERSION = MARKETPLACE_RISK_NOTICE_VERSION.SHEIN!;
+const HUNTER_VERSION = OFFER_HUNTER_RISK_NOTICE_VERSION.SHEIN!;
 const AT = new Date('2026-11-10T12:00:00.000Z');
 
-/** Fake em memória com a mesma unique do banco (tenant, provider, versão). */
+/** Fake em memória com a mesma unique do banco (tenant, provider, escopo, versão). */
 function makeRepo() {
   const rows: MarketplaceRiskAcceptance[] = [];
-  const find = (t: string, p: string, v: string) =>
-    rows.find((r) => r.tenantId === t && r.provider === p && r.noticeVersion === v) ?? null;
+  const find = (t: string, p: string, sc: string, v: string) =>
+    rows.find((r) => r.tenantId === t && r.provider === p && r.scope === sc && r.noticeVersion === v) ?? null;
   const repo = {
-    findCurrent: vi.fn(async (t: string, p: MarketplaceRiskAcceptance['provider'], v: string) => find(t, p, v)),
+    findCurrent: vi.fn(async (t: string, p: MarketplaceRiskAcceptance['provider'], sc: MarketplaceRiskAcceptance['scope'], v: string) => find(t, p, sc, v)),
     create: vi.fn(async (i: CreateMarketplaceRiskAcceptanceRecord) => {
-      const existing = find(i.tenantId, i.provider, i.noticeVersion);
+      const existing = find(i.tenantId, i.provider, i.scope, i.noticeVersion);
       if (existing) return { acceptance: existing, created: false };
       const row = { id: `a${rows.length + 1}`, acceptedAt: AT, ...i };
       rows.push(row);
@@ -73,23 +75,75 @@ describe('marketplaceRiskNotice', () => {
       expect(currentRiskNoticeVersion(p)).toBeNull();
     }
   });
+
+  it('versão por provider e escopo: caçador só SHEIN, com versão própria', () => {
+    expect(currentRiskNoticeVersion('SHEIN', 'AFFILIATE_LINK')).toBe('2026-11-10');
+    expect(currentRiskNoticeVersion('SHEIN', 'OFFER_HUNTER')).toBe('2026-11-12');
+    expect(requiresRiskAcceptance('SHEIN', 'OFFER_HUNTER')).toBe(true);
+    for (const p of ['SHOPEE', 'MERCADO_LIVRE', 'AMAZON'] as const) {
+      expect(currentRiskNoticeVersion(p, 'OFFER_HUNTER')).toBeNull();
+    }
+  });
 });
 
 describe('AcceptMarketplaceRiskUseCase', () => {
   it('grava tenant, usuário, versão e idioma; devolve hora e versão; audita', async () => {
     const { sut, rows, audit } = makeSut();
-    expect(await sut.execute(input())).toEqual({ acceptedAt: AT, noticeVersion: VERSION });
-    expect(rows).toEqual([expect.objectContaining({ tenantId: 't1', acceptedByUserId: 'u1', provider: 'SHEIN', noticeVersion: VERSION, locale: 'pt-BR', acceptedAt: AT })]);
+    expect(await sut.execute(input())).toEqual({ acceptedAt: AT, noticeVersion: VERSION, scope: 'AFFILIATE_LINK' });
+    expect(rows).toEqual([expect.objectContaining({ tenantId: 't1', acceptedByUserId: 'u1', provider: 'SHEIN', scope: 'AFFILIATE_LINK', noticeVersion: VERSION, locale: 'pt-BR', acceptedAt: AT })]);
     expect(audit.create).toHaveBeenCalledWith({
       tenantId: 't1', userId: 'u1', action: 'MARKETPLACE_RISK_ACCEPTED',
-      meta: { provider: 'SHEIN', noticeVersion: VERSION, locale: 'pt-BR' },
+      meta: { provider: 'SHEIN', scope: 'AFFILIATE_LINK', noticeVersion: VERSION, locale: 'pt-BR' },
     });
+  });
+
+  it('escopo OFFER_HUNTER grava com a versão do caçador e não vale como aceite do link', async () => {
+    const { sut, rows, repo, audit } = makeSut();
+    expect(await sut.execute(input({ scope: 'OFFER_HUNTER', noticeVersion: HUNTER_VERSION })))
+      .toEqual({ acceptedAt: AT, noticeVersion: HUNTER_VERSION, scope: 'OFFER_HUNTER' });
+    expect(rows).toEqual([expect.objectContaining({ scope: 'OFFER_HUNTER', noticeVersion: HUNTER_VERSION })]);
+    expect(audit.create).toHaveBeenCalledWith(expect.objectContaining({
+      meta: { provider: 'SHEIN', scope: 'OFFER_HUNTER', noticeVersion: HUNTER_VERSION, locale: 'pt-BR' },
+    }));
+    expect(await isMarketplaceRiskAccepted(repo, 't1', 'SHEIN', 'OFFER_HUNTER')).toBe(true);
+    expect(await isMarketplaceRiskAccepted(repo, 't1', 'SHEIN')).toBe(false);
+  });
+
+  it('mesmo tenant aceita os dois escopos: linhas distintas, cada uma auditada', async () => {
+    const { sut, rows, audit } = makeSut();
+    await sut.execute(input());
+    await sut.execute(input({ scope: 'OFFER_HUNTER', noticeVersion: HUNTER_VERSION }));
+    expect(rows.map((r) => r.scope)).toEqual(['AFFILIATE_LINK', 'OFFER_HUNTER']);
+    expect(audit.create).toHaveBeenCalledTimes(2);
+  });
+
+  it('OFFER_HUNTER com a versão do aviso do link → 409 com a versão do caçador', async () => {
+    const { sut, repo } = makeSut();
+    expect(await errorOf(sut.execute(input({ scope: 'OFFER_HUNTER' })))).toMatchObject({
+      statusCode: 409, code: 'MARKETPLACE_RISK_NOTICE_OUTDATED',
+      meta: { provider: 'SHEIN', currentVersion: HUNTER_VERSION, scope: 'OFFER_HUNTER' },
+    });
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('OFFER_HUNTER para provider que não é SHEIN → 422 no campo scope', async () => {
+    const { sut, repo } = makeSut();
+    expect(await errorOf(sut.execute(input({ provider: 'SHOPEE', scope: 'OFFER_HUNTER' }))))
+      .toMatchObject({ statusCode: 422, code: 'AFFILIATE_CREDENTIAL_INVALID', meta: { field: 'scope' } });
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('super admin → 403 também no escopo do caçador', async () => {
+    const { sut, repo } = makeSut();
+    expect(await errorOf(sut.execute(input({ isSuperAdmin: true, scope: 'OFFER_HUNTER', noticeVersion: HUNTER_VERSION }))))
+      .toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
+    expect(repo.create).not.toHaveBeenCalled();
   });
 
   it('repetido na mesma versão devolve o existente e não audita de novo', async () => {
     const { sut, rows, audit } = makeSut();
     await sut.execute(input());
-    expect(await sut.execute(input({ userId: 'u2', locale: 'en' }))).toEqual({ acceptedAt: AT, noticeVersion: VERSION });
+    expect(await sut.execute(input({ userId: 'u2', locale: 'en' }))).toEqual({ acceptedAt: AT, noticeVersion: VERSION, scope: 'AFFILIATE_LINK' });
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ acceptedByUserId: 'u1', locale: 'pt-BR' });
     expect(audit.create).toHaveBeenCalledTimes(1);
@@ -100,7 +154,7 @@ describe('AcceptMarketplaceRiskUseCase', () => {
     audit.create.mockRejectedValueOnce(new Error('audit down'));
     await expect(sut.execute(input())).rejects.toThrow('audit down');
     expect(rows).toHaveLength(0);
-    expect(await sut.execute(input())).toEqual({ acceptedAt: AT, noticeVersion: VERSION });
+    expect(await sut.execute(input())).toEqual({ acceptedAt: AT, noticeVersion: VERSION, scope: 'AFFILIATE_LINK' });
     expect(rows).toHaveLength(1);
     expect(audit.create).toHaveBeenCalledTimes(2);
   });
@@ -149,13 +203,24 @@ describe('AcceptMarketplaceRiskUseCase', () => {
 describe('requireMarketplaceRiskAccepted', () => {
   it('sem aceite da versão vigente → 403; com aceite passa', async () => {
     const { repo, rows } = makeRepo();
-    rows.push({ id: 'old', tenantId: 't1', provider: 'SHEIN', noticeVersion: '2025-01-01', acceptedByUserId: 'u1', locale: 'pt-BR', acceptedAt: AT });
+    rows.push({ id: 'old', tenantId: 't1', provider: 'SHEIN', scope: 'AFFILIATE_LINK', noticeVersion: '2025-01-01', acceptedByUserId: 'u1', locale: 'pt-BR', acceptedAt: AT });
     expect(await errorOf(requireMarketplaceRiskAccepted(repo, 't1', 'SHEIN'))).toMatchObject({
       statusCode: 403, code: 'MARKETPLACE_RISK_NOT_ACCEPTED', meta: { provider: 'SHEIN', noticeVersion: VERSION },
     });
     expect(await isMarketplaceRiskAccepted(repo, 't1', 'SHEIN')).toBe(false);
-    await repo.create({ tenantId: 't1', provider: 'SHEIN', noticeVersion: VERSION, acceptedByUserId: 'u1', locale: 'pt-BR' });
+    await repo.create({ tenantId: 't1', provider: 'SHEIN', scope: 'AFFILIATE_LINK', noticeVersion: VERSION, acceptedByUserId: 'u1', locale: 'pt-BR' });
     await expect(requireMarketplaceRiskAccepted(repo, 't1', 'SHEIN')).resolves.toBeUndefined();
+  });
+
+  it('escopo OFFER_HUNTER cobra só o aceite do caçador', async () => {
+    const { repo } = makeRepo();
+    await repo.create({ tenantId: 't1', provider: 'SHEIN', scope: 'AFFILIATE_LINK', noticeVersion: VERSION, acceptedByUserId: 'u1', locale: 'pt-BR' });
+    expect(await errorOf(requireMarketplaceRiskAccepted(repo, 't1', 'SHEIN', 'OFFER_HUNTER'))).toMatchObject({
+      statusCode: 403, code: 'MARKETPLACE_RISK_NOT_ACCEPTED', meta: { provider: 'SHEIN', noticeVersion: HUNTER_VERSION, scope: 'OFFER_HUNTER' },
+    });
+    await repo.create({ tenantId: 't1', provider: 'SHEIN', scope: 'OFFER_HUNTER', noticeVersion: HUNTER_VERSION, acceptedByUserId: 'u1', locale: 'pt-BR' });
+    await expect(requireMarketplaceRiskAccepted(repo, 't1', 'SHEIN', 'OFFER_HUNTER')).resolves.toBeUndefined();
+    expect(repo.findCurrent).toHaveBeenLastCalledWith('t1', 'SHEIN', 'OFFER_HUNTER', HUNTER_VERSION);
   });
 
   it('provider sem aviso passa sem consultar o repositório', async () => {

@@ -8,6 +8,7 @@ import type { ProductPageData } from '../../domain/services/parseProductPage';
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
 import type { AffiliateCredentialState } from '../../domain/contracts/IAffiliateCredentialGateway';
 import { AppError } from '../../../../shared/errors/AppError';
+import { OFFER_HUNTER_RISK_NOTICE_VERSION } from '../../../integrations/domain/services/marketplaceRiskNotice';
 
 const PAGE: ProductPageData = {
   title: 'Air Fryer 4L',
@@ -48,7 +49,7 @@ function setup(
     listAccountTags: vi.fn(),
   };
   const shein = { getProductShare: vi.fn().mockResolvedValue(SHARE) };
-  const riskGate = { isAccepted: vi.fn(async () => opts.accepted ?? true) };
+  const riskGate = { isAccepted: vi.fn(async (_t: string, _p: AffiliateProvider, _scope?: string) => opts.accepted ?? true) };
   const credentials = {
     resolveState: vi.fn<(t: string, p: AffiliateProvider) => Promise<AffiliateCredentialState>>(async (_t, p) => {
       if (opts.rejected?.includes(p)) return { state: 'rejected', since: new Date(0), code: 'AFFILIATE_CREDENTIAL_REJECTED' };
@@ -436,7 +437,26 @@ describe('ResolveAffiliateProductUseCase — Shein', () => {
   it('com credencial e sem aceite do aviso → MARKETPLACE_RISK_NOT_ACCEPTED (403), sem chamar a Shein', async () => {
     const s = setup(WITH, { accepted: false });
     await expect(s.uc.execute(TENANT, SHEIN_MINE)).rejects.toMatchObject({ code: 'MARKETPLACE_RISK_NOT_ACCEPTED', statusCode: 403 });
-    expect(s.deps.riskGate.isAccepted).toHaveBeenCalledWith(TENANT, 'SHEIN');
+    expect(s.deps.riskGate.isAccepted).toHaveBeenCalledWith(TENANT, 'SHEIN', 'AFFILIATE_LINK');
+    expect(s.deps.shein.getProductShare).not.toHaveBeenCalled();
+  });
+
+  it('riskScope OFFER_HUNTER: cobra só o aceite do caçador (aqui e no composer)', async () => {
+    const s = setup(WITH);
+    s.deps.riskGate.isAccepted.mockImplementation(async (_t: string, _p: AffiliateProvider, scope?: string) => scope === 'OFFER_HUNTER');
+    const out = await s.uc.execute(TENANT, SHEIN_OTHER, { riskScope: 'OFFER_HUNTER' });
+    expect(out).toMatchObject({ provider: 'SHEIN', affiliateUrl: SHARE.affiliateUrl, linkRebuilt: true });
+    expect(s.deps.riskGate.isAccepted.mock.calls.map((c) => c[2])).toEqual(['OFFER_HUNTER', 'OFFER_HUNTER']);
+    expect(s.deps.composer.compose).toHaveBeenCalledWith(expect.objectContaining({ riskScope: 'OFFER_HUNTER' }));
+  });
+
+  it('riskScope OFFER_HUNTER sem aceite do caçador → 403 com escopo e versão do caçador, sem chamar a Shein', async () => {
+    const s = setup(WITH);
+    s.deps.riskGate.isAccepted.mockImplementation(async (_t: string, _p: AffiliateProvider, scope?: string) => scope === 'AFFILIATE_LINK');
+    await expect(s.uc.execute(TENANT, SHEIN_OTHER, { riskScope: 'OFFER_HUNTER' })).rejects.toMatchObject({
+      code: 'MARKETPLACE_RISK_NOT_ACCEPTED', statusCode: 403,
+      meta: { provider: 'SHEIN', noticeVersion: OFFER_HUNTER_RISK_NOTICE_VERSION.SHEIN, scope: 'OFFER_HUNTER' },
+    });
     expect(s.deps.shein.getProductShare).not.toHaveBeenCalled();
   });
 

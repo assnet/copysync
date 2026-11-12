@@ -8,6 +8,7 @@ export class PrismaMarketplaceRiskAcceptanceMapper {
       id: raw.id,
       tenantId: raw.tenantId,
       provider: raw.provider,
+      scope: raw.scope,
       noticeVersion: raw.noticeVersion,
       acceptedByUserId: raw.acceptedByUserId,
       locale: raw.locale,
