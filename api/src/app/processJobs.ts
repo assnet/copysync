@@ -32,7 +32,9 @@ export type ProcessJob =
   /** Snapshot horário dos custos (COST-09/10); só com `INFRA_COST_SNAPSHOT_ENABLED`. Nunca no `http`. */
   | 'infraCostSnapshot'
   /** Desconecta sessões locais de tenant não `ACTIVE` (OWN-04), tick de 30 s. Nunca no `http`. */
-  | 'inactiveTenantSweep';
+  | 'inactiveTenantSweep'
+  /** Caçadas agendadas do Caçador de Ofertas, tick de 60 s; só com `OFFER_HUNTER_JOB_ENABLED`. Nunca no `http`. */
+  | 'offerHunterScheduler';
 
 /** Uploads em partes e mídia pendente: disco/fila do processo que recebe o upload. */
 const HTTP_JOBS: readonly ProcessJob[] = ['uploadSweeper', 'interruptedUploads', 'pendingMediaBoot', 'pendingMediaSweep'];
@@ -55,6 +57,7 @@ const WORKER_JOBS: readonly ProcessJob[] = [
   'workerAutoscaler',
   'inactiveTenantSweep',
   'infraCostSnapshot',
+  'offerHunterScheduler',
 ];
 
 /** Jobs que este papel liga. `all` = todos (comportamento de hoje). */
