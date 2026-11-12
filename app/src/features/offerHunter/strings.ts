@@ -301,7 +301,7 @@ export const offerHunterStrings = {
     title: 'Achados',
     emptyTitle: 'Nenhum achado ainda',
     emptyHint: 'As ofertas escolhidas pelas buscas aparecem aqui.',
-    pendingTitle: (n: number) => `${n} ${plural(n, 'achado espera', 'achados esperam')} a sua revisão`,
+    pendingTitle: (n: number) => `${n} ${plural(n, 'achado nesta lista espera', 'achados nesta lista esperam')} a sua revisão`,
     approve: 'Aprovar e enviar',
     approveTooltip: 'Envia esta oferta ao grupo de destino com o seu link de afiliado',
     approved: 'Oferta enviada para a fila do grupo.',

@@ -110,6 +110,24 @@ describe('useHuntFinds / useHuntRuns', () => {
     expect(result.current.errorCode).toBeNull();
   });
 
+  it('reload durante loadMore não deixa loadingMore preso', async () => {
+    let resolveMore!: (v: unknown) => void;
+    svc.listFinds
+      .mockResolvedValueOnce({ items: [find('a')], nextCursor: 'c1' })
+      .mockImplementationOnce(() => new Promise((r) => { resolveMore = r; }))
+      .mockResolvedValueOnce({ items: [find('a')], nextCursor: 'c2' });
+    const { result } = renderHook(() => useHuntFinds('h1'));
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+    let more!: Promise<void>;
+    act(() => { more = result.current.loadMore(); });
+    expect(result.current.loadingMore).toBe(true);
+    await act(async () => { await result.current.reload(); });
+    await act(async () => { resolveMore({ items: [find('z')], nextCursor: null }); await more; });
+    expect(result.current.loadingMore).toBe(false);
+    expect(result.current.items.map((x) => x.id)).toEqual(['a']);
+    expect(result.current.hasMore).toBe(true);
+  });
+
   it('sem huntId não carrega', () => {
     const { result } = renderHook(() => useHuntRuns(undefined));
     expect(result.current.loading).toBe(false);

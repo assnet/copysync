@@ -41,6 +41,8 @@ export function useHuntPagedList<T extends { id: string }>(
     if (!id) return;
     const mine = ++seq.current;
     setLoading(true);
+    // loadMore em voo fica obsoleto (seq mudou) e não zera a flag: zera aqui
+    setLoadingMore(false);
     setErrorCode(null);
     try {
       const page = await fetchRef.current(id, null);

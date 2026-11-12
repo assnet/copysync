@@ -56,6 +56,12 @@ export function DestinationPickerDialog({
   const [error, setError] = useState<string | null>(null);
 
   const connected = useMemo(() => sessions.filter((s) => s.status === 'CONNECTED'), [sessions]);
+  // Rascunho vem do storage do navegador (pode ser de outro tenant): só vale sessão da lista do tenant atual.
+  const sessionKnown = Boolean(draft.sessionId && sessions.some((s) => s.id === draft.sessionId));
+
+  useEffect(() => {
+    if (draft.sessionId && !sessionsLoading && !sessionsFailed && !sessionKnown) setDraft(EMPTY);
+  }, [draft.sessionId, sessionsLoading, sessionsFailed, sessionKnown, setDraft]);
 
   // Ao abrir sem rascunho: parte do destino atual (ou da única sessão conectada).
   useEffect(() => {
@@ -69,8 +75,16 @@ export function DestinationPickerDialog({
     if (open) setError(null);
   }, [open]);
 
-  const ids = useMemo(() => (open && draft.sessionId ? [draft.sessionId] : []), [open, draft.sessionId]);
+  const ids = useMemo(() => (open && sessionKnown ? [draft.sessionId!] : []), [open, sessionKnown, draft.sessionId]);
   const groups = useSessionGroups(ids, draft.search);
+
+  // Grupo só se estiver entre os da sessão, conferido na lista completa (sem busca) já carregada dela.
+  useEffect(() => {
+    const { sessionId, conversationId, search } = draft;
+    if (!sessionId || !conversationId || search || groups.failed || groups.partial) return;
+    if (groups.loadedKey !== `${sessionId}|` || groups.items.some((g) => g.conversationId === conversationId)) return;
+    setDraft((d) => (d.sessionId === sessionId && d.conversationId === conversationId ? { ...d, conversationId: null } : d));
+  }, [draft, groups.loadedKey, groups.items, groups.failed, groups.partial, setDraft]);
 
   const close = () => {
     clearDraft();
@@ -144,7 +158,7 @@ export function DestinationPickerDialog({
             </TextField>
           )}
 
-          {draft.sessionId && (
+          {sessionKnown && (
             <>
               <TextField
                 label={t.search}

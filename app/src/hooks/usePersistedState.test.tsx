@@ -26,6 +26,18 @@ describe('usePersistedState', () => {
     expect(readPersisted('k')).toBeUndefined();
   });
 
+  it('clear() sem mudança de estado não engole a próxima gravação', () => {
+    const h = renderHook(() => usePersistedState('k', 1));
+    act(() => h.result.current[2]());
+    act(() => h.result.current[1](7));
+    expect(readPersisted('k')).toBe(7);
+    act(() => h.result.current[1](8));
+    act(() => h.result.current[2]());
+    expect(readPersisted('k')).toBeUndefined();
+    act(() => h.result.current[1](9));
+    expect(readPersisted('k')).toBe(9);
+  });
+
   it('versão diferente ou JSON inválido descartam o salvo', () => {
     writePersisted('k', { a: 1 }, { version: 1 });
     expect(readPersisted('k', { version: 2 })).toBeUndefined();

@@ -24,4 +24,9 @@ describe('HuntFindsTab', () => {
     expect(container.querySelector('img')!.closest('[data-blurred="true"]')).not.toBeNull();
     localStorage.clear();
   });
+
+  it('aviso de pendentes deixa claro que conta só a lista carregada', () => {
+    render(<HuntFindsTab {...props([huntFind('1'), huntFind('2'), huntFind('3', { status: 'SENT' })])} hasMore />);
+    expect(screen.getByText('2 achados nesta lista esperam a sua revisão')).toBeInTheDocument();
+  });
 });
