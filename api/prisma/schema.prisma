@@ -192,6 +192,7 @@ model Tenant {
   premiumSlugGrants          PremiumSlugGrant[]
   storefront                 Storefront?
   storefrontOffers           StorefrontOffer[]
+  sessionHours               TenantSessionHour[]
 
   @@index([slug])
   @@map("tenants")
@@ -443,6 +444,63 @@ model WorkerScaleEvent {
 
   @@index([at(sort: Desc)])
   @@map("worker_scale_events")
+}
+
+// Custos da infraestrutura (COST-09/10): snapshots horários. Retenção de 400 dias em lotes pelo
+// InfraCostSnapshotJob. Sem id da Render: `resourceKey` é o papel do recurso.
+model InfraResourceHour {
+  hour            DateTime // hora cheia (UTC)
+  resourceKey     String // api | worker | redis | postgres | static (CHECK no banco)
+  plan            String? // plano lido na Render; null = sem leitura
+  instances       Int
+  instancesSource String // samples | render (CHECK no banco)
+  diskGb          Int?
+  suspended       Boolean  @default(false)
+  readAt          DateTime @default(now())
+
+  @@id([hour, resourceKey])
+  @@map("infra_resource_hours")
+}
+
+// Sessão-hora e contratadas por tenant por dia (UTC). Incremento guardado por `lastHour`.
+model TenantSessionHour {
+  day                DateTime @db.Date
+  tenantId           String
+  planSlug           String? // último visto no dia
+  connectedHours     Int      @default(0)
+  contractedSessions Int      @default(0) // soma horária das contratadas efetivas
+  contractedSamples  Int      @default(0) // horas somadas (média = contractedSessions ÷ contractedSamples)
+  lastHour           DateTime // última hora somada (UTC)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([day, tenantId])
+  @@index([tenantId, day])
+  @@map("tenant_session_hours")
+}
+
+// Cotação do dólar (PTAX/SGS) por dia de referência.
+model InfraFxRate {
+  referenceDate DateTime @id @db.Date
+  rate          Decimal  @db.Decimal(10, 4)
+  source        String // ptax | sgs (CHECK no banco)
+  fetchedAt     DateTime @default(now())
+
+  @@map("infra_fx_rates")
+}
+
+// Uso medido por dia: banda (acumula horas, guarda por `lastHour`) e minutos de build (regrava o dia).
+model InfraUsageDaily {
+  day         DateTime  @db.Date
+  metric      String // bandwidth_gb | build_minutes (CHECK no banco)
+  resourceKey String
+  value       Float
+  source      String // render_metrics | render_deploys (CHECK no banco)
+  lastHour    DateTime?
+  readAt      DateTime  @default(now())
+
+  @@id([day, metric, resourceKey])
+  @@map("infra_usage_daily")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
