@@ -1337,6 +1337,8 @@ model OfferHuntFind {
   activityId                 String?
   // Retrato do item no momento da execução (só exibição)
   title                      String              @db.Text
+  /// Foto da fonte (https, host *.ltwebstatic.com); null = sem foto.
+  imageUrl                   String?             @db.Text
   priceCents                 Int?
   originalPriceCents         Int?
   discountPercent            Int?

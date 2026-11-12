@@ -5,6 +5,20 @@ import type { ApproveHuntFindOutput } from '../../application/use-cases/hunter/H
 
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
 
+const IMAGE_HOST = 'ltwebstatic.com';
+/** Foto do achado só sai se for https em *.ltwebstatic.com, sem credencial/porta; qualquer outra origem = null. */
+export function safeFindImageUrl(v: string | null): string | null {
+  if (!v) return null;
+  try {
+    const u = new URL(v);
+    const host = u.hostname.toLowerCase();
+    if (u.protocol !== 'https:' || u.username || u.password || u.port) return null;
+    return host === IMAGE_HOST || host.endsWith(`.${IMAGE_HOST}`) ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Respostas do Caçador de Ofertas por lista fechada de campos: nada de `tenantId`, posse do job
  * (`claimToken`/`claimedUntil`), token, `memberId`, `skc`/`activityId` nem `did` da fonte.
@@ -74,6 +88,7 @@ export const OfferHuntPresenter = {
       status: f.status,
       goodsId: f.goodsId,
       title: f.title,
+      imageUrl: safeFindImageUrl(f.imageUrl),
       priceCents: f.priceCents,
       originalPriceCents: f.originalPriceCents,
       discountPercent: f.discountPercent,

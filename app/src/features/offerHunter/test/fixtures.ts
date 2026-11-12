@@ -31,7 +31,7 @@ export const hunt = (over: Partial<Hunt> = {}): Hunt => ({
 });
 
 export const huntFind = (id: string, over: Partial<HuntFind> = {}): HuntFind => ({
-  id, huntId: 'h1', runId: 'r1', status: 'PENDING_REVIEW', goodsId: `g${id}`, title: `Item ${id}`, priceCents: 1990,
+  id, huntId: 'h1', runId: 'r1', status: 'PENDING_REVIEW', goodsId: `g${id}`, title: `Item ${id}`, imageUrl: null, priceCents: 1990,
   originalPriceCents: 3990, discountPercent: 50, commissionPercent: 10, commissionCents: 199,
   returningCommissionPercent: 5, returningCommissionCents: 99, extraCommissionCents: null, salesBucket: 100,
   reviewsBucket: null, rating: 4.5, score: 72.5, factors: [{ key: 'commission', points: 20, max: 30 }], aiReason: null,

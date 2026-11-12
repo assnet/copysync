@@ -81,6 +81,8 @@ export interface OfferHuntFindSnapshot {
   skcCode: string | null;
   activityId: string | null;
   title: string;
+  /** https e host *.ltwebstatic.com (normalizado pelo cliente da fonte); null = sem foto. */
+  imageUrl: string | null;
   priceCents: number | null;
   originalPriceCents: number | null;
   discountPercent: number | null;

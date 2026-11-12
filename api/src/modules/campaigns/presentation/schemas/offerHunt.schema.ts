@@ -137,6 +137,7 @@ const findSchema = obj({
   status: { type: 'string', enum: [...OFFER_HUNT_FIND_STATUSES] },
   goodsId: { type: 'string' },
   title: { type: 'string' },
+  imageUrl: nullableStr,
   priceCents: nullableInteger,
   originalPriceCents: nullableInteger,
   discountPercent: { type: ['number', 'null'] },

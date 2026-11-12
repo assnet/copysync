@@ -126,7 +126,7 @@ export class InMemoryFinds implements Pick<IOfferHuntFindRepository, 'insertWith
     const c = huntCandidate();
     const row: OfferHuntFind = {
       id: `find-${++this.seq}`, tenantId: TENANT, huntId: HUNT, runId: null, goodsId: c.goodsId, skcCode: null, activityId: null,
-      title: c.title!, priceCents: c.priceCents, originalPriceCents: c.retailPriceCents, discountPercent: c.discountPct,
+      title: c.title!, imageUrl: c.imageUrl, priceCents: c.priceCents, originalPriceCents: c.retailPriceCents, discountPercent: c.discountPct,
       commissionPercent: c.commissionNewPct, commissionCents: c.commissionNewCents, returningCommissionPercent: null,
       returningCommissionCents: null, extraCommissionCents: 0, salesBucket: c.sales, reviewsBucket: c.reviews, rating: c.rating,
       score: 50, factors: [], aiReason: null, status: 'PENDING_REVIEW', failureReason: null, offerId: null,

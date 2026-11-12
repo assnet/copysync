@@ -339,6 +339,7 @@ function toNewFind(s: Scored, hunt: OfferHunt, runId: string): NewOfferHuntFind 
     skcCode: c.skc,
     activityId: c.activityId,
     title: c.title ?? '',
+    imageUrl: c.imageUrl,
     priceCents: c.priceCents,
     originalPriceCents: c.retailPriceCents,
     discountPercent: c.discountPct,

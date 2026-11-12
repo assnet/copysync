@@ -62,7 +62,7 @@ async function call(method: string, path: string, payload?: object) {
 
 const find: OfferHuntFind = {
   id: 'f1', tenantId: 'tenant-a', huntId: ID, runId: 'run-1', status: 'PENDING_REVIEW', goodsId: '12345678', skcCode: 'sk1',
-  activityId: 'act1', title: 'Vestido', priceCents: 5990, originalPriceCents: 9990, discountPercent: 40, commissionPercent: 15,
+  activityId: 'act1', title: 'Vestido', imageUrl: 'https://img.ltwebstatic.com/v.jpg', priceCents: 5990, originalPriceCents: 9990, discountPercent: 40, commissionPercent: 15,
   commissionCents: 898, returningCommissionPercent: 5, returningCommissionCents: 300, extraCommissionCents: 0, salesBucket: 1000,
   reviewsBucket: 100, rating: 4.8, score: 81.5, factors: [{ key: 'commission', points: 30, max: 40 }], aiReason: null,
   failureReason: null, offerId: null, createdAt: NOW, updatedAt: NOW,
@@ -173,6 +173,7 @@ describe('rotas (super admin)', () => {
     const data = res.json().data;
     expect(data.ranking[0]).toEqual(out.ranking[0]);
     expect(data.finds[0]).toMatchObject({ id: 'f1', score: 81.5, factors: [{ key: 'commission', points: 30, max: 40 }] });
+    expect(data.finds[0].imageUrl).toBe('https://img.ltwebstatic.com/v.jpg');
     expect(data.finds[0].skcCode).toBeUndefined();
     expect(data.finds[0].tenantId).toBeUndefined();
     expect(exec).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-a', huntId: ID, trigger: 'MANUAL' }));

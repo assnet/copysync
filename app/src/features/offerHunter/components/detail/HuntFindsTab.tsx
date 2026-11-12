@@ -5,7 +5,7 @@ import { AppIcon, ConfirmDialog, EmptyState } from '@/components';
 import { Blurred, useBlur } from '@/features/privacy';
 import type { HuntFind, OfferHuntFindStatus } from '../../types';
 import { offerHunterStrings as t } from '../../strings';
-import { formatCents } from '../../format';
+import { formatCents, formatDecimal, formatRating } from '../../format';
 import { ProductThumb } from '../ProductThumb';
 import { ScoreBar } from '../ScoreBar';
 
@@ -34,7 +34,7 @@ export interface HuntFindsTabProps {
   onDismiss: (findId: string) => Promise<unknown>;
 }
 
-const pct = (n: number | null) => (n == null ? null : `${Number.isInteger(n) ? n : n.toFixed(1)}%`);
+const pct = (n: number | null) => (n == null ? null : `${formatDecimal(n)}%`);
 const commissionText = (p: number | null, c: number | null) => [pct(p), formatCents(c)].filter(Boolean).join(' · ') || d.noValue;
 
 /** Achados com aprovar/dispensar (modo revisão), reenviar quando falhou e "carregar mais" pelo cursor. */
@@ -129,7 +129,7 @@ function FindItem({ item, open, busy, onToggle, onAsk }: {
   return (
     <Box component="li" data-testid="hunt-find" sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 1.5 }}>
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'auto 1fr', sm: 'auto 1fr 150px' }, columnGap: 1.5, rowGap: 1, alignItems: 'start' }}>
-        <ProductThumb src={null} size={56} />
+        <ProductThumb src={item.imageUrl} size={56} />
         <Box sx={{ minWidth: 0 }}>
           <Blurred when={blur} radius={5}>
             <Typography variant="body2" sx={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
@@ -149,8 +149,8 @@ function FindItem({ item, open, busy, onToggle, onAsk }: {
             )}
             {item.discountPercent != null && item.discountPercent > 0 && <Chip size="small" color="success" variant="outlined" label={f.discount(item.discountPercent)} sx={{ height: 20 }} />}
             {item.rating != null && (
-              <Typography component="span" variant="caption" color="text.secondary" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.25 }} aria-label={`${f.rating} ${item.rating.toFixed(1)}`}>
-                <AppIcon icon={Star} size="inline" />{item.rating.toFixed(1)}
+              <Typography component="span" variant="caption" color="text.secondary" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.25 }} aria-label={`${f.rating} ${formatRating(item.rating)}`}>
+                <AppIcon icon={Star} size="inline" />{formatRating(item.rating)}
               </Typography>
             )}
             {facts.length > 0 && <Typography component="span" variant="caption" color="text.secondary">{facts.join(' · ')}</Typography>}

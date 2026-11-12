@@ -114,6 +114,8 @@ export interface HuntFind {
   status: OfferHuntFindStatus;
   goodsId: string;
   title: string;
+  /** Foto da fonte (https, *.ltwebstatic.com) gravada no achado; null = sem foto. */
+  imageUrl: string | null;
   priceCents: number | null;
   originalPriceCents: number | null;
   discountPercent: number | null;

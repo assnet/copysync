@@ -31,7 +31,7 @@ const def = (tenantId: string, patch: Partial<CreateOfferHuntInput> = {}): Creat
 });
 
 const find = (goodsId: string, huntId: string | null): NewOfferHuntFind => ({
-  huntId, runId: null, status: 'PENDING_REVIEW', goodsId, skcCode: null, activityId: null, title: 'Item', priceCents: 1000,
+  huntId, runId: null, status: 'PENDING_REVIEW', goodsId, skcCode: null, activityId: null, title: 'Item', imageUrl: 'https://img.ltwebstatic.com/i.jpg', priceCents: 1000,
   originalPriceCents: null, discountPercent: 10, commissionPercent: 15.25, commissionCents: 150, returningCommissionPercent: null,
   returningCommissionCents: null, extraCommissionCents: 0, salesBucket: 100, reviewsBucket: 10, rating: 4.5, score: 61.7,
   factors: [{ key: 'commission', points: 20.5, max: 40 }], aiReason: null,
@@ -119,7 +119,7 @@ describe('PrismaOfferHuntFindRepository — teto diário atômico', () => {
     expect(await finds.insertWithinDailyLimit(t, ['1', '2', '3'].map((g) => find(`9000${g}`, null)), { since: SINCE, limit: 5 })).toHaveLength(3);
     const got = await finds.insertWithinDailyLimit(t, ['1', '2', '3', '4', '5'].map((g) => find(`1000${g}`, null)), { since: SINCE, limit: 5 });
     expect(got.map((f) => f.goodsId)).toEqual(['10001', '10002']);
-    expect(got[0]).toMatchObject({ commissionPercent: 15.25, rating: 4.5, score: 62, factors: [{ key: 'commission', points: 20.5, max: 40 }] });
+    expect(got[0]).toMatchObject({ imageUrl: 'https://img.ltwebstatic.com/i.jpg', commissionPercent: 15.25, rating: 4.5, score: 62, factors: [{ key: 'commission', points: 20.5, max: 40 }] });
     expect(await finds.insertWithinDailyLimit(t, [find('20001', null)], { since: SINCE, limit: 5 })).toEqual([]);
     expect(await finds.countCreatedSince(t, SINCE)).toBe(5);
   });

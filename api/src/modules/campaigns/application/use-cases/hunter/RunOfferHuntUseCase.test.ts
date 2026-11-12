@@ -155,6 +155,7 @@ describe('RunOfferHuntUseCase — busca, seleção e gravação', () => {
     expect(out).toMatchObject({ status: 'SUCCEEDED', seenCount: 4, matchedCount: 4, chosenCount: 3, sentCount: 0, remainingToday: 7 });
     expect(out.finds.map((f) => f.goodsId)).toEqual(['1001', '1002', '1003']);
     expect(out.finds.every((f) => f.status === 'PENDING_REVIEW' && f.runId === out.runId)).toBe(true);
+    expect(out.finds.every((f) => f.imageUrl === 'https://img.ltwebstatic.com/v4/j/spmp/x.jpg')).toBe(true);
     expect(out.ranking.map((r) => r.chosen)).toEqual([true, true, true, false]);
     expect(s.runs.items[0]).toMatchObject({ status: 'SUCCEEDED', seenCount: 4, chosenCount: 3 });
     expect(s.hunts.items[0]).toMatchObject({ lastRunAt: NOW, consecutiveFailures: 0 });
