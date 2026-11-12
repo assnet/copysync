@@ -849,3 +849,40 @@ describe('useWorkerScale — abrir com rascunho existente', () => {
     expect(result.current.dialogOpen).toBe(true);
   });
 });
+
+/**
+ * Valor da propriedade no xs (390 px): regras sem @media ou sob `min-width: 0px` que casam com o elemento.
+ * O jsdom não filtra @media no getComputedStyle, então lê as regras direto.
+ */
+function xsRuleValue(el: Element, prop: string): string | undefined {
+  let value: string | undefined;
+  const isXs = (r: CSSRule) => r instanceof CSSMediaRule && /min-width:\s*0px/.test(r.conditionText);
+  for (const sheet of Array.from(document.styleSheets)) {
+    const rules = Array.from(sheet.cssRules).flatMap((r) => (isXs(r) ? Array.from((r as CSSMediaRule).cssRules) : [r]));
+    for (const rule of rules) {
+      if (!(rule instanceof CSSStyleRule)) continue;
+      let hit = false;
+      try { hit = el.matches(rule.selectorText); } catch { /* seletor de outro navegador */ }
+      if (hit) value = rule.style.getPropertyValue(prop) || value;
+    }
+  }
+  return value;
+}
+
+describe('ScaleTab — cabeçalho do cartão automático no celular', () => {
+  it('no xs empilha título e chip; rótulo do chip quebra e a ajuda não encolhe', async () => {
+    vi.spyOn(adminWorkersService, 'getScale').mockResolvedValue(view({
+      settings: { scalerMode: 'auto', minReplicas: 1, maxReplicas: 4, scaleCooldownSeconds: 1800 },
+      enforced: false,
+    }));
+    mockEvents();
+    renderWithTheme(<ScaleTab />);
+    const label = await screen.findByText(sc.auto.status.onWaitingAdoption);
+    const title = screen.getByText(sc.auto.title);
+    const header = title.parentElement!.parentElement!;
+    expect(xsRuleValue(header, 'flex-direction')).toBe('column');
+    expect(getComputedStyle(label).whiteSpace).toBe('normal');
+    const help = within(header).getByRole('button', { name: new RegExp(sc.auto.helpLabel) });
+    expect(getComputedStyle(help.parentElement!).flexShrink).toBe('0');
+  });
+});

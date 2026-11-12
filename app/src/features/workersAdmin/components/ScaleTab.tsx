@@ -183,16 +183,20 @@ function AutoScaleCard({ mode, scalerReady, enforced, last }: {
     <SectionCard
       title={a.title}
       action={(
-        <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+        <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', minWidth: 0, maxWidth: '100%' }}>
           <Chip
             size="small"
             color={effective ? 'success' : on ? 'warning' : 'default'}
             variant={effective ? 'filled' : 'outlined'}
             label={chipLabel}
+            // Rótulo longo quebra linha em vez de empurrar a ajuda para fora do cartão.
+            sx={{ minWidth: 0, height: 'auto', py: 0.25, '& .MuiChip-label': { whiteSpace: 'normal' } }}
           />
-          <HelpTip label={a.helpLabel} text={a.help} />
+          <Box sx={{ flexShrink: 0 }}><HelpTip label={a.helpLabel} text={a.help} /></Box>
         </Stack>
       )}
+      // Celular: chip e ajuda descem para baixo do título, como em "Escala de réplicas".
+      headerSx={{ flexDirection: { xs: 'column', sm: 'row' }, alignItems: { xs: 'flex-start', sm: 'center' }, gap: { xs: 1, sm: 2 } }}
     >
       <Stack spacing={1.5}>
         <Typography variant="body2" color="text.secondary">{a.modeText[mode] ?? a.modeText.manual}</Typography>
