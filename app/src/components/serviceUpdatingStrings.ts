@@ -8,5 +8,7 @@ export const serviceUpdatingStrings = {
   retryNow: 'Tentar agora',
   retryNowHint: 'Busca de novo sem esperar a contagem',
   illustrationLabel: 'Ilustração de um servidor sendo ajustado',
-  stillUpdating: 'O sistema ainda está sendo atualizado.',
+  /** Anúncio após cada falha: muda a cada tentativa para o leitor de tela repetir. */
+  stillUpdating: (attempt: number) => `O sistema ainda está sendo atualizado (tentativa ${attempt}).`,
+  slow: 'Está demorando mais que o normal. Se continuar, avise o suporte.',
 } as const;

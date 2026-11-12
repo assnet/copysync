@@ -13,7 +13,8 @@ type RetryableRequestConfig = InternalAxiosRequestConfig & {
 type RefreshTokenResult =
   | { status: 'success'; accessToken: string }
   | { status: 'invalid' }
-  | { status: 'unavailable'; message: string };
+  | { status: 'unavailable'; message: string }
+  | { status: 'failed'; message: string; httpStatus?: number };
 
 const apiBaseURL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api';
 
@@ -66,14 +67,35 @@ function getErrorMessage(error: AxiosError<ApiErrorPayload>): string {
 /** Status de proxy/gateway que a Render devolve enquanto a API sobe ou troca de instância (deploy). */
 const SERVICE_UNAVAILABLE_STATUSES: ReadonlySet<number> = new Set([502, 503, 504]);
 
+/** Sem resposta que não é falha de rede/proxy: cancelada ou timeout (servidor vivo e lento). */
+const NOT_UNAVAILABLE_CODES: ReadonlySet<string> = new Set(['ERR_CANCELED', 'ECONNABORTED', 'ETIMEDOUT']);
+
 /**
- * Indisponibilidade passageira (deploy, reinício): sem resposta (rede) ou 502/503/504. 500 e
- * 4xx não entram: são erro da requisição/da API, não do serviço fora do ar. Cancelada não conta.
+ * Indisponibilidade passageira (deploy, reinício): falha de rede/proxy sem resposta ou 502/503/504.
+ * 500 e 4xx não entram (erro da requisição/da API, não serviço fora do ar); cancelada e timeout
+ * também não.
  */
 export function classifyServiceUnavailable(error: Pick<AxiosError, 'response' | 'code'>): boolean {
-  if (error.code === 'ERR_CANCELED') return false;
-  if (!error.response) return true;
+  if (!error.response) return !NOT_UNAVAILABLE_CODES.has(error.code ?? '');
   return SERVICE_UNAVAILABLE_STATUSES.has(error.response.status);
+}
+
+/** Status do `/auth/refresh` que é passageiro: indisponível, sem logout. */
+const REFRESH_TRANSIENT_STATUSES: ReadonlySet<number> = new Set([408, 429, 502, 503, 504]);
+
+/**
+ * Resultado de uma falha do `/auth/refresh`. Só 400/401 = refresh token inválido (desloga).
+ * Rede/proxy, 408, 429, 502–504 = indisponível. Resto (403, 404, 500, timeout) = erro comum, sem
+ * logout: não derruba a sessão por uma falha que não diz que o token é inválido.
+ */
+export function classifyRefreshFailure(error: Pick<AxiosError, 'response' | 'code' | 'message'>): RefreshTokenResult {
+  const status = error.response?.status;
+  if (status === 400 || status === 401) return { status: 'invalid' };
+  const message = error.message || 'Erro inesperado';
+  if (status === undefined ? classifyServiceUnavailable(error) : REFRESH_TRANSIENT_STATUSES.has(status)) {
+    return { status: 'unavailable', message };
+  }
+  return { status: 'failed', message, httpStatus: status };
 }
 
 /** O erro rejeitado pelo `apiClient` é de serviço temporariamente indisponível? */
@@ -81,10 +103,10 @@ export function isServiceUnavailable(err: unknown): boolean {
   return typeof err === 'object' && err !== null && (err as { serviceUnavailable?: unknown }).serviceUnavailable === true;
 }
 
-async function refreshAccessToken(): Promise<string | null> {
+async function refreshAccessToken(): Promise<RefreshTokenResult> {
   const refreshToken = localStorage.getItem('refreshToken');
   if (!refreshToken) {
-    return null;
+    return { status: 'invalid' };
   }
 
   if (!refreshPromise) {
@@ -97,33 +119,23 @@ async function refreshAccessToken(): Promise<string | null> {
         localStorage.setItem('accessToken', accessToken);
         return { status: 'success', accessToken } as const;
       })
-      .catch((err: unknown) => {
-        const axiosError = err as AxiosError<ApiErrorPayload>;
-        if (!axiosError.response || axiosError.response.status >= 500) {
-          return {
-            status: 'unavailable',
-            message: err instanceof Error ? err.message : 'Erro inesperado',
-          } as const;
-        }
-
-        return { status: 'invalid' } as const;
-      })
+      .catch((err: unknown) => classifyRefreshFailure(err as AxiosError<ApiErrorPayload>))
       .finally(() => {
         refreshPromise = null;
       });
   }
 
-  const result = await refreshPromise;
+  return refreshPromise;
+}
 
-  if (result.status === 'success') {
-    return result.accessToken;
-  }
-
-  if (result.status === 'invalid') {
-    return null;
-  }
-
-  throw new Error(result.message);
+/** Repete a requisição com o token dado (e o tenant atual). */
+function retryWithToken(request: RetryableRequestConfig, accessToken: string) {
+  const headers = AxiosHeaders.from(request.headers);
+  headers.set('Authorization', `Bearer ${accessToken}`);
+  const tenantId = localStorage.getItem('activeTenantId');
+  if (tenantId) headers.set('x-tenant-id', tenantId);
+  request.headers = headers;
+  return apiClient(request);
 }
 
 // ── Request interceptor — injeta token e tenant ─────────────────────────────
@@ -175,31 +187,28 @@ apiClient.interceptors.response.use(
     ) {
       originalRequest._retry = true;
 
-      try {
-        const accessToken = await refreshAccessToken();
-        if (accessToken) {
-          const headers = AxiosHeaders.from(originalRequest.headers);
-          headers.set('Authorization', `Bearer ${accessToken}`);
+      // 401 tardio: outro pedido já renovou o token depois que este saiu. Repete com o atual,
+      // sem refazer o `/auth/refresh`.
+      const current = localStorage.getItem('accessToken');
+      const sent = AxiosHeaders.from(originalRequest.headers).get('Authorization');
+      if (current && sent !== `Bearer ${current}`) {
+        return retryWithToken(originalRequest, current);
+      }
 
-          const tenantId = localStorage.getItem('activeTenantId');
-          if (tenantId) {
-            headers.set('x-tenant-id', tenantId);
-          }
-
-          originalRequest.headers = headers;
-          return apiClient(originalRequest);
-        }
-      } catch (refreshError) {
-        // `/auth/refresh` sem resposta ou 5xx (deploy): o refresh token segue válido. Não desloga;
-        // rejeita como indisponível e a tela tenta de novo depois (o 401 → refresh roda outra vez).
-        // Só `invalid` (refresh 400/401, sem token) cai no logout abaixo.
-        return Promise.reject(
-          Object.assign(new Error(refreshError instanceof Error ? refreshError.message : 'Serviço indisponível'), {
-            status: undefined,
-            code: 'SERVICE_UNAVAILABLE',
-            serviceUnavailable: true,
-          }),
-        );
+      const result = await refreshAccessToken();
+      if (result.status === 'success') return retryWithToken(originalRequest, result.accessToken);
+      // Refresh indisponível (deploy) ou com falha que não diz que o token é inválido: o refresh
+      // token segue valendo. Não desloga; a tela tenta de novo e o 401 → refresh roda outra vez.
+      // Só `invalid` (refresh 400/401, sem token) cai no logout abaixo.
+      if (result.status === 'unavailable') {
+        return Promise.reject(Object.assign(new Error(result.message), {
+          status: undefined, code: 'SERVICE_UNAVAILABLE', serviceUnavailable: true,
+        }));
+      }
+      if (result.status === 'failed') {
+        return Promise.reject(Object.assign(new Error(result.message), {
+          status: result.httpStatus, code: 'REFRESH_FAILED', serviceUnavailable: false,
+        }));
       }
     }
 

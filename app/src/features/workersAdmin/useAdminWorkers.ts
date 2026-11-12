@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { isServiceUnavailable } from '@/services/apiClient';
 import { adminWorkersService } from '@/services/adminWorkers.service';
 import { workersAdminStrings as s } from './strings';
@@ -17,6 +17,12 @@ export function useAdminWorkers() {
   const [refreshError, setRefreshError] = useState(false);
   /** 1ª carga falhou por API fora do ar (deploy); só limpa ao concluir uma leitura. */
   const [loadUnavailable, setLoadUnavailable] = useState(false);
+  /** Espelho para o tick: enquanto indisponível, quem tenta de novo é o `ServiceUpdatingState`. */
+  const unavailableRef = useRef(false);
+  const markUnavailable = useCallback((v: boolean) => {
+    unavailableRef.current = v;
+    setLoadUnavailable(v);
+  }, []);
 
   const fetchOnce = useCallback(async (initial: boolean) => {
     if (initial) {
@@ -27,22 +33,23 @@ export function useAdminWorkers() {
       setData(await adminWorkersService.list());
       setRefreshError(false);
       setLoadError(null);
-      setLoadUnavailable(false);
+      markUnavailable(false);
     } catch (err) {
       if (initial) {
         setLoadError(s.errors.generic);
-        setLoadUnavailable(isServiceUnavailable(err));
+        markUnavailable(isServiceUnavailable(err));
       }
       else setRefreshError(true);
     } finally {
       if (initial) setLoading(false);
     }
-  }, []);
+  }, [markUnavailable]);
 
   useEffect(() => {
     void fetchOnce(true);
     const id = window.setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) return;
+      if (unavailableRef.current) return; // sem 2º laço de retry durante o deploy
       void fetchOnce(false);
     }, WORKERS_REFRESH_MS);
     return () => window.clearInterval(id);

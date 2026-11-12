@@ -162,21 +162,29 @@ Durante deploy na Render a API some por segundos/minutos: sem resposta, 502, 503
 erro do usuário nem da tela, então não vira alerta vermelho.
 
 - **Classificação** só no cliente HTTP central: `isServiceUnavailable(err)` (`services/apiClient.ts`),
-  lida do campo `serviceUnavailable` do erro rejeitado. 500, 4xx e requisição cancelada **não** contam.
-  Refresh de token indisponível também rejeita assim e **não desloga** (só refresh 400/401 desloga).
+  lida do campo `serviceUnavailable` do erro rejeitado. Conta: falha de rede/proxy sem resposta,
+  502, 503, 504. **Não** conta: 500, 4xx, requisição cancelada, timeout (`ECONNABORTED`/`ETIMEDOUT`,
+  servidor vivo e lento).
+- **Refresh do token** (`/auth/refresh` após 401): só 400/401 desloga. Rede/proxy, 408, 429, 502–504
+  rejeitam como indisponível; 403, 404, 500 e timeout rejeitam erro comum (`REFRESH_FAILED`). Nenhum
+  dos dois derruba a sessão. 401 tardio com token já renovado por outro pedido repete com o token
+  atual, sem novo refresh; 401 concorrentes compartilham um único refresh.
 - **Componente**: `ServiceUpdatingState` (`components/`), textos em `components/serviceUpdatingStrings.ts`.
   Ilustração (rack + engrenagens), "Estamos atualizando o sistema", contagem até a próxima tentativa,
-  "Tentar agora" com Tooltip. `aria-live="polite"` só no título/texto e no "ainda atualizando" após
-  cada falha (a contagem por segundo não é anunciada). `compact` dentro de cartão/seção.
+  "Tentar agora" com Tooltip. `aria-live="polite"` só no título/texto e no "ainda atualizando (tentativa N)" após
+  cada falha (o número muda o texto e força o reanúncio; a contagem por segundo não é anunciada). `compact` dentro de cartão/seção.
 - **Nova tentativa**: `useAutoRetry` (`hooks/`), 5 s → 10 s → 20 s → teto 30 s. Um `setTimeout` por vez
-  re-armado por segundo (nunca `setInterval`); aba oculta pausa e retoma do mesmo ponto.
+  re-armado por segundo (nunca `setInterval`); aba oculta pausa e retoma do mesmo ponto. Só a
+  tentativa automática avança a escada; "Tentar agora" reinicia a espera do degrau atual. Não
+  desiste: após 3 min tentando mostra "Está demorando mais que o normal. Se continuar, avise o suporte."
   Relógio local, **não** `serverNow()`: a API está fora (sem `X-Server-Time` novo) e a espera não é
   comparada com horário do servidor.
 - **Como ligar numa tela**: o hook de dados guarda `loadUnavailable` (`isServiceUnavailable(err)` no
   `catch` da 1ª carga), limpa **só quando uma leitura conclui** (não no início do reload, senão a
   tela pisca para o spinner e o backoff recomeça) e a tela renderiza
   `<ServiceUpdatingState onRetry={reload} />` **antes** do ramo de carregamento. Quando a leitura dá
-  certo o estado some sozinho.
+  certo o estado some sozinho. Atualização periódica da tela (ex.: tick de 20 s da Ocupação) pula
+  enquanto indisponível: o único laço de retry é o do componente.
 - **Telas com o estado**: `/admin/workers` (Ocupação, Consumo, Capacidade, Configuração, Escala).
   Não há componente de erro compartilhado no painel; outras telas entram uma a uma, sob demanda.
 

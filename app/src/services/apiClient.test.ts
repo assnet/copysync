@@ -157,3 +157,123 @@ describe('apiClient — refresh do token durante deploy', () => {
     expect(localStorage.getItem('accessToken')).toBe('novo');
   });
 });
+
+describe('apiClient — refresh: o que desloga e o que não', () => {
+  function protectedThen(retried: AxiosAdapter): AxiosAdapter {
+    let calls = 0;
+    return (config) => (calls++ === 0 ? rejectWith(401, 'UNAUTHORIZED')(config) : retried(config));
+  }
+
+  async function loadWithRefresh(api: AxiosAdapter, refresh: AxiosAdapter) {
+    vi.resetModules();
+    const axios = (await import('axios')).default;
+    const realCreate = axios.create.bind(axios);
+    let created = 0;
+    const refreshSpy = vi.fn(refresh);
+    vi.spyOn(axios, 'create').mockImplementation((cfg) => {
+      const inst = realCreate(cfg);
+      inst.defaults.adapter = created++ === 0 ? api : refreshSpy;
+      return inst;
+    });
+    return { ...(await import('./apiClient')), refreshSpy };
+  }
+
+  const ok = (data: unknown): AxiosAdapter => (config) =>
+    Promise.resolve({ data, status: 200, statusText: 'OK', headers: {}, config });
+
+  beforeEach(() => localStorage.setItem('refreshToken', 'rt'));
+
+  it('refresh 500 rejeita erro comum, sem "atualizando" e sem logout', async () => {
+    const { apiClient, isServiceUnavailable } = await loadWithRefresh(protectedThen(ok({})), rejectWith(500, 'INTERNAL'));
+    const err = await apiClient.get('/x').catch((e: unknown) => e);
+    expect(isServiceUnavailable(err)).toBe(false);
+    expect(err).toMatchObject({ status: 500, code: 'REFRESH_FAILED' });
+    expect(location.href).toBe('http://localhost/dashboard');
+    expect(localStorage.getItem('refreshToken')).toBe('rt');
+  });
+
+  it('refresh 429 é indisponível, sem logout', async () => {
+    const { apiClient, isServiceUnavailable } = await loadWithRefresh(protectedThen(ok({})), rejectWith(429, 'RATE'));
+    const err = await apiClient.get('/x').catch((e: unknown) => e);
+    expect(isServiceUnavailable(err)).toBe(true);
+    expect(localStorage.getItem('refreshToken')).toBe('rt');
+  });
+
+  it('refresh 403 rejeita erro comum, sem logout', async () => {
+    const { apiClient, isServiceUnavailable } = await loadWithRefresh(protectedThen(ok({})), rejectWith(403, 'FORBIDDEN'));
+    const err = await apiClient.get('/x').catch((e: unknown) => e);
+    expect(isServiceUnavailable(err)).toBe(false);
+    expect(err).toMatchObject({ status: 403, code: 'REFRESH_FAILED' });
+    expect(location.href).toBe('http://localhost/dashboard');
+    expect(localStorage.getItem('refreshToken')).toBe('rt');
+  });
+
+  it('refresh com timeout rejeita erro comum, sem logout', async () => {
+    const timeout: AxiosAdapter = (config) => Promise.reject(new AxiosError('timeout', 'ECONNABORTED', config, {}));
+    const { apiClient, isServiceUnavailable } = await loadWithRefresh(protectedThen(ok({})), timeout);
+    const err = await apiClient.get('/x').catch((e: unknown) => e);
+    expect(isServiceUnavailable(err)).toBe(false);
+    expect(localStorage.getItem('refreshToken')).toBe('rt');
+  });
+
+  it('dois 401 concorrentes fazem um único /auth/refresh e repetem ambos', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const refresh: AxiosAdapter = async (config) => {
+      await gate;
+      return ok({ success: true, data: { accessToken: 'novo' } })(config);
+    };
+    const api: AxiosAdapter = (config) => {
+      const auth = String(AxiosHeaders.from(config.headers).get('Authorization'));
+      return auth === 'Bearer novo' ? ok({ url: config.url })(config) : rejectWith(401, 'UNAUTHORIZED')(config);
+    };
+    const { apiClient, refreshSpy } = await loadWithRefresh(api, refresh);
+    const both = Promise.all([apiClient.get('/a'), apiClient.get('/b')]);
+    await new Promise((r) => setTimeout(r, 0));
+    release();
+    const [a, b] = await both;
+    expect(a.data).toEqual({ url: '/a' });
+    expect(b.data).toEqual({ url: '/b' });
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('401 tardio com token já renovado repete com o atual, sem refazer o refresh', async () => {
+    const seen: string[] = [];
+    const api: AxiosAdapter = (config) => {
+      const auth = String(AxiosHeaders.from(config.headers).get('Authorization'));
+      seen.push(auth);
+      if (auth === 'Bearer tok') {
+        localStorage.setItem('accessToken', 'renovado'); // outro pedido renovou enquanto este voava
+        return rejectWith(401, 'UNAUTHORIZED')(config);
+      }
+      return ok({ ok: true })(config);
+    };
+    const { apiClient, refreshSpy } = await loadWithRefresh(api, ok({ success: true, data: { accessToken: 'x' } }));
+    const res = await apiClient.get('/x');
+    expect(res.data).toEqual({ ok: true });
+    expect(seen).toEqual(['Bearer tok', 'Bearer renovado']);
+    expect(refreshSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('apiClient — cancelamento e timeout não são indisponibilidade', () => {
+  it('requisição cancelada com AbortController real', async () => {
+    const { isServiceUnavailable } = await import('./apiClient');
+    const api = await load((config) => new Promise((_, reject) => {
+      config.signal?.addEventListener?.('abort', () => reject(new AxiosError('canceled', 'ERR_CANCELED', config)));
+    }));
+    const ac = new AbortController();
+    const pending = api.get('/x', { signal: ac.signal }).catch((e: unknown) => e);
+    ac.abort();
+    const err = await pending;
+    expect(isServiceUnavailable(err)).toBe(false);
+  });
+
+  it('timeout (ECONNABORTED/ETIMEDOUT)', async () => {
+    const { isServiceUnavailable } = await import('./apiClient');
+    for (const code of ['ECONNABORTED', 'ETIMEDOUT']) {
+      const api = await load((config) => Promise.reject(new AxiosError('timeout', code, config, {})));
+      expect(isServiceUnavailable(await api.get('/x').catch((e: unknown) => e))).toBe(false);
+    }
+  });
+});

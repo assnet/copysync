@@ -91,13 +91,13 @@ function UpdatingIllustration({ animate, size }: { animate: boolean; size: numbe
  * `isServiceUnavailable(err)`; os demais erros continuam no alerta da tela.
  */
 export function ServiceUpdatingState({ onRetry, compact = false }: ServiceUpdatingStateProps) {
-  const reducedMotion = useMediaQuery(REDUCED_MOTION_QUERY);
+  const reducedMotion = useMediaQuery(REDUCED_MOTION_QUERY, { noSsr: true });
   const r = useAutoRetry(onRetry);
   const [announce, setAnnounce] = useState('');
 
   // Anúncio só ao falhar de novo (não a cada segundo da contagem).
   useEffect(() => {
-    if (r.attempts > 0) setAnnounce(t.stillUpdating);
+    if (r.attempts > 0) setAnnounce(t.stillUpdating(r.attempts));
   }, [r.attempts]);
 
   const status = r.retrying ? t.retrying : r.paused ? t.paused : t.nextAttempt(r.secondsLeft ?? 0);
@@ -128,6 +128,11 @@ export function ServiceUpdatingState({ onRetry, compact = false }: ServiceUpdati
         >
           {status}
         </Typography>
+        {r.slow && (
+          <Typography variant="caption" color="text.secondary" data-testid="service-updating-slow">
+            {t.slow}
+          </Typography>
+        )}
         {r.retrying && <LinearProgress sx={{ width: '100%', borderRadius: 2 }} aria-hidden />}
         <Tooltip title={t.retryNowHint} arrow describeChild>
           <span>

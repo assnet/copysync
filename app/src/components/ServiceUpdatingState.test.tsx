@@ -43,6 +43,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   setVisibility('visible');
+  vi.useRealTimers();
 });
 
 describe('autoRetryDelay', () => {
@@ -97,14 +98,43 @@ describe('ServiceUpdatingState', () => {
     expect(status()).toBe(t.nextAttempt(10));
   });
 
-  it('"Tentar agora" tenta na hora e reinicia a contagem com a próxima espera', async () => {
+  it('"Tentar agora" tenta na hora e reinicia o degrau atual, sem avançar a escada', async () => {
     const onRetry = vi.fn().mockResolvedValue(undefined);
     renderWithTheme(<ServiceUpdatingState onRetry={onRetry} />);
     await advance(2_000);
     fireEvent.click(screen.getByRole('button', { name: t.retryNow }));
     await advance(0);
     expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(status()).toBe(t.nextAttempt(5));
+    await advance(5_000);
+    expect(onRetry).toHaveBeenCalledTimes(2);
     expect(status()).toBe(t.nextAttempt(10));
+    fireEvent.click(screen.getByRole('button', { name: t.retryNow }));
+    await advance(0);
+    expect(onRetry).toHaveBeenCalledTimes(3);
+    expect(status()).toBe(t.nextAttempt(10));
+  });
+
+  it('desmontar no meio da contagem não deixa timer pendente', async () => {
+    const onRetry = vi.fn();
+    const { unmount } = renderWithTheme(<ServiceUpdatingState onRetry={onRetry} />);
+    await advance(2_500);
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+    await advance(60_000);
+    expect(onRetry).not.toHaveBeenCalled();
+  });
+
+  it('depois de 3 min tentando avisa que está demorando, sem desistir', async () => {
+    const onRetry = vi.fn().mockRejectedValue(new Error('fora'));
+    renderWithTheme(<ServiceUpdatingState onRetry={onRetry} />);
+    await advance(170_000);
+    expect(screen.queryByText(t.slow)).not.toBeInTheDocument();
+    await advance(15_000);
+    expect(screen.getByText(t.slow)).toBeInTheDocument();
+    const calls = onRetry.mock.calls.length;
+    await advance(30_000);
+    expect(onRetry.mock.calls.length).toBe(calls + 1);
   });
 
   it('aba oculta pausa a contagem e retoma do mesmo ponto ao voltar', async () => {
@@ -141,7 +171,10 @@ describe('ServiceUpdatingState', () => {
     expect(live).not.toBeNull();
     expect(live).not.toContainElement(screen.getByTestId('service-updating-status'));
     await advance(5_000);
-    expect(live).toHaveTextContent(t.stillUpdating);
+    expect(live).toHaveTextContent(t.stillUpdating(1));
+    await advance(10_000);
+    expect(live).toHaveTextContent(t.stillUpdating(2));
+    expect(live).not.toHaveTextContent(t.stillUpdating(1));
   });
 
   it('anima a ilustração por padrão e fica parada com prefers-reduced-motion', () => {
