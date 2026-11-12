@@ -74,7 +74,7 @@ trecho; 🟡 corrige ou registra "aceito" com motivo; para quando sobrar só �
 | R3 | Revisão da P3 e merge | T26 | | feito |
 | T27 | Job de subida automática | R3 | | feito |
 | T28 | Painel: modo automático e docs da P4 | T27 | | feito |
-| R4 | Revisão da P4 e merge | T28 | | pendente |
+| R4 | Revisão da P4 e merge | T28 | | feito |
 | T29 | Drenar worker (P5) | R4, D7 | | não detalhada |
 
 ## Execution Plan
