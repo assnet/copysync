@@ -306,6 +306,9 @@ describe('SummaryTab — mês e horas (P2)', () => {
     // LITE: R$ 97 − R$ 20 (projetado) = R$ 77.
     const lite = within(table).getByText('LITE').closest('tr') as HTMLElement;
     expect(norm(lite.textContent)).toContain('R$ 77,00');
+    // Por tenant mostra o projetado usado na margem, para os números baterem.
+    expect(within(lite).getByText(/^projetado: /)).toHaveAccessibleDescription(s.plans.projectedPerTenantHint);
+    expect(norm(within(lite).getByText(/^projetado: /).textContent)).toContain('R$ 20,00');
     expect(screen.getByText(s.plans.marginProjectedNote)).toBeInTheDocument();
   });
 
@@ -316,6 +319,7 @@ describe('SummaryTab — mês e horas (P2)', () => {
     expect(screen.queryByText(s.cards.projected.label)).not.toBeInTheDocument();
     const table = screen.getByRole('table', { name: s.plans.aria });
     expect(within(table).queryByText(s.plans.projected)).not.toBeInTheDocument();
+    expect(within(table).queryByText(/^projetado: /)).not.toBeInTheDocument();
     expect(norm((within(table).getByText('LITE').closest('tr') as HTMLElement).textContent)).toContain('R$ 87,00');
   });
 
@@ -327,6 +331,7 @@ describe('SummaryTab — mês e horas (P2)', () => {
     await userEvent.click(screen.getByRole('button', { name: s.filters.connected }));
     const idle = screen.getByText(s.cards.idle.label).closest('.MuiCard-root') as HTMLElement;
     expect(norm(idle.textContent)).toContain('US$ 30,00');
+    expect(within(idle).getByText(s.cards.idle.outOfSplit)).toBeVisible();
     const perSession = screen.getByText(s.cards.perSession.label).closest('.MuiCard-root') as HTMLElement;
     expect(norm(perSession.textContent)).toContain('1.440 sessões-hora no mês');
     expect(norm(perSession.textContent)).toContain('US$ 0,0045 por sessão-hora');
@@ -379,5 +384,21 @@ describe('SummaryTab — mês e horas (P2)', () => {
     expect(await screen.findByText(s.monthEmpty(monthLabel('2026-09')))).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: s.filters.month })).toBeInTheDocument();
     expect(sessionStorage.getItem('ui.costs.filters')).toContain('2026-09');
+    expect(s.monthEmpty('x')).not.toMatch(/job/i);
+
+    spy.mockResolvedValue(summary());
+    await userEvent.click(screen.getByRole('button', { name: s.backToCurrentMonth }));
+    expect(await screen.findByRole('table', { name: s.plans.aria })).toBeInTheDocument();
+    expect(sessionStorage.getItem('ui.costs.filters')).not.toContain('2026-09');
+  });
+
+  it('quantidade medida por hora com 2 casas; manual e atual inteiras', async () => {
+    const base = summary();
+    mockSummary(summary({ items: [{ ...base.items[0], quantity: 3.42, quantitySource: 'measured_hours' }, base.items[1]] }));
+    renderTab();
+    const table = await screen.findByRole('table', { name: s.services.aria });
+    const worker = within(table).getByText('Worker').closest('tr') as HTMLElement;
+    expect(within(worker).getByText('3,42')).toBeInTheDocument();
+    expect(within(worker).getByText(S.quantitySource.measured_hours)).toBeInTheDocument();
   });
 });

@@ -199,7 +199,22 @@ function PlansSection({ summary, filters }: { summary: InfraCostSummary; filters
                     <TableCell align="right" sx={numCell}>{num(row.tenants)}</TableCell>
                     <TableCell align="right" sx={numCell}>{num(v.sessions)}</TableCell>
                     <TableCell align="right"><Money value={v.share} /></TableCell>
-                    <TableCell align="right"><Money value={v.perTenant} /></TableCell>
+                    <TableCell align="right">
+                      <Money value={v.perTenant} />
+                      {/* Mês em andamento: a margem usa o projetado; mostrado aqui para os números baterem. */}
+                      {showMargin && projected && v.marginCost && (
+                        <Tooltip title={p.projectedPerTenantHint} arrow enterTouchDelay={0} describeChild>
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            tabIndex={0}
+                            sx={{ display: 'block', whiteSpace: 'nowrap', cursor: 'help', fontVariantNumeric: 'tabular-nums', ...focusRing }}
+                          >
+                            {p.projectedPerTenant(unallocCost(v.marginCost))}
+                          </Typography>
+                        </Tooltip>
+                      )}
+                    </TableCell>
                     {showMargin && <MarginCell line={margin?.monthly ?? null} />}
                     {showMargin && <MarginCell line={margin?.annual ?? null} />}
                   </TableRow>
@@ -269,7 +284,8 @@ function ServiceRow({ item }: { item: InfraCostItemView }) {
         </Stack>
       </TableCell>
       <TableCell align="right" sx={numCell}>
-        <Typography variant="body2" component="span">{num(item.quantity)}</Typography>
+        {/* Medido por hora é média do mês (ex.: 3,42 instâncias): arredondar para inteiro esconde o fracionado. */}
+        <Typography variant="body2" component="span">{num(item.quantity, item.quantitySource === 'measured_hours' ? 2 : 0)}</Typography>
         <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end', alignItems: 'center', mt: 0.25 }}>
           <Typography variant="caption" color="text.secondary">{S.quantitySource[item.quantitySource]}</Typography>
           {item.estimated && <EstimatedChip />}
@@ -458,7 +474,9 @@ function Tiles({ summary, filters }: { summary: InfraCostSummary; filters: CostF
       icon: Users, value: basis.perSession, context: sessionHourContext ?? c.perSession.sessions(num(basis.sessions, 2)),
     },
     // Ociosidade só na leitura por sessão-hora (COST-12): mostrada, não rateada.
-    ...(connected && hours ? [{ label: c.idle.label, help: c.idle.help, icon: CircleDashed, value: summary.idleCapacity ?? null, emptyText: c.idle.empty }] : []),
+    ...(connected && hours ? [{
+      label: c.idle.label, help: c.idle.help, icon: CircleDashed, value: summary.idleCapacity ?? null, emptyText: c.idle.empty, context: c.idle.outOfSplit,
+    }] : []),
     // Custo marginal nulo = sem preço do servidor de sessões (não falta amostra).
     { ...c.marginal, icon: Gauge, value: summary.marginalPerSession, emptyText: s.noPrice },
   ];
@@ -467,7 +485,13 @@ function Tiles({ summary, filters }: { summary: InfraCostSummary; filters: CostF
       sx={{
         display: 'grid',
         gap: 2,
-        gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(2, minmax(0, 1fr))', lg: `repeat(${tiles.length}, minmax(0, 1fr))` },
+        // 5 cartões numa linha em 1440 quebram rótulo e BRL: até 4 por linha no lg, todos só no xl.
+        gridTemplateColumns: {
+          xs: 'minmax(0, 1fr)',
+          sm: 'repeat(2, minmax(0, 1fr))',
+          lg: `repeat(${tiles.length > 4 ? 3 : tiles.length}, minmax(0, 1fr))`,
+          xl: `repeat(${tiles.length}, minmax(0, 1fr))`,
+        },
       }}
     >
       {tiles.map((tile) => <CostTile key={tile.label} {...tile} />)}
@@ -487,7 +511,16 @@ export default function SummaryTab() {
     return (
       <Stack spacing={2}>
         {filtersBar}
-        <Alert severity="info">{s.monthEmpty(monthLabel(filters.month ?? ''))}</Alert>
+        <Alert
+          severity="info"
+          action={(
+            <Button color="inherit" size="small" sx={{ whiteSpace: 'nowrap' }} onClick={() => setFilters({ ...filters, month: null })}>
+              {s.backToCurrentMonth}
+            </Button>
+          )}
+        >
+          {s.monthEmpty(monthLabel(filters.month ?? ''))}
+        </Alert>
       </Stack>
     );
   }

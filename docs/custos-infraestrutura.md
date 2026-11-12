@@ -120,7 +120,9 @@ Memória só para não repetir `warn`; todo estado que importa está no banco.
   (`ultimos/1`) → mantém a **última** gravada e faz **no máximo 1 nova tentativa 1 h depois**. Estado da tentativa em
   `platform_settings["infra_fx_fetch_state"]` (`ok`, `referenceDay`, `attempts`, `lastAttemptAt`): sobrevive a
   reinício, nunca em memória. Timeout 5 s, URLs fixas no código.
-- A aba Preços ainda mostra a busca automática só como linha de status (chip "Em breve"), sem Switch.
+- A aba Preços tem o Switch "Buscar a cotação no Banco Central" (`fx.auto`), com a dica do horário (13h30 de
+  Brasília) e da ordem PTAX → SGS → última. Desligado, o job não busca e vale a última gravada. A cotação manual vale
+  sobre a automática com o Switch ligado ou desligado.
 
 ## Previsto
 

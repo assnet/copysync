@@ -13,8 +13,16 @@ describe('costParts', () => {
   it.each(['light', 'dark'] as const)('tons de texto ≥ 4,5:1 contra background.paper (%s)', (mode) => {
     const theme = buildTheme(mode);
     for (const tone of tones) {
-      const ratio = getContrastRatio(toneColor(tone)(theme), theme.palette.background.paper);
-      expect(ratio, `${tone} em ${mode}: ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(4.5);
+      for (const bg of [theme.palette.background.paper, theme.palette.background.default]) {
+        const ratio = getContrastRatio(toneColor(tone)(theme), bg);
+        expect(ratio, `${tone} em ${mode} sobre ${bg}: ${ratio.toFixed(3)}`).toBeGreaterThanOrEqual(4.5);
+      }
     }
+  });
+
+  it('margem negativa no escuro (error) passa de 4,5:1 com folga, não no arredondamento', () => {
+    const theme = buildTheme('dark');
+    // `getContrastRatio` arredonda a 2 casas: o `error.main` puro dá "4,50" e fica abaixo na prática (4,47:1 medido).
+    expect(getContrastRatio(toneColor('error')(theme), theme.palette.background.paper)).toBeGreaterThanOrEqual(5);
   });
 });

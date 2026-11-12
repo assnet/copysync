@@ -35,18 +35,34 @@ beforeEach(() => sessionStorage.clear());
 afterEach(() => vi.restoreAllMocks());
 
 describe('PricesTab', () => {
-  it.each(['light', 'dark'] as const)('mostra seções e a cotação automática como status "Em breve", sem Switch (%s)', async (mode) => {
+  it.each(['light', 'dark'] as const)('mostra seções e a cotação automática como Switch ligado com a dica (%s)', async (mode) => {
     vi.spyOn(adminCostsService, 'getSettings').mockResolvedValue(view());
     renderTab(mode);
     expect(await screen.findByText(p.fx.title)).toBeInTheDocument();
     for (const title of [p.items.title, p.renderPlans.title, p.aiModels.title, p.workspace.title]) {
       expect(screen.getByText(title)).toBeInTheDocument();
     }
-    expect(screen.getByText(S.pricesReview.autoStatus)).toBeInTheDocument();
-    expect(screen.getByText(S.pricesReview.autoSoon)).toBeInTheDocument();
-    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    const sw = screen.getByRole('checkbox', { name: S.pricesReview.autoLabel });
+    expect(sw).toBeChecked();
+    expect(sw).toHaveAccessibleDescription(S.pricesReview.autoHint);
+    expect(screen.queryByText('Em breve')).not.toBeInTheDocument();
     // Sem alteração: nada a revisar.
     expect(screen.getByRole('button', { name: p.actions.review })).toBeDisabled();
+  });
+
+  it('desligar a cotação automática entra no diff e salva fx.auto = false', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(adminCostsService, 'getSettings').mockResolvedValue(view());
+    const saved: InfraCostSettings = { ...sampleSettings(), fx: { ...sampleSettings().fx, auto: false } };
+    const update = vi.spyOn(adminCostsService, 'updateSettings').mockResolvedValue(view({ settings: saved, updatedAt: '2026-11-12T10:00:00.000Z' }));
+    renderTab();
+    await user.click(await screen.findByRole('checkbox', { name: S.pricesReview.autoLabel }));
+    expect(screen.getByRole('checkbox', { name: S.pricesReview.autoLabel })).not.toBeChecked();
+    await user.click(screen.getByRole('button', { name: p.actions.review }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(`${p.fx.title} · ${S.pricesReview.autoField}`)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: p.confirm.save }));
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ settings: saved, expectedUpdatedAt: '2026-11-01T10:00:00.000Z' }));
   });
 
   it('cotação manual: informa valor e data, revisa o diff e salva com expectedUpdatedAt; rascunho limpo', async () => {

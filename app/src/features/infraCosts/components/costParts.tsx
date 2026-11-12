@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { darken } from '@mui/material/styles';
+import { darken, lighten } from '@mui/material/styles';
 import { alpha, Box, Card, CardContent, Chip, Stack, TableContainer, Tooltip, Typography, type Theme } from '@mui/material';
 import type { LucideIcon } from 'lucide-react';
 import { AppIcon } from '@/components';
@@ -18,9 +18,17 @@ export type Tone = 'success' | 'error' | 'warning' | 'info';
  */
 export const LIGHT_TONE_DARKEN = 0.4;
 
-/** Cor de texto legível nos dois temas (≥ 4,5:1): `.main` escurecido no claro, `.main` no escuro. */
+/**
+ * Quanto clarear o `.main` no tema escuro: o `error.main` puro fica no limite (4,497:1 contra
+ * `background.paper`, arredondado 4,5) e cai abaixo em superfície com hover. Testado em `costParts.test.tsx`.
+ */
+export const DARK_TONE_LIGHTEN = 0.2;
+
+/** Cor de texto legível nos dois temas (≥ 4,5:1): `.main` escurecido no claro, clareado no escuro. */
 export const toneColor = (tone: Tone) => (t: Theme) =>
-  (t.palette.mode === 'light' ? darken(t.palette[tone].main, LIGHT_TONE_DARKEN) : t.palette[tone].main);
+  (t.palette.mode === 'light'
+    ? darken(t.palette[tone].main, LIGHT_TONE_DARKEN)
+    : lighten(t.palette[tone].main, DARK_TONE_LIGHTEN));
 
 /** Chip contornado no tom (texto e borda ≥ 4,5:1 nos dois temas). */
 export const toneChipSx = (tone: Tone) => (t: Theme) => ({ color: toneColor(tone)(t), borderColor: toneColor(tone)(t) });

@@ -29,6 +29,7 @@ import {
   formatPercent,
   formatUsd,
   planMargin,
+  settingsToDraft,
   toSettingsPayload,
   validateSettingsDraft,
 } from './rules';
@@ -224,6 +225,16 @@ describe('payload do PUT', () => {
     const payload = toSettingsPayload(dirty as never);
     expect(payload).toEqual(s);
     expect(JSON.stringify(payload)).not.toMatch(/"price/);
+  });
+
+  it('envia o fx.auto escolhido (ligado e desligado)', () => {
+    for (const auto of [true, false]) {
+      const s = sampleSettings();
+      s.fx.auto = auto;
+      expect(toSettingsPayload(s).fx.auto).toBe(auto);
+      const draft = settingsToDraft(s);
+      expect(draftToSettings(draft)?.fx.auto).toBe(auto);
+    }
   });
 });
 

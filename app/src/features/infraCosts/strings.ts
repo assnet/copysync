@@ -91,7 +91,8 @@ export const infraCostsStrings = {
     basisHours: 'Soma das horas do mês',
     basisHint: 'Na foto do momento, as quantidades de agora valem para o mês inteiro. Mudou o número de servidores, o total muda junto.',
     basisHoursHint: 'Cada hora do mês custa o preço do plano lido naquela hora. Hora sem leitura usa a quantidade cadastrada e ganha o selo "estimado".',
-    monthEmpty: (label: string) => `Sem dados de custo para ${label}. Os custos por hora começam a ser gravados quando o job horário está ligado.`,
+    monthEmpty: (label: string) => `Ainda não há custos registrados para ${label}. Os custos passam a ser gravados a cada hora depois que a coleta é ligada.`,
+    backToCurrentMonth: 'Voltar ao mês atual',
     generatedAt: (when: string) => `Calculado em ${when}`,
     fx: {
       label: 'Cotação do dólar',
@@ -125,6 +126,7 @@ export const infraCostsStrings = {
         label: 'Capacidade ociosa',
         help: 'Parte do custo compartilhado que pagou vagas de sessão sem uso no mês (capacidade instalada menos sessão-hora usada). Só referência: não entra no rateio.',
         empty: 'sem leitura do servidor de sessões',
+        outOfSplit: 'Fora do rateio: só referência',
       },
       perSessionHour: (value: string) => `${value} por sessão-hora`,
       sessionHours: (n: string) => `${n} sessões-hora no mês`,
@@ -161,6 +163,8 @@ export const infraCostsStrings = {
       projected: 'projetada',
       projectedHint: 'Mês em andamento: a margem usa o custo projetado para o mês cheio, não o realizado até agora.',
       marginProjectedNote: 'Margem do mês em andamento calculada sobre o custo projetado para o mês cheio.',
+      projectedPerTenant: (value: string) => `projetado: ${value}`,
+      projectedPerTenantHint: 'Custo por tenant projetado para o mês cheio (base contratadas). É o valor usado na margem.',
       unallocated: (n: string, cost: string) => `${n} sessões conectadas de tenants sem assinatura ativa custam ${cost} e ficam fora do rateio.`,
       unallocatedNoSample: 'Sessões fora do rateio: sem amostra do coletor.',
     },
@@ -349,11 +353,11 @@ export const infraCostsStrings = {
 
   diff: { changed: 'Alterado', added: 'Incluído', removed: 'Removido', empty: 'Nenhuma alteração.' },
 
-  /** Revisão da aba Preços: conflito de edição, número pt-BR, status da cotação automática. */
+  /** Revisão da aba Preços: conflito de edição, número pt-BR, cotação automática. */
   pricesReview: {
     thousandsDot: 'Use vírgula para decimal, sem ponto de milhar',
-    autoStatus: 'Busca automática no Banco Central: chega na próxima versão',
-    autoSoon: 'Em breve',
+    autoLabel: 'Buscar a cotação no Banco Central',
+    autoHint: 'Busca a PTAX 1×/dia após 13h30 de Brasília; se falhar, usa a série do SGS; senão, a última cotação. A cotação manual vale sobre a automática.',
     autoField: 'Busca automática',
     conflictChip: 'Conflito',
     conflictTip: 'Outro admin também mudou este campo. Fica o seu valor; confira antes de salvar.',

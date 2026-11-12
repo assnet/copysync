@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
-  Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Chip, CircularProgress, Grid, IconButton, InputAdornment,
-  MenuItem, Snackbar, Stack, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography, useMediaQuery, useTheme,
+  Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Chip, CircularProgress, FormControlLabel, Grid, IconButton, InputAdornment,
+  MenuItem, Snackbar, Stack, Switch, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography, useMediaQuery, useTheme,
 } from '@mui/material';
 import { ChevronDown, Plus, Trash2 } from 'lucide-react';
 import { AppIcon, SectionCard, ServiceUpdatingState, ToggleOption } from '@/components';
@@ -50,6 +50,7 @@ const today = () => {
 const fieldId = (path: string) => `cost-field-${path}`;
 const FX_RATE_PATH = 'fx.override.rate';
 const FX_ADD_OVERRIDE_ID = 'cost-fx-add-override';
+const FX_AUTO_HINT_ID = 'cost-fx-auto-hint';
 /** Barra fixa de salvar no celular: o Snackbar sobe acima dela (px). */
 const XS_SAVE_BAR_OFFSET = 112;
 const SECTION_IDS = { items: 'cost-section-items', renderPlanPrices: 'cost-section-render-plans', aiModelPrices: 'cost-section-ai-models' } as const;
@@ -201,11 +202,21 @@ export default function PricesTab() {
   const fxCard = (
     <SectionCard title={p.fx.title} subtitle={p.fx.subtitle} action={sectionErrors('fx')}>
       <Stack spacing={2.5}>
-        {/* P1: sem Switch. `fx.auto` salvo fica como está (liga sozinho na P2). */}
-        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-          <Typography variant="body2" color="text.secondary">{S.pricesReview.autoStatus}</Typography>
-          <Chip size="small" variant="outlined" label={S.pricesReview.autoSoon} />
-        </Stack>
+        <Box>
+          <FormControlLabel
+            control={(
+              <Switch
+                checked={fx.auto === true}
+                onChange={(_, on) => c.change('fx.auto', on)}
+                inputProps={{ 'aria-describedby': FX_AUTO_HINT_ID }}
+              />
+            )}
+            label={S.pricesReview.autoLabel}
+          />
+          <Typography id={FX_AUTO_HINT_ID} variant="caption" color="text.secondary" component="p">
+            {S.pricesReview.autoHint}
+          </Typography>
+        </Box>
 
         <Box>
           <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 1 }}>

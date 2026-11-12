@@ -24,6 +24,8 @@ A P1 só tinha a foto do momento × mês cheio. Agora o job horário `InfraCostS
 #### Frontend (app/) — `infraCosts`
 
 - **`SummaryTab.tsx`**, **`useCostSummary.ts`**, **`rules.ts`**, **`strings.ts`** — seletor de mês e de base (persistidos), workspace medido, margem projetada no mês corrente, avisos com atalho para Preços.
+- **`PricesTab.tsx`** — Switch "Buscar a cotação no Banco Central" (`fx.auto`) no lugar do chip "Em breve", com a dica PTAX 1×/dia após 13h30 de Brasília → SGS → última; a cotação manual continua valendo sobre a automática.
+- **`SummaryTab.tsx`**, **`costParts.tsx`** — margem negativa legível no escuro (tom clareado, ≥ 4,5:1 testado), quantidade medida por hora com 2 casas, mês sem dado com "Voltar ao mês atual", "Por tenant" mostra o projetado usado na margem, ociosidade marcada "Fora do rateio", até 3 cartões por linha em telas de 1200–1535 px.
 
 ### Added — api 0.88.0 · app 0.108.0 — custos da infraestrutura (P1)
 
@@ -40,7 +42,7 @@ Ninguém sabia quanto custa uma sessão, um cliente ou um plano. Nova página do
 #### Frontend (app/) — `infraCosts`, `navigation`, `workersAdmin`
 
 - **`AdminCostsPage.tsx`**, **`SummaryTab.tsx`**, **`useCostSummary.ts`** — cartões, serviços, workspace, por plano com margem mensal e anual (sempre pela base contratadas), avisos, USD e BRL; 503 `INFRA_COST_READ_UNAVAILABLE` com estado próprio "tente de novo" (sem auto-retry).
-- **`PricesTab.tsx`**, **`PricesConfirmDialog.tsx`**, **`useCostSettings.ts`** — edição com diff, erro por campo, rascunho persistido, 409 recarrega; cotação automática sem Switch, linha de status com chip "Em breve"; `key` só de dígitos recusada (também na API).
+- **`PricesTab.tsx`**, **`PricesConfirmDialog.tsx`**, **`useCostSettings.ts`** — edição com diff, erro por campo, rascunho persistido, 409 recarrega; cotação automática sem Switch, linha de status com chip "Em breve" (na P2 vira Switch); `key` só de dígitos recusada (também na API).
 - **`rules.ts`**, **`strings.ts`**, **`types.ts`**, **`adminCosts.service.ts`** — formatação USD/BRL, `planMargin` com `PLAN_CATALOG` (preço nunca vai à API).
 - **`navigation/model.ts`**, **`CapacityTab.tsx`**, **`supportChat/routes.ts`** — item "Custos", link "Ver custos", `/admin/costs/prices` em `SUPPORT_CHAT_HIDDEN_PATHS` (ação fixa no canto).
 
