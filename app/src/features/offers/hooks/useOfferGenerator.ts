@@ -18,7 +18,7 @@ const POLL_INTERVAL_MS = 3_000;
 export function useOfferGenerator() {
   const [offer, setOffer] = useState<OfferItem | null>(null);
   // Id da oferta aberta sobrevive a reload; a oferta em si é recarregada da API
-  const [openOfferId, setOpenOfferId, clearOpenOfferId] = usePersistedState<string | null>('offers.openOffer', null);
+  const [openOfferId, setOpenOfferId, clearOpenOfferId] = usePersistedState<string | null>('offers.openOffer', null, { scope: 'device' });
   const [needsManualData, setNeedsManualData] = useState(false);
   const [usage, setUsage] = useState<OfferUsage | null>(null);
   const [aiFallback, setAiFallback] = useState(false);

@@ -30,15 +30,17 @@ describe('linkProblem', () => {
 });
 
 describe('intervalValid', () => {
-  it('respeita 60 ≤ min ≤ max ≤ 3600 (1–60 min)', () => {
+  it('respeita 0 ≤ min ≤ max ≤ 3600 (0–60 min; 0 = sem pausa)', () => {
     expect(intervalValid(120, 300)).toBe(true);
-    expect(intervalValid(59, 300)).toBe(false);
+    expect(intervalValid(0, 0)).toBe(true);
+    expect(intervalValid(-60, 300)).toBe(false);
     expect(intervalValid(1200, 600)).toBe(false);
     expect(intervalValid(600, 3601)).toBe(false);
   });
 
   it('termômetro: média perto de 1 min = alto risco; média ≥ 10 min = seguro; curva monotônica', () => {
     expect(intervalRisk(60, 60)).toMatchObject({ score: 0, level: 'high' });
+    expect(intervalRisk(0, 0)).toMatchObject({ score: 0, level: 'high' });
     expect(intervalRisk(600, 600).level).toBe('safe');
     expect(intervalRisk(3000, 3600)).toMatchObject({ score: 1, level: 'safe' });
     expect(intervalRisk(120, 300).level).toBe('moderate');

@@ -66,7 +66,7 @@ export function OfferConfigWizard({
     intervalMax: config?.intervalMaxSeconds ?? DEFAULT_INTERVAL.max,
     dispatchOrder: config?.dispatchOrder ?? 'SEQUENTIAL',
     postingWindow: postingWindowFromConfig(config),
-  }), { version: 2 });
+  }), { version: 2, scope: 'device' });
   const { step, sessionIds, intervalMin, intervalMax, dispatchOrder, postingWindow } = draft;
   const selected = useMemo(() => new Map(draft.selected), [draft.selected]);
   const setStep = (fn: (s: number) => number) => setDraft((d) => ({ ...d, step: fn(d.step) }));
@@ -137,6 +137,19 @@ export function OfferConfigWizard({
     });
     setError(null);
   };
+
+  // Ordem de envio dentro da sessão: troca com o vizinho da mesma sessão (entre sessões vale `dispatchOrder`)
+  const moveGroup = (id: string, delta: -1 | 1) => setDraft((d) => {
+    const list = [...d.selected];
+    const from = list.findIndex(([gid]) => gid === id);
+    if (from < 0) return d;
+    const sid = list[from]![1].sessionId;
+    let to = from + delta;
+    while (to >= 0 && to < list.length && list[to]![1].sessionId !== sid) to += delta;
+    if (to < 0 || to >= list.length) return d;
+    [list[from], list[to]] = [list[to]!, list[from]!];
+    return { ...d, selected: list };
+  });
 
   const save = async () => {
     if (!canSave) return;
@@ -210,6 +223,7 @@ export function OfferConfigWizard({
             sessions={chosen}
             groups={[...selected.entries()].map(([id, g]) => ({ ...g, id }))}
             onRemoveGroup={(id) => setSelected((m) => { const next = new Map(m); next.delete(id); return next; })}
+            onMoveGroup={moveGroup}
             intervalMin={intervalMin}
             intervalMax={intervalMax}
             onInterval={(min, max) => { setIntervalMin(min); setIntervalMax(max); }}

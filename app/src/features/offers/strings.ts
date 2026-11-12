@@ -135,7 +135,7 @@ export const offerStrings = {
       sessions: 'Sessões (ordem de envio)',
       total: 'Total de grupos',
       schedule: 'Horário de postagem',
-      groups: 'Grupos',
+      groups: 'Grupos (ordem de envio)',
       groupsOf: (session: string, n: number) => `${session}: ${groupsLabel(n)}`,
       interval: 'Intervalo entre envios',
       intervalHelper: 'Uma pausa aleatória entre um envio e outro deixa o disparo mais natural. Vale entre grupos e ao trocar de sessão.',
@@ -155,7 +155,7 @@ export const offerStrings = {
       },
       min: 'Mínimo',
       max: 'Máximo',
-      minutes: (seconds: number) => `${Math.round(seconds / 60)} min`,
+      minutes: (seconds: number) => (seconds === 0 ? 'Sem pausa' : `${Math.round(seconds / 60)} min`),
       intervalError: (min: number, max: number) => `Use valores entre ${min / 60} e ${max / 60} minutos, com o mínimo menor ou igual ao máximo.`,
       riskAria: 'Nível de risco do intervalo',
       risk: {
@@ -164,8 +164,21 @@ export const offerStrings = {
         moderate: 'Risco moderado',
         safe: 'Seguro',
       } satisfies Record<import('./utils/offerConfig').IntervalRiskLevel, string>,
-      more: (n: number) => `+${n}`,
-      removeGroup: 'Remover',
+      groupOrder: {
+        help: 'A ordem da lista é a ordem de envio. Use as setas para reordenar.',
+        helpMulti: 'A ordem vale dentro de cada sessão. Entre as sessões, vale a "Ordem de envio" abaixo.',
+        listLabel: 'Grupos na ordem de envio',
+        sessionList: (session: string) => `Grupos de ${session}`,
+        position: (n: number) => `${n}º:`,
+        moveUp: 'Enviar antes',
+        moveDown: 'Enviar depois',
+        remove: 'Remover da lista',
+        moveUpAria: (name: string) => `Enviar antes: ${name}`,
+        moveDownAria: (name: string) => `Enviar depois: ${name}`,
+        removeAria: (name: string) => `Remover da lista: ${name}`,
+        actionsLabel: (name: string) => `Ações de ${name}`,
+        moved: (name: string, pos: number) => `${name} agora é o ${pos}º`,
+      },
     },
   },
 
@@ -343,7 +356,9 @@ export const offerStrings = {
         missingLink ? 'Atenção: o texto não contém o seu link de afiliado.' : null,
         scheduledWhen ? `O primeiro grupo recebe a oferta em ${scheduledWhen}.` : null,
         count > 1
-          ? `A oferta sai para um grupo de cada vez, com ${Math.round(min / 60)} a ${Math.round(max / 60)} minutos entre cada envio.`
+          ? max === 0
+            ? 'A oferta sai para um grupo de cada vez, sem pausa entre os envios.'
+            : `A oferta sai para um grupo de cada vez, com ${Math.round(min / 60)} a ${Math.round(max / 60)} minutos entre cada envio.`
           : scheduledWhen ? null : 'A oferta é enviada agora.',
         mentionAll ? 'Todos os membros serão marcados.' : null,
         dirty ? 'Alterações não salvas são salvas antes do envio.' : null,

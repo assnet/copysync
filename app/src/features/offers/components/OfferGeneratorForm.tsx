@@ -53,7 +53,7 @@ export function OfferGeneratorForm({
   generating, serverError, disabled, disabledReason, onGenerate, onChange, onCancel, aiRewriteEnabled = true,
 }: Props) {
   // Sobrevive a reload (padrão do painel): link colado, cupom e público ficam na aba
-  const [form, setForm] = usePersistedState<FormDraft>('offers.form', EMPTY_FORM);
+  const [form, setForm] = usePersistedState<FormDraft>('offers.form', EMPTY_FORM, { scope: 'device' });
   // Rascunho antigo (antes do agendamento) não tem os campos novos
   const { url, hasCoupon, coupon, scheduleOn = false, scheduleAt = '' } = form;
   // Sem IA no plano, público salvo diferente de Padrão vale como Padrão (o que a tela mostra e envia)

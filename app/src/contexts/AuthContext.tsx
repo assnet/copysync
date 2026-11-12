@@ -3,6 +3,7 @@ import { authService } from '@/services/auth.service';
 import { reactionDispatcher } from '@/features/chat/reactionDispatcher';
 import { mediaAccountScope } from '@/features/chat/media/mediaAccountScope';
 import { clearOfferStoryState } from '@/features/offerStory/sessionState';
+import { clearDevicePersisted } from '@/hooks/usePersistedState';
 import type { AuthUser, LoginRequest, LoginResponse, TenantRef } from '@/types/api.types';
 import type { LoginCodeChallenge } from '@/features/login-protection/loginProtection';
 
@@ -75,6 +76,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     mediaAccountScope.reset();
     // Estado de trabalho por conta (arte, link de afiliado) não sobrevive à troca de usuário na aba.
     clearOfferStoryState();
+    // Rascunhos que sobrevivem a fechar o navegador (gerador de ofertas) não ficam para o próximo usuário
+    clearDevicePersisted();
     const refreshToken = localStorage.getItem('refreshToken');
     if (refreshToken) {
       try {

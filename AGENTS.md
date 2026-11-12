@@ -105,7 +105,7 @@ https://github.com/nsiregar/shpee
 - Deve obrigatóriamente ser compatível com os modos: sistema, claro e escuro.
 - **Persistência contra reload**: estado de trabalho de toda tela (rascunho de formulário, passo e
   escolhas de assistente, filtros, item aberto) usa `usePersistedState` (`app/src/hooks/`), escopo
-  `tab` por padrão, e é limpo ao concluir o fluxo. Dado do servidor é recarregado pelo id, nunca
+  `tab` por padrão (`device` quando precisa sobreviver a sair do navegador no celular), e é limpo ao concluir o fluxo. Dado do servidor é recarregado pelo id, nunca
   salvo. Ver [`docs/padrao-ui-painel.md`](docs/padrao-ui-painel.md), seção "Persistência".
 - **Privacidade desde o planejamento**: toda tela que mostre dado sensível (nome, foto, número,
   texto de cliente/grupo/produto) nasce com flags de borrar em `app/src/features/privacy/privacyFlags.ts`
