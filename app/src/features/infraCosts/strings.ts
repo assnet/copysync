@@ -80,6 +80,7 @@ export const infraCostsStrings = {
     missing_hours: 'Horas sem leitura: quantidade manual usada',
     storage_to_confirm: 'Armazenamento a confirmar: soma só a computação',
     unlimited_contracted: 'Tenants ilimitados contados pelo limite do plano',
+    sessions_sample_stale: 'Contagem de sessões do coletor desatualizada: sessões fora do rateio sem número',
   } satisfies Record<InfraCostWarningCode, string>,
 
   /** Aba Resumo (COST-07). */
@@ -159,7 +160,7 @@ export const infraCostsStrings = {
         lower: 'Plano abaixo',
         upper: 'Plano acima',
       },
-      neighborsHint: 'Quanto custaria trocar para o plano vizinho na tabela de preços. Só leitura.',
+      neighborsHint: 'Quanto custaria trocar para o plano vizinho na tabela de preços. Só leitura. "—" = sem plano vizinho cadastrado.',
       noNeighbor: 'Sem plano vizinho cadastrado',
       noPrice: 'Plano sem preço cadastrado',
       excluded: 'fora do rateio',
@@ -189,6 +190,11 @@ export const infraCostsStrings = {
     },
     goToPrices: 'Abrir Preços',
     usdBrlAria: (usd: string, brl: string) => `${usd}, ${brl}`,
+    /* Revisão R1 do resumo. */
+    noPrice: 'sem preço cadastrado',
+    unallocatedStale: 'Sessões fora do rateio: sem amostra recente do coletor.',
+    warningsMore: (n: number) => (n === 1 ? 'Mostrar mais 1 aviso' : `Mostrar mais ${n} avisos`),
+    warningsLess: 'Mostrar menos',
   },
 
   renderKey: {

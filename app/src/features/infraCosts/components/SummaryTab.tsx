@@ -1,6 +1,6 @@
 import { Link as RouterLink } from 'react-router-dom';
 import {
-  Alert, Box, Button, CircularProgress, Grid, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableFooter,
+  Alert, AlertTitle, Box, Button, CircularProgress, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableFooter,
   TableHead, TableRow, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography,
 } from '@mui/material';
 import { Gauge, Receipt, TrendingUp, Users } from 'lucide-react';
@@ -10,47 +10,24 @@ import { PLAN_CATALOG, type PlanSlug } from '@/features/plans/catalog';
 import { planName } from '@/features/planEntitlementsAdmin/strings';
 import { formatDateTime } from '@/features/opsMetrics/rules';
 import { HelpTip } from '@/features/opsMetrics/components/HelpTip';
-import { sortPlansByCatalog } from '@/features/workersAdmin/rules';
 import { COSTS_PRICES_PATH } from '../paths';
-import { catalogSlugOf, DEFAULT_COST_FILTERS, formatBrl, formatPercent, formatUsd, planMargin } from '../rules';
+import {
+  catalogPlanName, dayLabel, DEFAULT_COST_FILTERS, formatBrl, formatPercent, formatUsd, isPriceWarning, monthLabel, perSessionByBasis,
+  planMargin, planRowsByBasis, warningDetail,
+} from '../rules';
 import { infraCostsStrings as S } from '../strings';
 import type {
-  CostFilters, InfraCostItemView, InfraCostPlanView, InfraCostSplitBasis, InfraCostSummary, InfraCostWarning, InfraFxView,
+  CostFilters, InfraCostItemView, InfraCostSplitBasis, InfraCostSummary, InfraCostWarning, InfraFxView,
   InfraNeighborPlan, InfraWorkspaceUsageView,
 } from '../types';
 import { useCostSummary } from '../useCostSummary';
-import { CostTile, EstimatedChip, HeaderHint, HintChip, Money, type CostTileProps } from './costParts';
+import {
+  CostTile, EstimatedChip, focusRing, HeaderHint, HintChip, Money, srOnly, StickyFirstColumn, toneColor, type CostTileProps,
+} from './costParts';
 
 const s = S.summary;
 const num = (n: number, digits = 0) => n.toLocaleString('pt-BR', { maximumFractionDigits: digits });
 const numCell = { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } as const;
-
-/** `YYYY-MM` → "novembro de 2026". */
-export function monthLabel(month: string): string {
-  const d = new Date(`${month}-01T12:00:00Z`);
-  return Number.isNaN(d.getTime()) ? month : d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
-}
-
-/** `YYYY-MM-DD` → `DD/MM/YYYY`. */
-export function dayLabel(date: string): string {
-  const [y, m, d] = date.split('-');
-  return y && m && d ? `${d}/${m}/${y}` : date;
-}
-
-/** Avisos que se resolvem na aba Preços. */
-const PRICE_WARNINGS = new Set<InfraCostWarning['code']>(['config_drift', 'plan_without_price', 'storage_to_confirm', 'model_without_price', 'fx_missing']);
-
-function warningDetail(w: InfraCostWarning): string | null {
-  const d = s.warningDetail;
-  const parts = [
-    w.resourceKey ?? w.key ? d.resource((w.resourceKey ?? w.key)!) : null,
-    w.plan ? d.plan(w.plan) : null,
-    w.field ? d.field(w.field) : null,
-    w.model ? d.model(w.model) : null,
-    typeof w.count === 'number' ? d.count(w.count) : null,
-  ].filter(Boolean);
-  return parts.length ? parts.join(', ') : null;
-}
 
 /* ── Cotação ───────────────────────────────────────────────────────── */
 
@@ -70,7 +47,7 @@ function FxBand({ fx, summary }: { fx: InfraFxView | null; summary: InfraCostSum
         <Typography variant="caption" color="text.secondary">{s.generatedAt(formatDateTime(summary.generatedAt))}</Typography>
       </Box>
       {fx ? (
-        <Box sx={{ flex: '1 1 260px', minWidth: 0 }} aria-label={s.fx.label}>
+        <Box sx={{ flex: '1 1 260px', minWidth: 0 }} role="group" aria-label={s.fx.label}>
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
             <Typography variant="body2" color="text.secondary">{s.fx.label}</Typography>
             <HelpTip label={s.fx.label} text={s.fx.hint} />
@@ -87,7 +64,13 @@ function FxBand({ fx, summary }: { fx: InfraFxView | null; summary: InfraCostSum
           )}
         </Box>
       ) : (
-        <Alert severity="info" sx={{ flex: '1 1 260px' }}>{S.warnings.fx_missing}</Alert>
+        <Alert
+          severity="info"
+          sx={{ flex: '1 1 260px' }}
+          action={<Button component={RouterLink} to={COSTS_PRICES_PATH} color="inherit" size="small">{s.goToPrices}</Button>}
+        >
+          {S.warnings.fx_missing}
+        </Alert>
       )}
     </Paper>
   );
@@ -103,6 +86,7 @@ function Filters({ filters, onChange }: { filters: CostFilters; onChange: (f: Co
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
         <ToggleButtonGroup
           exclusive
+          color="primary"
           size="small"
           value={filters.basis}
           aria-label={f.basis}
@@ -122,7 +106,7 @@ function Filters({ filters, onChange }: { filters: CostFilters; onChange: (f: Co
         sx={{ minWidth: 200 }}
       >
         <MenuItem value="all">{f.allPlans}</MenuItem>
-        {PLAN_CATALOG.map((p) => <MenuItem key={p.slug} value={p.slug}>{p.name}</MenuItem>)}
+        {PLAN_CATALOG.map((p) => <MenuItem key={p.slug} value={p.slug}>{catalogPlanName(p.slug)}</MenuItem>)}
       </TextField>
     </Stack>
   );
@@ -135,7 +119,7 @@ function MarginCell({ line }: { line: { marginBrl: number; marginPct: number | n
   const negative = line.marginBrl < 0;
   return (
     <TableCell align="right" sx={numCell}>
-      <Typography component="span" variant="body2" sx={{ fontWeight: 600, color: negative ? 'error.main' : 'success.main' }}>
+      <Typography component="span" variant="body2" sx={{ fontWeight: 600, color: toneColor(negative ? 'error' : 'success') }}>
         {formatBrl(line.marginBrl)}
       </Typography>
       <Typography component="span" variant="caption" color="text.secondary" sx={{ display: 'block' }}>
@@ -150,22 +134,17 @@ function PlansSection({ summary, filters }: { summary: InfraCostSummary; filters
   const col = p.columns;
   const connected = filters.basis === 'connected';
   const showMargin = summary.fx !== null;
-  const rows = sortPlansByCatalog(summary.plans).filter(
-    (row) => filters.plan === 'all' || catalogSlugOf(row.planSlug) === filters.plan,
-  );
-  const view = (row: InfraCostPlanView) => ({
-    sessions: connected ? row.connectedSessions : row.contractedSessions,
-    share: connected ? row.connectedShare : row.share,
-    perTenant: connected ? row.connectedCostPerTenant : row.costPerTenant,
-  });
+  const rows = planRowsByBasis(summary.plans, filters);
   const unalloc = summary.perSession.connected;
+  const stale = summary.warnings.some((w) => w.code === 'sessions_sample_stale');
+  const hasTable = rows.length > 0;
 
   return (
-    <SectionCard title={p.title} subtitle={p.subtitle}>
-      {rows.length === 0 ? (
+    <SectionCard title={p.title} subtitle={p.subtitle} noPadding={hasTable}>
+      {!hasTable ? (
         <Typography variant="body2" color="text.secondary">{p.empty}</Typography>
       ) : (
-        <TableContainer>
+        <StickyFirstColumn>
           <Table size="small" aria-label={p.aria}>
             <TableHead>
               <TableRow>
@@ -179,9 +158,10 @@ function PlansSection({ summary, filters }: { summary: InfraCostSummary; filters
               </TableRow>
             </TableHead>
             <TableBody>
-              {rows.map((row) => {
-                const v = view(row);
-                const margin = showMargin ? planMargin(row.planSlug, v.perTenant?.brl ?? null) : null;
+              {rows.map((v) => {
+                const row = v.plan;
+                // Margem sempre na base contratadas: o filtro muda só os números por sessão.
+                const margin = showMargin ? planMargin(row.planSlug, v.marginCost?.brl ?? null) : null;
                 return (
                   <TableRow key={row.planSlug ?? '__none'}>
                     <TableCell sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{row.planSlug ? planName(row.planSlug) : p.noPlan}</TableCell>
@@ -196,18 +176,20 @@ function PlansSection({ summary, filters }: { summary: InfraCostSummary; filters
               })}
             </TableBody>
           </Table>
-        </TableContainer>
+        </StickyFirstColumn>
       )}
-      <Typography variant="caption" color="text.secondary" component="p" sx={{ mt: 1.5 }}>
-        {showMargin ? S.marginLabel : S.marginHiddenNoFx}
-      </Typography>
-      {connected && (
-        <Typography variant="caption" color="text.secondary" component="p" role="note">
-          {unalloc.unallocatedSessions === null
-            ? p.unallocatedNoSample
-            : p.unallocated(num(unalloc.unallocatedSessions), unallocCost(unalloc.unallocatedCost))}
+      <Box sx={hasTable ? { px: 2, pb: 2 } : undefined}>
+        <Typography variant="caption" color="text.secondary" component="p" sx={{ mt: 1.5 }}>
+          {showMargin ? S.marginLabel : S.marginHiddenNoFx}
         </Typography>
-      )}
+        {connected && (
+          <Typography variant="caption" color="text.secondary" component="p" role="note">
+            {unalloc.unallocatedSessions === null
+              ? (stale ? s.unallocatedStale : p.unallocatedNoSample)
+              : p.unallocated(num(unalloc.unallocatedSessions), unallocCost(unalloc.unallocatedCost))}
+          </Typography>
+        )}
+      </Box>
     </SectionCard>
   );
 }
@@ -223,10 +205,10 @@ function unallocCost(m: { usd: number; brl: number | null } | null): string {
 function NeighborCell({ n }: { n: InfraNeighborPlan | null | undefined }) {
   if (!n) {
     return (
-      <TableCell align="right">
-        <Tooltip title={s.services.noNeighbor} arrow enterTouchDelay={0}>
-          <Box component="span" tabIndex={0} aria-label={s.services.noNeighbor} sx={{ color: 'text.secondary', cursor: 'help' }}>{S.noValue}</Box>
-        </Tooltip>
+      <TableCell align="right" sx={{ color: 'text.secondary' }}>
+        {/* A explicação do "—" fica no cabeçalho da coluna; o leitor de tela ouve o texto. */}
+        <span aria-hidden>{S.noValue}</span>
+        <Box component="span" sx={srOnly}>{s.services.noNeighbor}</Box>
       </TableCell>
     );
   }
@@ -262,8 +244,15 @@ function ServiceRow({ item }: { item: InfraCostItemView }) {
         {item.cost ? (
           <Money value={item.cost} />
         ) : (
-          <Tooltip title={sv.noPrice} arrow enterTouchDelay={0}>
-            <Box component="span" tabIndex={0} aria-label={sv.noPrice} sx={{ color: 'warning.main', cursor: 'help', fontWeight: 600 }}>{S.noValue}</Box>
+          <Tooltip title={sv.noPrice} arrow enterTouchDelay={0} describeChild>
+            <Box
+              component="span"
+              tabIndex={0}
+              aria-label={sv.noPrice}
+              sx={{ color: toneColor('warning'), cursor: 'help', fontWeight: 600, ...focusRing }}
+            >
+              {S.noValue}
+            </Box>
           </Tooltip>
         )}
         {item.storageToConfirm && (
@@ -284,7 +273,7 @@ function ServicesSection({ summary }: { summary: InfraCostSummary }) {
       {summary.items.length === 0 ? (
         <Typography variant="body2" color="text.secondary">{sv.empty}</Typography>
       ) : (
-        <TableContainer>
+        <StickyFirstColumn>
           <Table size="small" aria-label={sv.aria}>
             <TableHead>
               <TableRow>
@@ -299,7 +288,7 @@ function ServicesSection({ summary }: { summary: InfraCostSummary }) {
               {summary.items.map((item) => <ServiceRow key={item.key} item={item} />)}
             </TableBody>
           </Table>
-        </TableContainer>
+        </StickyFirstColumn>
       )}
     </SectionCard>
   );
@@ -334,7 +323,7 @@ function WorkspaceSection({ summary }: { summary: InfraCostSummary }) {
   const ws = summary.workspace;
   return (
     <SectionCard title={w.title} subtitle={w.subtitle(ws.planLabel)} noPadding>
-      <TableContainer>
+      <StickyFirstColumn>
         <Table size="small" aria-label={w.aria}>
           <TableHead>
             <TableRow>
@@ -351,40 +340,57 @@ function WorkspaceSection({ summary }: { summary: InfraCostSummary }) {
           </TableBody>
           <TableFooter>
             <TableRow>
-              <TableCell colSpan={4} sx={{ fontWeight: 600, color: 'text.primary' }}>{w.total}</TableCell>
-              <TableCell align="right"><Money value={ws.total} /></TableCell>
+              {/* Rótulo numa célula só: a primeira coluna é fixa e não pode cobrir o valor ao rolar. */}
+              <TableCell sx={{ fontWeight: 700, color: 'text.primary', whiteSpace: 'nowrap' }}>{w.total}</TableCell>
+              <TableCell colSpan={3} />
+              <TableCell align="right"><Money value={ws.total} strong /></TableCell>
             </TableRow>
           </TableFooter>
         </Table>
-      </TableContainer>
+      </StickyFirstColumn>
     </SectionCard>
   );
 }
 
 /* ── Avisos ────────────────────────────────────────────────────────── */
 
-function Warnings({ warnings }: { warnings: InfraCostWarning[] }) {
+const WARNINGS_COLLAPSED = 3;
+
+/** Avisos num único alerta com lista; acima de 3, recolhe o resto. */
+function Warnings({ warnings, items }: { warnings: InfraCostWarning[]; items: InfraCostItemView[] }) {
+  const [expanded, setExpanded] = usePersistedState<boolean>('costs.warningsExpanded', false, { scope: 'tab' });
   // `fx_missing` já aparece na faixa da cotação.
   const list = warnings.filter((w) => w.code !== 'fx_missing');
   if (list.length === 0) return null;
+  const hidden = list.length - WARNINGS_COLLAPSED;
+  const shown = expanded || hidden <= 0 ? list : list.slice(0, WARNINGS_COLLAPSED);
   return (
-    <Stack spacing={1} role="region" aria-label={s.warningsTitle}>
-      {list.map((w, i) => {
-        const detail = warningDetail(w);
-        return (
-          <Alert
-            key={`${w.code}-${i}`}
-            severity="warning"
-            action={PRICE_WARNINGS.has(w.code) ? (
-              <Button component={RouterLink} to={COSTS_PRICES_PATH} color="inherit" size="small">{s.goToPrices}</Button>
-            ) : undefined}
-          >
-            {S.warnings[w.code]}
-            {detail && <Typography component="span" variant="body2" sx={{ display: 'block', opacity: 0.85 }}>{detail}</Typography>}
-          </Alert>
-        );
-      })}
-    </Stack>
+    <Alert
+      severity="warning"
+      role="region"
+      aria-label={s.warningsTitle}
+      action={list.some((w) => isPriceWarning(w.code)) ? (
+        <Button component={RouterLink} to={COSTS_PRICES_PATH} color="inherit" size="small">{s.goToPrices}</Button>
+      ) : undefined}
+    >
+      <AlertTitle>{s.warningsTitle}</AlertTitle>
+      <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+        {shown.map((w, i) => {
+          const detail = warningDetail(w, items);
+          return (
+            <Box component="li" key={`${w.code}-${i}`} sx={{ '& + &': { mt: 0.5 } }}>
+              {S.warnings[w.code]}
+              {detail && <Typography component="span" variant="body2" sx={{ display: 'block' }}>{detail}</Typography>}
+            </Box>
+          );
+        })}
+      </Box>
+      {hidden > 0 && (
+        <Button color="inherit" size="small" onClick={() => setExpanded(!expanded)} aria-expanded={expanded} sx={{ mt: 0.5, ml: -0.75 }}>
+          {expanded ? s.warningsLess : s.warningsMore(hidden)}
+        </Button>
+      )}
+    </Alert>
   );
 }
 
@@ -394,7 +400,7 @@ function Tiles({ summary, filters }: { summary: InfraCostSummary; filters: CostF
   const c = s.cards;
   const t = summary.totals;
   const connected = filters.basis === 'connected';
-  const basis = connected ? summary.perSession.connected : summary.perSession.contracted;
+  const basis = perSessionByBasis(summary, filters.basis);
   const fixedVariable = c.fixedVariable(formatUsd(t.fixed.usd), formatUsd(t.variable.usd));
   const tiles: CostTileProps[] = [
     {
@@ -406,14 +412,19 @@ function Tiles({ summary, filters }: { summary: InfraCostSummary; filters: CostF
       label: c.perSession.label, help: connected ? c.perSession.helpConnected : c.perSession.helpContracted,
       icon: Users, value: basis.perSession, context: c.perSession.sessions(num(basis.sessions)),
     },
-    { ...c.marginal, icon: Gauge, value: summary.marginalPerSession },
+    // Custo marginal nulo = sem preço do servidor de sessões (não falta amostra).
+    { ...c.marginal, icon: Gauge, value: summary.marginalPerSession, emptyText: s.noPrice },
   ];
   return (
-    <Grid container spacing={2}>
-      {tiles.map((tile) => (
-        <Grid item xs={12} sm={6} lg={12 / tiles.length} key={tile.label}><CostTile {...tile} /></Grid>
-      ))}
-    </Grid>
+    <Box
+      sx={{
+        display: 'grid',
+        gap: 2,
+        gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(2, minmax(0, 1fr))', lg: `repeat(${tiles.length}, minmax(0, 1fr))` },
+      }}
+    >
+      {tiles.map((tile) => <CostTile key={tile.label} {...tile} />)}
+    </Box>
   );
 }
 
@@ -444,7 +455,7 @@ export default function SummaryTab() {
       <FxBand fx={data.fx} summary={data} />
       <Filters filters={filters} onChange={setFilters} />
       <Tiles summary={data} filters={filters} />
-      <Warnings warnings={data.warnings} />
+      <Warnings warnings={data.warnings} items={data.items} />
       <PlansSection summary={data} filters={filters} />
       <ServicesSection summary={data} />
       <WorkspaceSection summary={data} />

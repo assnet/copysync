@@ -5,6 +5,9 @@
 import { PLAN_CATALOG, type PlanCatalogItem, type PlanSlug } from '@/features/plans/catalog';
 import { toPanelPlanSlug } from '@/features/plans/planSlug';
 import type { AiProviderKind } from '@/types/api.types';
+import { aiProviderName } from '@/features/ai/aiProviders';
+import { planEntitlementsAdminStrings, planName } from '@/features/planEntitlementsAdmin/strings';
+import { sortPlansByCatalog } from '@/features/workersAdmin/rules';
 import { infraCostsStrings as S } from './strings';
 import type {
   CostFilters,
@@ -16,6 +19,12 @@ import type {
   InfraCostSettingsChange,
   InfraCostSettingsDraft,
   InfraCostSettingsSource,
+  InfraCostPlanView,
+  InfraCostSplitBasis,
+  InfraCostSummary,
+  InfraCostWarning,
+  InfraCostWarningCode,
+  InfraMoney,
   InfraFxClosingMethod,
   InfraRenderKey,
   InfraRenderResourceType,
@@ -389,4 +398,169 @@ export function diffSettings(before: InfraCostSettings, after: InfraCostSettings
 /** Configuração → rascunho (números continuam números; o input converte ao editar). */
 export function settingsToDraft(s: InfraCostSettings): InfraCostSettingsDraft {
   return toSettingsPayload(s);
+}
+
+/* ── Rótulo legível de campo (avisos do resumo, diff e erro 400) ────── */
+
+const pf = S.prices;
+
+/** Nome do campo dentro de uma linha das listas (`items[…].<campo>`). */
+const ROW_FIELD_NAMES: Record<string, string> = {
+  label: pf.items.fields.label,
+  key: pf.items.fields.key,
+  category: pf.items.fields.category,
+  billing: pf.items.fields.billing,
+  monthlyUsd: pf.items.fields.monthlyUsd,
+  quantity: pf.items.fields.quantity,
+  renderKey: pf.items.fields.renderKey,
+  planLabel: pf.items.fields.planLabel,
+  note: pf.items.fields.note,
+  allocation: pf.items.fields.allocationShort,
+  storage: pf.items.fields.storageShort,
+  'storage.gb': pf.items.fields.storageGb,
+  'storage.usdPerGb': pf.items.fields.storageUsdPerGb,
+  resourceType: pf.renderPlans.resourceType,
+  plan: pf.renderPlans.plan,
+  kind: pf.aiModels.kind,
+  model: pf.aiModels.model,
+  inputPerMTokUsd: pf.aiModels.input,
+  outputPerMTokUsd: pf.aiModels.output,
+};
+
+const FX_FIELD_NAMES: Record<string, string> = {
+  auto: pf.fx.auto,
+  closingMethod: pf.fx.closingMethod,
+  override: pf.fx.override,
+  'override.rate': `${pf.fx.override} · ${pf.fx.rate}`,
+  'override.date': `${pf.fx.override} · ${pf.fx.date}`,
+};
+
+const LIST_TITLES: Record<string, string> = {
+  items: pf.items.title,
+  renderPlanPrices: pf.renderPlans.title,
+  aiModelPrices: pf.aiModels.title,
+};
+
+type LabeledItem = Pick<InfraCostItem, 'key' | 'label'> & { renderKey?: InfraRenderKey | null };
+
+/** Nome da linha da lista: aceita o índice (`items[0]`, como o 400) ou a identidade (`items[api]`, como o diff). */
+function rowName(list: string, id: string, settings: InfraCostSettings | null, items: readonly LabeledItem[]): string {
+  const index = /^\d+$/.test(id) ? Number(id) : null;
+  if (list === 'items') {
+    const it = (index !== null ? items[index] : undefined) ?? items.find((i) => i.key === id);
+    return it?.label || id;
+  }
+  if (list === 'renderPlanPrices') {
+    const row = index !== null ? settings?.renderPlanPrices[index] : undefined;
+    const [type, ...plan] = row ? [row.resourceType, row.plan] : id.split(':');
+    return [S.resourceType[type as InfraRenderResourceType] ?? type, plan.join(':')].filter(Boolean).join(' ');
+  }
+  const row = index !== null ? settings?.aiModelPrices[index] : undefined;
+  const [kind, ...model] = row ? [row.kind, row.model] : id.split(':');
+  return [aiProviderName(kind as AiProviderKind), model.join(':')].filter(Boolean).join(' ');
+}
+
+function labelOf(path: string, settings: InfraCostSettings | null, items: readonly LabeledItem[]): string {
+  if (path.startsWith('fx.')) {
+    const f = path.slice(3);
+    return `${pf.fx.title} · ${FX_FIELD_NAMES[f] ?? f}`;
+  }
+  if (path.startsWith('workspace.')) {
+    const f = path.slice('workspace.'.length);
+    const name = (pf.workspace as Record<string, unknown>)[f];
+    return `${pf.workspace.title} · ${typeof name === 'string' ? name : f}`;
+  }
+  const m = path.match(/^(items|renderPlanPrices|aiModelPrices)(?:\[([^\]]+)\])?(?:\.(.+))?$/);
+  if (!m) return path;
+  const [, list, id, field] = m;
+  if (id === undefined) return LIST_TITLES[list];
+  const name = rowName(list, id, settings, items);
+  return field ? `${name} · ${ROW_FIELD_NAMES[field] ?? field}` : `${LIST_TITLES[list]} · ${name}`;
+}
+
+/**
+ * Rótulo legível de um caminho de campo: "Rótulo do item · Nome do campo" (`items[0].monthlyUsd` ou
+ * `items[api].monthlyUsd` → "API · Preço (US$/mês)"); fora das listas, nome da seção e do campo
+ * (`workspace.planLabel` → "Workspace · Plano do workspace"). Sem configuração, usa o identificador.
+ */
+export function fieldLabel(path: string, settings: InfraCostSettings | null): string {
+  return labelOf(path, settings, settings?.items ?? []);
+}
+
+/* ── Resumo: datas, base do rateio e avisos (COST-07) ───────────────── */
+
+/** `YYYY-MM` → "novembro de 2026". */
+export function monthLabel(month: string): string {
+  const d = new Date(`${month}-01T12:00:00Z`);
+  return Number.isNaN(d.getTime()) ? month : d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+}
+
+/** `YYYY-MM-DD` → `DD/MM/YYYY`. */
+export function dayLabel(date: string): string {
+  const [y, m, d] = date.split('-');
+  return y && m && d ? `${d}/${m}/${y}` : date;
+}
+
+/** Linha do plano na base escolhida. A margem usa sempre a base contratadas (`costPerTenant`). */
+export interface PlanBasisRow {
+  plan: InfraCostPlanView;
+  sessions: number;
+  share: InfraMoney | null;
+  perTenant: InfraMoney | null;
+  /** Custo do tenant médio na base contratadas: base da margem, qualquer que seja o filtro. */
+  marginCost: InfraMoney | null;
+}
+
+/** Planos na ordem do catálogo, filtrados pelo plano escolhido, com sessões e custo da base do filtro. */
+export function planRowsByBasis(plans: readonly InfraCostPlanView[], filters: Pick<CostFilters, 'basis' | 'plan'>): PlanBasisRow[] {
+  const connected = filters.basis === 'connected';
+  return sortPlansByCatalog(plans)
+    .filter((row) => filters.plan === 'all' || catalogSlugOf(row.planSlug) === filters.plan)
+    .map((row) => ({
+      plan: row,
+      sessions: connected ? row.connectedSessions : row.contractedSessions,
+      share: connected ? row.connectedShare : row.share,
+      perTenant: connected ? row.connectedCostPerTenant : row.costPerTenant,
+      marginCost: row.costPerTenant,
+    }));
+}
+
+/** Sessões e custo por sessão da base escolhida. */
+export function perSessionByBasis(summary: Pick<InfraCostSummary, 'perSession'>, basis: InfraCostSplitBasis) {
+  return basis === 'connected' ? summary.perSession.connected : summary.perSession.contracted;
+}
+
+/** Avisos que se resolvem na aba Preços. */
+const PRICE_WARNING_CODES = new Set<InfraCostWarningCode>(['config_drift', 'plan_without_price', 'storage_to_confirm', 'model_without_price', 'fx_missing']);
+
+export function isPriceWarning(code: InfraCostWarningCode): boolean {
+  return PRICE_WARNING_CODES.has(code);
+}
+
+/**
+ * Detalhe legível do aviso: item pelo rótulo (por `key` ou pelo recurso medido), campo pelo nome
+ * (`storage.gb` → "Disco (GB)"), plano, modelo e contagem. Sem detalhe → `null`.
+ */
+export function warningDetail(w: InfraCostWarning, items: readonly LabeledItem[]): string | null {
+  const d = S.summary.warningDetail;
+  const id = w.key ?? w.resourceKey;
+  const item = w.key
+    ? items.find((i) => i.key === w.key)
+    : w.resourceKey ? items.find((i) => i.renderKey === w.resourceKey) : undefined;
+  const name = item?.label || (w.resourceKey && !w.key ? S.renderKey[w.resourceKey as InfraRenderKey] : undefined) || id;
+  const parts = [
+    name && w.field
+      ? labelOf(`items[${item?.key ?? id}].${w.field}`, null, item ? [item] : [{ key: id!, label: name }])
+      : name ? d.resource(name) : w.field ? d.field(ROW_FIELD_NAMES[w.field] ?? w.field) : null,
+    w.plan ? d.plan(w.plan) : null,
+    w.model ? d.model(w.model) : null,
+    typeof w.count === 'number' ? d.count(w.count) : null,
+  ].filter(Boolean);
+  return parts.length ? parts.join(', ') : null;
+}
+
+/** Nome do plano do catálogo do painel (`lite`) igual ao da tabela (`planName` do slug do domínio). */
+export function catalogPlanName(slug: PlanSlug): string {
+  const domain = Object.keys(planEntitlementsAdminStrings.planName).find((k) => toPanelPlanSlug(k) === slug);
+  return domain ? planName(domain) : PLAN_CATALOG.find((p) => p.slug === slug)?.name ?? slug;
 }

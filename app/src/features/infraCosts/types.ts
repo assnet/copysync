@@ -256,9 +256,9 @@ export type InfraCostWarningCode =
   | 'model_without_price'
   | 'missing_hours'
   | 'storage_to_confirm'
-  | 'unlimited_contracted';
-// A API também envia `sessions_sample_stale` (amostra de sessões > 10 min: não alocadas `null`).
-// Entra na união junto com o texto em `strings.ts` (`satisfies Record<InfraCostWarningCode, string>`).
+  | 'unlimited_contracted'
+  /** Amostra de sessões com mais de 10 min: sessões não alocadas vêm `null`. */
+  | 'sessions_sample_stale';
 
 export interface InfraCostWarning {
   code: InfraCostWarningCode;

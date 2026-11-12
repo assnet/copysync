@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { PLAN_CATALOG } from '@/features/plans/catalog';
 import {
+  catalogPlanName,
   catalogSlugOf,
+  dayLabel,
   diffSettings,
+  fieldLabel,
+  monthLabel,
+  perSessionByBasis,
+  planRowsByBasis,
+  warningDetail,
   draftToSettings,
   formatBrl,
   formatPercent,
@@ -193,5 +200,74 @@ describe('payload do PUT', () => {
     const payload = toSettingsPayload(dirty as never);
     expect(payload).toEqual(s);
     expect(JSON.stringify(payload)).not.toMatch(/"price/);
+  });
+});
+
+describe('fieldLabel', () => {
+  const settings = sampleSettings();
+  it('item pelo índice (400) ou pela identidade (diff): "Rótulo · Campo"', () => {
+    expect(fieldLabel('items[0].monthlyUsd', settings)).toBe('API · Preço (US$/mês)');
+    expect(fieldLabel('items[email].monthlyUsd', settings)).toBe('E-mail · Preço (US$/mês)');
+    expect(fieldLabel('items[api].storage.gb', settings)).toBe('API · Disco (GB)');
+  });
+  it('linha sem campo e listas de preços', () => {
+    expect(fieldLabel('items[worker]', settings)).toBe('Serviços · Worker');
+    expect(fieldLabel('renderPlanPrices[1].monthlyUsd', settings)).toBe('Serviço 1c-2g · Preço (US$/mês)');
+    expect(fieldLabel('renderPlanPrices[postgres:0.5c-1g]', settings)).toBe('Preços por plano da Render · Postgres 0.5c-1g');
+    expect(fieldLabel('aiModelPrices[0].inputPerMTokUsd', settings)).toMatch(/gpt-x · Entrada \(US\$\/1M\)$/);
+  });
+  it('fora das listas: seção e campo', () => {
+    expect(fieldLabel('workspace.planLabel', settings)).toBe('Workspace · Plano do workspace');
+    expect(fieldLabel('fx.override.rate', settings)).toBe('Cotação do dólar · Cotação manual · Reais por US$ 1');
+    expect(fieldLabel('items', settings)).toBe('Serviços');
+  });
+  it('sem configuração usa o identificador; caminho desconhecido volta igual', () => {
+    expect(fieldLabel('items[api].quantity', null)).toBe('api · Quantidade');
+    expect(fieldLabel('outro.campo', null)).toBe('outro.campo');
+  });
+});
+
+describe('resumo: datas, base e avisos', () => {
+  it('mês e dia', () => {
+    expect(monthLabel('2026-11')).toBe('novembro de 2026');
+    expect(dayLabel('2026-11-03')).toBe('03/11/2026');
+    expect(dayLabel('x')).toBe('x');
+  });
+
+  const m = (usd: number) => ({ usd, brl: usd * 5 });
+  const plans = [
+    { planSlug: 'COPYSYNC_MAX', tenants: 1, contractedSessions: 10, connectedSessions: 6, share: m(55), costPerTenant: m(55), connectedShare: m(66), connectedCostPerTenant: m(66) },
+    { planSlug: 'COPYSYNC_LITE', tenants: 5, contractedSessions: 10, connectedSessions: 4, share: m(55), costPerTenant: m(11), connectedShare: m(44), connectedCostPerTenant: m(8.8) },
+  ];
+
+  it('planos na ordem do catálogo, base do filtro nos números e margem sempre na contratadas', () => {
+    const rows = planRowsByBasis(plans, { basis: 'connected', plan: 'all' });
+    expect(rows.map((r) => r.plan.planSlug)).toEqual(['COPYSYNC_LITE', 'COPYSYNC_MAX']);
+    expect(rows[0]).toMatchObject({ sessions: 4, share: m(44), perTenant: m(8.8), marginCost: m(11) });
+    const contracted = planRowsByBasis(plans, { basis: 'contracted', plan: 'max' });
+    expect(contracted).toHaveLength(1);
+    expect(contracted[0]).toMatchObject({ sessions: 10, perTenant: m(55), marginCost: m(55) });
+  });
+
+  it('custo por sessão da base escolhida', () => {
+    const perSession = {
+      contracted: { sessions: 20, perSession: m(1), unlimitedTenants: 0 },
+      connected: { sessions: 5, perSession: m(4), unallocatedSessions: null, unallocatedCost: null },
+    };
+    expect(perSessionByBasis({ perSession }, 'contracted').sessions).toBe(20);
+    expect(perSessionByBasis({ perSession }, 'connected').sessions).toBe(5);
+  });
+
+  it('nome do plano do filtro igual ao da tabela', () => {
+    expect(PLAN_CATALOG.map((p) => catalogPlanName(p.slug))).toEqual(['LITE', 'PRO', 'MAX']);
+  });
+
+  it('detalhe do aviso com rótulo do item e nome do campo', () => {
+    const items = [{ key: 'db', label: 'Banco', renderKey: 'postgres' as const }];
+    expect(warningDetail({ code: 'storage_to_confirm', key: 'db', field: 'storage.gb' }, items)).toBe('Banco · Disco (GB)');
+    expect(warningDetail({ code: 'plan_without_price', resourceKey: 'postgres', plan: '1c-2g' }, items)).toBe('serviço Banco, plano 1c-2g');
+    expect(warningDetail({ code: 'plan_without_price', resourceKey: 'redis', plan: 'x' }, items)).toBe('serviço Redis, plano x');
+    expect(warningDetail({ code: 'unlimited_contracted', count: 2 }, items)).toBe('2 ocorrências');
+    expect(warningDetail({ code: 'sessions_sample_stale' }, items)).toBeNull();
   });
 });

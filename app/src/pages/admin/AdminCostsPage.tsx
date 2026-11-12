@@ -47,12 +47,12 @@ export function AdminCostsPage() {
       </Tabs>
 
       {active === COSTS_PATH && (
-        <Suspense fallback={<Skeleton variant="rounded" height={320} aria-label={t.summary.loading} />}>
+        <Suspense fallback={<Skeleton variant="rounded" height={320} role="status" aria-label={t.summary.loading} />}>
           <SummaryTab />
         </Suspense>
       )}
       {active === COSTS_PRICES_PATH && (
-        <Suspense fallback={<Skeleton variant="rounded" height={320} aria-label={t.prices.loading} />}>
+        <Suspense fallback={<Skeleton variant="rounded" height={320} role="status" aria-label={t.prices.loading} />}>
           <PricesTab />
         </Suspense>
       )}

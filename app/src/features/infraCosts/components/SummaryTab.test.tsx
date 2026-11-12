@@ -7,7 +7,8 @@ import { AdminCostsPage, activeCostsTab } from '@/pages/admin/AdminCostsPage';
 import { adminCostsService } from '@/services/adminCosts.service';
 import { infraCostsStrings as S } from '../strings';
 import type { InfraCostSummary, InfraMoney } from '../types';
-import SummaryTab, { dayLabel, monthLabel } from './SummaryTab';
+import { monthLabel } from '../rules';
+import SummaryTab from './SummaryTab';
 
 const s = S.summary;
 const m = (usd: number, brl: number | null = usd * 5): InfraMoney => ({ usd, brl });
@@ -145,7 +146,7 @@ describe('SummaryTab', () => {
     mockSummary(summary());
     renderTab();
     const alert = (await screen.findByText(S.warnings.plan_without_price)).closest('.MuiAlert-root') as HTMLElement;
-    expect(within(alert).getByText(/serviço api, plano 2c-4g/)).toBeInTheDocument();
+    expect(within(alert).getByText(/serviço API, plano 2c-4g/)).toBeInTheDocument();
     expect(within(alert).getByRole('link', { name: s.goToPrices })).toHaveAttribute('href', '/admin/costs/prices');
   });
 
@@ -195,9 +196,68 @@ describe('AdminCostsPage', () => {
   });
 });
 
-describe('formatação de datas', () => {
-  it('mês e dia', () => {
-    expect(monthLabel('2026-11')).toBe('novembro de 2026');
-    expect(dayLabel('2026-11-03')).toBe('03/11/2026');
+describe('SummaryTab — revisão R1', () => {
+  it('amostra de sessões desatualizada: aviso com texto e "sem amostra recente" nas conectadas', async () => {
+    const stale = summary({ warnings: [{ code: 'sessions_sample_stale' }] });
+    stale.perSession.connected = { ...stale.perSession.connected, unallocatedSessions: null, unallocatedCost: null };
+    mockSummary(stale);
+    renderTab();
+    expect(await screen.findByText(S.warnings.sessions_sample_stale)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: s.filters.connected }));
+    expect(screen.getByText(s.unallocatedStale)).toBeInTheDocument();
+  });
+
+  it('avisos num único alerta, com o campo pelo nome legível e recolhidos após 3', async () => {
+    const many = summary({
+      warnings: [
+        { code: 'storage_to_confirm', key: 'postgres', field: 'storage.gb' },
+        { code: 'missing_hours' },
+        { code: 'ai_tokens_missing' },
+        { code: 'unlimited_contracted', count: 2 },
+        { code: 'sessions_sample_stale' },
+      ],
+    });
+    mockSummary(many);
+    renderTab();
+    const region = await screen.findByRole('region', { name: s.warningsTitle });
+    expect(within(region).getByText(/Banco · Disco \(GB\)/)).toBeInTheDocument();
+    expect(within(region).getAllByRole('listitem')).toHaveLength(3);
+    await userEvent.click(within(region).getByRole('button', { name: s.warningsMore(2) }));
+    expect(within(region).getAllByRole('listitem')).toHaveLength(5);
+    expect(screen.getAllByRole('region', { name: s.warningsTitle })).toHaveLength(1);
+  });
+
+  it('margem fica na base contratadas mesmo com o filtro em conectadas', async () => {
+    mockSummary(summary());
+    renderTab();
+    await screen.findByRole('table', { name: s.plans.aria });
+    await userEvent.click(screen.getByRole('button', { name: s.filters.connected }));
+    const lite = within(screen.getByRole('table', { name: s.plans.aria })).getByText('LITE').closest('tr') as HTMLElement;
+    // Por tenant na conectadas (R$ 44), margem pelo contratadas: R$ 97 − R$ 10 = R$ 87.
+    expect(norm(lite.textContent)).toContain('R$ 44,00');
+    expect(norm(lite.textContent)).toContain('R$ 87,00');
+  });
+
+  it('custo marginal sem preço diz "sem preço", não "sem amostra"', async () => {
+    mockSummary(summary({ marginalPerSession: null }));
+    renderTab();
+    const tile = (await screen.findByText(s.cards.marginal.label)).closest('.MuiCard-root') as HTMLElement;
+    expect(within(tile).getByText(s.noPrice)).toBeInTheDocument();
+  });
+
+  it('sem cotação: alerta leva à aba Preços', async () => {
+    mockSummary(summary({ fx: null }));
+    renderTab();
+    const alert = (await screen.findByText(S.warnings.fx_missing)).closest('.MuiAlert-root') as HTMLElement;
+    expect(within(alert).getByRole('link', { name: s.goToPrices })).toHaveAttribute('href', '/admin/costs/prices');
+  });
+
+  it('"—" de plano vizinho sem foco, com texto para leitor de tela', async () => {
+    mockSummary(summary());
+    renderTab();
+    const table = await screen.findByRole('table', { name: s.services.aria });
+    const worker = within(table).getByText('Worker').closest('tr') as HTMLElement;
+    const sr = within(worker).getByText(s.services.noNeighbor);
+    expect(sr.closest('td')?.querySelector('[tabindex]')).toBeNull();
   });
 });
