@@ -22,6 +22,10 @@ export interface InfraCostHistoryMonth {
   fx: { rate: number; referenceDate: string; source: 'override' | 'ptax' | 'sgs' } | null;
   total: InfraMoney;
   totalIsPartial: boolean;
+  /** Compartilhado sem base de rateio (fora dos tenants). */
+  unallocated: InfraMoney;
+  /** Itens fora do rateio (`excluded` e IA fixa): no total, fora dos tenants. Σ planos + os dois = total. */
+  excluded: InfraMoney;
   plans: InfraCostHistoryPlan[];
 }
 
@@ -64,6 +68,8 @@ export class GetInfraCostHistoryUseCase {
           fx: m.fx ? { rate: m.fx.rate, referenceDate: m.fx.referenceDate.toISOString().slice(0, 10), source: m.fx.source } : null,
           total: money(m.totalUsd, rate),
           totalIsPartial: m.totalIsPartial,
+          unallocated: money(m.unallocatedUsd, rate),
+          excluded: money(m.excludedUsd, rate),
           plans: m.plans.map((p) => ({
             planSlug: p.planSlug,
             tenants: p.tenants,

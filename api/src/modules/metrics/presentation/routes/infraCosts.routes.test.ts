@@ -296,15 +296,17 @@ describe('GET /admin/costs/tenants', () => {
   it('mês corrente: só id e nome do tenant, cursor opaco, sem id da Render', async () => {
     auth.isSuperAdmin = true;
     const page = vi.spyOn(PrismaInfraCostReportReader.prototype, 'pageOpenMonth').mockResolvedValue({
-      rows: [{ tenantId: 't1', tenantName: 'Loja Um', planSlug: 'COPYSYNC_PRO', connectedHours: 10, contractedAvg: 2 }],
+      rows: [{ tenantId: 't1', tenantName: 'Loja Um', sortKey: 'loja um', planSlug: 'COPYSYNC_PRO', connectedHours: 10, contractedAvg: 2 }],
       aiUsage: [],
     });
     // limit/offset do front são descartados: o tamanho é do servidor
     const res = await app.inject({ method: 'GET', url: `${URL}/tenants?plan=COPYSYNC_PRO&limit=1000&offset=5` });
     expect(res.statusCode).toBe(200);
     const { data } = res.json();
-    expect(page.mock.calls[0][2]).toEqual({ planSlug: 'COPYSYNC_PRO', offset: 0, limit: 51 });
-    expect(data).toMatchObject({ month: thisMonth(), status: 'open', basis: 'hours', nextCursor: null });
+    expect(page.mock.calls[0][2]).toEqual({ planSlug: 'COPYSYNC_PRO', after: undefined, limit: 51 });
+    expect(data).toMatchObject({
+      month: thisMonth(), status: 'open', basis: 'hours', sharedBasis: 'contracted', unallocated: null, excluded: null, nextCursor: null,
+    });
     expect(Object.keys(data.tenants[0]).sort()).toEqual([
       'ai', 'connectedShared', 'contractedSessions', 'planSlug', 'projectedShared', 'sessionHours', 'shared', 'tenantId', 'tenantName', 'total',
     ]);
@@ -316,14 +318,38 @@ describe('GET /admin/costs/tenants', () => {
   it('mês fechado: valores congelados', async () => {
     auth.isSuperAdmin = true;
     vi.spyOn(PrismaInfraCostSnapshotRepository.prototype, 'findClosedMonth').mockResolvedValue({
-      month: new Date('2026-01-01T00:00:00Z'), closingMethod: 'last_business_day', fx: null, totalUsd: 10, totals: {}, closedAt: SAVED_AT,
+      month: new Date('2026-01-01T00:00:00Z'), closingMethod: 'last_business_day', fx: null, totalUsd: 10,
+      totals: { allocation: { unallocatedUsd: 0, excludedUsd: 5 } }, closedAt: SAVED_AT,
     });
     vi.spyOn(PrismaInfraCostReportReader.prototype, 'pageClosedMonth').mockResolvedValue([
-      { tenantId: 't1', tenantName: 'Loja Um', planSlug: null, contractedAvg: 1, sessionHours: 5, sharedUsd: 4, aiUsd: 1, totalUsd: 5 },
+      { tenantId: 't1', tenantName: 'Loja Um', planSlug: null, contractedAvg: 1, sessionHours: 5, sharedUsd: 4, aiUsd: 1, totalUsd: 5, sortKey: '5.0000' },
     ]);
     const res = await app.inject({ method: 'GET', url: `${URL}/tenants?month=2026-01` });
     expect(res.statusCode).toBe(200);
-    expect(res.json().data).toMatchObject({ status: 'closed', fx: null, tenants: [{ total: { usd: 5, brl: null }, connectedShared: null }] });
+    expect(res.json().data).toMatchObject({
+      status: 'closed', fx: null, sharedBasis: 'contracted', unallocated: { usd: 0, brl: null }, excluded: { usd: 5, brl: null },
+      tenants: [{ total: { usd: 5, brl: null }, connectedShared: null }],
+    });
+    expect(res.json().data.tenants[0]).not.toHaveProperty('sortKey');
+  });
+
+  it('cursor inválido: 400 INFRA_COST_CURSOR_INVALID sem ler a página', async () => {
+    auth.isSuperAdmin = true;
+    const page = vi.spyOn(PrismaInfraCostReportReader.prototype, 'pageOpenMonth');
+    const res = await app.inject({ method: 'GET', url: `${URL}/tenants?cursor=abc~def.ghi` });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('INFRA_COST_CURSOR_INVALID');
+    expect(page).not.toHaveBeenCalled();
+  });
+
+  it('mês fechado com leitura lenta do fechamento: 503 INFRA_COST_READ_UNAVAILABLE', async () => {
+    auth.isSuperAdmin = true;
+    vi.spyOn(PrismaInfraCostSnapshotRepository.prototype as unknown as { readClosedMonth: () => Promise<unknown> }, 'readClosedMonth')
+      .mockRejectedValue(pgTimeout());
+    const res = await app.inject({ method: 'GET', url: `${URL}/tenants?month=2026-01` });
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error.code).toBe('INFRA_COST_READ_UNAVAILABLE');
+    expect(res.body).not.toMatch(/57014|canceling|SELECT/);
   });
 
   it('plano fora da lista: 400', async () => {
@@ -347,7 +373,7 @@ describe('GET /admin/costs/history', () => {
     vi.spyOn(PrismaInfraCostReportReader.prototype, 'listClosedMonths').mockResolvedValue([{
       month: new Date('2026-01-01T00:00:00Z'), closingMethod: 'last_business_day',
       fx: { rate: 5, referenceDate: new Date('2026-01-30T00:00:00Z'), source: 'ptax' },
-      totalUsd: 100, totalIsPartial: false, closedAt: SAVED_AT,
+      totalUsd: 100, totalIsPartial: false, unallocatedUsd: 0, excludedUsd: 40, closedAt: SAVED_AT,
       plans: [{ planSlug: 'COPYSYNC_LITE', tenants: 3, sharedUsd: 60, aiUsd: 0, totalUsd: 60 }],
     }]);
     const res = await app.inject({ method: 'GET', url: `${URL}/history` });
@@ -357,6 +383,7 @@ describe('GET /admin/costs/history', () => {
       month: '2026-01', closedAt: SAVED_AT.toISOString(), closingMethod: 'last_business_day',
       fx: { rate: 5, referenceDate: '2026-01-30', source: 'ptax' },
       total: { usd: 100, brl: 500 }, totalIsPartial: false,
+      unallocated: { usd: 0, brl: 0 }, excluded: { usd: 40, brl: 200 },
       plans: [{ planSlug: 'COPYSYNC_LITE', tenants: 3, shared: { usd: 60, brl: 300 }, ai: { usd: 0, brl: 0 }, total: { usd: 60, brl: 300 } }],
     });
   });

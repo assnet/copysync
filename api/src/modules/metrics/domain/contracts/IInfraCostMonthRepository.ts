@@ -47,7 +47,13 @@ export interface IInfraCostMonthRepository {
   hasClosedMonth(month: Date): Promise<boolean>;
   /** Grava mês + tenants numa transação; `false` = já estava fechado (nada muda). */
   saveClosedMonth(closed: InfraCostClosedMonth): Promise<boolean>;
+  /** `statement_timeout` 2 s; estouro → 503 `INFRA_COST_READ_UNAVAILABLE` (lista por cliente). */
   findClosedMonth(month: Date): Promise<InfraCostClosedMonthSummary | null>;
+  /**
+   * Mês mais antigo (dia 1) em `[from, to)` ainda não fechado e com snapshot (`infra_resource_hours` ou
+   * `tenant_session_hours`); `null` = nada a fechar.
+   */
+  oldestUnclosedMonth(from: Date, to: Date): Promise<Date | null>;
   /** Cotações com `referenceDate` em `[start, end)`, por data crescente. */
   fxRatesBetween(start: Date, end: Date): Promise<InfraFxRateRecord[]>;
 }

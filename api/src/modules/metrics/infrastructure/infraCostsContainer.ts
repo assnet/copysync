@@ -90,7 +90,8 @@ export function createInfraCostSnapshotJob(): { job: InfraCostSnapshotJob; rende
     settings,
     fxSources: [new BcbPtaxFxRateSource(), new BcbSgsFxRateSource()],
     fxState: new PrismaInfraFxFetchStateRepository(prisma),
-    // Fechamento mensal (COST-15): congela preços e cotação do mês anterior
+    // Fechamento mensal (COST-15): congela preços e cotação; meses passados abertos, o mais antigo primeiro
+    months: snapshots,
     monthClose: new CloseInfraCostMonthUseCase({
       months: snapshots,
       fxRates: snapshots,

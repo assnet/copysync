@@ -53,6 +53,9 @@ export function presentInfraCostTenants(out: ListInfraCostTenantsOutput) {
     status: out.status,
     basis: out.basis,
     fx: out.fx,
+    sharedBasis: out.sharedBasis,
+    unallocated: out.unallocated,
+    excluded: out.excluded,
     tenants: out.tenants.map((t) => ({ ...t })),
     nextCursor: out.nextCursor,
   };

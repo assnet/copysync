@@ -225,6 +225,31 @@ describe('rateio do mês (COST-12)', () => {
     expect(r.plans[0]).toMatchObject({ projectedShare: null, projectedCostPerTenant: null });
   });
 
+  it('Σ contratadas 0: base sessão-hora (mesma regra do fechamento) com aviso; projetado na mesma base', () => {
+    const now = new Date(NOV.getTime() + 360 * H);
+    const noContracted = tenants.map((t) => ({ ...t, contractedAvg: 0 }));
+    const r = calc(workerOnly(), { resourceHours: range(360, (i) => hr(NOV, i)), tenants: noContracted }, { now });
+    expect(r.warnings).toContainEqual({ code: 'shared_by_session_hours' });
+    expect(r.tenantRates).toMatchObject({ sharedBasis: 'session_hours', perContractedUsd: null });
+    expect(r.perSession.contracted.perSession).toBeNull();
+    const pro = r.plans.find((p) => p.planSlug === 'pro')!;
+    expect(pro.share).toEqual(pro.connectedShare);
+    expect(pro.share?.usd).toBe(6.25); // 12,50 × metade das horas
+    expect(pro.projectedShare?.usd).toBe(12.5); // 25 × metade das horas
+    expect(r.plans.reduce((s, p) => s + (p.share?.usd ?? 0), 0)).toBeCloseTo(r.totals.shared.usd, 4);
+  });
+
+  it('sem contratadas nem sessão-hora: shared_unallocated com o valor, parte null', () => {
+    const zero = tenants.map((t) => ({ ...t, contractedAvg: 0, connectedHours: 0 }));
+    const r = calc(workerOnly(), { resourceHours: range(720, (i) => hr(NOV, i)), tenants: zero });
+    expect(r.warnings).toContainEqual({ code: 'shared_unallocated', usd: 25 });
+    expect(r.tenantRates?.sharedBasis).toBeNull();
+    expect(r.plans.every((p) => p.share === null)).toBe(true);
+    const base = calc(workerOnly(), { resourceHours: range(720, (i) => hr(NOV, i)), tenants });
+    expect(base.warnings.map((w) => w.code)).not.toContain('shared_by_session_hours');
+    expect(base.tenantRates?.sharedBasis).toBe('contracted');
+  });
+
   it('por tenant: soma das partes = compartilhado; sem horas → null', () => {
     const a = allocateInfraTenantShares(30, tenants);
     expect(a.shares.reduce((s, t) => s + (t.contractedShareUsd ?? 0), 0)).toBeCloseTo(30, 6);

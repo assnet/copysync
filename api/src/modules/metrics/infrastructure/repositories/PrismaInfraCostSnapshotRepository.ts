@@ -5,6 +5,7 @@ import type {
   InfraFxRateRecord,
   InfraFxRateSource,
   InfraResourceHourSnapshot,
+  InfraResourceKey,
   InfraUsageDailyValue,
   InfraUsageMetric,
   TenantSessionHourSample,
@@ -15,6 +16,8 @@ import type {
   InfraCostClosedMonthSummary,
 } from '../../domain/contracts/IInfraCostMonthRepository';
 import type { InfraFxClosingMethod } from '../../domain/services/infraCostSettings';
+import { OPS_READ_STATEMENT_TIMEOUT } from './PrismaOpsMetricsSampleRepository';
+import { translateInfraCostReadTimeout } from './infraCostReadTimeout';
 
 /** Lote da retenção: curto, sem lock longo nem WAL em rajada (mesmo padrão de `ops_metrics_samples`). */
 export const INFRA_SNAPSHOT_RETENTION_BATCH_SIZE = 5_000;
@@ -157,10 +160,13 @@ export class PrismaInfraCostSnapshotRepository implements IInfraCostSnapshotRepo
     return row?.last ?? null;
   }
 
-  async hasUsageDay(metric: InfraUsageMetric, day: Date): Promise<boolean> {
-    const [row] = await this.prisma.$queryRaw<{ found: boolean }[]>`
-      SELECT EXISTS (SELECT 1 FROM "infra_usage_daily" WHERE "metric" = ${metric} AND "day" = ${utcDay(day)}) AS found`;
-    return row?.found === true;
+  async usageKeys(metric: InfraUsageMetric, from: Date, to: Date, minLastHour?: Date): Promise<InfraResourceKey[]> {
+    const rows = await this.prisma.$queryRaw<{ resourceKey: InfraResourceKey }[]>`
+      SELECT DISTINCT "resourceKey" FROM "infra_usage_daily"
+      WHERE "metric" = ${metric} AND "day" >= ${utcDay(from)} AND "day" < ${utcDay(to)}
+        ${minLastHour ? Prisma.sql`AND "lastHour" >= ${utc(floorHour(minLastHour))}` : Prisma.empty}
+      ORDER BY "resourceKey"`;
+    return rows.map((r) => r.resourceKey);
   }
 
   /** Build: regrava o dia inteiro (idempotente). */
@@ -235,8 +241,16 @@ export class PrismaInfraCostSnapshotRepository implements IInfraCostSnapshotRepo
     });
   }
 
-  async findClosedMonth(month: Date): Promise<InfraCostClosedMonthSummary | null> {
-    const row = await this.prisma.infraCostMonth.findUnique({ where: { month: monthDay(month) } });
+  findClosedMonth(month: Date): Promise<InfraCostClosedMonthSummary | null> {
+    return translateInfraCostReadTimeout(() => this.readClosedMonth(month));
+  }
+
+  /** Leitura da lista por cliente: transação curta com `statement_timeout` 2 s. */
+  private async readClosedMonth(month: Date): Promise<InfraCostClosedMonthSummary | null> {
+    const [, row] = await this.prisma.$transaction([
+      this.prisma.$executeRawUnsafe(`SET LOCAL statement_timeout = '${OPS_READ_STATEMENT_TIMEOUT}'`),
+      this.prisma.infraCostMonth.findUnique({ where: { month: monthDay(month) } }),
+    ]);
     if (!row) return null;
     return {
       month: row.month,
@@ -249,6 +263,17 @@ export class PrismaInfraCostSnapshotRepository implements IInfraCostSnapshotRepo
       totals: row.totals as Record<string, unknown>,
       closedAt: row.closedAt,
     };
+  }
+
+  async oldestUnclosedMonth(from: Date, to: Date): Promise<Date | null> {
+    // Até 12 meses: um EXISTS por mês nos índices de `hour`/`day` (nada de varrer as tabelas)
+    const [row] = await this.prisma.$queryRaw<{ month: Date | null }[]>`
+      SELECT min(g.m)::date AS month
+      FROM generate_series(${utcDay(from)}::timestamp, ${utcDay(to)}::timestamp - interval '1 month', interval '1 month') AS g(m)
+      WHERE NOT EXISTS (SELECT 1 FROM "infra_cost_months" c WHERE c."month" = g.m::date)
+        AND (EXISTS (SELECT 1 FROM "infra_resource_hours" r WHERE r."hour" >= g.m AND r."hour" < g.m + interval '1 month')
+          OR EXISTS (SELECT 1 FROM "tenant_session_hours" s WHERE s."day" >= g.m::date AND s."day" < (g.m + interval '1 month')::date))`;
+    return row?.month ?? null;
   }
 
   async fxRatesBetween(start: Date, end: Date): Promise<InfraFxRateRecord[]> {

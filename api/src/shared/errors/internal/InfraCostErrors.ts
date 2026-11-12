@@ -32,3 +32,13 @@ export class InfraCostReadUnavailableError extends AppError {
     super('INFRA_COST_READ_UNAVAILABLE', 'Infra cost data is temporarily unavailable, try again', 503);
   }
 }
+
+/**
+ * Cursor da lista por cliente inválido, expirado ou de outro escopo (mês, plano, aberto × fechado): 400, o
+ * painel recomeça da 1ª página. Nunca vira a página 1 em silêncio (a lista pularia ou repetiria clientes).
+ */
+export class InfraCostCursorInvalidError extends AppError {
+  constructor() {
+    super('INFRA_COST_CURSOR_INVALID', 'Infra cost page cursor is invalid or expired, reload the list', 400, { field: 'cursor' });
+  }
+}

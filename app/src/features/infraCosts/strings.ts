@@ -83,6 +83,8 @@ export const infraCostsStrings = {
     sessions_sample_stale: 'Contagem de sessões do coletor desatualizada: sessões fora do rateio sem número',
     bandwidth_missing_hours: 'Horas sem leitura de banda: consumo medido pode estar abaixo do real',
     idle_partial: 'Horas sem leitura do worker: capacidade ociosa calculada só nas horas lidas',
+    shared_by_session_hours: 'Sem sessões contratadas no mês: compartilhado dividido pelas horas conectadas',
+    shared_unallocated: 'Sem sessões contratadas nem conectadas: compartilhado fora dos clientes',
   } satisfies Record<InfraCostWarningCode, string>,
 
   /** Aba Resumo (COST-07). */

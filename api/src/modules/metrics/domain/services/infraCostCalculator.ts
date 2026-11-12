@@ -172,7 +172,7 @@ export interface InfraCostPlanResult {
   /** Contratadas efetivas (ilimitado pelo preset do canal). */
   contractedSessions: number;
   connectedSessions: number;
-  /** Parte do plano na base contratadas. */
+  /** Parte do plano na base padrão: contratadas (horas: Σ contratadas 0 → sessão-hora, aviso `shared_by_session_hours`). */
   share: InfraMoney | null;
   /** Tenant médio = parte ÷ tenants `ACTIVE` do plano (0 → `null`). */
   costPerTenant: InfraMoney | null;
@@ -209,7 +209,11 @@ export type InfraCostWarning =
   /** Modelo de IA usado sem preço em `aiModelPrices`: chamadas fora do total (`count`), total parcial. */
   | { code: 'model_without_price'; kind: AiProviderKind; model: string; count: number }
   /** Chamadas de IA sem contagem de tokens: fora do total, nunca somadas como 0. */
-  | { code: 'ai_tokens_missing'; count: number };
+  | { code: 'ai_tokens_missing'; count: number }
+  /** Horas: Σ contratadas 0 → compartilhado rateado pela sessão-hora (mesma regra do fechamento). */
+  | { code: 'shared_by_session_hours' }
+  /** Horas: sem contratadas nem sessão-hora → compartilhado fora dos tenants (USD). */
+  | { code: 'shared_unallocated'; usd: number };
 
 export interface InfraCostCalculation {
   basis: 'snapshot' | 'hours';
@@ -262,12 +266,25 @@ export interface InfraCostCalculation {
   warnings: InfraCostWarning[];
 }
 
+/** Base do rateio por tenant: contratadas; Σ contratadas 0 → sessão-hora; sem as duas → `null` (não rateado). */
+export type InfraSharedBasis = 'contracted' | 'session_hours';
+
 /** Custo por unidade do rateio por tenant (USD cheio); `null` = divisor zero. */
 export interface InfraTenantRates {
+  /** Base usada no compartilhado (`shared`) de cada tenant; `null` = não rateado. */
+  sharedBasis: InfraSharedBasis | null;
   perContractedUsd: number | null;
   perSessionHourUsd: number | null;
   /** Compartilhado projetado para o mês cheio ÷ contratadas (margem do mês corrente). */
   projectedPerContractedUsd: number | null;
+  /** Compartilhado projetado ÷ sessão-hora até agora (base `session_hours`: mantém a proporção do tenant). */
+  projectedPerSessionHourUsd: number | null;
+}
+
+/** Base do rateio: contratadas; Σ 0 → sessão-hora; sem as duas → `null`. */
+export function infraSharedBasis(perContracted: number | null, perSessionHour: number | null): InfraSharedBasis | null {
+  if (perContracted !== null) return 'contracted';
+  return perSessionHour !== null ? 'session_hours' : null;
 }
 
 // ── Conta ─────────────────────────────────────────────────────────────────────
@@ -780,7 +797,18 @@ export function calculateInfraCosts(input: InfraCostCalculationInput): InfraCost
     connectedTotal = avgConnected(alloc.sessionHours);
     hoursView = { sessionHours: alloc.sessionHours, perSessionHour: maybeMoney(alloc.perSessionHour, fx) };
     const projectedPerContracted = div(projectedSharedUsd, alloc.contractedTotal);
-    tenantRates = { perContractedUsd: perContracted, perSessionHourUsd: alloc.perSessionHour, projectedPerContractedUsd: projectedPerContracted };
+    const projectedPerSessionHour = div(projectedSharedUsd, alloc.sessionHours);
+    // Mesma regra do fechamento (COST-12/15): Σ contratadas 0 → sessão-hora; sem as duas → não rateado
+    const basis = infraSharedBasis(perContracted, alloc.perSessionHour);
+    if (sharedUsd > 0 && basis === 'session_hours') warnings.push({ code: 'shared_by_session_hours' });
+    if (sharedUsd > 0 && basis === null) warnings.push({ code: 'shared_unallocated', usd: round4(sharedUsd) });
+    tenantRates = {
+      sharedBasis: basis,
+      perContractedUsd: perContracted,
+      perSessionHourUsd: alloc.perSessionHour,
+      projectedPerContractedUsd: projectedPerContracted,
+      projectedPerSessionHourUsd: projectedPerSessionHour,
+    };
 
     const byPlan = new Map<string | null, InfraTenantShare[]>();
     for (const t of alloc.shares) byPlan.set(t.planSlug, [...(byPlan.get(t.planSlug) ?? []), t]);
@@ -790,9 +818,12 @@ export function calculateInfraCosts(input: InfraCostCalculationInput): InfraCost
       .map(([planSlug, list]) => {
         const sum = (f: (t: InfraTenantShare) => number | null) =>
           list.some((t) => f(t) === null) ? null : list.reduce((s, t) => s + (f(t) ?? 0), 0);
-        const share = sum((t) => t.contractedShareUsd);
         const connectedShare = sum((t) => t.sessionHourShareUsd);
-        const projectedShare = sum((t) => (projectedPerContracted === null ? null : t.contractedAvg * projectedPerContracted));
+        const share = basis === 'session_hours' ? connectedShare : sum((t) => t.contractedShareUsd);
+        const projectedShare = sum((t) =>
+          basis === 'session_hours'
+            ? projectedPerSessionHour === null ? null : t.connectedHours * projectedPerSessionHour
+            : projectedPerContracted === null ? null : t.contractedAvg * projectedPerContracted);
         const aiUsd = ai ? list.reduce((s, t) => s + t.aiUsd, 0) : null;
         return {
           planSlug,

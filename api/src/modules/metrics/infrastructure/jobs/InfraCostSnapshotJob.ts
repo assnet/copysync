@@ -19,7 +19,9 @@ import type { IInfraTenantUsageReader } from '../../domain/contracts/IInfraTenan
 import { fetchFirstFxRate, type IFxRateSource } from '../../domain/services/fxRate';
 import { resolveInfraCostSettings } from '../../domain/services/infraCostSettings';
 import { isFxFetchDue, startFxFetchAttempt } from '../../domain/services/infraFxFetchState';
-import type { CloseInfraCostMonthUseCase } from '../../application/use-cases/CloseInfraCostMonthUseCase';
+import type { CloseInfraCostMonthUseCase, InfraCostMonthUsageMetric } from '../../application/use-cases/CloseInfraCostMonthUseCase';
+import type { IInfraCostMonthRepository } from '../../domain/contracts/IInfraCostMonthRepository';
+import { isInfraRenderServiceKey } from '../../../../shared/config/infraCostRenderResources';
 import { utcMonthOf } from '../../application/use-cases/GetInfraCostSummaryUseCase';
 
 export const INFRA_COST_SNAPSHOT_LEASE = 'infra-cost-snapshot';
@@ -45,13 +47,14 @@ export const INFRA_COST_RENDER_BACKOFF_MAX_MS = 3_600_000;
 /** Banda das horas sem linha reprocessada até esta idade (a guarda `lastHour` evita dobra). */
 export const INFRA_COST_BANDWIDTH_CATCHUP_HOURS = 6;
 /**
- * Fechamento do mês anterior: tentado do início do mês até 24 h depois (tolera o worker fora do ar na 1ª
- * hora); mês já fechado é ignorado. Com a Render configurada, espera a banda da última hora e o build do
- * último dia (o fechamento não reabre).
+ * Espera do fechamento: nas primeiras 24 h depois do fim do mês, com a Render configurada, espera a banda da
+ * última hora e o build do último dia de cada serviço mapeado (o fechamento não reabre).
  */
 export const INFRA_COST_MONTH_CLOSE_WINDOW_MS = 24 * 3_600_000;
 /** A partir daqui (23:00 UTC do dia 1) fecha mesmo sem banda/build, com o aviso `usage_incomplete`. */
 export const INFRA_COST_MONTH_CLOSE_FORCE_AFTER_MS = 23 * 3_600_000;
+/** Meses passados ainda abertos fechados em atraso (worker parado no dia 1): até 12 para trás, 1 por tick. */
+export const INFRA_COST_MONTH_CLOSE_LOOKBACK_MONTHS = 12;
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;
@@ -71,8 +74,10 @@ export interface InfraCostSnapshotJobOptions {
   /** PTAX → SGS. */
   fxSources: readonly IFxRateSource[];
   fxState: IInfraFxFetchStateRepository;
-  /** Fechamento mensal (COST-15); ausente = passo desligado. */
+  /** Fechamento mensal (COST-15); ausente (ou sem `months`) = passo desligado. */
   monthClose?: Pick<CloseInfraCostMonthUseCase, 'execute'>;
+  /** Meses abertos com snapshot (o mais antigo primeiro). */
+  months?: Pick<IInfraCostMonthRepository, 'oldestUnclosedMonth'>;
   intervalMs?: number;
   now?: () => Date;
 }
@@ -89,9 +94,11 @@ export interface InfraCostSnapshotJobOptions {
  *    a guarda `lastHour` não aceita hora anterior a uma já somada).
  * 3. **Build** do dia anterior, 1×/dia após 01:00 UTC (lease `infra-cost-build` até 01:00 do dia seguinte;
  *    falha = nova tentativa 1 h depois).
- * 3b. **Fechamento** do mês anterior (COST-15) nas primeiras 24 h do mês, depois da banda e do build: até 01:00
- *    espera a última hora do mês; com a Render configurada, espera a banda da última hora e o build do último
- *    dia; a partir das 23:00 fecha assim mesmo com `usage_incomplete`. Idempotente (mês fechado não muda).
+ * 3b. **Fechamento** (COST-15), depois da banda e do build: o mês passado mais antigo ainda aberto com snapshot
+ *    (até 12 para trás), um por tick. Nas primeiras 24 h após o fim do mês: até 01:00 espera a última hora; com
+ *    a Render configurada, espera a banda da última hora e o build do último dia de **cada** serviço mapeado; a
+ *    partir das 23:00 fecha assim mesmo com `usage_incomplete`. Fora dessa janela (worker parado) fecha direto,
+ *    com `usage_incomplete` se faltar banda ou build. Idempotente (mês fechado não muda).
  * 4. **Cotação** com `fx.auto` (lease `infra-fx-rate`, estado em `platform_settings["infra_fx_fetch_state"]`):
  *    1×/dia após 16h30 UTC, PTAX → SGS, as duas falhando = 1 nova tentativa 1 h depois.
  * 5. **Retenção** de 400 dias, 1×/24 h (lease `infra-cost-retention`, não solto).
@@ -249,29 +256,48 @@ export class InfraCostSnapshotJob {
     }));
   }
 
-  /** Fecha o mês anterior (passo 3b). */
+  /** Fecha o mês passado mais antigo ainda aberto (passo 3b). */
   private async closeMonth(now: Date): Promise<void> {
-    const { monthClose: close, snapshots, plans } = this.options;
-    if (!close) return;
-    const monthStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
-    const since = now.getTime() - monthStart;
-    if (since < 0 || since >= INFRA_COST_MONTH_CLOSE_WINDOW_MS) return;
-    const lastHour = new Date(monthStart - HOUR_MS);
-    if (since < HOUR_MS && !(await snapshots.hasResourceHour(lastHour))) return;
-    // Sem Render não há banda nem build a esperar
-    const render = plans.configuredKeys().length > 0;
-    const incompleteUsage: ('bandwidth' | 'build')[] = [];
-    if (render && ((await snapshots.lastUsageHour('bandwidth_gb', lastHour))?.getTime() ?? 0) < lastHour.getTime()) {
-      incompleteUsage.push('bandwidth');
-    }
-    if (render && !(await snapshots.hasUsageDay('build_minutes', new Date(monthStart - DAY_MS)))) incompleteUsage.push('build');
-    if (incompleteUsage.length > 0 && since < INFRA_COST_MONTH_CLOSE_FORCE_AFTER_MS) return;
-    const month = utcMonthOf(new Date(monthStart - 1));
+    const { monthClose: close, months, snapshots } = this.options;
+    if (!close || !months) return;
+    const currentStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
+    const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - INFRA_COST_MONTH_CLOSE_LOOKBACK_MONTHS, 1));
+    const target = await months.oldestUnclosedMonth(from, new Date(currentStart));
+    if (!target) return;
+    const end = Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 1);
+    const sinceEnd = now.getTime() - end;
+    const waiting = sinceEnd < INFRA_COST_MONTH_CLOSE_WINDOW_MS;
+    const lastHour = new Date(end - HOUR_MS);
+    if (waiting && sinceEnd < HOUR_MS && !(await snapshots.hasResourceHour(lastHour))) return;
+    const incompleteUsage = await this.missingMonthUsage(target, new Date(end));
+    if (incompleteUsage.length > 0 && waiting && sinceEnd < INFRA_COST_MONTH_CLOSE_FORCE_AFTER_MS) return;
+    const month = utcMonthOf(target);
     const result = await close.execute({ month, now, ...(incompleteUsage.length > 0 ? { incompleteUsage } : {}) });
     if (result === 'closed') {
-      if (incompleteUsage.length > 0) this.log.warn({ month, incompleteUsage }, 'infra cost month closed without full usage');
-      else this.log.info({ month }, 'infra cost month closed');
+      if (incompleteUsage.length > 0) this.log.warn({ month, incompleteUsage, late: !waiting }, 'infra cost month closed without full usage');
+      else this.log.info({ month, late: !waiting }, 'infra cost month closed');
     }
+  }
+
+  /**
+   * Banda da última hora e build do último dia por **serviço mapeado** (`srv-`: os únicos com essas leituras):
+   * um serviço sem linha basta para faltar (nunca "algum recurso"). Banda: espera cada serviço que teve banda no
+   * mês (serviço sem série nenhuma, ex.: worker sem tráfego, não trava o fechamento); nenhum = falta. Build:
+   * todos os serviços mapeados (sem deploy = 0; nulo não grava). Sem Render não há o que esperar.
+   */
+  private async missingMonthUsage(monthStart: Date, monthEnd: Date): Promise<InfraCostMonthUsageMetric[]> {
+    const { plans, snapshots } = this.options;
+    const services = plans.configuredKeys().filter(isInfraRenderServiceKey);
+    if (services.length === 0) return [];
+    const lastHour = new Date(monthEnd.getTime() - HOUR_MS);
+    const lastDay = new Date(monthEnd.getTime() - DAY_MS);
+    const missing: InfraCostMonthUsageMetric[] = [];
+    const reported = (await snapshots.usageKeys('bandwidth_gb', monthStart, monthEnd)).filter((k) => services.includes(k));
+    const atLastHour = await snapshots.usageKeys('bandwidth_gb', lastDay, monthEnd, lastHour);
+    if (reported.length === 0 || reported.some((k) => !atLastHour.includes(k))) missing.push('bandwidth');
+    const built = await snapshots.usageKeys('build_minutes', lastDay, monthEnd);
+    if (services.some((k) => !built.includes(k))) missing.push('build');
+    return missing;
   }
 
   /**
@@ -341,11 +367,19 @@ export class InfraCostSnapshotJob {
       this.log.warn({ reason: r.reason }, 'infra cost build minutes unavailable, retry in 1 h');
       return;
     }
-    for (const [resourceKey, value] of Object.entries(r.byKey)) {
+    const byKey = r.byKey as Partial<Record<InfraResourceHourSnapshot['resourceKey'], number | null>>;
+    for (const [resourceKey, value] of Object.entries(byKey)) {
       if (value == null) continue;
       await snapshots.upsertUsageDay({
         day, metric: 'build_minutes', resourceKey: resourceKey as InfraResourceHourSnapshot['resourceKey'], value, source: 'render_deploys',
       });
+    }
+    // Serviço mapeado sem valor = leitura incompleta: sem a trava do dia, nova tentativa em 1 h (e o fechamento
+    // conta o build como faltando), nunca um `continue` silencioso
+    const missing = plans.configuredKeys().filter((k) => isInfraRenderServiceKey(k) && byKey[k] == null);
+    if (missing.length > 0) {
+      this.log.warn({ missing }, 'infra cost build minutes incomplete, retry in 1 h');
+      return;
     }
     await lease.release(INFRA_COST_BUILD_LEASE, this.ownerId);
     await lease.tryAcquire(INFRA_COST_BUILD_LEASE, this.ownerId, new Date(due.getTime() + DAY_MS), now);

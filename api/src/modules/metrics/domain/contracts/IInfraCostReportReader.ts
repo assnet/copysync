@@ -1,16 +1,25 @@
 import type { InfraAiUsageRow, InfraTenantMonthUsage } from '../services/infraCostCalculator';
 import type { InfraCostClosedMonthSummary } from './IInfraCostMonthRepository';
 
-/** Página pedida pelo servidor (offset do cursor opaco + tamanho fixo); `planSlug` ausente = todos. */
+/** Última linha da página anterior (keyset): `sortKey` é o texto devolvido pelo próprio SQL. */
+export interface InfraCostTenantPageAfter {
+  sortKey: string;
+  tenantId: string;
+}
+
+/** Página pedida pelo servidor (keyset do cursor assinado + tamanho fixo); `planSlug` ausente = todos. */
 export interface InfraCostTenantPageQuery {
   planSlug?: string;
-  offset: number;
+  /** Ausente = 1ª página. */
+  after?: InfraCostTenantPageAfter;
   limit: number;
 }
 
 /** Tenant do mês aberto (`tenant_session_hours`) com o nome; nenhum outro dado do tenant. */
 export interface InfraCostOpenMonthTenantRow extends InfraTenantMonthUsage {
   tenantName: string;
+  /** Chave da ordenação (`lower(name)`), para o cursor. */
+  sortKey: string;
 }
 
 /** Tenant do mês fechado (`infra_cost_month_tenants`, valores congelados) com o nome. */
@@ -23,6 +32,8 @@ export interface InfraCostClosedMonthTenantRow {
   sharedUsd: number;
   aiUsd: number;
   totalUsd: number;
+  /** Chave da ordenação (`totalUsd` como texto do `numeric`), para o cursor. */
+  sortKey: string;
 }
 
 /** Soma por plano de um mês fechado. */
@@ -37,6 +48,9 @@ export interface InfraCostClosedMonthPlanRow {
 export interface InfraCostClosedMonthHistoryRow extends Omit<InfraCostClosedMonthSummary, 'totals'> {
   /** `totals.calculation.totalIsPartial` congelado (ausente/ilegível = `false`). */
   totalIsPartial: boolean;
+  /** `totals.allocation` congelado (ausente = 0): compartilhado não rateado e itens fora do rateio. */
+  unallocatedUsd: number;
+  excludedUsd: number;
   plans: InfraCostClosedMonthPlanRow[];
 }
 
@@ -46,14 +60,14 @@ export interface InfraCostClosedMonthHistoryRow extends Omit<InfraCostClosedMont
  */
 export interface IInfraCostReportReader {
   /**
-   * Mês aberto `[start, end)`: ordem estável `contractedAvg desc, tenantId` (base padrão do rateio), plano = o do
-   * último dia com plano; `limit` linhas a partir de `offset`. `aiUsage` = IA da plataforma só dos tenants da página.
+   * Mês aberto `[start, end)`: ordem estável `lower(name), tenantId` (não muda com o uso entre as páginas),
+   * plano = o do último dia com plano; `limit` linhas depois de `after`. `aiUsage` = IA da plataforma só dos tenants da página.
    */
   pageOpenMonth(start: Date, end: Date, page: InfraCostTenantPageQuery): Promise<{
     rows: InfraCostOpenMonthTenantRow[];
     aiUsage: InfraAiUsageRow[];
   }>;
-  /** Mês fechado (dia 1): ordem `totalUsd desc, tenantId` (índice do cursor). */
+  /** Mês fechado (dia 1): ordem `totalUsd desc, tenantId` (valores congelados), `limit` linhas depois de `after`. */
   pageClosedMonth(month: Date, page: InfraCostTenantPageQuery): Promise<InfraCostClosedMonthTenantRow[]>;
   /** Meses fechados com `month` em `[start, end)`, por mês crescente, com a soma por plano. */
   listClosedMonths(start: Date, end: Date): Promise<InfraCostClosedMonthHistoryRow[]>;

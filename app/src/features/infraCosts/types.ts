@@ -275,7 +275,11 @@ export type InfraCostWarningCode =
   /** Horas do mês sem banda lida: consumo medido abaixo do real. */
   | 'bandwidth_missing_hours'
   /** Horas do mês sem leitura do worker: ociosidade só das horas lidas. */
-  | 'idle_partial';
+  | 'idle_partial'
+  /** Σ contratadas 0: compartilhado rateado pela sessão-hora (mês aberto e fechado). */
+  | 'shared_by_session_hours'
+  /** Sem contratadas nem sessão-hora: compartilhado fora dos clientes (`usd`). */
+  | 'shared_unallocated';
 
 export interface InfraCostWarning {
   code: InfraCostWarningCode;
@@ -287,6 +291,8 @@ export interface InfraCostWarning {
   kind?: AiProviderKind;
   model?: string;
   count?: number;
+  /** `shared_unallocated`: valor fora dos clientes (USD). */
+  usd?: number;
 }
 
 /** Resposta de `GET /admin/costs/summary?month=YYYY-MM`. */
@@ -343,7 +349,7 @@ export interface InfraCostTenantView {
   /** Contratadas médias do mês. */
   contractedSessions: number;
   sessionHours: number;
-  /** Compartilhado pela base contratadas; `null` sem divisor. */
+  /** Compartilhado pela base do mês (`sharedBasis` da página); `null` = não rateado. */
   shared: InfraMoney | null;
   /** Compartilhado pela sessão-hora; `null` no mês fechado. */
   connectedShared: InfraMoney | null;
@@ -365,7 +371,14 @@ export interface InfraCostTenantsPage {
   /** `snapshot` = mês corrente sem snapshot (lista vazia). */
   basis: InfraCostBasis;
   fx: InfraCostTenantsFx | null;
+  /** Base do `shared`: contratadas; Σ 0 → sessão-hora; `null` = não rateado ou foto. Opcional: API anterior. */
+  sharedBasis?: 'contracted' | 'session_hours' | null;
+  /** Mês fechado: compartilhado não rateado; `null` no aberto. Opcional: API anterior. */
+  unallocated?: InfraMoney | null;
+  /** Mês fechado: itens fora do rateio (no total, fora dos clientes); `null` no aberto. Opcional: API anterior. */
+  excluded?: InfraMoney | null;
   tenants: InfraCostTenantView[];
+  /** Cursor inválido/expirado → 400 `INFRA_COST_CURSOR_INVALID`: recomeçar sem cursor. */
   nextCursor: string | null;
 }
 
@@ -385,6 +398,10 @@ export interface InfraCostHistoryMonthView {
   fx: { rate: number; referenceDate: string; source: 'override' | 'ptax' | 'sgs' } | null;
   total: InfraMoney;
   totalIsPartial: boolean;
+  /** Compartilhado não rateado; Σ planos + `unallocated` + `excluded` = `total`. Opcional: API anterior. */
+  unallocated?: InfraMoney;
+  /** Itens fora do rateio (`excluded` e IA fixa): no total, fora dos planos. Opcional: API anterior. */
+  excluded?: InfraMoney;
   plans: InfraCostHistoryPlanView[];
 }
 

@@ -17,16 +17,26 @@ export type InfraCostMonthUsageMetric = 'bandwidth' | 'build';
 export type InfraCostMonthClosingWarning =
   | InfraCostWarning
   | { code: 'fx_fallback' }
-  /** Fechado no fim do prazo sem a banda da última hora e/ou o build do último dia. */
-  | { code: 'usage_incomplete'; metrics: InfraCostMonthUsageMetric[] }
-  /** Compartilhado sem base de rateio (sem contratadas nem sessão-hora): fora dos tenants, em USD. */
-  | { code: 'shared_unallocated'; usd: number };
+  /** Fechado fora do prazo de espera sem a banda da última hora e/ou o build do último dia. */
+  | { code: 'usage_incomplete'; metrics: InfraCostMonthUsageMetric[] };
+
+/**
+ * Partes do total fora dos tenants (USD, 4 casas): Σ tenants + `unallocatedUsd` + `excludedUsd` = `totalUsd`
+ * (até o arredondamento por tenant).
+ */
+export interface InfraCostClosedMonthAllocation {
+  /** Compartilhado sem base de rateio (aviso `shared_unallocated`). */
+  unallocatedUsd: number;
+  /** Itens fora do rateio: `allocation: 'excluded'` e IA fixa (categoria `ai`). */
+  excludedUsd: number;
+}
 
 /** JSON congelado em `infra_cost_months.totals`. */
 export interface InfraCostClosedMonthTotals {
   version: 1;
   /** Conta do mês inteiro por hora, IA inclusa (avisos inclusive `fx_fallback`). */
   calculation: Omit<InfraCostCalculation, 'warnings'> & { warnings: InfraCostMonthClosingWarning[] };
+  allocation: InfraCostClosedMonthAllocation;
   /** Preços e configuração usados (edição posterior não reescreve). */
   settings: InfraCostSettings;
 }
@@ -57,7 +67,8 @@ const toSaved = (r: InfraFxRateRecord): SavedFxRate => ({ rate: r.rate, referenc
  * Fecha o mês (COST-15): conta por hora do mês inteiro com a configuração e a cotação de fechamento
  * (`closingMethod`, override vence, sem gravada no mês → última antes com `fx_fallback`), rateio por tenant
  * pela base padrão (contratadas, `allocateInfraTenantShares`; Σ contratadas 0 → sessão-hora; sem as duas →
- * `shared_unallocated`) + IA direta (`calculateInfraAiCosts`). Σ tenants + não rateado = compartilhado + IA. Idempotente: mês já fechado não
+ * `shared_unallocated`, avisos do calculador) + IA direta (`calculateInfraAiCosts`). Σ tenants + não rateado =
+ * compartilhado + IA; + fora do rateio (`excluded` e IA fixa) = total. Idempotente: mês já fechado não
  * muda (preço editado depois não reescreve). Mês sem snapshot não fecha (`no_data`).
  */
 export class CloseInfraCostMonthUseCase {
@@ -101,8 +112,13 @@ export class CloseInfraCostMonthUseCase {
     const warnings: InfraCostMonthClosingWarning[] = [...calculation.warnings];
     if (closingFx.fallback) warnings.push({ code: 'fx_fallback' });
     if (incompleteUsage?.length) warnings.push({ code: 'usage_incomplete', metrics: [...incompleteUsage] });
-    if (unallocatedUsd > 0) warnings.push({ code: 'shared_unallocated', usd: round4(unallocatedUsd) });
-    const totals: InfraCostClosedMonthTotals = { version: 1, calculation: { ...calculation, warnings }, settings };
+    const t = calculation.totals;
+    // Total − compartilhado − IA direta = itens fora do rateio (`excluded` e IA fixa)
+    const allocation = {
+      unallocatedUsd: round4(unallocatedUsd),
+      excludedUsd: round4(Math.max(0, t.total.usd - t.shared.usd - (t.ai?.usd ?? 0))),
+    };
+    const totals: InfraCostClosedMonthTotals = { version: 1, calculation: { ...calculation, warnings }, allocation, settings };
 
     const fx = closingFx.fx;
     const saved = await months.saveClosedMonth({

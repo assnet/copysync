@@ -52,14 +52,21 @@ cada passo isolado (falha de um não para os outros, `warn` com o nome do passo)
    (lease `infra-cost-build` até 01:00 do dia seguinte; falha = nova tentativa 1 h depois), em `infra_usage_daily`
    (`build_minutes`). Teto de 20 páginas por serviço e dia: esgotou com `cursor` ainda presente = falha (`upstream`),
    nunca minutos parciais.
-3b. **Fechamento** do mês anterior (`CloseInfraCostMonthUseCase`, COST-15), nas primeiras 24 h do mês e **depois** da
-   banda e do build no mesmo tick (o mês fechado não reabre). Até 01:00 espera a última hora do mês em
-   `infra_resource_hours`; com a Render configurada, só fecha quando a banda cobre a última hora do mês
-   (`lastUsageHour('bandwidth_gb')`) e o build do último dia foi gravado (`hasUsageDay('build_minutes')`). A partir das
-   23:00 UTC do dia 1 (`INFRA_COST_MONTH_CLOSE_FORCE_AFTER_MS`) fecha assim mesmo, com o aviso
-   `usage_incomplete { metrics }` no `totals` e `warn` `infra cost month closed without full usage`. Sem Render não
-   espera banda nem build. Rateio do compartilhado por tenant: contratadas; Σ contratadas 0 → sessão-hora do mês; sem
-   as duas → aviso `shared_unallocated { usd }`. Invariante: Σ tenants + não rateado = compartilhado + IA.
+3b. **Fechamento** (`CloseInfraCostMonthUseCase`, COST-15), **depois** da banda e do build no mesmo tick (o mês
+   fechado não reabre). Alvo: o mês passado mais antigo ainda aberto com snapshot (`oldestUnclosedMonth`, até 12 para
+   trás, `INFRA_COST_MONTH_CLOSE_LOOKBACK_MONTHS`), **um por tick**: worker parado no dia 1 não deixa mês sem fechar.
+   Nas primeiras 24 h após o fim do mês: até 01:00 espera a última hora em `infra_resource_hours`; com a Render
+   configurada, espera, **por serviço mapeado** (`srv-`: api, worker, static; `usageKeys`), a banda da última hora de
+   cada serviço que teve banda no mês (nenhum = falta) e o build do último dia de todos. Um serviço faltando basta
+   (nunca "algum recurso"). A partir das 23:00 UTC do dia 1 (`INFRA_COST_MONTH_CLOSE_FORCE_AFTER_MS`) fecha assim
+   mesmo; **fora das 24 h fecha direto** (log com `late: true`). Faltando algo: aviso `usage_incomplete { metrics }`
+   no `totals` e `warn` `infra cost month closed without full usage`. Sem Render não espera banda nem build. Build com
+   valor nulo de um serviço mapeado não grava aquele serviço, `warn` `infra cost build minutes incomplete` e nova
+   tentativa em 1 h (sem a trava do dia). Rateio do compartilhado por tenant: contratadas; Σ contratadas 0 →
+   sessão-hora do mês (`shared_by_session_hours`); sem as duas → `shared_unallocated { usd }` (avisos do calculador,
+   iguais no mês aberto). `totals.allocation = { unallocatedUsd, excludedUsd }`: `excludedUsd` = itens
+   `allocation: 'excluded'` e IA fixa (no total, fora dos tenants). Invariante: Σ tenants + não rateado =
+   compartilhado + IA; Σ tenants + não rateado + excluded = `totalUsd`.
 4. **Cotação** (com `fx.auto`), ver abaixo.
 5. **Retenção** de 400 dias, 1×/24 h (lease `infra-cost-retention`, não solto).
 
@@ -200,4 +207,10 @@ Memória só para não repetir `warn`; todo estado que importa está no banco.
 - Mês sem dado (passado) ou futuro → 400 `INFRA_COST_MONTH_UNAVAILABLE`; não inventar mês nem usar a foto de agora
   para mês passado.
 - Não ler `WORKER_MAX_*` nem guardar o teto: provider a cada chamada.
+- Lista por cliente (`/admin/costs/tenants`): keyset no cursor assinado (`infraCostTenantCursor.ts`, sobre o
+  `OpaqueCursor` sem mudá-lo), **nunca offset** (a ordem mudaria entre as páginas). Mês aberto por `lower(nome),
+  tenantId`; fechado por `totalUsd desc, tenantId`. Cursor inválido/expirado/de outro escopo → 400
+  `INFRA_COST_CURSOR_INVALID` (o painel recomeça sem cursor); nunca voltar à página 1 em silêncio.
+- Base do rateio **igual** no mês aberto e no fechamento (contratadas → sessão-hora → não rateado): não divergir as
+  duas contas.
 - Textos só em `features/infraCosts/strings.ts`; rascunho da aba Preços em `usePersistedState` (escopo `tab`), limpo ao salvar.

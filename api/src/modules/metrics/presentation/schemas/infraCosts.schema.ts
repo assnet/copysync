@@ -205,6 +205,8 @@ const summarySchema = obj({
           'sessions_sample_stale',
           'bandwidth_missing_hours',
           'idle_partial',
+          'shared_by_session_hours',
+          'shared_unallocated',
         ]),
         resourceKey: str,
         key: str,
@@ -213,6 +215,7 @@ const summarySchema = obj({
         kind: strEnum(AI_PROVIDER_KINDS),
         model: str,
         count: int,
+        usd: num,
       },
     },
   },
@@ -228,7 +231,7 @@ export const infraCostTenantsQuery = {
   properties: {
     month: infraCostSummaryQuery.properties.month,
     plan: strEnum(PLAN_SLUGS),
-    cursor: { type: 'string', maxLength: 512 },
+    cursor: { type: 'string', maxLength: 1024 },
   },
 } as const;
 
@@ -241,6 +244,9 @@ export const infraCostTenantsResponse = envelope(
     status: strEnum(['open', 'closed']),
     basis: strEnum(['snapshot', 'hours']),
     fx: closedFx(['override', 'ptax', 'sgs', 'last_known']),
+    sharedBasis: nullableEnum(['contracted', 'session_hours']),
+    unallocated: nullableMoney,
+    excluded: nullableMoney,
     tenants: {
       type: 'array',
       items: obj({
@@ -273,6 +279,8 @@ export const infraCostHistoryResponse = envelope(
         fx: closedFx(['override', 'ptax', 'sgs']),
         total: money,
         totalIsPartial: bool,
+        unallocated: money,
+        excluded: money,
         plans: {
           type: 'array',
           items: obj({ planSlug: nullableStr, tenants: int, shared: money, ai: money, total: money }),

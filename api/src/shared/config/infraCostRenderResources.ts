@@ -14,6 +14,11 @@ const PREFIX_BY_KEY: Record<InfraRenderKey, 'srv' | 'dpg' | 'red'> = {
   redis: 'red',
 };
 
+/** Serviço (`srv-`: api, worker, static): os únicos com banda e minutos de build lidos da Render. */
+export function isInfraRenderServiceKey(key: InfraRenderKey): boolean {
+  return PREFIX_BY_KEY[key] === 'srv';
+}
+
 /** Formato do id da Render (mesmo do escalador, com os três prefixos). */
 export const INFRA_RENDER_ID_PATTERN = /^(srv|dpg|red)-[a-z0-9]+$/;
 

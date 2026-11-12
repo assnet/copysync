@@ -7,6 +7,7 @@ import {
 import type { InfraFxRateSource } from '../../domain/contracts/IInfraCostSnapshotRepository';
 import { defaultInfraCostSettings, type InfraCostSettings, type InfraFxClosingMethod } from '../../domain/services/infraCostSettings';
 import { PrismaInfraCostSnapshotRepository } from './PrismaInfraCostSnapshotRepository';
+import { PrismaInfraCostReportReader } from './PrismaInfraCostReportReader';
 import { PrismaInfraCostUsageReader } from './PrismaInfraCostUsageReader';
 
 /** Fechamento mensal (COST-15) contra Postgres local: repositório + leitor reais, configuração em memória. */
@@ -157,16 +158,36 @@ describe('CloseInfraCostMonthUseCase + PrismaInfraCostSnapshotRepository (Postgr
     expect((await totalsOf()).calculation.warnings).toContainEqual({ code: 'fx_missing' });
   });
 
-  /** Σ tenants (compartilhado + IA) + não rateado = compartilhado + IA do mês fechado. */
+  /**
+   * Σ tenants (compartilhado + IA) + não rateado = compartilhado + IA; + fora do rateio (`excluded` e IA fixa) =
+   * total congelado (`infra_cost_months.totalUsd`).
+   */
   async function expectAllocated() {
     const totals = await totalsOf();
+    const month = (await repo.findClosedMonth(OCT))!;
     const rows = await prisma.infraCostMonthTenant.findMany({ where: { month: OCT } });
     const unallocated = totals.calculation.warnings.find((w) => w.code === 'shared_unallocated');
     const sum = rows.reduce((acc, r) => acc + r.totalUsd.toNumber(), 0);
-    expect(sum + (unallocated?.code === 'shared_unallocated' ? unallocated.usd : 0))
+    expect(totals.allocation.unallocatedUsd).toBeCloseTo(unallocated?.code === 'shared_unallocated' ? unallocated.usd : 0, 4);
+    expect(sum + totals.allocation.unallocatedUsd)
       .toBeCloseTo(totals.calculation.totals.shared.usd + (totals.calculation.totals.ai?.usd ?? 0), 3);
+    expect(sum + totals.allocation.unallocatedUsd + totals.allocation.excludedUsd).toBeCloseTo(month.totalUsd, 3);
     return { totals, rows, unallocated };
   }
+
+  it('itens fora do rateio (excluded e IA fixa) entram no total e não nos tenants: Σ tenants + não rateado + excluded = total', async () => {
+    settings.items.push(
+      { key: 'fora', label: 'Fora do rateio', category: 'other', billing: 'fixed', monthlyUsd: 31, quantity: 1, storage: null, renderKey: null, planLabel: null, allocation: 'excluded', note: null },
+      { key: 'ia-fixa', label: 'IA fixa', category: 'ai', billing: 'fixed', monthlyUsd: 20, quantity: 1, storage: null, renderKey: null, planLabel: null, allocation: 'shared', note: null },
+    );
+    await seedMonth();
+    expect(await useCase().execute({ month: '2026-10', now: NOW })).toBe('closed');
+    const { totals } = await expectAllocated();
+    // Mês inteiro de 31 dias: os dois itens fixos entram cheios no total e só nele
+    expect(totals.allocation.excludedUsd).toBeGreaterThanOrEqual(51 - 0.001);
+    const history = await new PrismaInfraCostReportReader(prisma).listClosedMonths(OCT, new Date('2026-11-01T00:00:00Z'));
+    expect(history[0]).toMatchObject({ excludedUsd: totals.allocation.excludedUsd, unallocatedUsd: 0 });
+  });
 
   it('rateio por contratadas fecha a invariante (Σ tenants = compartilhado + IA)', async () => {
     await seedMonth();
@@ -192,6 +213,7 @@ describe('CloseInfraCostMonthUseCase + PrismaInfraCostSnapshotRepository (Postgr
     const byId = new Map(rows.map((r) => [r.tenantId, r.sharedUsd.toNumber()]));
     expect(byId.get(T1)).toBeCloseTo((shared * 3) / 4, 3);
     expect(byId.get(T2)).toBeCloseTo(shared / 4, 3);
+    expect(totals.calculation.warnings).toContainEqual({ code: 'shared_by_session_hours' });
   });
 
   it('sem contratadas nem sessão-hora: shared_unallocated com o valor e Σ tenants + não rateado = compartilhado + IA', async () => {
@@ -215,11 +237,31 @@ describe('CloseInfraCostMonthUseCase + PrismaInfraCostSnapshotRepository (Postgr
     expect((await totalsOf()).calculation.warnings).toContainEqual({ code: 'usage_incomplete', metrics: ['bandwidth', 'build'] });
   });
 
-  it('hasUsageDay: só o dia e a métrica gravados', async () => {
+  it('usageKeys: por recurso, dias [from, to) e métrica; com minLastHour só quem já somou a hora', async () => {
     await repo.upsertUsageDay({ day: day('2026-10-31'), metric: 'build_minutes', resourceKey: 'api', value: 0, source: 'render_deploys' });
-    expect(await repo.hasUsageDay('build_minutes', day('2026-10-31'))).toBe(true);
-    expect(await repo.hasUsageDay('build_minutes', day('2026-10-30'))).toBe(false);
-    expect(await repo.hasUsageDay('bandwidth_gb', day('2026-10-31'))).toBe(false);
+    await repo.upsertUsageDay({ day: day('2026-10-30'), metric: 'build_minutes', resourceKey: 'worker', value: 3, source: 'render_deploys' });
+    await repo.addUsageHour(new Date('2026-10-31T23:00:00Z'), { metric: 'bandwidth_gb', resourceKey: 'api', value: 1, source: 'render_metrics' });
+    await repo.addUsageHour(new Date('2026-10-31T22:00:00Z'), { metric: 'bandwidth_gb', resourceKey: 'static', value: 1, source: 'render_metrics' });
+    expect(await repo.usageKeys('build_minutes', day('2026-10-31'), day('2026-11-01'))).toEqual(['api']);
+    expect(await repo.usageKeys('build_minutes', OCT, day('2026-11-01'))).toEqual(['api', 'worker']);
+    expect(await repo.usageKeys('bandwidth_gb', OCT, day('2026-11-01'))).toEqual(['api', 'static']);
+    expect(await repo.usageKeys('bandwidth_gb', day('2026-10-31'), day('2026-11-01'), new Date('2026-10-31T23:00:00Z'))).toEqual(['api']);
+    expect(await repo.usageKeys('bandwidth_gb', day('2026-11-01'), day('2026-11-02'))).toEqual([]);
+  });
+
+  it('oldestUnclosedMonth: o mais antigo com snapshot e sem fechamento na janela', async () => {
+    const window = [new Date('2025-11-01T00:00:00Z'), new Date('2026-11-01T00:00:00Z')] as const;
+    expect(await repo.oldestUnclosedMonth(...window)).toBeNull();
+    await repo.addSessionHour(new Date('2026-08-15T10:00:00Z'), [{ tenantId: T1, planSlug: null, connectedSessions: 1, contractedSessions: 1 }]);
+    await seedMonth();
+    // Fora da janela (mês corrente e anterior a `from`) não conta
+    await repo.upsertResourceHours([{ hour: new Date('2026-11-02T00:00:00Z'), resourceKey: 'api', plan: '1c-2g', instances: 1, instancesSource: 'render', diskGb: 15, suspended: false }]);
+    await repo.upsertResourceHours([{ hour: new Date('2025-10-31T23:00:00Z'), resourceKey: 'api', plan: '1c-2g', instances: 1, instancesSource: 'render', diskGb: 15, suspended: false }]);
+    expect((await repo.oldestUnclosedMonth(...window))?.toISOString().slice(0, 10)).toBe('2026-08-01');
+    expect(await useCase().execute({ month: '2026-08', now: NOW })).toBe('closed');
+    expect((await repo.oldestUnclosedMonth(...window))?.toISOString().slice(0, 10)).toBe('2026-10-01');
+    expect(await useCase().execute({ month: '2026-10', now: NOW })).toBe('closed');
+    expect(await repo.oldestUnclosedMonth(...window)).toBeNull();
   });
 
   it('mês sem snapshot não fecha; mês em curso não fecha', async () => {
