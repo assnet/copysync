@@ -81,6 +81,8 @@ export const infraCostsStrings = {
     storage_to_confirm: 'Armazenamento a confirmar: soma só a computação',
     unlimited_contracted: 'Tenants ilimitados contados pelo limite do plano',
     sessions_sample_stale: 'Contagem de sessões do coletor desatualizada: sessões fora do rateio sem número',
+    bandwidth_missing_hours: 'Horas sem leitura de banda: consumo medido pode estar abaixo do real',
+    idle_partial: 'Horas sem leitura do worker: capacidade ociosa calculada só nas horas lidas',
   } satisfies Record<InfraCostWarningCode, string>,
 
   /** Aba Resumo (COST-07). */

@@ -128,6 +128,29 @@ describe('workspace medido (COST-11)', () => {
     expect(mid.totals.projected?.usd).toBe(0.45); // 8 GB no mês → 3 × 0,15
   });
 
+  it('consumo e excedente medidos saem com 4 casas (soma de float 6,6 + 0,2 + 0,2)', () => {
+    const s = workerOnly();
+    s.items = [];
+    const r = calc(s, { bandwidthGb: 6.6 + 0.2 + 0.2, buildMinutes: 0.1 + 0.2 });
+    expect(r.workspace.bandwidth).toMatchObject({ consumed: 7, overage: 2 });
+    expect(r.workspace.build.consumed).toBe(0.3);
+    s.workspace.manualBandwidthGb = 6.6 + 0.2 + 0.2;
+    expect(calc(s, {}).workspace.bandwidth).toMatchObject({ consumed: 7, overage: 2 });
+  });
+
+  it('horas sem banda lida → bandwidth_missing_hours (folga de 2 h no mês em curso); manual não avisa', () => {
+    const s = workerOnly();
+    s.items = [];
+    expect(calc(s, { bandwidthGb: 7, bandwidthHours: 700 }).warnings).toContainEqual({ code: 'bandwidth_missing_hours', count: 18 });
+    // Mês em curso: 10 h decorridas → 8 horas de banda esperadas
+    const mid = { now: new Date(NOV.getTime() + 10 * H + 5 * 60_000) };
+    expect(calc(s, { bandwidthGb: 1, bandwidthHours: 8 }, mid).warnings.map((w) => w.code)).not.toContain('bandwidth_missing_hours');
+    expect(calc(s, { bandwidthGb: 1, bandwidthHours: 5 }, mid).warnings).toContainEqual({ code: 'bandwidth_missing_hours', count: 3 });
+    expect(calc(s, { bandwidthGb: 1 }, mid).warnings.map((w) => w.code)).not.toContain('bandwidth_missing_hours');
+    s.workspace.manualBandwidthGb = 6;
+    expect(calc(s, { bandwidthGb: 1, bandwidthHours: 0 }).warnings.map((w) => w.code)).not.toContain('bandwidth_missing_hours');
+  });
+
   it('manual vence a medição', () => {
     const s = workerOnly();
     s.items = [];
@@ -164,6 +187,15 @@ describe('rateio do mês (COST-12)', () => {
     // capacidade = 720 × 40 = 28.800; uso 1.440 → 5%
     expect(r.idleCapacity?.usd).toBeCloseTo(25 * 0.95, 4);
     expect(calc(workerOnly(), { tenants }).idleCapacity).toBeNull();
+    expect(r.warnings.map((w) => w.code)).not.toContain('idle_partial');
+  });
+
+  it('ociosidade com horas sem leitura do worker: só a janela lida (numerador e denominador) + idle_partial', () => {
+    // 360 de 720 h lidas: compartilhado 25 (360 lidas + 360 manuais com 1 instância), sessão-hora 1.440 no mês
+    const r = calc(workerOnly(), { resourceHours: range(360, (i) => hr(NOV, i)), tenants });
+    // janela = 1/2: sessão-hora 720 contra capacidade 360 × 40 = 14.400 → 5%; custo 25 × 1/2 × 0,95
+    expect(r.idleCapacity?.usd).toBeCloseTo(25 * 0.5 * 0.95, 4);
+    expect(r.warnings).toContainEqual({ code: 'idle_partial', count: 360 });
   });
 
   it('rateio projetado (margem do mês corrente): contratadas × compartilhado projetado; mês cheio = realizado', () => {

@@ -201,6 +201,8 @@ const summarySchema = obj({
           'storage_to_confirm',
           'unlimited_contracted',
           'sessions_sample_stale',
+          'bandwidth_missing_hours',
+          'idle_partial',
         ]),
         resourceKey: str,
         key: str,

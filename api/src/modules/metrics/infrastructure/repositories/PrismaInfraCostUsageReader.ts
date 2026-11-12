@@ -10,7 +10,7 @@ const utc = (d: Date) => Prisma.sql`(${d.toISOString()}::timestamptz AT TIME ZON
 const day = (d: Date) => Prisma.sql`${d.toISOString().slice(0, 10)}::date`;
 
 type HourRow = { hour: Date; resourceKey: string; plan: string | null; instances: number; diskGb: number | null; suspended: boolean };
-type UsageRow = { metric: string; total: number };
+type UsageRow = { metric: string; total: number; hours: number };
 type TenantRow = { tenantId: string; planSlug: string | null; connectedHours: number; contractedAvg: number };
 
 const isRenderKey = (k: string): k is InfraRenderKey => (INFRA_RENDER_KEYS as readonly string[]).includes(k);
@@ -18,7 +18,8 @@ const isRenderKey = (k: string): k is InfraRenderKey => (INFRA_RENDER_KEYS as re
 /**
  * Agregados do mês dos snapshots horários (T11). As três consultas na mesma transação com `statement_timeout`
  * 2 s. Contratadas médias = Σ `contractedSessions` ÷ Σ `contractedSamples` do mês (média por hora amostrada);
- * plano do tenant = o do último dia com plano no mês.
+ * plano do tenant = o do último dia com plano no mês. Horas de banda = Σ por dia do maior `hours`
+ * entre os serviços (hora com banda de algum serviço conta uma vez).
  */
 export class PrismaInfraCostUsageReader implements IInfraCostUsageReader {
   constructor(private readonly prisma: PrismaClient) {}
@@ -36,9 +37,13 @@ export class PrismaInfraCostUsageReader implements IInfraCostUsageReader {
         WHERE "hour" >= ${utc(start)} AND "hour" < ${utc(end)}
         ORDER BY "hour", "resourceKey"`,
       this.prisma.$queryRaw<UsageRow[]>`
-        SELECT "metric", sum("value")::float8 AS total
-        FROM "infra_usage_daily"
-        WHERE "day" >= ${day(start)} AND "day" < ${day(end)}
+        SELECT "metric", sum("total")::float8 AS total, sum("hours")::int AS hours
+        FROM (
+          SELECT "metric", "day", sum("value") AS total, max("hours") AS hours
+          FROM "infra_usage_daily"
+          WHERE "day" >= ${day(start)} AND "day" < ${day(end)}
+          GROUP BY "metric", "day"
+        ) d
         GROUP BY "metric"`,
       this.prisma.$queryRaw<TenantRow[]>`
         SELECT "tenantId",
@@ -64,6 +69,7 @@ export class PrismaInfraCostUsageReader implements IInfraCostUsageReader {
           suspended: h.suspended,
         })),
       bandwidthGb: total('bandwidth_gb'),
+      bandwidthHours: Number(usage.find((u) => u.metric === 'bandwidth_gb')?.hours ?? 0),
       buildMinutes: total('build_minutes'),
       tenants: tenants.map((t) => ({
         tenantId: t.tenantId,

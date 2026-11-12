@@ -13,7 +13,7 @@ import { InfraCostSnapshotJob } from './InfraCostSnapshotJob';
 
 /** Job contra Postgres local: Render e BCB falsos (nenhuma rede). */
 const T = `tenant-ic-job-${Date.now()}`;
-const LEASES = ['infra-cost-snapshot', 'infra-fx-rate', 'infra-cost-build', 'infra-cost-retention'];
+const LEASES = ['infra-cost-snapshot', 'infra-fx-rate', 'infra-cost-build', 'infra-cost-retention', 'infra-cost-render-backoff'];
 
 function plans(): IInfraResourcePlanReader {
   return {
@@ -82,7 +82,8 @@ describe('InfraCostSnapshotJob (Postgres)', () => {
     const sh = await prisma.tenantSessionHour.findMany({ where: { tenantId: T } });
     expect(sh.map((r) => [r.connectedHours, r.contractedSessions, r.contractedSamples])).toEqual([[1, 2, 1]]);
     const bw = await prisma.infraUsageDaily.findMany({ where: { metric: 'bandwidth_gb' } });
-    expect(bw.map((r) => [r.resourceKey, r.value])).toEqual([['api', 1.25]]);
+    // Banda das 6 h fechadas há mais de 1 h (03:00…08:00), uma vez cada
+    expect(bw.map((r) => [r.resourceKey, r.value, r.hours, r.lastHour?.toISOString()])).toEqual([['api', 7.5, 6, '2026-11-12T08:00:00.000Z']]);
     const build = await prisma.infraUsageDaily.findMany({ where: { metric: 'build_minutes' } });
     expect(build.map((r) => [r.day.toISOString().slice(0, 10), r.value])).toEqual([['2026-11-11', 3]]);
   });

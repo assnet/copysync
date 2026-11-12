@@ -26,7 +26,10 @@ import { logger } from '../../../../shared/logger/logger';
 export const RENDER_INFRA_API_URL = 'https://api.render.com/v1';
 export const RENDER_INFRA_TIMEOUT_MS = 5_000;
 const DEPLOYS_PAGE_LIMIT = 100;
-/** Teto de páginas por serviço e dia: 2.000 deploys num dia já é erro, não uso. */
+/**
+ * Teto de páginas por serviço e dia: 2.000 deploys num dia já é erro, não uso. Esgotou com `cursor` ainda
+ * presente = `upstream` (nunca minutos parciais).
+ */
 const DEPLOYS_MAX_PAGES = 20;
 
 export interface RenderInfraResourcePlanReaderOptions {
@@ -184,6 +187,7 @@ export class RenderInfraResourcePlanReader implements IInfraResourcePlanReader {
     const seen = new Set<string>();
     let ms = 0;
     let cursor: string | null = null;
+    let complete = false;
     for (let page = 0; page < DEPLOYS_MAX_PAGES; page += 1) {
       const qs = new URLSearchParams({
         limit: String(DEPLOYS_PAGE_LIMIT),
@@ -208,8 +212,15 @@ export class RenderInfraResourcePlanReader implements IInfraResourcePlanReader {
       }
       const last = body[body.length - 1];
       const next = isRecord(last) ? str(last.cursor) : null;
-      if (body.length < DEPLOYS_PAGE_LIMIT || !next || next === cursor) break;
+      if (body.length < DEPLOYS_PAGE_LIMIT || !next || next === cursor) {
+        complete = true;
+        break;
+      }
       cursor = next;
+    }
+    if (!complete) {
+      this.log.warn({ op: 'deploys', key, reason: 'too_many_pages' }, 'render infra request failed');
+      throw new RenderRequestError({ status: 'unavailable', reason: 'upstream' });
     }
     return Math.round((ms / 60_000) * 100) / 100;
   }

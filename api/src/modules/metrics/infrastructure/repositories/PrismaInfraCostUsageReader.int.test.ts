@@ -33,7 +33,7 @@ afterAll(async () => {
 
 describe('PrismaInfraCostUsageReader', () => {
   it('mês vazio: listas vazias e uso null', async () => {
-    expect(await reader.readMonth(NOV, DEC)).toEqual({ resourceHours: [], bandwidthGb: null, buildMinutes: null, tenants: [] });
+    expect(await reader.readMonth(NOV, DEC)).toEqual({ resourceHours: [], bandwidthGb: null, bandwidthHours: 0, buildMinutes: null, tenants: [] });
   });
 
   it('horas por recurso só dentro de [início, fim), em ordem', async () => {
@@ -58,11 +58,14 @@ describe('PrismaInfraCostUsageReader', () => {
   it('banda e build somados no mês (todos os recursos), fora do mês não entra', async () => {
     await snaps.addUsageHour(at(0), { metric: 'bandwidth_gb', resourceKey: 'api', value: 4, source: 'render_metrics' });
     await snaps.addUsageHour(at(30), { metric: 'bandwidth_gb', resourceKey: 'static', value: 3, source: 'render_metrics' });
+    await snaps.addUsageHour(at(0), { metric: 'bandwidth_gb', resourceKey: 'static', value: 0, source: 'render_metrics' });
     await snaps.addUsageHour(DEC, { metric: 'bandwidth_gb', resourceKey: 'api', value: 100, source: 'render_metrics' });
     await snaps.upsertUsageDay({ day: new Date('2026-11-05'), metric: 'build_minutes', resourceKey: 'api', value: 120, source: 'render_deploys' });
     await snaps.upsertUsageDay({ day: new Date('2026-10-31'), metric: 'build_minutes', resourceKey: 'api', value: 999, source: 'render_deploys' });
     const r = await reader.readMonth(NOV, DEC);
     expect(r.bandwidthGb).toBeCloseTo(7);
+    // dia 1: api 1 h; dia 2: static 1 h → 2 horas com banda
+    expect(r.bandwidthHours).toBe(2);
     expect(r.buildMinutes).toBe(120);
   });
 

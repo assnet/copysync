@@ -20,7 +20,7 @@ import type { FetchedFxRate, IFxRateSource } from '../../domain/services/fxRate'
 import type { InfraRenderKey } from '../../domain/services/infraCostSettings';
 import { defaultInfraCostSettings } from '../../domain/services/infraCostSettings';
 import type { InfraFxFetchState } from '../../domain/services/infraFxFetchState';
-import { INFRA_COST_SNAPSHOT_LEASE, InfraCostSnapshotJob } from './InfraCostSnapshotJob';
+import { INFRA_COST_RENDER_BACKOFF_LEASE, INFRA_COST_SNAPSHOT_LEASE, InfraCostSnapshotJob } from './InfraCostSnapshotJob';
 import { startInfraCostSnapshotJob } from '../infraCostSnapshotStart';
 
 const HOUR = 3_600_000;
@@ -73,6 +73,12 @@ function memorySnapshots() {
       if (cur && cur.lastHour !== null && cur.lastHour >= h.getTime()) return false;
       usage.set(k, { value: (cur?.value ?? 0) + v.value, lastHour: h.getTime() });
       return true;
+    }),
+    lastUsageHour: vi.fn(async (metric: string, since: Date) => {
+      const hs = [...usage.entries()]
+        .filter(([k, v]) => k.split('|')[1] === metric && v.lastHour !== null && v.lastHour >= since.getTime())
+        .map(([, v]) => v.lastHour!);
+      return hs.length ? new Date(Math.max(...hs)) : null;
     }),
     upsertUsageDay: vi.fn(async (v) => {
       usage.set(`${v.day.toISOString().slice(0, 10)}|${v.metric}|${v.resourceKey}`, { value: v.value, lastHour: null });
@@ -154,9 +160,11 @@ describe('InfraCostSnapshotJob — hora fechada', () => {
       ]);
     expect(s.live.workerInstancesInHour).toHaveBeenCalledWith(new Date(h9), new Date('2026-11-12T10:00:00Z'));
     expect(s.snapshots.sessions.get('2026-11-12|t1')).toEqual({ connectedHours: 2, lastHour: Date.parse(h9) });
-    // Banda da hora fechada há mais de 1 h: [08:00, 09:00)
-    expect(s.plans.plans.readBandwidthGb).toHaveBeenCalledWith(new Date('2026-11-12T08:00:00Z'), new Date(h9));
-    expect(s.snapshots.usage.get('2026-11-12|bandwidth_gb|api')).toEqual({ value: 0.5, lastHour: Date.parse('2026-11-12T08:00:00Z') });
+    // Banda das horas fechadas há mais de 1 h sem linha, até 6 h para trás: [03:00, 04:00) … [08:00, 09:00)
+    expect(s.plans.plans.readBandwidthGb).toHaveBeenCalledTimes(6);
+    expect(s.plans.plans.readBandwidthGb).toHaveBeenNthCalledWith(1, new Date('2026-11-12T03:00:00Z'), new Date('2026-11-12T04:00:00Z'));
+    expect(s.plans.plans.readBandwidthGb).toHaveBeenLastCalledWith(new Date('2026-11-12T08:00:00Z'), new Date(h9));
+    expect(s.snapshots.usage.get('2026-11-12|bandwidth_gb|api')).toEqual({ value: 3, lastHour: Date.parse('2026-11-12T08:00:00Z') });
     expect(s.snapshots.usage.has('2026-11-12|bandwidth_gb|worker')).toBe(false);
   });
 
@@ -197,6 +205,73 @@ describe('InfraCostSnapshotJob — hora fechada', () => {
     await s.job.runTick();
     expect(s.snapshots.hours.size).toBe(3);
     expect(s.snapshots.sessions.get('2026-11-12|t1')?.connectedHours).toBe(2);
+  });
+
+  it('429 com Retry-After: pausa gravada no lease; nenhuma chamada à Render até vencer; sessão-hora segue', async () => {
+    const plans = fakePlans();
+    plans.setFail({ status: 'unavailable', reason: 'rate_limited', retryAfterSeconds: 600 });
+    const s = setup({ plans, start: Date.parse('2026-11-12T10:02:00Z') });
+    await s.job.runTick();
+    expect(s.lease.rows.get(INFRA_COST_RENDER_BACKOFF_LEASE)?.expiresAt).toEqual(new Date('2026-11-12T10:12:00Z'));
+    expect(s.snapshots.sessions.get('2026-11-12|t1')?.connectedHours).toBe(2);
+    expect(plans.plans.readResource).toHaveBeenCalledTimes(1);
+    s.setClock(Date.parse('2026-11-12T10:07:01Z'));
+    await s.job.runTick();
+    expect(plans.plans.readResource).toHaveBeenCalledTimes(1);
+    expect(plans.plans.readBandwidthGb).not.toHaveBeenCalled();
+    plans.setFail(null);
+    s.setClock(Date.parse('2026-11-12T10:12:01Z'));
+    await s.job.runTick();
+    expect(plans.plans.readResource).toHaveBeenCalledTimes(4);
+    expect(s.snapshots.hours.size).toBe(3);
+  });
+
+  it('429 sem cabeçalho: pausa de 60 s; build também respeita a pausa', async () => {
+    const plans = fakePlans();
+    plans.setFail({ status: 'unavailable', reason: 'rate_limited', retryAfterSeconds: null });
+    const s = setup({ plans, start: Date.parse('2026-11-12T10:02:00Z') });
+    await s.job.runTick();
+    expect(s.lease.rows.get(INFRA_COST_RENDER_BACKOFF_LEASE)?.expiresAt).toEqual(new Date('2026-11-12T10:03:00Z'));
+    expect(plans.plans.readBuildMinutes).not.toHaveBeenCalled();
+  });
+
+  it('recurso sem instâncias = falha: hora sem linha (tudo-ou-nada); worker coberto pelas amostras passa', async () => {
+    const plans = fakePlans();
+    plans.plans.readResource.mockImplementation(async (key: InfraRenderKey) =>
+      ({ status: 'ok', reading: reading(key, key === 'api' ? { instances: null } : {}) }) as const);
+    const s = setup({ plans });
+    await s.job.runTick();
+    expect(s.snapshots.hours.size).toBe(0);
+    expect(s.snapshots.sessions.size).toBe(1);
+
+    const plans2 = fakePlans();
+    plans2.plans.readResource.mockImplementation(async (key: InfraRenderKey) =>
+      ({ status: 'ok', reading: reading(key, key === 'worker' ? { instances: null } : {}) }) as const);
+    const s2 = setup({ plans: plans2 });
+    await s2.job.runTick();
+    expect([...s2.snapshots.hours.values()].find((r) => r.resourceKey === 'worker')).toMatchObject({ instances: 3, instancesSource: 'samples' });
+    const s3 = setup({ plans: plans2, workerSamples: null });
+    await s3.job.runTick();
+    expect(s3.snapshots.hours.size).toBe(0);
+  });
+
+  it('banda indisponível numa hora: reprocessada no tick seguinte, sem dobrar', async () => {
+    const s = setup();
+    await s.job.runTick();
+    const bw = s.plans.plans.readBandwidthGb;
+    bw.mockResolvedValueOnce({ status: 'unavailable', reason: 'upstream' } as never);
+    s.setClock(Date.parse('2026-11-12T11:02:00Z'));
+    await s.job.runTick();
+    expect(bw).toHaveBeenCalledTimes(7);
+    expect(s.snapshots.usage.get('2026-11-12|bandwidth_gb|api')?.value).toBe(3);
+    s.setClock(Date.parse('2026-11-12T11:07:01Z'));
+    await s.job.runTick();
+    expect(bw).toHaveBeenCalledTimes(8);
+    expect(bw).toHaveBeenLastCalledWith(new Date('2026-11-12T09:00:00Z'), new Date('2026-11-12T10:00:00Z'));
+    expect(s.snapshots.usage.get('2026-11-12|bandwidth_gb|api')).toEqual({ value: 3.5, lastHour: Date.parse('2026-11-12T09:00:00Z') });
+    s.setClock(Date.parse('2026-11-12T11:12:02Z'));
+    await s.job.runTick();
+    expect(bw).toHaveBeenCalledTimes(8);
   });
 
   it('sem Render configurada: nenhuma chamada sai, só a sessão-hora', async () => {
@@ -242,6 +317,22 @@ describe('InfraCostSnapshotJob — hora fechada', () => {
     await s.job.runTick();
     expect(s.snapshots.repo.addSessionHour).not.toHaveBeenCalled();
     expect(s.snapshots.hours.size).toBe(0);
+  });
+
+  it('lease renovado antes de cada passo: perdeu depois da hora → banda, build, cotação e retenção não rodam', async () => {
+    const lease = memoryLease();
+    const ptax = source('ptax', { rate: 5, referenceDate: '2026-11-12', source: 'ptax' });
+    const s = setup({ lease, fxSources: [ptax], start: Date.parse('2026-11-12T17:02:00Z') });
+    s.snapshots.repo.upsertResourceHours.mockImplementationOnce(async (rows) => {
+      lease.rows.set(INFRA_COST_SNAPSHOT_LEASE, { ownerId: 'outro', expiresAt: new Date('2026-11-12T18:00:00Z') });
+      return rows.length;
+    });
+    await s.job.runTick();
+    expect(s.snapshots.repo.upsertResourceHours).toHaveBeenCalledTimes(1);
+    expect(s.plans.plans.readBandwidthGb).not.toHaveBeenCalled();
+    expect(s.plans.plans.readBuildMinutes).not.toHaveBeenCalled();
+    expect(ptax.fetchLatest).not.toHaveBeenCalled();
+    expect(s.snapshots.repo.deleteOlderThan).not.toHaveBeenCalled();
   });
 });
 

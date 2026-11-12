@@ -497,6 +497,8 @@ model InfraUsageDaily {
   value       Float
   source      String // render_metrics | render_deploys (CHECK no banco)
   lastHour    DateTime?
+  /// Banda: horas somadas no dia (build = 0).
+  hours       Int       @default(0)
   readAt      DateTime  @default(now())
 
   @@id([day, metric, resourceKey])

@@ -269,7 +269,11 @@ export type InfraCostWarningCode =
   | 'storage_to_confirm'
   | 'unlimited_contracted'
   /** Amostra de sessões com mais de 10 min: sessões não alocadas vêm `null`. */
-  | 'sessions_sample_stale';
+  | 'sessions_sample_stale'
+  /** Horas do mês sem banda lida: consumo medido abaixo do real. */
+  | 'bandwidth_missing_hours'
+  /** Horas do mês sem leitura do worker: ociosidade só das horas lidas. */
+  | 'idle_partial';
 
 export interface InfraCostWarning {
   code: InfraCostWarningCode;

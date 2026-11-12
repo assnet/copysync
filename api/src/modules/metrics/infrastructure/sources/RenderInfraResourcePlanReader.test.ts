@@ -194,6 +194,16 @@ describe('RenderInfraResourcePlanReader.readBuildMinutes', () => {
     expect(urls[1]!.searchParams.get('cursor')).toBe('c-d99');
   });
 
+  it('esgotou o teto de páginas com cursor ainda presente → upstream, sem minutos parciais', async () => {
+    let n = 0;
+    const fetchFn = fakeFetch(() => {
+      n += 1;
+      return ok(Array.from({ length: 100 }, (_, i) => deploy(`p${n}-${i}`, '2026-11-12T10:00:00Z', '2026-11-12T10:01:00Z')));
+    });
+    await expect(reader(fetchFn).readBuildMinutes(D0, D1)).resolves.toEqual({ status: 'unavailable', reason: 'upstream' });
+    expect(fetchFn).toHaveBeenCalledTimes(20);
+  });
+
   it('429 em qualquer serviço devolve rate_limited', async () => {
     const fetchFn = fakeFetch(() => ({ status: 429, headers: { 'Ratelimit-Reset': '12' } }));
     await expect(reader(fetchFn).readBuildMinutes(D0, D1))

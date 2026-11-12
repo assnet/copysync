@@ -55,6 +55,11 @@ export interface InfraCostHourlyInput {
   resourceHours: readonly InfraResourceHourReading[];
   /** Σ `infra_usage_daily` do mês; `null` = sem medição. */
   bandwidthGb: number | null;
+  /**
+   * Horas do mês com linha de banda (Σ por dia do maior `hours` entre os serviços). Ausente = não avisa
+   * `bandwidth_missing_hours`.
+   */
+  bandwidthHours?: number;
   buildMinutes: number | null;
   tenants: readonly InfraTenantMonthUsage[];
 }
@@ -174,7 +179,11 @@ export type InfraCostWarning =
   | { code: 'config_drift'; resourceKey: InfraRenderKey; field: 'plan' | 'instances' | 'diskGb' }
   | { code: 'fx_missing' }
   /** Amostra de sessões com mais de 10 min: não alocadas sem número (dois relógios não se comparam). */
-  | { code: 'sessions_sample_stale' };
+  | { code: 'sessions_sample_stale' }
+  /** Horas do mês sem banda lida (a soma medida fica abaixo do real). */
+  | { code: 'bandwidth_missing_hours'; count: number }
+  /** Horas do mês sem leitura do worker: a ociosidade cobre só as horas lidas. */
+  | { code: 'idle_partial'; count: number };
 
 export interface InfraCostCalculation {
   basis: 'snapshot' | 'hours';
@@ -375,7 +384,7 @@ function workspaceUsage(
   const overage = manual === null ? 0 : Math.max(0, manual - included);
   const costUsd = overage * usdPerUnit;
   return {
-    view: { included, consumed: manual, source: manual === null ? null : 'manual', overage, cost: money(costUsd, fx) },
+    view: { included, consumed: manual === null ? null : round4(manual), source: manual === null ? null : 'manual', overage: round4(overage), cost: money(costUsd, fx) },
     costUsd,
   };
 }
@@ -535,6 +544,15 @@ function calculateItemHours(
   };
 }
 
+/**
+ * Horas de banda que já deveriam estar gravadas: a banda da hora `i` sai no snapshot da hora `i + 1`, que
+ * fecha em `i + 2` (folga de 1 h para o tick de 5 min). Mês passado = todas.
+ */
+function expectedBandwidthHours(now: Date, hourly: InfraCostHourlyInput, ctx: HoursContext): number {
+  const raw = Math.floor((now.getTime() - hourly.monthStart.getTime()) / HOUR_MS);
+  return Math.min(ctx.hoursInMonth, Math.max(0, raw - 2));
+}
+
 /** Excedente do workspace com consumo medido (manual vence); projeção pela média diária do período. */
 function workspaceUsageHours(
   included: number,
@@ -551,7 +569,12 @@ function workspaceUsageHours(
   const projectedConsumed =
     source === 'measured' && consumed !== null && ctx.elapsed > 0 ? (consumed / ctx.elapsed) * ctx.hoursInMonth : consumed;
   const projectedUsd = projectedConsumed === null ? 0 : Math.max(0, projectedConsumed - included) * usdPerUnit;
-  return { view: { included, consumed, source, overage, cost: money(costUsd, fx) }, costUsd, projectedUsd };
+  // Soma de float (6,6 + 0,2 + 0,2 = 6,999…): 4 casas na saída, como o dinheiro
+  return {
+    view: { included, consumed: consumed === null ? null : round4(consumed), source, overage: round4(overage), cost: money(costUsd, fx) },
+    costUsd,
+    projectedUsd,
+  };
 }
 
 /** Parte de um tenant no compartilhado nas duas bases (COST-12). */
@@ -631,6 +654,10 @@ export function calculateInfraCosts(input: InfraCostCalculationInput): InfraCost
   const rows = input.capacityByPlan;
   const unlimited = rows.reduce((s, r) => s + sumChannels(r.unlimitedTenants), 0);
   if (unlimited > 0) warnings.push({ code: 'unlimited_contracted', count: unlimited });
+  if (ctx && hourly?.bandwidthHours !== undefined && ws.manualBandwidthGb === null) {
+    const missing = expectedBandwidthHours(input.now, hourly, ctx) - hourly.bandwidthHours;
+    if (missing > 0) warnings.push({ code: 'bandwidth_missing_hours', count: missing });
+  }
 
   let contractedTotal: number;
   let connectedTotal: number;
@@ -676,12 +703,19 @@ export function calculateInfraCosts(input: InfraCostCalculationInput): InfraCost
         };
       });
 
-    // Ociosidade: só com leitura do worker (capacidade instalada = instâncias × teto, por hora lida).
+    // Ociosidade (estimativa): só nas horas com leitura do worker. Numerador e denominador na mesma janela:
+    // a sessão-hora do mês (só tenants ACTIVE, gravada por dia) entra proporcional às horas lidas, e o
+    // compartilhado também. Horas sem leitura ficam fora → `idle_partial`.
     const workerHours = ctx.byKey.get('worker');
+    const readHours = workerHours?.size ?? 0;
     const capacityHours = workerHours
       ? [...workerHours.values()].reduce((s, r) => s + (r.instances ?? 0) * input.scaling.maxSessionsPerWorker, 0)
       : 0;
-    if (capacityHours > 0) idleUsd = sharedUsd * (1 - Math.min(1, alloc.sessionHours / capacityHours));
+    if (capacityHours > 0 && ctx.elapsed > 0) {
+      const window = readHours / ctx.elapsed;
+      idleUsd = sharedUsd * window * (1 - Math.min(1, (alloc.sessionHours * window) / capacityHours));
+      if (readHours < ctx.elapsed) warnings.push({ code: 'idle_partial', count: ctx.elapsed - readHours });
+    }
   } else {
     contractedTotal = rows.reduce((s, r) => s + effectiveContractedSessions(r), 0);
     connectedTotal = rows.reduce((s, r) => s + sumChannels(r.connected), 0);

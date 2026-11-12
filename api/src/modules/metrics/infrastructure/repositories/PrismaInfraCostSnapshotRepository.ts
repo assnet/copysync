@@ -6,6 +6,7 @@ import type {
   InfraFxRateSource,
   InfraResourceHourSnapshot,
   InfraUsageDailyValue,
+  InfraUsageMetric,
   TenantSessionHourSample,
 } from '../../domain/contracts/IInfraCostSnapshotRepository';
 
@@ -127,13 +128,20 @@ export class PrismaInfraCostSnapshotRepository implements IInfraCostSnapshotRepo
   async addUsageHour(hour: Date, v: Omit<InfraUsageDailyValue, 'day'>): Promise<boolean> {
     const h = floorHour(hour);
     const n = await this.prisma.$executeRaw`
-      INSERT INTO "infra_usage_daily" AS d ("day", "metric", "resourceKey", "value", "source", "lastHour")
-      VALUES (${utc(h)}::date, ${v.metric}, ${v.resourceKey}, ${v.value}::float8, ${v.source}, ${utc(h)})
+      INSERT INTO "infra_usage_daily" AS d ("day", "metric", "resourceKey", "value", "source", "lastHour", "hours")
+      VALUES (${utc(h)}::date, ${v.metric}, ${v.resourceKey}, ${v.value}::float8, ${v.source}, ${utc(h)}, 1)
       ON CONFLICT ("day", "metric", "resourceKey") DO UPDATE SET
-        "value" = d."value" + EXCLUDED."value", "source" = EXCLUDED."source",
+        "value" = d."value" + EXCLUDED."value", "source" = EXCLUDED."source", "hours" = d."hours" + 1,
         "lastHour" = EXCLUDED."lastHour", "readAt" = CURRENT_TIMESTAMP
       WHERE d."lastHour" IS NULL OR d."lastHour" < EXCLUDED."lastHour"`;
     return n > 0;
+  }
+
+  async lastUsageHour(metric: InfraUsageMetric, since: Date): Promise<Date | null> {
+    const [row] = await this.prisma.$queryRaw<{ last: Date | null }[]>`
+      SELECT max("lastHour") AS last FROM "infra_usage_daily"
+      WHERE "metric" = ${metric} AND "day" >= ${utcDay(since)} AND "lastHour" >= ${utc(since)}`;
+    return row?.last ?? null;
   }
 
   /** Build: regrava o dia inteiro (idempotente). */

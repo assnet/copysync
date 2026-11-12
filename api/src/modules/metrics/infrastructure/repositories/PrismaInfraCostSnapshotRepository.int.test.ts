@@ -113,10 +113,14 @@ describe('PrismaInfraCostSnapshotRepository', () => {
     await repo.upsertUsageDay({ ...build, value: 12 });
     await repo.upsertUsageDay({ ...build, value: 7 });
     const rows = await prisma.infraUsageDaily.findMany({ orderBy: { metric: 'asc' } });
-    expect(rows.map((r) => [r.metric, r.resourceKey, r.value, r.lastHour?.toISOString() ?? null])).toEqual([
-      ['bandwidth_gb', 'api', 2, new Date(h10.getTime() + HOUR).toISOString()],
-      ['build_minutes', 'worker', 7, null],
+    expect(rows.map((r) => [r.metric, r.resourceKey, r.value, r.lastHour?.toISOString() ?? null, r.hours])).toEqual([
+      ['bandwidth_gb', 'api', 2, new Date(h10.getTime() + HOUR).toISOString(), 2],
+      ['build_minutes', 'worker', 7, null, 0],
     ]);
+    // Última hora de banda gravada a partir de um corte (reprocessamento da banda no job)
+    expect(await repo.lastUsageHour('bandwidth_gb', new Date(h10.getTime() - 6 * HOUR))).toEqual(new Date(h10.getTime() + HOUR));
+    expect(await repo.lastUsageHour('bandwidth_gb', new Date(h10.getTime() + 2 * HOUR))).toBeNull();
+    expect(await repo.lastUsageHour('build_minutes', new Date(h10.getTime() - 6 * HOUR))).toBeNull();
   });
 
   it('cotação: upsert por dia e a mais recente até a data', async () => {

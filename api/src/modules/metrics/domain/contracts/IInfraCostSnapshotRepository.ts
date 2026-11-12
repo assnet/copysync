@@ -70,8 +70,13 @@ export interface IInfraCostSnapshotRepository {
   upsertFxRate(record: InfraFxRateRecord): Promise<void>;
   /** Cotação mais recente com `referenceDate <= onOrBefore`; null = nenhuma. */
   latestFxRate(onOrBefore: Date): Promise<InfraFxRateRecord | null>;
-  /** Banda: soma o valor da hora no dia só se `lastHour` for nulo ou menor que `hour`. True = somou. */
+  /**
+   * Banda: soma o valor da hora no dia (e +1 em `hours`) só se `lastHour` for nulo ou menor que `hour`.
+   * True = somou.
+   */
   addUsageHour(hour: Date, value: Omit<InfraUsageDailyValue, 'day'>): Promise<boolean>;
+  /** Maior `lastHour` da métrica (qualquer recurso) a partir de `since`; null = nenhuma hora gravada. */
+  lastUsageHour(metric: InfraUsageMetric, since: Date): Promise<Date | null>;
   /** Build: regrava o valor do dia (idempotente). */
   upsertUsageDay(value: InfraUsageDailyValue): Promise<void>;
   /** Apaga o que for anterior a `cutoff` nas quatro tabelas, em lotes. */

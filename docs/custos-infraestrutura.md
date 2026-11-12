@@ -30,23 +30,34 @@ Plano completo (P1–P3): `.specs/features/infra-costs/{spec,design,tasks}.md`. 
 
 ## Job horário (`InfraCostSnapshotJob`)
 
-Tick de 5 min (`unref`) sob o lease `infra-cost-snapshot` (TTL 4 min, renovado antes de gravar, solto no `stop`).
-Cada tick, nesta ordem, cada passo isolado (falha de um não para os outros, `warn` com o nome do passo):
+Tick de 5 min (`unref`) sob o lease `infra-cost-snapshot` (TTL 4 min, solto no `stop`), **renovado antes de cada
+passo** e antes de gravar a hora: renovação falhou (outro processo assumiu) = o passo não roda. Cada tick, nesta ordem,
+cada passo isolado (falha de um não para os outros, `warn` com o nome do passo):
 
 1. **Hora fechada** `H` (hora cheia UTC anterior), só se `infra_resource_hours` ainda não tem `H`: lê os tenants
    (sessão-hora = 1 h × sessões `CONNECTED` com lease vivo; contratadas), a Render (plano, instâncias, disco de cada
    recurso) e as instâncias do worker pelas amostras (`srv-<id>-<sufixo>` distintos da hora, média por minuto,
-   arredondada; Render como fallback). Grava sessão-hora → banda → recursos; recursos por último, como marca de "hora
-   feita". **Tudo ou nada nos recursos**: um recurso sem leitura → hora sem linha, um `warn` por sequência de falha
-   (`infra cost hour without render reading`), tenta de novo no próximo tick. Sem Render configurada grava só a
-   sessão-hora. Troca de dono do lease não dobra.
-2. **Banda** da hora fechada há mais de 1 h, de todos os serviços mapeados (inclusive o static), convertida pelo campo
-   `unit` (série sem `unit` descartada), em `infra_usage_daily` (`bandwidth_gb`). Banda indisponível não segura a hora.
+   arredondada; Render como fallback). Grava sessão-hora → recursos; recursos por último, como marca de "hora
+   feita". **Tudo ou nada nos recursos**: um recurso sem leitura ou sem `numInstances` (instâncias desconhecidas, sem
+   amostra do worker para cobrir) → hora sem linha, um `warn` por sequência de falha
+   (`infra cost hour without render reading`), tenta de novo no próximo tick. **A sessão-hora é gravada antes de
+   olhar a Render** (desvio aceito: não depende dela e é idempotente por `lastHour`), então sai mesmo com a Render fora,
+   em pausa por 429 ou sem configuração. Troca de dono do lease não dobra.
+2. **Banda** das horas fechadas há mais de 1 h ainda sem linha, até 6 h para trás (`INFRA_COST_BANDWIDTH_CATCHUP_HOURS`),
+   em ordem, de todos os serviços mapeados (inclusive o static), convertida pelo campo `unit` (série sem `unit`
+   descartada), em `infra_usage_daily` (`bandwidth_gb`, coluna `hours` +1 por hora somada). Para na 1ª falha: a guarda
+   `lastHour` não aceita hora anterior a uma já somada, então a hora volta no tick seguinte enquanto estiver na janela.
+   Hora sem banda além de 6 h fica sem linha e o resumo avisa `bandwidth_missing_hours`.
 3. **Build**: minutos do dia anterior (`finishedAt − startedAt` dos deploys, com cursor), 1×/dia a partir de 01:00 UTC
    (lease `infra-cost-build` até 01:00 do dia seguinte; falha = nova tentativa 1 h depois), em `infra_usage_daily`
-   (`build_minutes`).
+   (`build_minutes`). Teto de 20 páginas por serviço e dia: esgotou com `cursor` ainda presente = falha (`upstream`),
+   nunca minutos parciais.
 4. **Cotação** (com `fx.auto`), ver abaixo.
 5. **Retenção** de 400 dias, 1×/24 h (lease `infra-cost-retention`, não solto).
+
+**429 da Render** (qualquer leitura): a pausa vai para o lease `infra-cost-render-backoff` com vencimento =
+`Retry-After` (senão `Ratelimit-Reset`; sem nenhum, 60 s; teto 1 h). Enquanto vale, recursos, banda e build não chamam
+a Render (a hora fica sem linha e volta depois). Nada em memória: vale para qualquer processo que assuma o job.
 
 Memória só para não repetir `warn`; todo estado que importa está no banco.
 
@@ -81,7 +92,14 @@ Memória só para não repetir `warn`; todo estado que importa está no banco.
   excedente do workspace projetado pela média diária.
 - **Sessão-hora** (2ª leitura): compartilhado ÷ Σ `connectedHours`; `perSession.connected` = média do mês,
   `perSessionHour` e `sessionHours` na resposta, sessão-mês = sessão-hora × 730. **Capacidade ociosa**
-  (`idleCapacity`) = custo − parte usada, mostrada e não rateada.
+  (`idleCapacity`, mostrada e não rateada) = compartilhado × janela × (1 − sessão-hora da janela ÷ capacidade-hora),
+  só nas horas com leitura do worker (janela = horas lidas ÷ decorridas; capacidade = instâncias × teto por hora lida).
+  A sessão-hora é gravada por dia, então entra proporcional à janela. **Estimativa conservadora**: o numerador conta
+  só tenants `ACTIVE` (sessão de tenant fora disso conta como ociosa) e horas sem leitura do worker ficam de fora,
+  com o aviso `idle_partial` (contagem).
+- **Banda medida**: `bandwidth_missing_hours` (contagem) quando o mês tem menos horas com banda que o esperado
+  (todas as horas no mês passado; até 2 h atrás no corrente, pela defasagem da banda + tick). Sem aviso com banda
+  manual. Consumido e excedente saem com 4 casas, como o dinheiro.
 - **Contratadas** no modo horas = média diária de `contractedSessions` de `tenant_session_hours`, mesma regra de
   ilimitado.
 - **Mês passado**: só por horas, sem a foto de agora (não alocadas `null`, sem capacidade por plano), cotação gravada
@@ -135,11 +153,11 @@ Memória só para não repetir `warn`; todo estado que importa está no banco.
 | --- | --- | --- |
 | `INFRA_COST_SNAPSHOT_ENABLED` | `false` | Liga o job. Desligada: nada é montado nem chamado |
 | `INFRA_COST_RENDER_RESOURCES` | vazio | `chave=id` por vírgula: `api=srv-<id>,worker=srv-<id>,static=srv-<id>,postgres=dpg-<id>,redis=red-<id>`. Chaves só essas cinco; prefixo exigido por chave (`srv-`/`dpg-`/`red-`). Entrada malformada, chave desconhecida, id inválido ou chave repetida é ignorada com `warn` sem o id. Sem `worker=` usa `WORKER_SCALER_SERVICE_ID` válido |
-| `RENDER_API_KEY` | vazio | Já usada pelo coletor (`docs/ops-metricas.md`). Sem ela ou sem ids, as horas ficam sem leitura da Render (só sessão-hora) |
+| `RENDER_API_KEY` | vazio | Já usada pelo coletor (`docs/ops-metricas.md`). Sem ela ou sem ids, as horas ficam sem leitura da Render. **Intencional**: o job liga só com a flag e, sem a chave, grava a sessão-hora e a cotação (as duas não dependem da Render) |
 
 ### Como ligar com segurança
 
-1. Deploy da versão com a migration `create_infra_cost_snapshots` (aplicada no boot, §5.1 de
+1. Deploy da versão com as migrations `create_infra_cost_snapshots` e `add_infra_usage_daily_hours` (aplicadas no boot, §5.1 de
    `docs/arquitetura-escala.md`).
 2. Só no serviço `worker` (nunca no `http`): `INFRA_COST_RENDER_RESOURCES` com os ids reais (copiados do painel da
    Render; nunca em doc, chat, log ou git) e depois `INFRA_COST_SNAPSHOT_ENABLED=true`.
