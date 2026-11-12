@@ -7,6 +7,7 @@
 import { LIMIT_CHANNELS, limitKeyOfChannel, type LimitChannel } from '../../../tenants/domain/channelLimits';
 import { PLAN_PRESETS, PLAN_SLUGS, type PlanSlug } from '../../../tenants/domain/planPresets';
 import type { WorkerCapacityPlanRow } from '../../../sessions/domain/contracts/IWorkerCapacityReader';
+import { OCCUPANCY_SAMPLE_MAX_AGE_MS } from '../../../sessions/domain/services/capacityPlan';
 import type { ResolvedFxRate } from './fxRate';
 import type {
   InfraCostAllocation,
@@ -43,8 +44,13 @@ export interface InfraCostCalculationInput {
   settings: InfraCostSettings;
   /** Cotação já resolvida (`resolveFxRate`); `null` = só USD + aviso `fx_missing`. */
   fx: ResolvedFxRate | null;
-  /** Foto do momento (`IInfraCostLiveReader`); `null` = sem amostra. */
-  live: { sessionsConnected: number | null; workerInstances: number | null };
+  /**
+   * Foto do momento (`IInfraCostLiveReader`); `null` = sem amostra. `sessionsSampledAt` = hora da
+   * amostra de sessões: mais velha que 10 min (critério de `stale` da capacidade) → não alocadas `null`.
+   */
+  live: { sessionsConnected: number | null; workerInstances: number | null; sessionsSampledAt: Date | null };
+  /** Instante da conta (passado pelo use case; a função não lê relógio). */
+  now: Date;
   /** `IWorkerCapacityReader.readByPlan()` (só tenants `ACTIVE`). */
   capacityByPlan: readonly WorkerCapacityPlanRow[];
   /** Configuração de escala lida a cada chamada (nunca guardada). */
@@ -137,11 +143,15 @@ export type InfraCostWarning =
   | { code: 'storage_to_confirm'; key: string }
   | { code: 'plan_without_price'; resourceKey: InfraRenderKey; plan: string }
   | { code: 'unlimited_contracted'; count: number }
-  | { code: 'fx_missing' };
+  | { code: 'fx_missing' }
+  /** Amostra de sessões com mais de 10 min: não alocadas sem número (dois relógios não se comparam). */
+  | { code: 'sessions_sample_stale' };
 
 export interface InfraCostCalculation {
   basis: 'snapshot';
   fx: ResolvedFxRate | null;
+  /** Hora da amostra de sessões usada (`null` = sem amostra). */
+  sessionsSampledAt: Date | null;
   /** Algum item sem preço ficou fora do total. */
   totalIsPartial: boolean;
   totals: {
@@ -379,7 +389,11 @@ export function calculateInfraCosts(input: InfraCostCalculationInput): InfraCost
     };
   });
 
-  const clusterConnected = input.live.sessionsConnected;
+  // Σ conectadas vem do lease agora; o cluster, da amostra: só compara com amostra recente.
+  const sampledAt = input.live.sessionsSampledAt;
+  const sampleStale = sampledAt !== null && input.now.getTime() - sampledAt.getTime() > OCCUPANCY_SAMPLE_MAX_AGE_MS;
+  if (sampleStale) warnings.push({ code: 'sessions_sample_stale' });
+  const clusterConnected = sampleStale || sampledAt === null ? null : input.live.sessionsConnected;
   const unallocatedSessions = clusterConnected === null ? null : Math.max(0, clusterConnected - connectedTotal);
   const unallocatedUsd = unallocatedSessions === null || perConnected === null ? null : unallocatedSessions * perConnected;
 
@@ -392,6 +406,7 @@ export function calculateInfraCosts(input: InfraCostCalculationInput): InfraCost
   return {
     basis: 'snapshot',
     fx,
+    sessionsSampledAt: input.live.sessionsSampledAt,
     totalIsPartial: calcs.some((c) => c.computeUsd === null),
     totals: {
       total: money(totalUsd, fx),

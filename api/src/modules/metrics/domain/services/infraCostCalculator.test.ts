@@ -4,6 +4,8 @@ import type { ResolvedFxRate } from './fxRate';
 import { calculateInfraCosts, effectiveContractedSessions, type InfraCostCalculationInput } from './infraCostCalculator';
 import { defaultInfraCostSettings, type InfraCostSettings } from './infraCostSettings';
 
+const NOW = new Date('2026-11-12T12:00:00.000Z');
+const minutesAgo = (m: number) => new Date(NOW.getTime() - m * 60_000);
 const FX: ResolvedFxRate = { rate: 5.5, referenceDate: '2026-11-10', source: 'override', fetchedAt: null, stale: false };
 const ch = (whatsapp = 0, telegram = 0) => ({ whatsapp, telegram });
 const row = (planSlug: string | null, extra: Partial<WorkerCapacityPlanRow> = {}): WorkerCapacityPlanRow => ({
@@ -14,7 +16,8 @@ function calc(over: Partial<InfraCostCalculationInput> = {}, settings: InfraCost
   return calculateInfraCosts({
     settings,
     fx: FX,
-    live: { sessionsConnected: null, workerInstances: null },
+    live: { sessionsConnected: null, workerInstances: null, sessionsSampledAt: null },
+    now: NOW,
     capacityByPlan: [],
     scaling: { maxSessionsPerWorker: 40, alertOccupancyRatio: 0.8 },
     ...over,
@@ -39,7 +42,7 @@ describe('calculateInfraCosts — totais (valores reais)', () => {
   });
 
   it('145,25 com 2 instâncias nas amostras', () => {
-    const r = calc({ live: { sessionsConnected: null, workerInstances: 2 } });
+    const r = calc({ live: { sessionsConnected: null, workerInstances: 2, sessionsSampledAt: null } });
     expect(r.totals.total.usd).toBe(145.25);
     expect(itemOf(r, 'worker')).toMatchObject({ quantity: 2, quantitySource: 'measured_now', estimated: false, compute: { usd: 50 } });
   });
@@ -109,11 +112,19 @@ describe('rateio por sessão (COST-05)', () => {
   });
 
   it('conectadas e não alocadas (suspenso/cancelado) à parte', () => {
-    const r = calc({ capacityByPlan: rows, live: { sessionsConnected: 6, workerInstances: null } });
+    const r = calc({ capacityByPlan: rows, live: { sessionsConnected: 6, workerInstances: null, sessionsSampledAt: minutesAgo(10) } });
     expect(r.perSession.connected).toEqual({
       sessions: 4, perSession: { usd: 30.0625, brl: 165.3438 }, unallocatedSessions: 2, unallocatedCost: { usd: 60.125, brl: 330.6875 },
     });
+    expect(r.sessionsSampledAt).toEqual(minutesAgo(10));
+    expect(r.warnings.some((w) => w.code === 'sessions_sample_stale')).toBe(false);
     expect(r.plans.find((p) => p.planSlug === 'COPYSYNC_MAX')!).toMatchObject({ connectedSessions: 2, connectedShare: { usd: 60.125 }, connectedCostPerTenant: { usd: 60.125 } });
+  });
+
+  it('amostra de sessões com mais de 10 min: não alocadas null + aviso, rateio por conectadas mantido', () => {
+    const r = calc({ capacityByPlan: rows, live: { sessionsConnected: 6, workerInstances: null, sessionsSampledAt: new Date(minutesAgo(10).getTime() - 1) } });
+    expect(r.perSession.connected).toEqual({ sessions: 4, perSession: { usd: 30.0625, brl: 165.3438 }, unallocatedSessions: null, unallocatedCost: null });
+    expect(r.warnings).toContainEqual({ code: 'sessions_sample_stale' });
   });
 
   it('sem sessão e sem amostra: null em toda divisão', () => {

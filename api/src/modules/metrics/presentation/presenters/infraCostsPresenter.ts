@@ -20,6 +20,7 @@ export function presentInfraCostSummary(out: InfraCostSummaryOutput) {
           stale: c.fx.stale,
         }
       : null,
+    sessionsSampledAt: c.sessionsSampledAt ? c.sessionsSampledAt.toISOString() : null,
     totalIsPartial: c.totalIsPartial,
     totals: c.totals,
     items: c.items.map((item) => ({ ...item, planLabel: item.planLabel ?? '' })),

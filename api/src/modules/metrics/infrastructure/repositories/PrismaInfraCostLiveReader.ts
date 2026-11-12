@@ -9,6 +9,7 @@ import { OPS_METRIC } from '../../domain/OpsMetric';
 import { opsWorkerServiceId } from '../../domain/services/opsMetricsSeriesPolicy';
 import { WORKER_INSTANCE_CURRENT_SLACK_MS } from '../../domain/services/workerInstancesPolicy';
 import { OPS_READ_STATEMENT_TIMEOUT } from './PrismaOpsMetricsSampleRepository';
+import { translateInfraCostReadTimeout } from './infraCostReadTimeout';
 
 /** ISO (UTC) → `timestamp` sem fuso, explícito: independe do `TimeZone` da sessão. */
 const utc = (d: Date) => Prisma.sql`(${d.toISOString()}::timestamptz AT TIME ZONE 'UTC')`;
@@ -20,7 +21,8 @@ type WorkerRow = { suffixed: number; bare: number };
  * `ops_metrics_samples` → foto do momento (COST-04). Instância atual = mesma regra de
  * `matchWorkerInstances`: CPU/RAM com amostra mais nova a até 2 min da mais nova do serviço (deploy não soma duas).
  * `workerServiceId` cru (env); fora do formato
- * `srv-...` = sem leitura de instâncias. As duas consultas na mesma transação com `statement_timeout` 2 s.
+ * `srv-...` = sem leitura de instâncias. As duas consultas na mesma transação com `statement_timeout` 2 s;
+ * estouro → 503 `INFRA_COST_READ_UNAVAILABLE`.
  */
 export class PrismaInfraCostLiveReader implements IInfraCostLiveReader {
   private readonly serviceId: string | null;
@@ -29,7 +31,11 @@ export class PrismaInfraCostLiveReader implements IInfraCostLiveReader {
     this.serviceId = opsWorkerServiceId(workerServiceId);
   }
 
-  async read(now: Date): Promise<InfraCostLiveReading> {
+  read(now: Date): Promise<InfraCostLiveReading> {
+    return translateInfraCostReadTimeout(() => this.query(now));
+  }
+
+  private async query(now: Date): Promise<InfraCostLiveReading> {
     const sessionsSince = new Date(now.getTime() - INFRA_COST_LIVE_SESSIONS_WINDOW_MS);
     const workerSince = new Date(now.getTime() - INFRA_COST_LIVE_WORKER_WINDOW_MS);
     const id = this.serviceId;

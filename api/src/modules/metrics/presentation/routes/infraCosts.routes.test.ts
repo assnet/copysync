@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
+import { Prisma } from '@prisma/client';
 import { infraCostsRoutes } from './infraCosts.routes';
 import { errorHandler } from '../../../../shared/http/errorHandler';
 import { PrismaInfraCostSettingsRepository } from '../../infrastructure/repositories/PrismaInfraCostSettingsRepository';
@@ -107,13 +108,13 @@ describe('GET/PUT /admin/costs/settings', () => {
 });
 
 describe('GET /admin/costs/summary', () => {
-  function stubReads() {
+  function stubReads(sessionsSampledAt: Date = new Date()) {
     const settings = defaultInfraCostSettings();
     settings.fx.override = { rate: 5.5, date: '2026-11-10' };
     vi.spyOn(PrismaInfraCostSettingsRepository.prototype, 'get')
       .mockResolvedValue({ value: settings, updatedAt: SAVED_AT, updatedById: 'admin-1' });
     vi.spyOn(PrismaInfraCostLiveReader.prototype, 'read').mockResolvedValue({
-      sessionsConnected: 5, sessionsCapacity: 40, sessionsSampledAt: SAVED_AT, workerInstances: 2,
+      sessionsConnected: 5, sessionsCapacity: 40, sessionsSampledAt, workerInstances: 2,
     });
     const ch = (whatsapp = 0, telegram = 0) => ({ whatsapp, telegram });
     vi.spyOn(PrismaWorkerCapacityReader.prototype, 'readByPlan').mockResolvedValue([
@@ -139,6 +140,8 @@ describe('GET /admin/costs/summary', () => {
       'connectedCostPerTenant', 'connectedSessions', 'connectedShare', 'contractedSessions', 'costPerTenant', 'planSlug', 'share', 'tenants',
     ]);
     expect(data.perSession.connected).toMatchObject({ sessions: 3, unallocatedSessions: 2 });
+    expect(Number.isNaN(Date.parse(data.sessionsSampledAt))).toBe(false);
+    expect(data.warnings.some((w: { code: string }) => w.code === 'sessions_sample_stale')).toBe(false);
     const body = res.body;
     expect(body).not.toContain('srv-');
     expect(body).not.toMatch(/"price|"margin"|"marginBrl"|"marginPct"/i);
@@ -158,5 +161,63 @@ describe('GET /admin/costs/summary', () => {
     auth.isSuperAdmin = true;
     const res = await app.inject({ method: 'GET', url: `${URL}/summary?month=2026-13` });
     expect(res.statusCode).toBe(400);
+  });
+
+  it('amostra de sessões velha (> 10 min): não alocadas null, aviso e sessionsSampledAt ISO', async () => {
+    auth.isSuperAdmin = true;
+    stubReads(SAVED_AT);
+    const res = await app.inject({ method: 'GET', url: `${URL}/summary` });
+    expect(res.statusCode).toBe(200);
+    const { data } = res.json();
+    expect(data.sessionsSampledAt).toBe(SAVED_AT.toISOString());
+    expect(data.perSession.connected).toMatchObject({ sessions: 3, unallocatedSessions: null, unallocatedCost: null });
+    expect(data.warnings).toContainEqual({ code: 'sessions_sample_stale' });
+  });
+
+  it('sem amostra: sessionsSampledAt null', async () => {
+    auth.isSuperAdmin = true;
+    stubReads();
+    vi.spyOn(PrismaInfraCostLiveReader.prototype, 'read').mockResolvedValue({
+      sessionsConnected: null, sessionsCapacity: null, sessionsSampledAt: null, workerInstances: null,
+    });
+    const res = await app.inject({ method: 'GET', url: `${URL}/summary` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.sessionsSampledAt).toBeNull();
+  });
+
+  describe('statement_timeout (57014) → 503 INFRA_COST_READ_UNAVAILABLE', () => {
+    const timeout = () =>
+      new Prisma.PrismaClientKnownRequestError('Raw query failed. Code: `57014`. Message: `ERROR: canceling statement due to statement timeout`', {
+        code: 'P2010', clientVersion: 'test', meta: { code: '57014', message: 'ERROR: canceling statement due to statement timeout' },
+      });
+
+    it('na leitura das amostras', async () => {
+      auth.isSuperAdmin = true;
+      stubReads();
+      // `read` real (a tradução fica nele); só a consulta ao banco falha.
+      vi.mocked(PrismaInfraCostLiveReader.prototype.read).mockRestore();
+      vi.spyOn(PrismaInfraCostLiveReader.prototype as unknown as { query: () => Promise<unknown> }, 'query').mockRejectedValue(timeout());
+      const res = await app.inject({ method: 'GET', url: `${URL}/summary` });
+      expect(res.statusCode).toBe(503);
+      expect(res.json().error.code).toBe('INFRA_COST_READ_UNAVAILABLE');
+      expect(res.body).not.toMatch(/57014|canceling|SELECT/);
+    });
+
+    it('na capacidade por plano', async () => {
+      auth.isSuperAdmin = true;
+      stubReads();
+      vi.spyOn(PrismaWorkerCapacityReader.prototype, 'readByPlan').mockRejectedValue(timeout());
+      const res = await app.inject({ method: 'GET', url: `${URL}/summary` });
+      expect(res.statusCode).toBe(503);
+      expect(res.json().error.code).toBe('INFRA_COST_READ_UNAVAILABLE');
+    });
+
+    it('outro erro de banco segue 500', async () => {
+      auth.isSuperAdmin = true;
+      stubReads();
+      vi.spyOn(PrismaWorkerCapacityReader.prototype, 'readByPlan').mockRejectedValue(new Error('boom'));
+      const res = await app.inject({ method: 'GET', url: `${URL}/summary` });
+      expect(res.statusCode).toBe(500);
+    });
   });
 });

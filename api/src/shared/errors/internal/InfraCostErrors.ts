@@ -22,3 +22,13 @@ export class InfraCostMonthUnavailableError extends AppError {
     super('INFRA_COST_MONTH_UNAVAILABLE', `Infra cost summary is not available for month ${month}`, 400, { field: 'month' });
   }
 }
+
+/**
+ * Leitura do resumo estourou o `statement_timeout` (SQLSTATE 57014): 503, o painel mostra "tentar de
+ * novo". Sem SQL, sem id e sem o erro do banco (nem como `cause`): só este código chega ao log.
+ */
+export class InfraCostReadUnavailableError extends AppError {
+  constructor() {
+    super('INFRA_COST_READ_UNAVAILABLE', 'Infra cost data is temporarily unavailable, try again', 503);
+  }
+}

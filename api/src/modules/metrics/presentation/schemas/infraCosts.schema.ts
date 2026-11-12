@@ -130,6 +130,7 @@ const summarySchema = obj({
       stale: bool,
     }),
   ),
+  sessionsSampledAt: { type: ['string', 'null'], format: 'date-time' },
   totalIsPartial: bool,
   totals: obj({ total: money, fixed: money, variable: money, shared: money, projected: nullableMoney }),
   items: {
@@ -194,6 +195,7 @@ const summarySchema = obj({
           'missing_hours',
           'storage_to_confirm',
           'unlimited_contracted',
+          'sessions_sample_stale',
         ]),
         resourceKey: str,
         key: str,

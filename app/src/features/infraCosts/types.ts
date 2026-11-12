@@ -257,6 +257,8 @@ export type InfraCostWarningCode =
   | 'missing_hours'
   | 'storage_to_confirm'
   | 'unlimited_contracted';
+// A API também envia `sessions_sample_stale` (amostra de sessões > 10 min: não alocadas `null`).
+// Entra na união junto com o texto em `strings.ts` (`satisfies Record<InfraCostWarningCode, string>`).
 
 export interface InfraCostWarning {
   code: InfraCostWarningCode;
@@ -276,6 +278,8 @@ export interface InfraCostSummary {
   generatedAt: string;
   /** `null` = sem cotação (só USD, aviso `fx_missing`). */
   fx: InfraFxView | null;
+  /** Hora (ISO) da amostra de sessões do cluster; `null` = sem amostra. Opcional: API anterior não envia. */
+  sessionsSampledAt?: string | null;
   /** Algum item sem preço: o total soma só o que tem preço. */
   totalIsPartial: boolean;
   totals: {

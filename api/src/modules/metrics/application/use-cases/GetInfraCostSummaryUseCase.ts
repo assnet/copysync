@@ -62,7 +62,8 @@ export class GetInfraCostSummaryUseCase {
     const calculation = calculateInfraCosts({
       settings,
       fx: resolveFxRate({ fx: settings.fx, today: now }),
-      live: { sessionsConnected: live.sessionsConnected, workerInstances: live.workerInstances },
+      live: { sessionsConnected: live.sessionsConnected, workerInstances: live.workerInstances, sessionsSampledAt: live.sessionsSampledAt },
+      now,
       capacityByPlan,
       scaling: { maxSessionsPerWorker, alertOccupancyRatio },
     });

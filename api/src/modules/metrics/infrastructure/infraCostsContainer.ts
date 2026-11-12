@@ -8,6 +8,7 @@ import { UpdateInfraCostSettingsUseCase } from '../application/use-cases/UpdateI
 import { GetInfraCostSummaryUseCase } from '../application/use-cases/GetInfraCostSummaryUseCase';
 import { PrismaInfraCostSettingsRepository } from './repositories/PrismaInfraCostSettingsRepository';
 import { PrismaInfraCostLiveReader } from './repositories/PrismaInfraCostLiveReader';
+import { InfraCostCapacityReader } from './repositories/infraCostReadTimeout';
 
 /** Composição dos custos da infraestrutura (super admin). Só tabelas locais; nunca chama a Render. */
 let getSettings: GetInfraCostSettingsUseCase | undefined;
@@ -28,9 +29,11 @@ export function updateInfraCostSettingsUseCase(): UpdateInfraCostSettingsUseCase
 export function getInfraCostSummaryUseCase(): GetInfraCostSummaryUseCase {
   return (getSummary ??= new GetInfraCostSummaryUseCase({
     settings: new PrismaInfraCostSettingsRepository(prisma),
-    // O id do serviço worker só separa as amostras; nunca sai na resposta.
+    // Lido também no processo http, como as métricas (`opsMetrics`): só filtra as amostras no SQL
+    // (instâncias do worker); nunca sai na resposta nem no log.
     live: new PrismaInfraCostLiveReader(prisma, env.WORKER_SCALER_SERVICE_ID),
-    capacity: new PrismaWorkerCapacityReader(prisma),
+    // Timeout → 503 só aqui; os outros consumidores do leitor seguem iguais.
+    capacity: new InfraCostCapacityReader(new PrismaWorkerCapacityReader(prisma)),
     // Singleton do processo: o use case lê `.current().value` a cada chamada.
     scaling: workerScalingSettingsProvider(),
   }));
