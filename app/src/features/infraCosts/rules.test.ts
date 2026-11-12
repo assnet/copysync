@@ -21,6 +21,9 @@ import {
   perSessionByBasis,
   planRowsByBasis,
   warningDetail,
+  costMonthOptions,
+  isPriceWarning,
+  isProjectedMonth,
   draftToSettings,
   formatBrl,
   formatPercent,
@@ -290,6 +293,38 @@ describe('resumo: datas, base e avisos', () => {
     expect(warningDetail({ code: 'plan_without_price', resourceKey: 'redis', plan: 'x' }, items)).toBe('serviço Redis, plano x');
     expect(warningDetail({ code: 'unlimited_contracted', count: 2 }, items)).toBe('2 ocorrências');
     expect(warningDetail({ code: 'sessions_sample_stale' }, items)).toBeNull();
+  });
+
+  it('avisos da P2: campo do config_drift pelo nome do cadastro, horas sem leitura e atalho para Preços', () => {
+    const items = [{ key: 'db', label: 'Banco', renderKey: 'postgres' as const }];
+    expect(warningDetail({ code: 'config_drift', resourceKey: 'postgres', field: 'instances' }, items)).toBe('Banco · Quantidade');
+    expect(warningDetail({ code: 'config_drift', resourceKey: 'postgres', field: 'diskGb' }, items)).toBe('Banco · Disco (GB)');
+    expect(warningDetail({ code: 'config_drift', resourceKey: 'postgres', field: 'plan' }, items)).toBe('Banco · Preço (US$/mês)');
+    expect(warningDetail({ code: 'missing_hours', resourceKey: 'postgres', count: 5 }, items)).toBe('serviço Banco, 5 horas sem leitura');
+    expect(warningDetail({ code: 'missing_hours', resourceKey: 'postgres', count: 1 }, items)).toBe('serviço Banco, 1 hora sem leitura');
+    for (const code of ['missing_hours', 'config_drift', 'plan_without_price'] as const) expect(isPriceWarning(code)).toBe(true);
+  });
+
+  it('margem projetada só quando pedida; sem o campo (API anterior) = sem valor', () => {
+    const withProjection = plans.map((p) => ({ ...p, projectedCostPerTenant: m(p.costPerTenant.usd * 2) }));
+    expect(planRowsByBasis(withProjection, { basis: 'connected', plan: 'lite' }, true)[0].marginCost).toEqual(m(22));
+    expect(planRowsByBasis(withProjection, { basis: 'connected', plan: 'lite' })[0].marginCost).toEqual(m(11));
+    expect(planRowsByBasis(plans, { basis: 'contracted', plan: 'lite' }, true)[0].marginCost).toBeNull();
+  });
+
+  it('meses do seletor: corrente e 11 anteriores em UTC, virando o ano', () => {
+    const opts = costMonthOptions(Date.parse('2026-02-01T01:00:00Z'));
+    expect(opts).toHaveLength(12);
+    expect(opts.slice(0, 3)).toEqual(['2026-02', '2026-01', '2025-12']);
+    expect(opts[11]).toBe('2025-03');
+  });
+
+  it('mês projetado: só horas, mês corrente e com projeção', () => {
+    const base = { basis: 'hours' as const, month: '2026-11', generatedAt: '2026-11-12T10:00:00Z', totals: { projected: m(1) } as never };
+    expect(isProjectedMonth(base)).toBe(true);
+    expect(isProjectedMonth({ ...base, month: '2026-10' })).toBe(false);
+    expect(isProjectedMonth({ ...base, basis: 'snapshot' })).toBe(false);
+    expect(isProjectedMonth({ ...base, totals: { projected: null } as never })).toBe(false);
   });
 });
 

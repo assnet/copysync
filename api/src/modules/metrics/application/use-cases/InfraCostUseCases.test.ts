@@ -144,11 +144,67 @@ describe('GetInfraCostSummaryUseCase', () => {
     expect((await setup({ fxRates, fxFetchState }).uc.execute()).calculation.fx?.source).toBe('ptax');
   });
 
-  it('outro mês: 400 INFRA_COST_MONTH_UNAVAILABLE sem ler nada', async () => {
+  it('sem leitor do mês: outro mês = 400 INFRA_COST_MONTH_UNAVAILABLE sem ler nada', async () => {
     const { uc, live } = setup();
     await expect(uc.execute({ month: '2026-10' })).rejects.toBeInstanceOf(InfraCostMonthUnavailableError);
     expect(live.read).not.toHaveBeenCalled();
     await expect(uc.execute({ month: '2026-11' })).resolves.toMatchObject({ month: '2026-11' });
+  });
+
+  describe('modo horas (COST-11/12)', () => {
+    const H = 3_600_000;
+    const NOV = new Date('2026-11-01T00:00:00Z');
+    const OCT = new Date('2026-10-01T00:00:00Z');
+    const hours = (start: Date, n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        hour: new Date(start.getTime() + i * H), renderKey: 'worker' as const, plan: '1c-2g', instances: 1, diskGb: null, suspended: false,
+      }));
+    const tenants = [{ tenantId: 't1', planSlug: 'COPYSYNC_PRO', connectedHours: 100, contractedAvg: 2 }];
+    const empty = { resourceHours: [], bandwidthGb: null, buildMinutes: null, tenants: [] };
+    const usageOf = (byMonth: Record<string, typeof empty | { resourceHours: ReturnType<typeof hours>; bandwidthGb: null; buildMinutes: null; tenants: typeof tenants }>) => ({
+      readMonth: vi.fn(async (start: Date) => byMonth[start.toISOString().slice(0, 7)] ?? empty),
+    });
+
+    it('mês corrente com snapshot: basis hours, intervalo do mês e projeção', async () => {
+      const usage = usageOf({ '2026-11': { resourceHours: hours(NOV, 24), bandwidthGb: null, buildMinutes: null, tenants } });
+      const out = await setup({ usage }).uc.execute();
+      expect(usage.readMonth).toHaveBeenCalledWith(NOV, new Date('2026-12-01T00:00:00Z'));
+      expect(out.calculation.basis).toBe('hours');
+      expect(out.calculation.totals.projected).not.toBeNull();
+      expect(out.calculation.perSession.connected.sessionHours).toBe(100);
+    });
+
+    it('mês corrente sem snapshot: cai na foto do momento', async () => {
+      const usage = usageOf({});
+      const out = await setup({ usage }).uc.execute({ month: '2026-11' });
+      expect(out.calculation.basis).toBe('snapshot');
+      expect(out.calculation.totals.total.usd).toBe(120.25);
+    });
+
+    it('mês passado: só horas, sem foto de agora; cotação até o último dia do mês', async () => {
+      const usage = usageOf({ '2026-10': { resourceHours: hours(OCT, 744), bandwidthGb: null, buildMinutes: null, tenants } });
+      const saved = { referenceDate: new Date('2026-10-30T00:00:00Z'), rate: 5.4, source: 'ptax' as const, fetchedAt: new Date('2026-10-30T16:31:00Z') };
+      const fxRates = { latestFxRate: vi.fn(async () => saved) };
+      const { uc, live } = setup({ usage, fxRates });
+      const out = await uc.execute({ month: '2026-10' });
+      expect(out.month).toBe('2026-10');
+      expect(out.calculation.basis).toBe('hours');
+      expect(live.read).not.toHaveBeenCalled();
+      expect(fxRates.latestFxRate).toHaveBeenCalledWith(new Date('2026-10-31T00:00:00Z'));
+      expect(out.calculation.fx).toMatchObject({ rate: 5.4, source: 'ptax', stale: false });
+      // mês cheio: projeção = realizado; worker 744 h × 1 instância = 25
+      expect(out.calculation.items.find((i) => i.key === 'worker')?.cost?.usd).toBe(25);
+      expect(out.calculation.totals.projected).toEqual(out.calculation.totals.total);
+      expect(out.calculation.perSession.connected.unallocatedSessions).toBeNull();
+    });
+
+    it('mês passado sem dado e mês futuro: 400 INFRA_COST_MONTH_UNAVAILABLE', async () => {
+      const usage = usageOf({});
+      const { uc } = setup({ usage });
+      await expect(uc.execute({ month: '2026-09' })).rejects.toBeInstanceOf(InfraCostMonthUnavailableError);
+      await expect(uc.execute({ month: '2026-12' })).rejects.toBeInstanceOf(InfraCostMonthUnavailableError);
+      expect(usage.readMonth).toHaveBeenCalledTimes(1); // futuro não lê
+    });
   });
 
   it('lê o teto do provider a cada chamada (troca entre duas chamadas)', async () => {

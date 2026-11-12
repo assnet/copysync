@@ -166,6 +166,26 @@ describe('rateio do mês (COST-12)', () => {
     expect(calc(workerOnly(), { tenants }).idleCapacity).toBeNull();
   });
 
+  it('rateio projetado (margem do mês corrente): contratadas × compartilhado projetado; mês cheio = realizado', () => {
+    // metade do mês com 1 instância: realizado 12,50, projeção 25
+    const now = new Date(NOV.getTime() + 360 * H);
+    const r = calc(workerOnly(), { resourceHours: range(360, (i) => hr(NOV, i)), tenants }, { now });
+    const pro = r.plans.find((p) => p.planSlug === 'pro')!;
+    expect(pro.share?.usd).toBe(9.375); // 12,50 × 3/4
+    expect(pro.projectedShare?.usd).toBe(18.75); // 25 × 3/4
+    expect(pro.projectedCostPerTenant?.usd).toBe(9.375);
+    const full = calc(workerOnly(), { resourceHours: range(720, (i) => hr(NOV, i)), tenants }).plans.find((p) => p.planSlug === 'pro')!;
+    expect(full.projectedShare).toEqual(full.share);
+  });
+
+  it('foto: sem rateio projetado', () => {
+    const r = calc(workerOnly(), {}, { hourly: undefined, capacityByPlan: [
+      { planSlug: 'pro', tenants: 1, contracted: { whatsapp: 1, telegram: 0 }, unlimitedTenants: { whatsapp: 0, telegram: 0 },
+        created: { whatsapp: 1, telegram: 0 }, connected: { whatsapp: 1, telegram: 0 } },
+    ] });
+    expect(r.plans[0]).toMatchObject({ projectedShare: null, projectedCostPerTenant: null });
+  });
+
   it('por tenant: soma das partes = compartilhado; sem horas → null', () => {
     const a = allocateInfraTenantShares(30, tenants);
     expect(a.shares.reduce((s, t) => s + (t.contractedShareUsd ?? 0), 0)).toBeCloseTo(30, 6);

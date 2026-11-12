@@ -4,17 +4,18 @@ import {
   Alert, AlertTitle, Box, Button, CircularProgress, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableFooter,
   TableHead, TableRow, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography,
 } from '@mui/material';
-import { Gauge, Receipt, TrendingUp, Users } from 'lucide-react';
+import { CircleDashed, Gauge, Receipt, TrendingUp, Users } from 'lucide-react';
 import { SectionCard, ServiceUpdatingState } from '@/components';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import { serverNow } from '@/services/serverClock';
 import { PLAN_CATALOG, type PlanSlug } from '@/features/plans/catalog';
 import { planName } from '@/features/planEntitlementsAdmin/strings';
 import { formatDateTime } from '@/features/opsMetrics/rules';
 import { HelpTip } from '@/features/opsMetrics/components/HelpTip';
 import { COSTS_PRICES_PATH } from '../paths';
 import {
-  catalogPlanName, dayLabel, DEFAULT_COST_FILTERS, formatBrl, formatPercent, formatUsd, isPriceWarning, monthLabel, perSessionByBasis,
-  planMargin, planRowsByBasis, warningDetail,
+  catalogPlanName, costMonthOptions, dayLabel, DEFAULT_COST_FILTERS, formatBrl, formatPercent, formatUsd, isPriceWarning, isProjectedMonth,
+  monthLabel, perSessionByBasis, planMargin, planRowsByBasis, warningDetail,
 } from '../rules';
 import { infraCostsStrings as S } from '../strings';
 import type {
@@ -43,7 +44,7 @@ function FxBand({ fx, summary }: { fx: InfraFxView | null; summary: InfraCostSum
         <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{s.monthOf(monthLabel(summary.month))}</Typography>
         <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
           <Typography variant="body2" color="text.secondary">{basis}</Typography>
-          <HelpTip label={basis} text={s.basisHint} />
+          <HelpTip label={basis} text={summary.basis === 'snapshot' ? s.basisHint : s.basisHoursHint} />
         </Stack>
         <Typography variant="caption" color="text.secondary">{s.generatedAt(formatDateTime(summary.generatedAt))}</Typography>
       </Box>
@@ -80,10 +81,26 @@ function FxBand({ fx, summary }: { fx: InfraFxView | null; summary: InfraCostSum
 
 /* ── Filtros ───────────────────────────────────────────────────────── */
 
+const CURRENT_MONTH = 'current';
+
 function Filters({ filters, onChange }: { filters: CostFilters; onChange: (f: CostFilters) => void }) {
   const f = s.filters;
+  // Relógio do servidor (header `X-Server-Time`): o mês corrente é o da API, não o do navegador.
+  const [current, ...past] = costMonthOptions(serverNow());
+  const months = filters.month && filters.month !== current && !past.includes(filters.month) ? [...past, filters.month] : past;
   return (
-    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ alignItems: { sm: 'center' } }} role="group" aria-label={f.aria}>
+    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ alignItems: { sm: 'center' }, flexWrap: 'wrap', rowGap: 2 }} role="group" aria-label={f.aria}>
+      <TextField
+        select
+        size="small"
+        label={f.month}
+        value={filters.month && filters.month !== current ? filters.month : CURRENT_MONTH}
+        onChange={(e) => onChange({ ...filters, month: e.target.value === CURRENT_MONTH ? null : e.target.value })}
+        sx={{ minWidth: 200 }}
+      >
+        <MenuItem value={CURRENT_MONTH}>{f.currentMonth(monthLabel(current))}</MenuItem>
+        {months.map((m) => <MenuItem key={m} value={m}>{monthLabel(m)}</MenuItem>)}
+      </TextField>
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
         <ToggleButtonGroup
           exclusive
@@ -130,12 +147,25 @@ function MarginCell({ line }: { line: { marginBrl: number; marginPct: number | n
   );
 }
 
+function MarginHeader({ label, hint, projected }: { label: string; hint: string; projected: boolean }) {
+  return (
+    <TableCell align="right">
+      <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
+        <HeaderHint label={label} hint={hint} />
+        {projected && <HintChip label={s.plans.projected} hint={s.plans.projectedHint} color="info" />}
+      </Stack>
+    </TableCell>
+  );
+}
+
 function PlansSection({ summary, filters }: { summary: InfraCostSummary; filters: CostFilters }) {
   const p = s.plans;
   const col = p.columns;
   const connected = filters.basis === 'connected';
   const showMargin = summary.fx !== null;
-  const rows = planRowsByBasis(summary.plans, filters);
+  // Mês em andamento por horas: margem sobre o custo projetado para o mês cheio; mês passado, o realizado.
+  const projected = isProjectedMonth(summary);
+  const rows = planRowsByBasis(summary.plans, filters, projected);
   const unalloc = summary.perSession.connected;
   const stale = summary.warnings.some((w) => w.code === 'sessions_sample_stale');
   const hasTable = rows.length > 0;
@@ -154,8 +184,8 @@ function PlansSection({ summary, filters }: { summary: InfraCostSummary; filters
                 <TableCell align="right">{connected ? col.sessionsConnected : col.sessionsContracted}</TableCell>
                 <TableCell align="right">{col.share}</TableCell>
                 <TableCell align="right"><HeaderHint label={col.perTenant} hint={p.perTenantHint} /></TableCell>
-                {showMargin && <TableCell align="right"><HeaderHint label={col.marginMonthly} hint={p.marginHint} /></TableCell>}
-                {showMargin && <TableCell align="right"><HeaderHint label={col.marginAnnual} hint={p.marginAnnualHint} /></TableCell>}
+                {showMargin && <MarginHeader label={col.marginMonthly} hint={p.marginHint} projected={projected} />}
+                {showMargin && <MarginHeader label={col.marginAnnual} hint={p.marginAnnualHint} projected={projected} />}
               </TableRow>
             </TableHead>
             <TableBody>
@@ -183,6 +213,9 @@ function PlansSection({ summary, filters }: { summary: InfraCostSummary; filters
         <Typography variant="caption" color="text.secondary" component="p" sx={{ mt: 1.5 }}>
           {showMargin ? S.marginLabel : S.marginHiddenNoFx}
         </Typography>
+        {showMargin && projected && (
+          <Typography variant="caption" color="text.secondary" component="p">{p.marginProjectedNote}</Typography>
+        )}
         {connected && (
           <Typography variant="caption" color="text.secondary" component="p" role="note">
             {unalloc.unallocatedSessions === null
@@ -311,6 +344,7 @@ function WorkspaceRow({ label, usage, unit }: { label: string; usage: InfraWorks
           <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end', alignItems: 'center' }}>
             <span>{unit(num(usage.consumed, 2))}</span>
             {usage.source === 'manual' && <EstimatedChip hint={w.manualHint} />}
+            {usage.source === 'measured' && <HintChip label={w.measured} hint={w.measuredHint} color="success" />}
           </Stack>
         )}
       </TableCell>
@@ -405,16 +439,26 @@ function Tiles({ summary, filters }: { summary: InfraCostSummary; filters: CostF
   const connected = filters.basis === 'connected';
   const basis = perSessionByBasis(summary, filters.basis);
   const fixedVariable = c.fixedVariable(formatUsd(t.fixed.usd), formatUsd(t.variable.usd));
+  // Mês em andamento por horas: o total é o realizado até agora e a projeção vem ao lado; mês passado já é cheio.
+  const inProgress = isProjectedMonth(summary);
+  const hours = summary.basis === 'hours';
+  const conn = summary.perSession.connected;
+  const sessionHourContext = connected && hours && conn.sessionHours != null
+    ? [c.sessionHours(num(conn.sessionHours)), conn.perSessionHour ? c.perSessionHour(formatUsd(conn.perSessionHour.usd)) : null]
+      .filter(Boolean).join(' · ')
+    : null;
   const tiles: CostTileProps[] = [
     {
-      ...c.total, icon: Receipt, value: t.total, context: fixedVariable,
+      ...(inProgress ? c.totalSoFar : c.total), icon: Receipt, value: t.total, context: fixedVariable,
       badge: summary.totalIsPartial ? <HintChip label={c.partial} hint={c.partialHint} color="warning" /> : undefined,
     },
-    ...(t.projected ? [{ ...c.projected, icon: TrendingUp, value: t.projected }] : []),
+    ...(inProgress && t.projected ? [{ ...c.projected, icon: TrendingUp, value: t.projected }] : []),
     {
       label: c.perSession.label, help: connected ? c.perSession.helpConnected : c.perSession.helpContracted,
-      icon: Users, value: basis.perSession, context: c.perSession.sessions(num(basis.sessions)),
+      icon: Users, value: basis.perSession, context: sessionHourContext ?? c.perSession.sessions(num(basis.sessions, 2)),
     },
+    // Ociosidade só na leitura por sessão-hora (COST-12): mostrada, não rateada.
+    ...(connected && hours ? [{ label: c.idle.label, help: c.idle.help, icon: CircleDashed, value: summary.idleCapacity ?? null, emptyText: c.idle.empty }] : []),
     // Custo marginal nulo = sem preço do servidor de sessões (não falta amostra).
     { ...c.marginal, icon: Gauge, value: summary.marginalPerSession, emptyText: s.noPrice },
   ];
@@ -437,6 +481,16 @@ export default function SummaryTab() {
   const q = useCostSummary(filters.month);
   const { data } = q;
 
+  const filtersBar = <Filters filters={filters} onChange={setFilters} />;
+
+  if (q.monthUnavailable && !q.loading) {
+    return (
+      <Stack spacing={2}>
+        {filtersBar}
+        <Alert severity="info">{s.monthEmpty(monthLabel(filters.month ?? ''))}</Alert>
+      </Stack>
+    );
+  }
   if (q.unavailable && !data) return <ServiceUpdatingState onRetry={q.reload} />;
   if (q.slow && !data && !q.loading) {
     return (
@@ -463,7 +517,7 @@ export default function SummaryTab() {
   return (
     <Stack spacing={2}>
       <FxBand fx={data.fx} summary={data} />
-      <Filters filters={filters} onChange={setFilters} />
+      {filtersBar}
       <Tiles summary={data} filters={filters} />
       <Warnings warnings={data.warnings} items={data.items} />
       <PlansSection summary={data} filters={filters} />

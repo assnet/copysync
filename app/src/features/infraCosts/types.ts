@@ -224,13 +224,20 @@ export interface InfraContractedBasisView {
   unlimitedTenants: number;
 }
 
-/** Segunda leitura (sessões conectadas de tenants ativos). */
+/**
+ * Segunda leitura (sessões conectadas de tenants ativos). Foto: conectadas agora. Horas: média de conectadas
+ * no período e `perSession` = sessão-mês (sessão-hora × 730).
+ */
 export interface InfraConnectedBasisView {
   sessions: number;
   perSession: InfraMoney | null;
-  /** Conectadas no cluster sem tenant ativo; `null` sem amostra. */
+  /** Conectadas no cluster sem tenant ativo; `null` sem amostra (sempre `null` em mês passado). */
   unallocatedSessions: number | null;
   unallocatedCost: InfraMoney | null;
+  /** Σ horas conectadas do mês (P2); `null` na foto. Opcional: API anterior não envia. */
+  sessionHours?: number | null;
+  /** Custo de uma sessão-hora (4 casas na tela); `null` na foto ou sem horas. */
+  perSessionHour?: InfraMoney | null;
 }
 
 export interface InfraCostPlanView {
@@ -245,6 +252,10 @@ export interface InfraCostPlanView {
   costPerTenant: InfraMoney | null;
   connectedShare: InfraMoney | null;
   connectedCostPerTenant: InfraMoney | null;
+  /** Horas: parte com o compartilhado projetado para o mês cheio; `null` na foto. Opcional: API anterior. */
+  projectedShare?: InfraMoney | null;
+  /** Tenant médio projetado: base da margem do mês corrente ("projetada"). */
+  projectedCostPerTenant?: InfraMoney | null;
 }
 
 export type InfraCostWarningCode =
@@ -293,6 +304,11 @@ export interface InfraCostSummary {
   items: InfraCostItemView[];
   workspace: InfraWorkspaceView;
   perSession: { contracted: InfraContractedBasisView; connected: InfraConnectedBasisView };
+  /**
+   * Capacidade ociosa (horas): compartilhado × (1 − sessão-hora ÷ capacidade instalada-hora). Mostrada só na
+   * leitura por sessão-hora, fora do rateio; `null` na foto ou sem leitura do worker. Opcional: API anterior.
+   */
+  idleCapacity?: InfraMoney | null;
   /** Preço da instância ÷ (teto × ratio de alerta); `null` sem preço. */
   marginalPerSession: InfraMoney | null;
   plans: InfraCostPlanView[];
@@ -303,7 +319,7 @@ export interface InfraCostSummary {
 
 export type InfraCostSplitBasis = 'contracted' | 'connected';
 
-/** Filtros persistidos (`costs.filters`, escopo `tab`). `month: null` = mês corrente do servidor. */
+/** Filtros persistidos (`costs.filters`, escopo `tab`). `month: null` = mês corrente do servidor; `YYYY-MM` = mês passado. */
 export interface CostFilters {
   month: string | null;
   basis: InfraCostSplitBasis;

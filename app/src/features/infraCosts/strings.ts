@@ -90,6 +90,8 @@ export const infraCostsStrings = {
     basisSnapshot: 'Foto de agora projetada para o mês inteiro',
     basisHours: 'Soma das horas do mês',
     basisHint: 'Na foto do momento, as quantidades de agora valem para o mês inteiro. Mudou o número de servidores, o total muda junto.',
+    basisHoursHint: 'Cada hora do mês custa o preço do plano lido naquela hora. Hora sem leitura usa a quantidade cadastrada e ganha o selo "estimado".',
+    monthEmpty: (label: string) => `Sem dados de custo para ${label}. Os custos por hora começam a ser gravados quando o job horário está ligado.`,
     generatedAt: (when: string) => `Calculado em ${when}`,
     fx: {
       label: 'Cotação do dólar',
@@ -105,8 +107,11 @@ export const infraCostsStrings = {
       basis: 'Base do rateio',
       contracted: 'Contratadas',
       connected: 'Conectadas',
-      basisHint: 'Contratadas divide o custo pelas sessões que os planos permitem. Conectadas divide pelas sessões ligadas agora.',
+      basisHint:
+        'Contratadas divide o custo pelas sessões que os planos permitem. Conectadas divide pelas horas em que as sessões ficaram ligadas no mês (ou pelas ligadas agora, na foto do momento).',
       plan: 'Plano',
+      month: 'Mês',
+      currentMonth: (label: string) => `${label} (atual)`,
       allPlans: 'Todos os planos',
     },
     cards: {
@@ -115,6 +120,14 @@ export const infraCostsStrings = {
       partialHint: 'Algum serviço está sem preço cadastrado: o total soma só o que tem preço.',
       fixedVariable: (fixed: string, variable: string) => `Fixo ${fixed} e variável ${variable}`,
       projected: { label: 'Projeção do mês', help: 'Realizado até agora mais a tendência das últimas horas até o fim do mês.' },
+      totalSoFar: { label: 'Realizado no mês', help: 'Soma das horas já terminadas do mês: serviços, armazenamento e excedente do workspace.' },
+      idle: {
+        label: 'Capacidade ociosa',
+        help: 'Parte do custo compartilhado que pagou vagas de sessão sem uso no mês (capacidade instalada menos sessão-hora usada). Só referência: não entra no rateio.',
+        empty: 'sem leitura do servidor de sessões',
+      },
+      perSessionHour: (value: string) => `${value} por sessão-hora`,
+      sessionHours: (n: string) => `${n} sessões-hora no mês`,
       perSession: {
         label: 'Custo por sessão',
         helpContracted: 'Custo compartilhado dividido pelas sessões contratadas de todos os planos.',
@@ -145,6 +158,9 @@ export const infraCostsStrings = {
       perTenantHint: 'Parte do plano dividida pelos tenants ativos do plano.',
       marginHint: 'Preço de vitrine do plano menos o custo de um tenant médio, em reais.',
       marginAnnualHint: 'Preço do plano anual dividido por 12, menos o custo de um tenant médio.',
+      projected: 'projetada',
+      projectedHint: 'Mês em andamento: a margem usa o custo projetado para o mês cheio, não o realizado até agora.',
+      marginProjectedNote: 'Margem do mês em andamento calculada sobre o custo projetado para o mês cheio.',
       unallocated: (n: string, cost: string) => `${n} sessões conectadas de tenants sem assinatura ativa custam ${cost} e ficam fora do rateio.`,
       unallocatedNoSample: 'Sessões fora do rateio: sem amostra do coletor.',
     },
@@ -179,6 +195,8 @@ export const infraCostsStrings = {
       columns: { metric: 'Recurso', included: 'Incluso', consumed: 'Consumido', overage: 'Excedente', cost: 'Custo' },
       total: 'Total do workspace',
       manualHint: 'Valor informado à mão em Preços.',
+      measured: 'medido',
+      measuredHint: 'Somado das leituras diárias do provedor no mês. Um valor informado em Preços substitui a medição.',
     },
     warningsTitle: 'Avisos',
     warningDetail: {
@@ -187,6 +205,7 @@ export const infraCostsStrings = {
       field: (field: string) => `campo ${field}`,
       model: (model: string) => `modelo ${model}`,
       count: (n: number) => `${n.toLocaleString('pt-BR')} ocorrências`,
+      hours: (n: number) => (n === 1 ? '1 hora sem leitura' : `${n.toLocaleString('pt-BR')} horas sem leitura`),
     },
     goToPrices: 'Abrir Preços',
     usdBrlAria: (usd: string, brl: string) => `${usd}, ${brl}`,

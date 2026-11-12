@@ -156,6 +156,12 @@ export interface InfraCostPlanResult {
   costPerTenant: InfraMoney | null;
   connectedShare: InfraMoney | null;
   connectedCostPerTenant: InfraMoney | null;
+  /**
+   * Horas: parte e tenant médio na base contratadas com o compartilhado **projetado** para o mês cheio (base
+   * da margem do mês corrente); `null` na foto.
+   */
+  projectedShare: InfraMoney | null;
+  projectedCostPerTenant: InfraMoney | null;
 }
 
 export type InfraCostWarning =
@@ -605,6 +611,8 @@ export function calculateInfraCosts(input: InfraCostCalculationInput): InfraCost
   let variableUsd = workspaceUsd;
   let sharedUsd = workspaceUsd;
   let projectedUsd = bandwidth.projectedUsd + build.projectedUsd;
+  /** Compartilhado projetado (mesma regra do `shared`): base do rateio projetado. */
+  let projectedSharedUsd = projectedUsd;
   for (const { result, computeUsd, storageUsd, projectedUsd: itemProjected } of calcs) {
     if (computeUsd === null) continue;
     const itemUsd = computeUsd + (storageUsd ?? 0);
@@ -613,7 +621,10 @@ export function calculateInfraCosts(input: InfraCostCalculationInput): InfraCost
     fixedUsd += storageUsd ?? 0;
     if (result.billing === 'fixed') fixedUsd += computeUsd;
     else variableUsd += computeUsd;
-    if (result.allocation === 'shared' && result.category !== 'ai') sharedUsd += itemUsd;
+    if (result.allocation === 'shared' && result.category !== 'ai') {
+      sharedUsd += itemUsd;
+      projectedSharedUsd += itemProjected ?? 0;
+    }
   }
 
   // Rateio: foto pela capacidade de agora (COST-05); horas pelo mês de `tenant_session_hours` (COST-12).
@@ -638,6 +649,7 @@ export function calculateInfraCosts(input: InfraCostCalculationInput): InfraCost
     const avgConnected = (hours: number) => (ctx.elapsed > 0 ? hours / ctx.elapsed : 0);
     connectedTotal = avgConnected(alloc.sessionHours);
     hoursView = { sessionHours: alloc.sessionHours, perSessionHour: maybeMoney(alloc.perSessionHour, fx) };
+    const projectedPerContracted = div(projectedSharedUsd, alloc.contractedTotal);
 
     const byPlan = new Map<string | null, InfraTenantShare[]>();
     for (const t of alloc.shares) byPlan.set(t.planSlug, [...(byPlan.get(t.planSlug) ?? []), t]);
@@ -649,6 +661,7 @@ export function calculateInfraCosts(input: InfraCostCalculationInput): InfraCost
           list.some((t) => f(t) === null) ? null : list.reduce((s, t) => s + (f(t) ?? 0), 0);
         const share = sum((t) => t.contractedShareUsd);
         const connectedShare = sum((t) => t.sessionHourShareUsd);
+        const projectedShare = sum((t) => (projectedPerContracted === null ? null : t.contractedAvg * projectedPerContracted));
         return {
           planSlug,
           tenants: list.length,
@@ -658,6 +671,8 @@ export function calculateInfraCosts(input: InfraCostCalculationInput): InfraCost
           costPerTenant: maybeMoney(share === null ? null : div(share, list.length), fx),
           connectedShare: maybeMoney(connectedShare, fx),
           connectedCostPerTenant: maybeMoney(connectedShare === null ? null : div(connectedShare, list.length), fx),
+          projectedShare: maybeMoney(projectedShare, fx),
+          projectedCostPerTenant: maybeMoney(projectedShare === null ? null : div(projectedShare, list.length), fx),
         };
       });
 
@@ -687,6 +702,8 @@ export function calculateInfraCosts(input: InfraCostCalculationInput): InfraCost
         costPerTenant: contracted.perTenant,
         connectedShare: connected.share,
         connectedCostPerTenant: connected.perTenant,
+        projectedShare: null,
+        projectedCostPerTenant: null,
       };
     });
   }

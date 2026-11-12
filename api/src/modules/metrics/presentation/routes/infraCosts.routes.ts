@@ -51,7 +51,7 @@ export async function infraCostsRoutes(app: FastifyInstance): Promise<void> {
     preHandler,
     schema: {
       tags,
-      summary: 'Custo do mês por item, workspace, rateio por sessão e por plano (P1: só o mês corrente)',
+      summary: 'Custo do mês (YYYY-MM, padrão o corrente): soma por hora com projeção, rateio por sessão e por plano; mês sem dado = 400',
       querystring: infraCostSummaryQuery,
       response: { 200: infraCostSummaryResponse },
     },

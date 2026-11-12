@@ -25,7 +25,19 @@ export function presentInfraCostSummary(out: InfraCostSummaryOutput) {
     totals: c.totals,
     items: c.items.map((item) => ({ ...item, planLabel: item.planLabel ?? '' })),
     workspace: c.workspace,
-    perSession: c.perSession,
+    perSession: {
+      contracted: c.perSession.contracted,
+      // Foto: sem sessão-hora (`null`); horas: Σ `connectedHours` e custo de uma sessão-hora.
+      connected: {
+        sessions: c.perSession.connected.sessions,
+        perSession: c.perSession.connected.perSession,
+        unallocatedSessions: c.perSession.connected.unallocatedSessions,
+        unallocatedCost: c.perSession.connected.unallocatedCost,
+        sessionHours: c.perSession.connected.sessionHours ?? null,
+        perSessionHour: c.perSession.connected.perSessionHour ?? null,
+      },
+    },
+    idleCapacity: c.idleCapacity,
     marginalPerSession: c.marginalPerSession,
     plans: c.plans,
     warnings: c.warnings,

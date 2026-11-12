@@ -168,3 +168,11 @@ Pendente de conferência (não é pergunta): formato real das respostas da Rende
 | T6/R1 | `statement_timeout` → 503 `INFRA_COST_READ_UNAVAILABLE`; `sessionsSampledAt` e `sessions_sample_stale` (não alocadas só com amostra ≤ 10 min) | COST-04, COST-05 |
 | T8 | Margem sempre pela base contratadas | COST-06 |
 | T9 | Cotação automática da P1 mostrada desabilitada com "Próxima versão" | COST-06a |
+
+## Decisões da P2 (2026-11-12)
+
+| Tarefa | Decisão | Onde ficou |
+| --- | --- | --- |
+| T15 | Margem do **mês corrente** (soma por horas) usa a projeção do mês cheio: `totals.projected` e rateio projetado na base contratadas (`plans[].projectedShare`/`projectedCostPerTenant` = contratadas médias × compartilhado projetado ÷ Σ contratadas), marcada "projetada" na tela. **Mês passado** usa o realizado (`costPerTenant`). Foto (sem snapshot) segue com `costPerTenant`, que já é o mês cheio | COST-06, COST-12 |
+| T15 | `?month=`: corrente = horas quando há snapshot no mês, senão foto; mês passado só por horas, sem a foto de agora (sessões não alocadas `null`, sem capacidade por plano) e com a cotação gravada até o último dia do mês (override vale sempre); mês passado sem dado e mês futuro = 400 `INFRA_COST_MONTH_UNAVAILABLE` ("vazio" no painel, com o seletor) | COST-11 |
+| T15 | Resposta ganha `idleCapacity`, `perSession.connected.sessionHours`/`perSessionHour` (`null` na foto) e `plans[].projectedShare`/`projectedCostPerTenant`; seletor do painel = mês corrente + 11 anteriores pelo relógio do servidor | COST-12, COST-16 |

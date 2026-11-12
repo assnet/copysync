@@ -11,6 +11,7 @@ import { InfraCostSettingsConflictError } from '../../../../shared/errors/intern
 import { defaultInfraCostSettings } from '../../domain/services/infraCostSettings';
 import { PrismaInfraCostSnapshotRepository } from '../../infrastructure/repositories/PrismaInfraCostSnapshotRepository';
 import { PrismaInfraFxFetchStateRepository } from '../../infrastructure/repositories/PrismaInfraFxFetchStateRepository';
+import { PrismaInfraCostUsageReader } from '../../infrastructure/repositories/PrismaInfraCostUsageReader';
 
 /* Contrato HTTP sem banco: Prisma vazio, auth falsa, repositórios espionados no protótipo. */
 const auth = vi.hoisted(() => ({ isSuperAdmin: false }));
@@ -113,6 +114,10 @@ describe('GET /admin/costs/summary', () => {
   beforeEach(() => {
     vi.spyOn(PrismaInfraCostSnapshotRepository.prototype, 'latestFxRate').mockResolvedValue(null);
     vi.spyOn(PrismaInfraFxFetchStateRepository.prototype, 'get').mockResolvedValue(null);
+    // Sem snapshot no mês: o corrente cai na foto; mês passado = 400.
+    vi.spyOn(PrismaInfraCostUsageReader.prototype, 'readMonth').mockResolvedValue({
+      resourceHours: [], bandwidthGb: null, buildMinutes: null, tenants: [],
+    });
   });
 
   function stubReads(sessionsSampledAt: Date = new Date()) {
@@ -144,9 +149,12 @@ describe('GET /admin/costs/summary', () => {
     expect(data.items.find((i: { key: string }) => i.key === 'email').planLabel).toBe('');
     expect(data.plans).toHaveLength(2);
     expect(Object.keys(data.plans[0]).sort()).toEqual([
-      'connectedCostPerTenant', 'connectedSessions', 'connectedShare', 'contractedSessions', 'costPerTenant', 'planSlug', 'share', 'tenants',
+      'connectedCostPerTenant', 'connectedSessions', 'connectedShare', 'contractedSessions', 'costPerTenant', 'planSlug',
+      'projectedCostPerTenant', 'projectedShare', 'share', 'tenants',
     ]);
-    expect(data.perSession.connected).toMatchObject({ sessions: 3, unallocatedSessions: 2 });
+    expect(data.plans[0]).toMatchObject({ projectedShare: null, projectedCostPerTenant: null });
+    expect(data.perSession.connected).toMatchObject({ sessions: 3, unallocatedSessions: 2, sessionHours: null, perSessionHour: null });
+    expect(data.idleCapacity).toBeNull();
     expect(Number.isNaN(Date.parse(data.sessionsSampledAt))).toBe(false);
     expect(data.warnings.some((w: { code: string }) => w.code === 'sessions_sample_stale')).toBe(false);
     const body = res.body;
@@ -162,6 +170,29 @@ describe('GET /admin/costs/summary', () => {
     const res = await app.inject({ method: 'GET', url: `${URL}/summary?month=2020-01` });
     expect(res.statusCode).toBe(400);
     expect(res.json().error.code).toBe('INFRA_COST_MONTH_UNAVAILABLE');
+  });
+
+  it('mês corrente com snapshot: basis hours, sessão-hora, ociosidade e rateio projetado no contrato', async () => {
+    auth.isSuperAdmin = true;
+    stubReads();
+    const now = new Date();
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    vi.mocked(PrismaInfraCostUsageReader.prototype.readMonth).mockResolvedValue({
+      resourceHours: [{ hour: start, renderKey: 'worker', plan: '1c-2g', instances: 1, diskGb: null, suspended: false }],
+      bandwidthGb: 7, buildMinutes: null,
+      tenants: [{ tenantId: 't1', planSlug: 'COPYSYNC_LITE', connectedHours: 10, contractedAvg: 2 }],
+    });
+    const res = await app.inject({ method: 'GET', url: `${URL}/summary` });
+    expect(res.statusCode).toBe(200);
+    const { data } = res.json();
+    expect(data.basis).toBe('hours');
+    expect(data.totals.projected).not.toBeNull();
+    expect(data.perSession.connected.sessionHours).toBe(10);
+    expect(data.perSession.connected.perSessionHour).not.toBeNull();
+    expect(data).toHaveProperty('idleCapacity');
+    expect(data.plans[0].projectedCostPerTenant).not.toBeNull();
+    expect(data.workspace.bandwidth).toMatchObject({ consumed: 7, source: 'measured' });
+    expect(res.body).not.toContain('srv-');
   });
 
   it('mês em formato inválido: 400 de validação', async () => {

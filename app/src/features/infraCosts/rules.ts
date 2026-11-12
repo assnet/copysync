@@ -658,7 +658,10 @@ export function dayLabel(date: string): string {
   return y && m && d ? `${d}/${m}/${y}` : date;
 }
 
-/** Linha do plano na base escolhida. A margem usa sempre a base contratadas (`costPerTenant`). */
+/**
+ * Linha do plano na base escolhida. A margem usa sempre a base contratadas: no mês corrente por horas, o tenant
+ * médio **projetado** para o mês cheio (`projectedCostPerTenant`); senão o realizado (`costPerTenant`).
+ */
 export interface PlanBasisRow {
   plan: InfraCostPlanView;
   sessions: number;
@@ -669,7 +672,11 @@ export interface PlanBasisRow {
 }
 
 /** Planos na ordem do catálogo, filtrados pelo plano escolhido, com sessões e custo da base do filtro. */
-export function planRowsByBasis(plans: readonly InfraCostPlanView[], filters: Pick<CostFilters, 'basis' | 'plan'>): PlanBasisRow[] {
+export function planRowsByBasis(
+  plans: readonly InfraCostPlanView[],
+  filters: Pick<CostFilters, 'basis' | 'plan'>,
+  projectedMargin = false,
+): PlanBasisRow[] {
   const connected = filters.basis === 'connected';
   return sortPlansByCatalog(plans)
     .filter((row) => filters.plan === 'all' || catalogSlugOf(row.planSlug) === filters.plan)
@@ -678,8 +685,29 @@ export function planRowsByBasis(plans: readonly InfraCostPlanView[], filters: Pi
       sessions: connected ? row.connectedSessions : row.contractedSessions,
       share: connected ? row.connectedShare : row.share,
       perTenant: connected ? row.connectedCostPerTenant : row.costPerTenant,
-      marginCost: row.costPerTenant,
+      marginCost: projectedMargin ? row.projectedCostPerTenant ?? null : row.costPerTenant,
     }));
+}
+
+/** `YYYY-MM` (UTC) de um instante em ms. */
+export function utcMonthOf(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 7);
+}
+
+/** Meses que o seletor oferece: o corrente e os 11 anteriores (UTC, do mais novo ao mais velho). */
+export const COST_MONTHS_BACK = 11;
+export function costMonthOptions(nowMs: number): string[] {
+  const d = new Date(nowMs);
+  return Array.from({ length: COST_MONTHS_BACK + 1 }, (_, i) =>
+    new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - i, 1)).toISOString().slice(0, 7));
+}
+
+/**
+ * Mês corrente somado por horas: a margem e a projeção usam o mês cheio projetado (marcado "projetada").
+ * Mês passado usa o realizado; foto (sem snapshot) já é o mês cheio.
+ */
+export function isProjectedMonth(summary: Pick<InfraCostSummary, 'basis' | 'month' | 'generatedAt' | 'totals'>): boolean {
+  return summary.basis === 'hours' && summary.totals.projected !== null && summary.month === summary.generatedAt.slice(0, 7);
 }
 
 /** Sessões e custo por sessão da base escolhida. */
@@ -688,7 +716,12 @@ export function perSessionByBasis(summary: Pick<InfraCostSummary, 'perSession'>,
 }
 
 /** Avisos que se resolvem na aba Preços. */
-const PRICE_WARNING_CODES = new Set<InfraCostWarningCode>(['config_drift', 'plan_without_price', 'storage_to_confirm', 'model_without_price', 'fx_missing']);
+const PRICE_WARNING_CODES = new Set<InfraCostWarningCode>([
+  'config_drift', 'plan_without_price', 'storage_to_confirm', 'model_without_price', 'fx_missing', 'missing_hours',
+]);
+
+/** Campo do `config_drift` (nome da leitura) → caminho do campo no cadastro, para o rótulo de `fieldLabel`. */
+const DRIFT_FIELD_PATH: Record<string, string> = { plan: 'monthlyUsd', instances: 'quantity', diskGb: 'storage.gb' };
 
 export function isPriceWarning(code: InfraCostWarningCode): boolean {
   return PRICE_WARNING_CODES.has(code);
@@ -705,13 +738,14 @@ export function warningDetail(w: InfraCostWarning, items: readonly LabeledItem[]
     ? items.find((i) => i.key === w.key)
     : w.resourceKey ? items.find((i) => i.renderKey === w.resourceKey) : undefined;
   const name = item?.label || (w.resourceKey && !w.key ? S.renderKey[w.resourceKey as InfraRenderKey] : undefined) || id;
+  const field = w.code === 'config_drift' && w.field ? DRIFT_FIELD_PATH[w.field] ?? w.field : w.field;
   const parts = [
-    name && w.field
-      ? labelOf(`items[${item?.key ?? id}].${w.field}`, null, item ? [item] : [{ key: id!, label: name }])
-      : name ? d.resource(name) : w.field ? d.field(ROW_FIELD_NAMES[w.field] ?? w.field) : null,
+    name && field
+      ? labelOf(`items[${item?.key ?? id}].${field}`, null, item ? [item] : [{ key: id!, label: name }])
+      : name ? d.resource(name) : field ? d.field(ROW_FIELD_NAMES[field] ?? field) : null,
     w.plan ? d.plan(w.plan) : null,
     w.model ? d.model(w.model) : null,
-    typeof w.count === 'number' ? d.count(w.count) : null,
+    typeof w.count === 'number' ? (w.code === 'missing_hours' ? d.hours(w.count) : d.count(w.count)) : null,
   ].filter(Boolean);
   return parts.length ? parts.join(', ') : null;
 }

@@ -162,8 +162,11 @@ const summarySchema = obj({
       perSession: nullableMoney,
       unallocatedSessions: nullableNum,
       unallocatedCost: nullableMoney,
+      sessionHours: nullableNum,
+      perSessionHour: nullableMoney,
     }),
   }),
+  idleCapacity: nullableMoney,
   marginalPerSession: nullableMoney,
   plans: {
     type: 'array',
@@ -176,6 +179,8 @@ const summarySchema = obj({
       costPerTenant: nullableMoney,
       connectedShare: nullableMoney,
       connectedCostPerTenant: nullableMoney,
+      projectedShare: nullableMoney,
+      projectedCostPerTenant: nullableMoney,
     }),
   },
   warnings: {

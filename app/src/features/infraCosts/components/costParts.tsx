@@ -66,7 +66,7 @@ export function Money({
 }
 
 /** Selo com explicação (estimado, a confirmar, parcial, fora do rateio). */
-export function HintChip({ label, hint, color = 'default' }: { label: string; hint: string; color?: 'default' | 'warning' | 'info' | 'error' }) {
+export function HintChip({ label, hint, color = 'default' }: { label: string; hint: string; color?: 'default' | Tone }) {
   return (
     <Tooltip title={hint} arrow enterTouchDelay={0} describeChild>
       <Chip

@@ -10,6 +10,12 @@ import type { InfraCostSummary, InfraMoney } from '../types';
 import { monthLabel } from '../rules';
 import SummaryTab from './SummaryTab';
 
+// Relógio do servidor fixo: o seletor de mês parte de novembro de 2026.
+vi.mock('@/services/serverClock', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/serverClock')>()),
+  serverNow: () => Date.parse('2026-11-12T10:00:00.000Z'),
+}));
+
 const s = S.summary;
 const m = (usd: number, brl: number | null = usd * 5): InfraMoney => ({ usd, brl });
 const norm = (t: string | null | undefined) => (t ?? '').replace(/\s/g, ' ');
@@ -273,5 +279,105 @@ describe('SummaryTab — revisão R1', () => {
     const worker = within(table).getByText('Worker').closest('tr') as HTMLElement;
     const sr = within(worker).getByText(s.services.noNeighbor);
     expect(sr.closest('td')?.querySelector('[tabindex]')).toBeNull();
+  });
+});
+
+describe('SummaryTab — mês e horas (P2)', () => {
+  /** Mês corrente somado por horas: realizado 60, projeção 120; LITE projetado R$ 20 por tenant. */
+  function hoursSummary(over: Partial<InfraCostSummary> = {}): InfraCostSummary {
+    const base = summary({ basis: 'hours', warnings: [] });
+    base.totals = { ...base.totals, total: m(60), projected: m(120) };
+    base.plans = base.plans.map((p) => ({ ...p, projectedShare: p.share, projectedCostPerTenant: p.planSlug === 'COPYSYNC_LITE' ? m(4, 20) : p.costPerTenant }));
+    base.perSession.connected = { ...base.perSession.connected, sessionHours: 1440, perSessionHour: m(0.0045) };
+    base.idleCapacity = m(30);
+    base.workspace.bandwidth = { included: 5, consumed: 7, source: 'measured', overage: 2, cost: m(0.3) };
+    return { ...base, ...over };
+  }
+
+  it.each(['light', 'dark'] as const)('mês corrente: realizado, projeção e margem projetada marcada (%s)', async (mode) => {
+    mockSummary(hoursSummary());
+    renderTab(mode);
+    const realized = (await screen.findByText(s.cards.totalSoFar.label)).closest('.MuiCard-root') as HTMLElement;
+    expect(norm(realized.textContent)).toContain('US$ 60,00');
+    const projected = screen.getByText(s.cards.projected.label).closest('.MuiCard-root') as HTMLElement;
+    expect(norm(projected.textContent)).toContain('US$ 120,00');
+    const table = screen.getByRole('table', { name: s.plans.aria });
+    expect(within(table).getAllByText(s.plans.projected)).toHaveLength(2);
+    // LITE: R$ 97 − R$ 20 (projetado) = R$ 77.
+    const lite = within(table).getByText('LITE').closest('tr') as HTMLElement;
+    expect(norm(lite.textContent)).toContain('R$ 77,00');
+    expect(screen.getByText(s.plans.marginProjectedNote)).toBeInTheDocument();
+  });
+
+  it('mês passado: total do mês, sem projeção e margem pelo realizado', async () => {
+    mockSummary(hoursSummary({ month: '2026-10' }));
+    renderTab();
+    expect(await screen.findByText(s.cards.total.label)).toBeInTheDocument();
+    expect(screen.queryByText(s.cards.projected.label)).not.toBeInTheDocument();
+    const table = screen.getByRole('table', { name: s.plans.aria });
+    expect(within(table).queryByText(s.plans.projected)).not.toBeInTheDocument();
+    expect(norm((within(table).getByText('LITE').closest('tr') as HTMLElement).textContent)).toContain('R$ 87,00');
+  });
+
+  it('sessão-hora: capacidade ociosa e custo por sessão-hora só na leitura conectadas', async () => {
+    mockSummary(hoursSummary());
+    renderTab();
+    await screen.findByRole('table', { name: s.plans.aria });
+    expect(screen.queryByText(s.cards.idle.label)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: s.filters.connected }));
+    const idle = screen.getByText(s.cards.idle.label).closest('.MuiCard-root') as HTMLElement;
+    expect(norm(idle.textContent)).toContain('US$ 30,00');
+    const perSession = screen.getByText(s.cards.perSession.label).closest('.MuiCard-root') as HTMLElement;
+    expect(norm(perSession.textContent)).toContain('1.440 sessões-hora no mês');
+    expect(norm(perSession.textContent)).toContain('US$ 0,0045 por sessão-hora');
+  });
+
+  it('ociosidade sem leitura do worker: texto do motivo', async () => {
+    mockSummary(hoursSummary({ idleCapacity: null }));
+    renderTab();
+    await screen.findByRole('table', { name: s.plans.aria });
+    await userEvent.click(screen.getByRole('button', { name: s.filters.connected }));
+    const idle = screen.getByText(s.cards.idle.label).closest('.MuiCard-root') as HTMLElement;
+    expect(within(idle).getByText(s.cards.idle.empty)).toBeInTheDocument();
+  });
+
+  it('workspace medido com selo próprio', async () => {
+    mockSummary(hoursSummary());
+    renderTab();
+    const table = await screen.findByRole('table', { name: s.workspace.aria });
+    const band = within(table).getByText(s.workspace.bandwidth).closest('tr') as HTMLElement;
+    expect(within(band).getByText(s.workspace.measured)).toBeInTheDocument();
+    expect(within(band).queryByText(S.estimated)).not.toBeInTheDocument();
+  });
+
+  it('avisos novos legíveis e com atalho para Preços', async () => {
+    mockSummary(hoursSummary({
+      warnings: [
+        { code: 'missing_hours', resourceKey: 'worker', count: 3 },
+        { code: 'config_drift', resourceKey: 'postgres', field: 'diskGb' },
+        { code: 'plan_without_price', resourceKey: 'worker', plan: '2c-4g' },
+      ],
+    }));
+    renderTab();
+    const region = await screen.findByRole('region', { name: s.warningsTitle });
+    expect(within(region).getByText('serviço Worker, 3 horas sem leitura')).toBeInTheDocument();
+    expect(within(region).getByText('Banco · Disco (GB)')).toBeInTheDocument();
+    expect(within(region).getByText('serviço Worker, plano 2c-4g')).toBeInTheDocument();
+    expect(within(region).getByRole('link', { name: s.goToPrices })).toHaveAttribute('href', '/admin/costs/prices');
+  });
+
+  it('seletor de mês persistido na aba; mês sem dado mostra estado vazio com o seletor', async () => {
+    const spy = mockSummary(summary());
+    renderTab();
+    await screen.findByRole('table', { name: s.plans.aria });
+    spy.mockRejectedValue(Object.assign(new Error('x'), { status: 400, code: 'INFRA_COST_MONTH_UNAVAILABLE' }));
+    await userEvent.click(screen.getByRole('combobox', { name: s.filters.month }));
+    expect(screen.getByRole('option', { name: s.filters.currentMonth(monthLabel('2026-11')) })).toBeInTheDocument();
+    expect(screen.getAllByRole('option')).toHaveLength(12);
+    await userEvent.click(screen.getByRole('option', { name: monthLabel('2026-09') }));
+    expect(spy).toHaveBeenLastCalledWith('2026-09');
+    expect(await screen.findByText(s.monthEmpty(monthLabel('2026-09')))).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: s.filters.month })).toBeInTheDocument();
+    expect(sessionStorage.getItem('ui.costs.filters')).toContain('2026-09');
   });
 });

@@ -12,6 +12,7 @@ import { InfraCostCapacityReader } from './repositories/infraCostReadTimeout';
 import { PrismaInfraCostSnapshotRepository } from './repositories/PrismaInfraCostSnapshotRepository';
 import { PrismaInfraFxFetchStateRepository } from './repositories/PrismaInfraFxFetchStateRepository';
 import { PrismaInfraTenantUsageReader } from './repositories/PrismaInfraTenantUsageReader';
+import { PrismaInfraCostUsageReader } from './repositories/PrismaInfraCostUsageReader';
 import { PrismaJobLease } from '../../../shared/infrastructure/jobs/PrismaJobLease';
 import { InfraCostSnapshotJob } from './jobs/InfraCostSnapshotJob';
 import { infraResourcePlanReader } from './sources/infraResourcePlanReader';
@@ -47,6 +48,8 @@ export function getInfraCostSummaryUseCase(): GetInfraCostSummaryUseCase {
     // Cotação gravada pelo job e estado da busca do dia (`last_known` quando falhou hoje).
     fxRates: new PrismaInfraCostSnapshotRepository(prisma),
     fxFetchState: new PrismaInfraFxFetchStateRepository(prisma),
+    // Snapshots horários do mês (P2): soma por hora, projeção e rateio por sessão-hora.
+    usage: new PrismaInfraCostUsageReader(prisma),
   }));
 }
 
