@@ -300,7 +300,10 @@ comum a `http`/`worker`); o padrão (vazio) gera id único por boot. Dois proces
 filtro do dono não exclui nada e o incidente de 2026-11-11 volta.
 
 **Gestor de Links × dono morto.** Sessão `CONNECTED` sem lease vivo (dono morreu, fence) não entra no `listDue` de
-ninguém: fica sem sync de membros até ser adotada; o sync volta sozinho com o novo dono.
+ninguém: fica sem sync de membros até ganhar dono de novo; o sync volta sozinho com o novo dono. Só ganha dono se
+for adotável: tenant `ACTIVE` e `connectRequestedAt` preenchido (gravado ao conectar, limpo em disconnect/logout/
+delete/suspensão; `PrismaSessionAdoptionRepository`). Sessão nesse estado sem `connectRequestedAt` não volta sozinha:
+reconectar pelo painel. Com processo único `all` (sem adoção), quem reabre é o bootstrap no próximo boot.
 
 **Dono de cada job de boot** (papel em `app/processJobs.ts`). Regra desde a api 0.85.1 (spec `.specs/features/owner-scoped-jobs/`):
 job que usa a engine só trabalha com sessões cujo lease vivo é **deste** processo (ou sem dono vivo, quando o job

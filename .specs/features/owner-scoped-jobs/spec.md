@@ -35,3 +35,13 @@ recuperados; worker suspenso). O mesmo aconteceria com 2+ workers: o claim é gl
 
 Com a api `all` e um worker vazio ao mesmo tempo, o worker não pega nenhum envio de sessão da api; com dois workers, cada
 envio sai pelo dono da sessão; com um processo só, nada muda.
+
+## Revisão
+
+| Rodada | Achados | Resultado |
+| --- | --- | --- |
+| Spec × código | 3 🔴, 4 🟡, 4 🔵, 1 ❓ | Corrigidos na spec antes de implementar: sem caminho remoto para desconectar sessão alheia (dono `all` não consome fila) → só sessões próprias + varredura por processo; listener corrompia status de sessão alheia; filtro do claim = excluir lease vivo de outro processo; `workerId` no construtor; lease por processo no Gestor de Links com limpeza; keeper antes do bootstrap (OWN-08). |
+| 1 (diff) | 0 🔴, 6 🟡, 2 🔵, 2 ❓ | 2 🟡 já resolvidos pelo commit de docs/int tests; corrigidos (o6): tenant reativado no meio da varredura; ponto cego de órfão de tenant inativo; desconexão repetida. ❓ respondidos nos docs (`WORKER_ID` único; papel `http`). |
+| 2 | 0 🔴, 2 🟡, 2 🔵 | Doc do Gestor × dono morto corrigida (só volta se adotável). Aceito: a ordem keeper → bootstrap é coberta pelo teste do helper `bootSessionsWithKeeper`, que o `server.ts` chama; a composição do boot não tem teste (igual aos demais jobs). Nits aceitos: evento do Telegram com `reason: 'manual'` na varredura; `findOrphanedWithInactiveTenant` sem índice (medir antes de ~1.800 sessões). Convergiu. |
+
+Pendência conhecida (fora do escopo): `claimDue` compara `notBefore` (sem fuso) com `timestamptz`; latente com o banco em UTC.
