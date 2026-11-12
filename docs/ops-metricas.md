@@ -170,11 +170,20 @@ série; mais de 3 cores (mais de 3 workers = só tabela); persistir dado da API.
 | `RENDER_RESOURCE_IDS` | vazio | `srv-…`/`dpg-…` separados por vírgula |
 | `WORKER_SCALER_SERVICE_ID` | vazio | id `srv-…` do serviço worker (do escalador). No `worker`, o sampler o coleta automaticamente além de `RENDER_RESOURCE_IDS` (sem duplicar; réplicas incluídas). No `http`, separa as amostras da Render do worker (`worker_service`) das da API no Consumo. Inválido = ignorado |
 | `OPS_MEMORY_LIMIT_MB` | vazio | limite de RAM para o alerta de RSS quando a Render não dá `memory-limit` |
+| `INFRA_COST_SNAPSHOT_ENABLED` | `false` | liga o `InfraCostSnapshotJob` dos custos ([`custos-infraestrutura.md`](custos-infraestrutura.md)); só no `worker` |
+| `INFRA_COST_RENDER_RESOURCES` | vazio | `api=srv-<id>,worker=srv-<id>,static=srv-<id>,postgres=dpg-<id>,redis=red-<id>`, só no `worker`; sem `worker=` usa `WORKER_SCALER_SERVICE_ID`. Entrada inválida ignorada com `warn` sem o id |
 
 Custo no worker dono, por minuto: 4 GETs à Render (`cpu`, `cpu-limit`, `memory`, `memory-limit`,
 timeout 5 s cada) + consultas de catálogo do PG. Zero no `http` para métricas. Recorte: só as rotas de escala
 (`/admin/workers/scale`, escalador ligado) chamam a Render a partir do `http`, com cache de 30 s no `GET` e timeout de
 5 s; as rotas de métricas e capacidade continuam sem chamada à Render.
+
+**Job de custos** (`InfraCostSnapshotJob`, api 0.89.0): outro job do `worker` que fala com a Render, separado do
+sampler (lease `infra-cost-snapshot`, tick 5 min). Por hora cheia: plano, instâncias e disco de cada recurso de
+`INFRA_COST_RENDER_RESOURCES`, banda da hora fechada há mais de 1 h; 1×/dia os deploys do dia anterior e a cotação do
+BCB. Instâncias do worker vêm das amostras de `ops_metrics_samples` deste coletor (Render só como fallback). Timeout 5 s,
+429 respeita `Retry-After`. A regra segue: **nenhuma rota de métricas ou de custos chama a Render**; `/admin/costs` lê só
+as tabelas gravadas pelo job.
 
 **Antes de ligar**: conferir numa resposta real da Render a unidade (`unit`) e os labels das
 séries (`instance`/`resource`/`service`). O `%` vem da razão uso/limite da mesma série, mas o valor

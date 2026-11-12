@@ -55,15 +55,15 @@ visual pelo `agent-browser` (claro, escuro, 390 px). Registro em `review.md`.
 | T7 | Painel: contratos, regras, serviço, margem | — | P | feito |
 | T8 | Painel: página, navegação, aba Resumo | T6, T7 | | feito |
 | T9 | Painel: aba Preços | T8 | | feito |
-| T10 | Docs, versão e changelog da P1 | T9 | | pendente |
-| R1 | Revisão da P1 e merge | T10 | | pendente |
-| T11 | Tabelas de snapshot (migration + repositório) | R1 | | pendente |
-| T12 | Leitor de plano da Render | R1 | P | pendente |
-| T12b | Cotação PTAX do BCB | R1 | P | pendente |
-| T13 | Job de snapshot horário e passo diário | T11, T12, T12b | | pendente |
-| T14 | Calculador por hora + leitor do mês | T11 | | pendente |
-| T15 | Summary por mês e projeção; painel com mês e avisos | T13, T14 | | pendente |
-| T16 | Docs, versão e changelog da P2 | T15 | | pendente |
+| T10 | Docs, versão e changelog da P1 | T9 | | feito |
+| R1 | Revisão da P1 e merge | T10 | | feito |
+| T11 | Tabelas de snapshot (migration + repositório) | R1 | | feito |
+| T12 | Leitor de plano da Render | R1 | P | feito |
+| T12b | Cotação PTAX do BCB | R1 | P | feito |
+| T13 | Job de snapshot horário e passo diário | T11, T12, T12b | | feito |
+| T14 | Calculador por hora + leitor do mês | T11 | | feito |
+| T15 | Summary por mês e projeção; painel com mês e avisos | T13, T14 | | feito |
+| T16 | Docs, versão e changelog da P2 | T15 | | feito |
 | R2 | Revisão da P2 e merge | T16 | | pendente |
 | T17 | Custo de IA por tenant | R2 | | pendente |
 | T18 | Fechamento mensal (migration + job) | R2 | | pendente |

@@ -16,6 +16,40 @@ Plano completo (P1–P3): `.specs/features/infra-costs/{spec,design,tasks}.md`. 
 | Auditoria | `AuditAction.INFRA_COST_SETTINGS_CHANGED` | Antes/depois a cada `PUT` |
 | Painel | `/admin/costs` (Resumo) e `/admin/costs/prices` (Preços), `app/src/features/infraCosts/`, `pages/admin/AdminCostsPage.tsx` | Item "Custos" na seção Plataforma; link "Ver custos" no cartão da aba Capacidade dos workers |
 
+## O que existe (P2 — api 0.89.0 · app 0.109.0)
+
+| Peça | Onde | Nota |
+| --- | --- | --- |
+| Tabelas | migration `create_infra_cost_snapshots`: `infra_resource_hours`, `tenant_session_hours`, `infra_fx_rates`, `infra_usage_daily` | Retenção 400 dias (limpeza diária em lotes de 5 mil, `statement_timeout` 2 s) |
+| Repositórios | `PrismaInfraCostSnapshotRepository.ts`, `PrismaInfraTenantUsageReader.ts`, `PrismaInfraCostUsageReader.ts`, `PrismaInfraFxFetchStateRepository.ts` | `upsert` por `(hour, resourceKey)`; sessão-hora e banda com guarda `lastHour` |
+| Job | `metrics/infrastructure/jobs/InfraCostSnapshotJob.ts` (`infraCostSnapshot` em `app/processJobs.ts`) | Só `worker`/`all`, só com `INFRA_COST_SNAPSHOT_ENABLED=true` |
+| Render | `sources/RenderInfraResourcePlanReader.ts` (sem config: `NotConfiguredInfraResourcePlanReader`), env em `shared/config/infraCostRenderResources.ts` | Plano, instâncias, disco, banda por hora, deploys do dia; timeout 5 s; 429 respeita `Retry-After` |
+| Cotação | `sources/BcbPtaxFxRateSource.ts`, `BcbSgsFxRateSource.ts`, `domain/services/fxRate.ts`, `infraFxFetchState.ts` | URLs fixas, valor aceito só finito entre 1 e 20 |
+| Cálculo | `infraCostCalculator.ts` com `basis: 'hours'` | Soma por hora, projeção, sessão-hora, ociosidade |
+| Painel | `SummaryTab.tsx`, `useCostSummary.ts` | Seletor de mês (corrente + 11 anteriores pelo relógio do servidor), base contratadas × sessão-hora, avisos com atalho para Preços |
+
+## Job horário (`InfraCostSnapshotJob`)
+
+Tick de 5 min (`unref`) sob o lease `infra-cost-snapshot` (TTL 4 min, renovado antes de gravar, solto no `stop`).
+Cada tick, nesta ordem, cada passo isolado (falha de um não para os outros, `warn` com o nome do passo):
+
+1. **Hora fechada** `H` (hora cheia UTC anterior), só se `infra_resource_hours` ainda não tem `H`: lê os tenants
+   (sessão-hora = 1 h × sessões `CONNECTED` com lease vivo; contratadas), a Render (plano, instâncias, disco de cada
+   recurso) e as instâncias do worker pelas amostras (`srv-<id>-<sufixo>` distintos da hora, média por minuto,
+   arredondada; Render como fallback). Grava sessão-hora → banda → recursos; recursos por último, como marca de "hora
+   feita". **Tudo ou nada nos recursos**: um recurso sem leitura → hora sem linha, um `warn` por sequência de falha
+   (`infra cost hour without render reading`), tenta de novo no próximo tick. Sem Render configurada grava só a
+   sessão-hora. Troca de dono do lease não dobra.
+2. **Banda** da hora fechada há mais de 1 h, de todos os serviços mapeados (inclusive o static), convertida pelo campo
+   `unit` (série sem `unit` descartada), em `infra_usage_daily` (`bandwidth_gb`). Banda indisponível não segura a hora.
+3. **Build**: minutos do dia anterior (`finishedAt − startedAt` dos deploys, com cursor), 1×/dia a partir de 01:00 UTC
+   (lease `infra-cost-build` até 01:00 do dia seguinte; falha = nova tentativa 1 h depois), em `infra_usage_daily`
+   (`build_minutes`).
+4. **Cotação** (com `fx.auto`), ver abaixo.
+5. **Retenção** de 400 dias, 1×/24 h (lease `infra-cost-retention`, não solto).
+
+Memória só para não repetir `warn`; todo estado que importa está no banco.
+
 ## A conta
 
 - **Item** (`items[]`): `billing` `fixed` (US$/mês × quantidade), `per_instance` (US$/mês por instância) ou `usage`
@@ -27,11 +61,32 @@ Plano completo (P1–P3): `.specs/features/infra-costs/{spec,design,tasks}.md`. 
 - **Instâncias do worker agora**: instâncias distintas do serviço worker (`worker_service`) nas amostras da Render dos
   últimos 15 min, **só as atuais** (amostra a até 2 min da mais nova do serviço, mesma regra da tabela de instâncias:
   réplica trocada por deploy não soma). Sem amostra → `quantity` manual (origem `manual`).
-- **Workspace** (Hobby): incluso × consumido × excedente para banda e build; na P1 o consumido é o valor manual.
+- **Workspace** (Hobby): incluso × consumido × excedente para banda e build. Consumido = valor manual quando
+  informado (vence), senão o **medido** pelo job no mês (`infra_usage_daily`); na foto (sem snapshot) só o manual.
 - **Plano vizinho**: por serviço com `renderKey`, custo um plano abaixo e um acima em `renderPlanPrices` (só leitura).
 - **Custo marginal por sessão** = preço da instância do worker ÷ (`maxSessionsPerWorker` × `alertOccupancyRatio`),
   lidos de `workerScalingSettingsProvider().current()` a cada chamada.
 - Item sem preço fica `null` e o total vira parcial (`totalIsPartial: true`); nunca 0 silencioso. Divisão por zero → `null`.
+
+### Modo horas (P2)
+
+- `basis: 'hours'` quando o mês tem snapshot; `basis: 'snapshot'` (foto × mês cheio) só no mês corrente sem snapshot.
+- **Item com `renderKey`**: Σ por hora (preço mensal do plano lido ÷ horas do mês × instâncias). Ex.: 1 → 2 instâncias
+  no dia 15 de um mês de 30 dias = 25 + 12,50. Hora sem leitura usa a quantidade manual e gera `missing_hours` com a
+  contagem. Plano lido sem preço em `renderPlanPrices` → item `null`, `totalIsPartial` e `plan_without_price`.
+  Cadastro diferente do lido (plano, instâncias, disco) → `config_drift` (gerado no calculador).
+- **Item sem `renderKey`**: proporcional às horas decorridas do mês.
+- **Ciclo = mês calendário UTC** (`cycleStartDay` não é usado).
+- **Realizado** = soma até agora. **Projeção** (`totals.projected`) = realizado + última hora lida × horas restantes +
+  excedente do workspace projetado pela média diária.
+- **Sessão-hora** (2ª leitura): compartilhado ÷ Σ `connectedHours`; `perSession.connected` = média do mês,
+  `perSessionHour` e `sessionHours` na resposta, sessão-mês = sessão-hora × 730. **Capacidade ociosa**
+  (`idleCapacity`) = custo − parte usada, mostrada e não rateada.
+- **Contratadas** no modo horas = média diária de `contractedSessions` de `tenant_session_hours`, mesma regra de
+  ilimitado.
+- **Mês passado**: só por horas, sem a foto de agora (não alocadas `null`, sem capacidade por plano), cotação gravada
+  até o último dia do mês (override vale sempre). Mês passado sem dado ou mês futuro → 400
+  `INFRA_COST_MONTH_UNAVAILABLE` (painel mostra "vazio" com o seletor).
 
 ## Rateio
 
@@ -49,28 +104,60 @@ Plano completo (P1–P3): `.specs/features/infra-costs/{spec,design,tasks}.md`. 
 - Calculada **só no painel** (`features/infraCosts/rules.ts`, `planMargin`): preço de vitrine de `PLAN_CATALOG`
   (mensal e anual-equivalente) − custo por tenant em R$. Sempre pela base **contratadas**, qualquer que seja a leitura
   escolhida na tela. Rótulo: margem bruta de infraestrutura (sem gateway, impostos e IA da chave do tenant).
+- **Mês corrente por horas = margem projetada**: usa `plans[].projectedCostPerTenant` (contratadas médias ×
+  compartilhado projetado ÷ Σ contratadas), marcada "projetada" na tela. **Mês passado** = realizado
+  (`costPerTenant`). Foto (sem snapshot) = `costPerTenant`, que já é o mês cheio.
 - Sem cotação, a margem não aparece. A API nunca recebe nem devolve preço de plano.
 
 ## Cotação USD→BRL
 
 - A API devolve cada número em USD e BRL (`usd × rate`, 4 casas; o painel mostra 2, e 4 abaixo de 0,01).
-- **P1: só override manual** (`fx.override` = valor 1–20 com 4 casas e data). Sem override → só USD e aviso `fx_missing`.
-- A cotação automática (`fx.auto`) **não tem Switch** na P1: a aba Preços mostra só uma linha de status com o chip
-  "Em breve". O `fx.auto` salvo fica como está (liga sozinho na P2).
+- Ordem: **override manual** (`fx.override` = valor 1–20 com 4 casas e data) → cotação gravada em `infra_fx_rates`
+  → `null` (só USD e aviso `fx_missing`). Se a busca de hoje falhou, a gravada sai com `source: 'last_known'`. `stale`
+  = `referenceDate` com mais de 5 dias corridos. Atribuição na tela: "Fonte: Banco Central do Brasil (PTAX)".
+- **Busca automática (P2, `fx.auto`, padrão `true`)**, feita só pelo job: 1×/dia após 16h30 UTC, sob o lease
+  `infra-fx-rate`: **PTAX** de venda (Olinda `CotacaoDolarPeriodo`, janela de 7 dias) → **SGS** série 1
+  (`ultimos/1`) → mantém a **última** gravada e faz **no máximo 1 nova tentativa 1 h depois**. Estado da tentativa em
+  `platform_settings["infra_fx_fetch_state"]` (`ok`, `referenceDay`, `attempts`, `lastAttemptAt`): sobrevive a
+  reinício, nunca em memória. Timeout 5 s, URLs fixas no código.
+- A aba Preços ainda mostra a busca automática só como linha de status (chip "Em breve"), sem Switch.
 
 ## Previsto
 
-- **P2**: `InfraCostSnapshotJob` no `worker` (lease, flag `INFRA_COST_SNAPSHOT_ENABLED`, ids em
-  `INFRA_COST_RENDER_RESOURCES`): plano, instâncias e disco por hora, banda e build medidos, PTAX do BCB 1×/dia (SGS e
-  última salva como fallback), custo proporcional ao tempo, projeção, sessão-hora, seletor de mês.
 - **P3**: custo de IA da plataforma por tenant (`ai_usage_logs`), fechamento mensal congelado, abas Por cliente
   (nome com `Blurred`) e Histórico.
+
+## Envs (só na Render, só no `worker`)
+
+| Env | Padrão | Uso |
+| --- | --- | --- |
+| `INFRA_COST_SNAPSHOT_ENABLED` | `false` | Liga o job. Desligada: nada é montado nem chamado |
+| `INFRA_COST_RENDER_RESOURCES` | vazio | `chave=id` por vírgula: `api=srv-<id>,worker=srv-<id>,static=srv-<id>,postgres=dpg-<id>,redis=red-<id>`. Chaves só essas cinco; prefixo exigido por chave (`srv-`/`dpg-`/`red-`). Entrada malformada, chave desconhecida, id inválido ou chave repetida é ignorada com `warn` sem o id. Sem `worker=` usa `WORKER_SCALER_SERVICE_ID` válido |
+| `RENDER_API_KEY` | vazio | Já usada pelo coletor (`docs/ops-metricas.md`). Sem ela ou sem ids, as horas ficam sem leitura da Render (só sessão-hora) |
+
+### Como ligar com segurança
+
+1. Deploy da versão com a migration `create_infra_cost_snapshots` (aplicada no boot, §5.1 de
+   `docs/arquitetura-escala.md`).
+2. Só no serviço `worker` (nunca no `http`): `INFRA_COST_RENDER_RESOURCES` com os ids reais (copiados do painel da
+   Render; nunca em doc, chat, log ou git) e depois `INFRA_COST_SNAPSHOT_ENABLED=true`.
+3. Conferir os logs do boot: `Infra cost snapshot job started` com `render: true`; nenhum
+   `infra cost render resource entry ignored` (se sair, o `issue`/`key` diz qual entrada corrigir).
+4. Nas primeiras horas: uma linha por recurso e hora cheia em `infra_resource_hours`, `tenant_session_hours` do dia
+   crescendo 1 h por hora, nenhum `infra cost hour without render reading` repetido; banda a partir da 2ª hora, build
+   no dia seguinte após 01:00 UTC, cotação após 16h30 UTC. Em `/admin/costs`, o mês corrente passa a `basis: 'hours'`
+   sem `config_drift` inesperado.
+5. **Reverter**: `INFRA_COST_SNAPSHOT_ENABLED=false`. As tabelas ficam; o resumo volta à foto quando o mês não tem
+   snapshot (apagar linhas só com autorização).
 
 ## O que NÃO fazer
 
 - Preço de plano **nunca** no banco nem na API: margem só no painel, lendo `PLAN_CATALOG` (`docs/planos.md`).
 - **Nenhuma rota chama a Render** (nem a Cloudflare nem o BCB): o resumo lê só tabelas locais. Quem fala com a Render
-  é o job do `worker` (P2).
+  e com o BCB é só o job do `worker`.
+- Não ligar o job no `http` nem gravar hora inventada: hora sem leitura fica sem linha (custo pela quantidade manual).
+- Não guardar estado da cotação, da hora gravada ou da banda em memória: o banco (lease + `lastHour` + linha da hora)
+  é o que impede dobra na troca de dono.
 - Id de recurso da Render **só em env** do `worker`; nunca na configuração, resposta, log, teste ou doc (use `srv-teste`).
 - Leitura lenta (`statement_timeout`) → **503 `INFRA_COST_READ_UNAVAILABLE`**, sem SQL, id ou erro do banco no corpo
   ou no log. O painel tem estado próprio para esse código ("A leitura demorou mais que o normal. Tente de novo." e
@@ -81,6 +168,7 @@ Plano completo (P1–P3): `.specs/features/infra-costs/{spec,design,tasks}.md`. 
 - `sessionsSampledAt` é o horário da `sessions_connected` usada nas não alocadas, nunca o da `sessions_capacity`.
 - Cor de tom (sucesso/aviso/erro) só via `toneColor`/`toneChipSx` de `components/costParts.tsx` (≥ 4,5:1 nos dois
   temas, testado); `srOnly` com `'1px'` em string (número 1 no `sx` vira 100%).
-- Outro mês na P1 → 400 `INFRA_COST_MONTH_UNAVAILABLE`; não inventar mês sem dado.
+- Mês sem dado (passado) ou futuro → 400 `INFRA_COST_MONTH_UNAVAILABLE`; não inventar mês nem usar a foto de agora
+  para mês passado.
 - Não ler `WORKER_MAX_*` nem guardar o teto: provider a cada chamada.
 - Textos só em `features/infraCosts/strings.ts`; rascunho da aba Preços em `usePersistedState` (escopo `tab`), limpo ao salvar.

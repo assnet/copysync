@@ -169,10 +169,15 @@ Pendente de conferência (não é pergunta): formato real das respostas da Rende
 | T8 | Margem sempre pela base contratadas | COST-06 |
 | T9 | Cotação automática da P1 mostrada desabilitada com "Próxima versão" | COST-06a |
 
-## Decisões da P2 (2026-11-12)
+## Desvios aceitos e decisões da P2 (2026-11-12)
 
 | Tarefa | Decisão | Onde ficou |
 | --- | --- | --- |
 | T15 | Margem do **mês corrente** (soma por horas) usa a projeção do mês cheio: `totals.projected` e rateio projetado na base contratadas (`plans[].projectedShare`/`projectedCostPerTenant` = contratadas médias × compartilhado projetado ÷ Σ contratadas), marcada "projetada" na tela. **Mês passado** usa o realizado (`costPerTenant`). Foto (sem snapshot) segue com `costPerTenant`, que já é o mês cheio | COST-06, COST-12 |
 | T15 | `?month=`: corrente = horas quando há snapshot no mês, senão foto; mês passado só por horas, sem a foto de agora (sessões não alocadas `null`, sem capacidade por plano) e com a cotação gravada até o último dia do mês (override vale sempre); mês passado sem dado e mês futuro = 400 `INFRA_COST_MONTH_UNAVAILABLE` ("vazio" no painel, com o seletor) | COST-11 |
+| T11 | Índice `(tenantId, day)` em `tenant_session_hours`; contrato do repositório com `hasResourceHour` e `latestFxRate` | COST-09, COST-10 |
+| T12 | Contrato `IInfraResourcePlanReader` em `domain/contracts`; `infraResourceDriftFields` em `sources/` (o `config_drift` sai do calculador, T14); Postgres e Key Value fora da banda até leitura real | COST-09 |
+| T12b | `IFxRateSource` em `domain/services/fxRate.ts`; `resolveFxRate` ganha `fetchFailedToday` (preenchido pelo estado em `infra_fx_fetch_state`) para devolver `last_known` | COST-06a |
+| T13 | Estado da cotação com `ok: boolean` além de `referenceDay`/`attempts`/`lastAttemptAt`; instâncias do worker = média por minuto das instâncias distintas na hora (arredondada); tudo-ou-nada por hora nos recursos (um sem leitura = hora sem linha); sem Render configurada grava só a sessão-hora; o resumo já usa a cotação gravada | COST-06a, COST-09, COST-10 |
+| T14 | Modo horas = realizado até agora + `projected`; itens sem `renderKey` proporcionais às horas decorridas; `perSession.connected` = média do mês e `perSession` = sessão-mês, com `sessionHours`/`perSessionHour`/`idleCapacity` (T15 expõe); ciclo = mês calendário UTC (`cycleStartDay` não usado); `config_drift` gerado no calculador (T13 não duplica) | COST-11, COST-12 |
 | T15 | Resposta ganha `idleCapacity`, `perSession.connected.sessionHours`/`perSessionHour` (`null` na foto) e `plans[].projectedShare`/`projectedCostPerTenant`; seletor do painel = mês corrente + 11 anteriores pelo relógio do servidor | COST-12, COST-16 |

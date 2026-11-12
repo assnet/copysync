@@ -9,6 +9,22 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — api 0.89.0 · app 0.109.0 — custos proporcionais ao tempo (P2)
+
+A P1 só tinha a foto do momento × mês cheio. Agora o job horário `InfraCostSnapshotJob` (só no `worker`, flag `INFRA_COST_SNAPSHOT_ENABLED` default `false`) grava plano, instâncias e disco de cada recurso da Render, sessão-hora e contratadas por tenant, banda e build medidos e a cotação PTAX do BCB (SGS e última gravada como fallback, uma nova tentativa 1 h depois). O resumo soma o mês hora a hora, projeta o mês cheio (margem do mês corrente projetada) e ganha seletor de mês e a leitura por sessão-hora. Nenhuma rota chama a Render nem o BCB. Doc: `docs/custos-infraestrutura.md`.
+**Migration Prisma**: sim (`create_infra_cost_snapshots`). **Breaking**: não (campos novos na resposta).
+
+#### Backend (api/) — `metrics`
+
+- **`InfraCostSnapshotJob.ts`**, **`processJobs.ts`**, **`server.ts`** — tick de 5 min sob lease `infra-cost-snapshot`; hora gravada uma vez (tudo ou nada nos recursos), banda, build diário, cotação diária, retenção de 400 dias.
+- **`RenderInfraResourcePlanReader.ts`**, **`infraCostRenderResources.ts`** — plano, instâncias, disco, banda e deploys pela API da Render; env `INFRA_COST_RENDER_RESOURCES` (`chave=id`, entrada inválida ignorada sem logar o id).
+- **`BcbPtaxFxRateSource.ts`**, **`BcbSgsFxRateSource.ts`**, **`fxRate.ts`**, **`infraFxFetchState.ts`** — PTAX → SGS → última (`last_known`), estado em `platform_settings["infra_fx_fetch_state"]`.
+- **`infraCostCalculator.ts`**, **`PrismaInfraCostUsageReader.ts`**, **`GetInfraCostSummaryUseCase.ts`** — `basis: 'hours'`, projeção, sessão-hora, capacidade ociosa, avisos `missing_hours`, `plan_without_price`, `config_drift`; `?month=` para meses com dado.
+
+#### Frontend (app/) — `infraCosts`
+
+- **`SummaryTab.tsx`**, **`useCostSummary.ts`**, **`rules.ts`**, **`strings.ts`** — seletor de mês e de base (persistidos), workspace medido, margem projetada no mês corrente, avisos com atalho para Preços.
+
 ### Added — api 0.88.0 · app 0.108.0 — custos da infraestrutura (P1)
 
 Ninguém sabia quanto custa uma sessão, um cliente ou um plano. Nova página do super admin `/admin/costs` (seção Plataforma): custo mensal por serviço da Render, workspace (banda e build), e-mail, R2, rateio por sessão e por plano e margem bruta de infraestrutura contra a vitrine. Preços em USD editáveis em `/admin/costs/prices`; valores em USD e BRL com cotação manual (automática na P2). Foto do momento: instâncias do worker pelas amostras do coletor, sessões pela capacidade por plano. Nenhuma rota chama a Render. Doc: `docs/custos-infraestrutura.md`.

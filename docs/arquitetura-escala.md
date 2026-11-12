@@ -494,6 +494,8 @@ Envs de papel e adoção (`api/src/shared/config/env.ts`; nunca no `api/.env` lo
 | `WORKER_SCALER_ENABLED` | `false` | kill switch do escalador de réplicas ([`workers-escala.md`](workers-escala.md), Escala); no `http` **e** no `worker`, só após o T25 |
 | `WORKER_SCALER_SERVICE_ID` | vazio | `srv-…` do Private Service `worker`; no `http` e no `worker`. Formato inválido = não configurado (não derruba o boot) |
 | `RENDER_API_KEY` | vazio | já usada pelo coletor no `worker`; com o escalador ligado vai também no `http` |
+| `INFRA_COST_SNAPSHOT_ENABLED` | `false` | só no `worker` (nunca no `http`), após o deploy da migration `create_infra_cost_snapshots`; conferir logs e as primeiras horas gravadas ([`custos-infraestrutura.md`](custos-infraestrutura.md)) |
+| `INFRA_COST_RENDER_RESOURCES` | vazio | só no `worker`: `api=srv-<id>,worker=srv-<id>,static=srv-<id>,postgres=dpg-<id>,redis=red-<id>`; inválida = entrada ignorada (não derruba o boot) |
 
 **Antes de ligar mais de um processo na Render:**
 

@@ -7,6 +7,27 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.89.0] — 2026-11-12 — Custos proporcionais ao tempo (P2)
+
+Job horário de snapshot dos custos no `worker` e custo do mês somado hora a hora, com projeção, sessão-hora e cotação
+PTAX automática. Rotas seguem só com tabelas locais. Doc: `docs/custos-infraestrutura.md`.
+**Migration Prisma**: sim (`create_infra_cost_snapshots`: `infra_resource_hours`, `tenant_session_hours`,
+`infra_fx_rates`, `infra_usage_daily`). **Breaking**: não (campos novos no resumo).
+
+### Added
+
+#### API — `metrics`
+
+- **`infrastructure/repositories/PrismaInfraCostSnapshotRepository.ts`** — `upsert` por `(hour, resourceKey)`, sessão-hora e banda com guarda `lastHour` (troca de dono não dobra), retenção de 400 dias em lotes.
+- **`infrastructure/jobs/InfraCostSnapshotJob.ts`** — `INFRA_COST_SNAPSHOT_ENABLED` (default `false`), só `worker`/`all`; leases `infra-cost-snapshot`, `infra-fx-rate`, `infra-cost-build`, `infra-cost-retention`; instâncias do worker pelas amostras (Render como fallback); hora sem leitura não é inventada.
+- **`infrastructure/sources/RenderInfraResourcePlanReader.ts`**, **`shared/config/infraCostRenderResources.ts`** — leitura da Render com timeout 5 s e `Retry-After`; `INFRA_COST_RENDER_RESOURCES` com prefixo por chave e fallback `WORKER_SCALER_SERVICE_ID`.
+- **`infrastructure/sources/BcbPtaxFxRateSource.ts`**, **`BcbSgsFxRateSource.ts`**, **`domain/services/infraFxFetchState.ts`** — cotação 1×/dia após 16h30 UTC, PTAX → SGS → última, no máximo 1 nova tentativa 1 h depois.
+- **`infrastructure/repositories/PrismaInfraTenantUsageReader.ts`**, **`PrismaInfraCostUsageReader.ts`** — sessão-hora e contratadas por tenant; horas, banda e build do mês.
+
+### Changed
+
+- **`domain/services/infraCostCalculator.ts`**, **`application/use-cases/GetInfraCostSummaryUseCase.ts`** (+ schema, presenter) — `basis: 'hours'` (Σ por hora, `missing_hours`, `plan_without_price`, `config_drift`), `totals.projected`, `idleCapacity`, `perSession.connected.sessionHours`/`perSessionHour`, `plans[].projectedShare`/`projectedCostPerTenant`; `?month=` aceita mês passado com dado (sem dado ou futuro → 400 `INFRA_COST_MONTH_UNAVAILABLE`).
+
 ## [0.88.0] — 2026-11-12 — Custos da infraestrutura (P1)
 
 Super admin: configuração de preços (USD) em `platform_settings["infra_costs"]` e resumo do custo do mês corrente por
