@@ -206,8 +206,9 @@ function unallocCost(m: { usd: number; brl: number | null } | null): string {
 function NeighborCell({ n }: { n: InfraNeighborPlan | null | undefined }) {
   if (!n) {
     return (
-      <TableCell align="right" sx={{ color: 'text.secondary' }}>
-        {/* A explicação do "—" fica no cabeçalho da coluna; o leitor de tela ouve o texto. */}
+      <TableCell align="right" sx={{ color: 'text.secondary', position: 'relative' }}>
+        {/* A explicação do "—" fica no cabeçalho da coluna; o leitor de tela ouve o texto.
+            `position: relative` prende o `srOnly` (absoluto) na célula: sem isso ele escapa da tabela e a página rola. */}
         <span aria-hidden>{S.noValue}</span>
         <Box component="span" sx={srOnly}>{s.services.noNeighbor}</Box>
       </TableCell>
@@ -439,7 +440,7 @@ export default function SummaryTab() {
   if (q.unavailable && !data) return <ServiceUpdatingState onRetry={q.reload} />;
   if (q.slow && !data && !q.loading) {
     return (
-      <Alert severity="warning" action={<Button color="inherit" size="small" onClick={() => void q.reload()}>{S.retry}</Button>}>
+      <Alert severity="warning" action={<Button color="inherit" size="small" sx={{ whiteSpace: 'nowrap' }} onClick={() => void q.reload()}>{S.retry}</Button>}>
         {S.errors.readSlow}
       </Alert>
     );
@@ -453,7 +454,7 @@ export default function SummaryTab() {
   }
   if (q.error || !data) {
     return (
-      <Alert severity="error" action={<Button color="inherit" size="small" onClick={() => void q.reload()}>{S.retry}</Button>}>
+      <Alert severity="error" action={<Button color="inherit" size="small" sx={{ whiteSpace: 'nowrap' }} onClick={() => void q.reload()}>{S.retry}</Button>}>
         {q.error ?? S.errors.loadFailed}
       </Alert>
     );
