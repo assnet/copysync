@@ -15,3 +15,10 @@ export class InfraCostSettingsConflictError extends AppError {
     super('INFRA_COST_SETTINGS_CONFLICT', 'Infra cost settings were changed by someone else', 409);
   }
 }
+
+/** Mês pedido sem dado: na P1 só o mês corrente (UTC) tem resumo. */
+export class InfraCostMonthUnavailableError extends AppError {
+  constructor(month: string) {
+    super('INFRA_COST_MONTH_UNAVAILABLE', `Infra cost summary is not available for month ${month}`, 400, { field: 'month' });
+  }
+}
