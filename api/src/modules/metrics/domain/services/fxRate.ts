@@ -1,7 +1,7 @@
 /**
- * Cotação USD→BRL dos custos (COST-06a). Função pura: sem env nem I/O.
- * P1: só o override manual da configuração. A T12b acrescenta a cotação gravada (PTAX/SGS) e
- * `last_known` depois do override; sem nenhuma → `null` (aviso `fx_missing` no calculador).
+ * Cotação USD→BRL dos custos (COST-06a). Sem env nem I/O (`fetchFirstFxRate` só orquestra o contrato).
+ * Ordem: override manual → última cotação gravada (PTAX/SGS; `last_known` se a busca de hoje falhou)
+ * → `null` (aviso `fx_missing` no calculador). Também o contrato das fontes (`IFxRateSource`).
  */
 import type { InfraFxSettings } from './infraCostSettings';
 
@@ -20,6 +20,44 @@ export interface ResolvedFxRate {
 }
 
 export const INFRA_FX_STALE_DAYS = 5;
+/** Faixa aceita de BRL por USD; fora dela a leitura é descartada. */
+export const INFRA_FX_MIN_RATE = 1;
+export const INFRA_FX_MAX_RATE = 20;
+
+/** Cotação lida de uma fonte automática (ainda não gravada). */
+export interface FetchedFxRate {
+  rate: number;
+  /** `YYYY-MM-DD` do boletim. */
+  referenceDate: string;
+  source: 'ptax' | 'sgs';
+}
+
+/** Última cotação gravada em `infra_fx_rates`. */
+export interface SavedFxRate extends FetchedFxRate {
+  fetchedAt: Date;
+}
+
+/** Fonte automática da cotação; `null` em qualquer falha (rede, timeout, resposta inválida). */
+export interface IFxRateSource {
+  readonly name: 'ptax' | 'sgs';
+  fetchLatest(signal?: AbortSignal): Promise<FetchedFxRate | null>;
+}
+
+export function isValidFxRate(rate: unknown): rate is number {
+  return typeof rate === 'number' && Number.isFinite(rate) && rate >= INFRA_FX_MIN_RATE && rate <= INFRA_FX_MAX_RATE;
+}
+
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+export const isIsoDay = (v: unknown): v is string => typeof v === 'string' && ISO_DAY.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`));
+
+/** Primeira fonte que responder, na ordem dada (PTAX → SGS); `null` se todas falharem. */
+export async function fetchFirstFxRate(sources: readonly IFxRateSource[], signal?: AbortSignal): Promise<FetchedFxRate | null> {
+  for (const source of sources) {
+    const rate = await source.fetchLatest(signal);
+    if (rate) return rate;
+  }
+  return null;
+}
 
 const DAY_MS = 86_400_000;
 
@@ -34,8 +72,17 @@ export function isFxRateStale(referenceDate: string, today: Date): boolean {
   return daysSince(referenceDate, today) > INFRA_FX_STALE_DAYS;
 }
 
-/** Override manual → (T12b: gravada → `last_known`) → `null`. */
-export function resolveFxRate(input: { fx: InfraFxSettings; today: Date }): ResolvedFxRate | null {
+export interface ResolveFxRateInput {
+  fx: InfraFxSettings;
+  today: Date;
+  /** Última cotação gravada; ausente/`null` = nenhuma (P1). */
+  saved?: SavedFxRate | null;
+  /** A busca de hoje falhou (PTAX e SGS): a gravada vira `last_known`. */
+  fetchFailedToday?: boolean;
+}
+
+/** Override manual → gravada (`last_known` se a busca de hoje falhou) → `null`. */
+export function resolveFxRate(input: ResolveFxRateInput): ResolvedFxRate | null {
   const { override } = input.fx;
   if (override) {
     return {
@@ -44,6 +91,16 @@ export function resolveFxRate(input: { fx: InfraFxSettings; today: Date }): Reso
       source: 'override',
       fetchedAt: null,
       stale: isFxRateStale(override.date, input.today),
+    };
+  }
+  const { saved } = input;
+  if (saved && isValidFxRate(saved.rate) && isIsoDay(saved.referenceDate)) {
+    return {
+      rate: saved.rate,
+      referenceDate: saved.referenceDate,
+      source: input.fetchFailedToday ? 'last_known' : saved.source,
+      fetchedAt: saved.fetchedAt,
+      stale: isFxRateStale(saved.referenceDate, input.today),
     };
   }
   return null;
