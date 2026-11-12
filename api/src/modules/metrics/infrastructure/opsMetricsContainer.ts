@@ -12,7 +12,6 @@ import { RenderPlatformMetricsSource } from './sources/RenderPlatformMetricsSour
 import { SessionsOccupancySource } from './sources/SessionsOccupancySource';
 import { samplerResourceIds } from './samplerResourceIds';
 
-
 /**
  * Monta o sampler (MQ-22), parado. Sem `RENDER_API_KEY` ou sem IDs (lista + serviço worker) a fonte da Render fica de fora
  * (só Postgres, workers e sessões). A fonte de sessões (WSCALE-08) lê adoção e teto a cada tick; o alerta de ocupação (WSCALE-17) lê adoção e `alertOccupancyRatio` a cada tick. Chamar só em `worker`/`all` com `OPS_METRICS_SAMPLER_ENABLED`.

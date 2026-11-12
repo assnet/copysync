@@ -126,7 +126,7 @@ série; mais de 3 cores (mais de 3 workers = só tabela); persistir dado da API.
 | Variável | Padrão | Uso |
 |---|---|---|
 | `OPS_METRICS_SAMPLER_ENABLED` | `false` | liga o sampler; só no serviço `worker` |
-| `RENDER_API_KEY` | vazio | chave da Metrics API; sem ela (ou sem IDs) a fonte Render fica de fora e o resto segue. Também usada pelo escalador dos workers ([`workers-escala.md`](workers-escala.md), Escala): com `WORKER_SCALER_ENABLED=true` passa a existir no `http` além do `worker`. Nunca no painel, nunca em log |
+| `RENDER_API_KEY` | vazio | chave da Metrics API; sem ela (ou sem IDs: `RENDER_RESOURCE_IDS` + serviço worker de `WORKER_SCALER_SERVICE_ID`) a fonte Render fica de fora e o resto segue. Também usada pelo escalador dos workers ([`workers-escala.md`](workers-escala.md), Escala): com `WORKER_SCALER_ENABLED=true` passa a existir no `http` além do `worker`. Nunca no painel, nunca em log |
 | `RENDER_RESOURCE_IDS` | vazio | `srv-…`/`dpg-…` separados por vírgula |
 | `WORKER_SCALER_SERVICE_ID` | vazio | id `srv-…` do serviço worker (do escalador). No `worker`, o sampler o coleta automaticamente além de `RENDER_RESOURCE_IDS` (sem duplicar; réplicas incluídas). No `http`, separa as amostras da Render do worker (`worker_service`) das da API no Consumo. Inválido = ignorado |
 | `OPS_MEMORY_LIMIT_MB` | vazio | limite de RAM para o alerta de RSS quando a Render não dá `memory-limit` |
