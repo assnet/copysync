@@ -22,4 +22,10 @@ export interface InfraCostLiveReading {
 /** Leitura do momento em `ops_metrics_samples`, com teto de 2 s. A capacidade por plano vem de `IWorkerCapacityReader`. */
 export interface IInfraCostLiveReader {
   read(now: Date): Promise<InfraCostLiveReading>;
+  /**
+   * Instâncias do serviço worker numa hora fechada `[start, end)` pelas amostras da Render (T13): por
+   * minuto, `<id>-<sufixo>` distintos (só o `<id>` = 1); média das amostras da hora, arredondada (a troca
+   * por deploy não soma uma instância à hora). Sem id válido ou sem amostra = `null` (vale a Render).
+   */
+  workerInstancesInHour(start: Date, end: Date): Promise<number | null>;
 }

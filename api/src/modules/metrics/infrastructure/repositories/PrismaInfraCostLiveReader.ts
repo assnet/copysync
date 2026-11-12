@@ -35,6 +35,28 @@ export class PrismaInfraCostLiveReader implements IInfraCostLiveReader {
     return translateInfraCostReadTimeout(() => this.query(now));
   }
 
+  async workerInstancesInHour(start: Date, end: Date): Promise<number | null> {
+    const id = this.serviceId;
+    if (!id) return null;
+    const [, rows] = await this.prisma.$transaction([
+      this.prisma.$executeRawUnsafe(`SET LOCAL statement_timeout = '${OPS_READ_STATEMENT_TIMEOUT}'`),
+      this.prisma.$queryRaw<{ n: number | null }[]>`
+        WITH b AS (
+          SELECT date_trunc('minute', "at") AS m,
+            count(DISTINCT "resource") FILTER (WHERE "resource" <> ${id}) AS suffixed,
+            count(*) FILTER (WHERE "resource" = ${id}) AS bare
+          FROM "ops_metrics_samples"
+          WHERE "source" = 'render' AND "metric" IN (${OPS_METRIC.cpuPct}, ${OPS_METRIC.memoryPct})
+            AND ("resource" = ${id} OR left("resource", ${id.length + 1}::int) = ${`${id}-`})
+            AND "at" >= ${utc(start)} AND "at" < ${utc(end)}
+          GROUP BY 1
+        )
+        SELECT round(avg(CASE WHEN suffixed > 0 THEN suffixed ELSE 1 END))::int AS n FROM b`,
+    ]);
+    const n = rows[0]?.n;
+    return n == null || n <= 0 ? null : Number(n);
+  }
+
   private async query(now: Date): Promise<InfraCostLiveReading> {
     const sessionsSince = new Date(now.getTime() - INFRA_COST_LIVE_SESSIONS_WINDOW_MS);
     const workerSince = new Date(now.getTime() - INFRA_COST_LIVE_WORKER_WINDOW_MS);

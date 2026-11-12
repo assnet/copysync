@@ -54,6 +54,9 @@ import type { WorkerAutoscalerJob } from '../modules/sessions/infrastructure/job
 import { sessionAdoptionContainer } from '../modules/sessions/infrastructure/lease/sessionAdoptionContainer';
 import { createOpsMetricsSamplerJob } from '../modules/metrics/infrastructure/opsMetricsContainer';
 import type { OpsMetricsSamplerJob } from '../modules/metrics/infrastructure/jobs/OpsMetricsSamplerJob';
+import { createInfraCostSnapshotJob } from '../modules/metrics/infrastructure/infraCostsContainer';
+import type { InfraCostSnapshotJob } from '../modules/metrics/infrastructure/jobs/InfraCostSnapshotJob';
+import { startInfraCostSnapshotJob } from '../modules/metrics/infrastructure/infraCostSnapshotStart';
 import type { IMessagingEngine } from '../modules/messaging/domain/contracts/IMessagingEngine';
 import type { ISessionSocketControl } from '../modules/messaging/domain/contracts/ISessionSocketControl';
 import { currentRole, runsSessions, type ProcessRole } from '../shared/config/processRole';
@@ -490,6 +493,15 @@ async function start(): Promise<void> {
     logger.info({ platform: sampler.platformEnabled }, 'Ops metrics sampler started');
   }
 
+  // ── Snapshot horário dos custos (COST-09/10) ───────────────────────────────
+  // Só worker/all e com a flag; 1 dono por vez via lease. Timer `unref` de 5 min, nunca em requisição.
+  let infraCostSnapshot: InfraCostSnapshotJob | null = null;
+  const snapshot = startInfraCostSnapshotJob(jobs.has('infraCostSnapshot') && env.INFRA_COST_SNAPSHOT_ENABLED, createInfraCostSnapshotJob);
+  if (snapshot) {
+    infraCostSnapshot = snapshot.job;
+    logger.info({ render: snapshot.renderConfigured }, 'Infra cost snapshot job started');
+  }
+
   // ── Subida automática de workers (WSCALE-15) ───────────────────────────────
   // Só worker/all; 1 dono por vez via lease. Age só com `scalerMode = auto` (lido a cada tick).
   let workerAutoscaler: WorkerAutoscalerJob | null = null;
@@ -525,7 +537,8 @@ async function start(): Promise<void> {
     // MQ-22: o sampler para junto (cancela a Render em voo, solta o lease), aguardado em paralelo.
     // WSCALE-15: a subida automática também (espera o tick em curso).
     // OWN-04: a varredura de tenant inativo também (espera a passada em curso).
-    if (adoption || opsMetricsSampler || workerAutoscaler || inactiveTenantSweep) {
+    // COST-09: o snapshot de custos também (cancela a cotação em voo, solta o lease).
+    if (adoption || opsMetricsSampler || workerAutoscaler || inactiveTenantSweep || infraCostSnapshot) {
       try {
         await Promise.all([
           adoption?.ticker.stop(),
@@ -533,6 +546,7 @@ async function start(): Promise<void> {
           opsMetricsSampler?.stop(),
           workerAutoscaler?.stop(),
           inactiveTenantSweep?.stop(),
+          infraCostSnapshot?.stop(),
         ]);
         if (adoption) logger.info('Session adoption stopped');
       } catch (err) {

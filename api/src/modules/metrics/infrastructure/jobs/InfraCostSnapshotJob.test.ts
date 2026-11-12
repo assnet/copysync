@@ -1,0 +1,361 @@
+import { describe, expect, it, vi } from 'vitest';
+
+const log = vi.hoisted(() => ({ warn: vi.fn(), info: vi.fn(), debug: vi.fn() }));
+vi.mock('../../../../shared/logger/logger', () => ({ logger: { child: () => log } }));
+
+import type { IJobLease } from '../../../../shared/jobs/IJobLease';
+import type {
+  IInfraCostSnapshotRepository,
+  InfraFxRateRecord,
+  InfraResourceHourSnapshot,
+  TenantSessionHourSample,
+} from '../../domain/contracts/IInfraCostSnapshotRepository';
+import type {
+  IInfraResourcePlanReader,
+  InfraRenderResult,
+  InfraResourcePlanReading,
+} from '../../domain/contracts/IInfraResourcePlanReader';
+import type { IInfraFxFetchStateRepository } from '../../domain/contracts/IInfraFxFetchStateRepository';
+import type { FetchedFxRate, IFxRateSource } from '../../domain/services/fxRate';
+import type { InfraRenderKey } from '../../domain/services/infraCostSettings';
+import { defaultInfraCostSettings } from '../../domain/services/infraCostSettings';
+import type { InfraFxFetchState } from '../../domain/services/infraFxFetchState';
+import { INFRA_COST_SNAPSHOT_LEASE, InfraCostSnapshotJob } from './InfraCostSnapshotJob';
+import { startInfraCostSnapshotJob } from '../infraCostSnapshotStart';
+
+const HOUR = 3_600_000;
+
+/** Mesma semântica do `PrismaJobLease`: só adquire livre ou vencido, mesmo para o dono. */
+function memoryLease() {
+  const rows = new Map<string, { ownerId: string; expiresAt: Date }>();
+  const lease = {
+    tryAcquire: vi.fn(async (name: string, ownerId: string, until: Date, now: Date) => {
+      const cur = rows.get(name);
+      if (cur && cur.expiresAt >= now) return false;
+      rows.set(name, { ownerId, expiresAt: until });
+      return true;
+    }),
+    release: vi.fn(async (name: string, ownerId: string) => {
+      if (rows.get(name)?.ownerId === ownerId) rows.delete(name);
+    }),
+  } satisfies IJobLease;
+  return { lease, rows };
+}
+
+/** Mesma semântica do repositório Prisma (guardas de hora). */
+function memorySnapshots() {
+  const hours = new Map<string, InfraResourceHourSnapshot>();
+  const sessions = new Map<string, { connectedHours: number; lastHour: number }>();
+  const usage = new Map<string, { value: number; lastHour: number | null }>();
+  const fx: InfraFxRateRecord[] = [];
+  const repo = {
+    hasResourceHour: vi.fn(async (h: Date) => [...hours.values()].some((r) => r.hour.getTime() === h.getTime())),
+    upsertResourceHours: vi.fn(async (rows: readonly InfraResourceHourSnapshot[]) => {
+      for (const r of rows) hours.set(`${r.hour.toISOString()}|${r.resourceKey}`, r);
+      return rows.length;
+    }),
+    addSessionHour: vi.fn(async (h: Date, samples: readonly TenantSessionHourSample[]) => {
+      let n = 0;
+      for (const s of samples) {
+        const k = `${h.toISOString().slice(0, 10)}|${s.tenantId}`;
+        const cur = sessions.get(k);
+        if (cur && cur.lastHour >= h.getTime()) continue;
+        sessions.set(k, { connectedHours: (cur?.connectedHours ?? 0) + s.connectedSessions, lastHour: h.getTime() });
+        n += 1;
+      }
+      return n;
+    }),
+    upsertFxRate: vi.fn(async (r: InfraFxRateRecord) => { fx.push(r); }),
+    latestFxRate: vi.fn(async () => fx.at(-1) ?? null),
+    addUsageHour: vi.fn(async (h: Date, v) => {
+      const k = `${h.toISOString().slice(0, 10)}|${v.metric}|${v.resourceKey}`;
+      const cur = usage.get(k);
+      if (cur && cur.lastHour !== null && cur.lastHour >= h.getTime()) return false;
+      usage.set(k, { value: (cur?.value ?? 0) + v.value, lastHour: h.getTime() });
+      return true;
+    }),
+    upsertUsageDay: vi.fn(async (v) => {
+      usage.set(`${v.day.toISOString().slice(0, 10)}|${v.metric}|${v.resourceKey}`, { value: v.value, lastHour: null });
+    }),
+    deleteOlderThan: vi.fn(async () => ({ resourceHours: 0, sessionHours: 0, fxRates: 0, usageDaily: 0 })),
+  } satisfies IInfraCostSnapshotRepository;
+  return { repo, hours, sessions, usage, fx };
+}
+
+const reading = (key: InfraRenderKey, over: Partial<InfraResourcePlanReading> = {}): InfraResourcePlanReading => ({
+  resourceKey: key, resourceType: key === 'postgres' ? 'postgres' : 'service', plan: 'standard', instances: 2, diskGb: null, suspended: false, ...over,
+});
+
+function fakePlans(keys: InfraRenderKey[] = ['api', 'worker', 'postgres']) {
+  let fail: InfraRenderResult<never> | null = null;
+  const plans = {
+    configuredKeys: vi.fn(() => keys),
+    readResource: vi.fn(async (key: InfraRenderKey) =>
+      fail ?? ({ status: 'ok', reading: reading(key, key === 'postgres' ? { plan: 'basic_1gb', instances: 1, diskGb: 15.4 } : {}) } as const)),
+    readBandwidthGb: vi.fn(async () => ({ status: 'ok', byKey: { api: 0.5, worker: null }, discardedSeries: 0 } as const)),
+    readBuildMinutes: vi.fn(async () => ({ status: 'ok', byKey: { api: 12.5 } } as const)),
+  } satisfies IInfraResourcePlanReader;
+  return { plans, setFail: (f: InfraRenderResult<never> | null) => { fail = f; } };
+}
+
+function memoryFxState() {
+  let state: InfraFxFetchState | null = null;
+  const repo = {
+    get: vi.fn(async () => (state ? { ...state } : null)),
+    save: vi.fn(async (s: InfraFxFetchState) => { state = { ...s }; }),
+  } satisfies IInfraFxFetchStateRepository;
+  return { repo, get: () => state };
+}
+
+const source = (name: 'ptax' | 'sgs', result: FetchedFxRate | null): IFxRateSource & { fetchLatest: ReturnType<typeof vi.fn> } =>
+  ({ name, fetchLatest: vi.fn(async () => result) });
+
+interface SetupOpts {
+  lease?: ReturnType<typeof memoryLease>;
+  snapshots?: ReturnType<typeof memorySnapshots>;
+  fxState?: ReturnType<typeof memoryFxState>;
+  plans?: ReturnType<typeof fakePlans>;
+  workerSamples?: number | null;
+  fxSources?: IFxRateSource[];
+  auto?: boolean;
+  start?: number;
+}
+
+function setup(opts: SetupOpts = {}) {
+  const lease = opts.lease ?? memoryLease();
+  const snapshots = opts.snapshots ?? memorySnapshots();
+  const fxState = opts.fxState ?? memoryFxState();
+  const plans = opts.plans ?? fakePlans();
+  const live = { workerInstancesInHour: vi.fn(async () => (opts.workerSamples === undefined ? 3 : opts.workerSamples)) };
+  const tenants = { readHour: vi.fn(async () => [{ tenantId: 't1', planSlug: 'COPYSYNC_PRO', connectedSessions: 2, contractedSessions: 3 }]) };
+  const value = defaultInfraCostSettings();
+  value.fx.auto = opts.auto ?? true;
+  const settings = { get: vi.fn(async () => ({ value, updatedAt: new Date(0), updatedById: null })), save: vi.fn() };
+  const fxSources = opts.fxSources ?? [source('ptax', { rate: 5.4321, referenceDate: '2026-11-12', source: 'ptax' })];
+  let clock = opts.start ?? Date.parse('2026-11-12T10:02:00Z');
+  const job = new InfraCostSnapshotJob({
+    lease: lease.lease, snapshots: snapshots.repo, plans: plans.plans, live, tenants, settings: settings as never,
+    fxSources, fxState: fxState.repo, now: () => new Date(clock),
+  });
+  return { job, lease, snapshots, fxState, plans, live, tenants, settings, setClock: (ms: number) => { clock = ms; } };
+}
+
+describe('InfraCostSnapshotJob — hora fechada', () => {
+  it('grava a hora anterior: recursos, sessão-hora e banda; worker pelas amostras, resto pela Render', async () => {
+    log.warn.mockClear();
+    const s = setup();
+    await s.job.runTick();
+    const h9 = '2026-11-12T09:00:00.000Z';
+    expect([...s.snapshots.hours.values()].map((r) => [r.hour.toISOString(), r.resourceKey, r.instances, r.instancesSource, r.plan, r.diskGb]))
+      .toEqual([
+        [h9, 'api', 2, 'render', 'standard', null],
+        [h9, 'worker', 3, 'samples', 'standard', null],
+        [h9, 'postgres', 1, 'render', 'basic_1gb', 15],
+      ]);
+    expect(s.live.workerInstancesInHour).toHaveBeenCalledWith(new Date(h9), new Date('2026-11-12T10:00:00Z'));
+    expect(s.snapshots.sessions.get('2026-11-12|t1')).toEqual({ connectedHours: 2, lastHour: Date.parse(h9) });
+    // Banda da hora fechada há mais de 1 h: [08:00, 09:00)
+    expect(s.plans.plans.readBandwidthGb).toHaveBeenCalledWith(new Date('2026-11-12T08:00:00Z'), new Date(h9));
+    expect(s.snapshots.usage.get('2026-11-12|bandwidth_gb|api')).toEqual({ value: 0.5, lastHour: Date.parse('2026-11-12T08:00:00Z') });
+    expect(s.snapshots.usage.has('2026-11-12|bandwidth_gb|worker')).toBe(false);
+  });
+
+  it('amostras zeradas → instâncias do worker pela Render (fallback)', async () => {
+    const s = setup({ workerSamples: null });
+    await s.job.runTick();
+    const worker = [...s.snapshots.hours.values()].find((r) => r.resourceKey === 'worker');
+    expect(worker).toMatchObject({ instances: 2, instancesSource: 'render' });
+  });
+
+  it('hora já gravada: o tick seguinte não relê nada nem dobra', async () => {
+    const s = setup();
+    await s.job.runTick();
+    s.setClock(Date.parse('2026-11-12T10:07:01Z'));
+    await s.job.runTick();
+    expect(s.plans.plans.readResource).toHaveBeenCalledTimes(3);
+    expect(s.tenants.readHour).toHaveBeenCalledTimes(1);
+    expect(s.snapshots.sessions.get('2026-11-12|t1')?.connectedHours).toBe(2);
+  });
+
+  it('Render fora → hora sem linha, warn único na sequência, sessão-hora gravada uma vez; volta na leitura seguinte', async () => {
+    log.warn.mockClear();
+    const plans = fakePlans();
+    plans.setFail({ status: 'unavailable', reason: 'rate_limited', retryAfterSeconds: 30 });
+    const s = setup({ plans });
+    await s.job.runTick();
+    s.setClock(Date.parse('2026-11-12T10:07:01Z'));
+    await s.job.runTick();
+    expect(s.snapshots.hours.size).toBe(0);
+    expect(s.snapshots.repo.upsertResourceHours).not.toHaveBeenCalled();
+    expect(s.plans.plans.readBandwidthGb).not.toHaveBeenCalled();
+    const renderWarns = log.warn.mock.calls.filter((c) => c[1] === 'infra cost hour without render reading');
+    expect(renderWarns).toEqual([[{ reason: 'rate_limited' }, 'infra cost hour without render reading']]);
+    expect(s.snapshots.sessions.get('2026-11-12|t1')?.connectedHours).toBe(2);
+
+    plans.setFail(null);
+    s.setClock(Date.parse('2026-11-12T10:12:02Z'));
+    await s.job.runTick();
+    expect(s.snapshots.hours.size).toBe(3);
+    expect(s.snapshots.sessions.get('2026-11-12|t1')?.connectedHours).toBe(2);
+  });
+
+  it('sem Render configurada: nenhuma chamada sai, só a sessão-hora', async () => {
+    const s = setup({ plans: fakePlans([]) });
+    await s.job.runTick();
+    expect(s.plans.plans.readResource).not.toHaveBeenCalled();
+    expect(s.plans.plans.readBuildMinutes).not.toHaveBeenCalled();
+    expect(s.snapshots.hours.size).toBe(0);
+    expect(s.snapshots.sessions.size).toBe(1);
+  });
+
+  it('troca de dono do lease no meio da hora não dobra', async () => {
+    const lease = memoryLease();
+    const snapshots = memorySnapshots();
+    const fxState = memoryFxState();
+    const a = setup({ lease, snapshots, fxState });
+    await a.job.runTick();
+    // Dono A morre sem soltar; B assume depois do TTL
+    const b = setup({ lease, snapshots, fxState, start: Date.parse('2026-11-12T10:07:00Z') });
+    await b.job.runTick();
+    expect(lease.rows.get(INFRA_COST_SNAPSHOT_LEASE)).toBeDefined();
+    expect(b.plans.plans.readResource).not.toHaveBeenCalled();
+    expect(snapshots.repo.upsertResourceHours).toHaveBeenCalledTimes(1);
+    expect(snapshots.sessions.get('2026-11-12|t1')?.connectedHours).toBe(2);
+  });
+
+  it('lease de outro processo vivo: não faz nada', async () => {
+    const lease = memoryLease();
+    lease.rows.set(INFRA_COST_SNAPSHOT_LEASE, { ownerId: 'outro', expiresAt: new Date('2026-11-12T11:00:00Z') });
+    const s = setup({ lease });
+    await s.job.runTick();
+    expect(s.snapshots.repo.hasResourceHour).not.toHaveBeenCalled();
+    expect(s.tenants.readHour).not.toHaveBeenCalled();
+  });
+
+  it('perdeu o lease antes de gravar: não grava', async () => {
+    const lease = memoryLease();
+    const s = setup({ lease });
+    s.tenants.readHour.mockImplementation(async () => {
+      lease.rows.set(INFRA_COST_SNAPSHOT_LEASE, { ownerId: 'outro', expiresAt: new Date('2026-11-12T11:00:00Z') });
+      return [];
+    });
+    await s.job.runTick();
+    expect(s.snapshots.repo.addSessionHour).not.toHaveBeenCalled();
+    expect(s.snapshots.hours.size).toBe(0);
+  });
+});
+
+describe('InfraCostSnapshotJob — build, retenção', () => {
+  it('build do dia anterior 1×/dia após 01:00 UTC; falha tenta de novo 1 h depois', async () => {
+    const plans = fakePlans();
+    plans.plans.readBuildMinutes.mockResolvedValueOnce({ status: 'unavailable', reason: 'upstream' } as never);
+    const s = setup({ plans, start: Date.parse('2026-11-12T00:30:00Z') });
+    await s.job.runTick();
+    expect(plans.plans.readBuildMinutes).not.toHaveBeenCalled();
+    s.setClock(Date.parse('2026-11-12T01:05:00Z'));
+    await s.job.runTick();
+    expect(plans.plans.readBuildMinutes).toHaveBeenCalledTimes(1);
+    s.setClock(Date.parse('2026-11-12T01:35:00Z'));
+    await s.job.runTick();
+    expect(plans.plans.readBuildMinutes).toHaveBeenCalledTimes(1);
+    s.setClock(Date.parse('2026-11-12T02:06:00Z'));
+    await s.job.runTick();
+    expect(plans.plans.readBuildMinutes).toHaveBeenCalledTimes(2);
+    expect(plans.plans.readBuildMinutes).toHaveBeenLastCalledWith(new Date('2026-11-11T00:00:00Z'), new Date('2026-11-12T00:00:00Z'));
+    expect(s.snapshots.usage.get('2026-11-11|build_minutes|api')).toEqual({ value: 12.5, lastHour: null });
+    s.setClock(Date.parse('2026-11-12T23:55:00Z'));
+    await s.job.runTick();
+    expect(plans.plans.readBuildMinutes).toHaveBeenCalledTimes(2);
+    s.setClock(Date.parse('2026-11-13T01:01:00Z'));
+    await s.job.runTick();
+    expect(plans.plans.readBuildMinutes).toHaveBeenCalledTimes(3);
+  });
+
+  it('retenção de 400 dias 1×/24 h', async () => {
+    const s = setup();
+    await s.job.runTick();
+    s.setClock(Date.parse('2026-11-12T10:07:01Z'));
+    await s.job.runTick();
+    expect(s.snapshots.repo.deleteOlderThan).toHaveBeenCalledTimes(1);
+    expect(s.snapshots.repo.deleteOlderThan).toHaveBeenCalledWith(new Date(Date.parse('2026-11-12T10:02:00Z') - 400 * 24 * HOUR));
+  });
+});
+
+describe('InfraCostSnapshotJob — cotação', () => {
+  const at = (iso: string) => Date.parse(`2026-11-12T${iso}Z`);
+
+  it('antes de 16h30 UTC não busca; depois grava a PTAX e marca o dia como feito', async () => {
+    const ptax = source('ptax', { rate: 5.4321, referenceDate: '2026-11-12', source: 'ptax' });
+    const s = setup({ fxSources: [ptax], start: at('16:29:00') });
+    await s.job.runTick();
+    expect(ptax.fetchLatest).not.toHaveBeenCalled();
+    s.setClock(at('16:35:00'));
+    await s.job.runTick();
+    expect(s.snapshots.fx).toEqual([{ referenceDate: new Date('2026-11-12T00:00:00Z'), rate: 5.4321, source: 'ptax', fetchedAt: new Date(at('16:35:00')) }]);
+    expect(s.fxState.get()).toMatchObject({ referenceDay: '2026-11-12', attempts: 1, ok: true });
+    s.setClock(at('18:00:00'));
+    await s.job.runTick();
+    expect(ptax.fetchLatest).toHaveBeenCalledTimes(1);
+  });
+
+  it('PTAX falha → SGS', async () => {
+    const ptax = source('ptax', null);
+    const sgs = source('sgs', { rate: 5.5, referenceDate: '2026-11-11', source: 'sgs' });
+    const s = setup({ fxSources: [ptax, sgs], start: at('16:31:00') });
+    await s.job.runTick();
+    expect(s.snapshots.fx.map((r) => r.source)).toEqual(['sgs']);
+  });
+
+  it('PTAX e SGS falhando: uma nova tentativa 1 h depois, e o estado sobrevive a reinício', async () => {
+    const lease = memoryLease();
+    const snapshots = memorySnapshots();
+    const fxState = memoryFxState();
+    const ptax = source('ptax', null);
+    const sgs = source('sgs', null);
+    const a = setup({ lease, snapshots, fxState, fxSources: [ptax, sgs], start: at('16:31:00') });
+    await a.job.runTick();
+    expect(fxState.get()).toMatchObject({ attempts: 1, ok: false });
+    await a.job.stop();
+
+    // Reinício: processo novo, mesmo estado no banco
+    const b = setup({ lease, snapshots, fxState, fxSources: [ptax, sgs], start: at('17:00:00') });
+    await b.job.runTick();
+    expect(ptax.fetchLatest).toHaveBeenCalledTimes(1);
+    b.setClock(at('17:31:00'));
+    await b.job.runTick();
+    expect(ptax.fetchLatest).toHaveBeenCalledTimes(2);
+    expect(sgs.fetchLatest).toHaveBeenCalledTimes(2);
+    expect(fxState.get()).toMatchObject({ attempts: 2, ok: false });
+    b.setClock(at('20:00:00'));
+    await b.job.runTick();
+    expect(ptax.fetchLatest).toHaveBeenCalledTimes(2);
+    expect(snapshots.fx).toEqual([]);
+  });
+
+  it('fx.auto desligado: não busca', async () => {
+    const ptax = source('ptax', { rate: 5, referenceDate: '2026-11-12', source: 'ptax' });
+    const s = setup({ fxSources: [ptax], auto: false, start: at('17:00:00') });
+    await s.job.runTick();
+    expect(ptax.fetchLatest).not.toHaveBeenCalled();
+    expect(s.fxState.get()).toBeNull();
+  });
+});
+
+describe('InfraCostSnapshotJob — ciclo de vida', () => {
+  it('stop solta o lease; nunca lança com repositório quebrado', async () => {
+    const s = setup();
+    s.snapshots.repo.hasResourceHour.mockRejectedValue(new Error('db down'));
+    await expect(s.job.runTick()).resolves.toBeUndefined();
+    await s.job.stop();
+    expect(s.lease.rows.has(INFRA_COST_SNAPSHOT_LEASE)).toBe(false);
+  });
+
+  it('flag desligada não cria nem liga o job', () => {
+    const factory = vi.fn();
+    expect(startInfraCostSnapshotJob(false, factory)).toBeNull();
+    expect(factory).not.toHaveBeenCalled();
+    const job = { start: vi.fn() };
+    expect(startInfraCostSnapshotJob(true, () => ({ job, renderConfigured: false }) as never)).toMatchObject({ job });
+    expect(job.start).toHaveBeenCalledTimes(1);
+  });
+});

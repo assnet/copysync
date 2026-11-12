@@ -99,4 +99,22 @@ describe('PrismaInfraCostLiveReader', () => {
     const r = await reader.read(now);
     expect([r.sessionsConnected, r.sessionsCapacity, r.sessionsSampledAt]).toEqual([null, null, null]);
   });
+
+  it('instâncias do worker numa hora fechada: média por minuto, deploy não soma; vazia = null', async () => {
+    const h = new Date('2026-11-12T10:00:00.000Z');
+    const m = (min: number) => new Date(h.getTime() + min * 60_000);
+    expect(await reader.workerInstancesInHour(h, m(60))).toBeNull();
+    const rows: OpsMetricSample[] = [];
+    for (let i = 0; i < 12; i++) rows.push(render(`${SRV}-abc12`, m(i * 5)), render(`${SRV}-abc12`, m(i * 5), 'memory_pct'));
+    rows.push(render(`${SRV}-new77`, m(30))); // troca por deploy: 2 só num minuto
+    rows.push(render(`${SRV}-zzz99`, m(60))); // fora da janela [h, h+1h)
+    rows.push(render('srv-outro-zz1', m(10)));
+    await samples.insertMany(rows);
+    expect(await reader.workerInstancesInHour(h, m(60))).toBe(1);
+    const two: OpsMetricSample[] = [];
+    for (let i = 0; i < 12; i++) two.push(render(`${SRV}-def34`, m(i * 5)));
+    await samples.insertMany(two);
+    expect(await reader.workerInstancesInHour(h, m(60))).toBe(2);
+    expect(await new PrismaInfraCostLiveReader(prisma, undefined).workerInstancesInHour(h, m(60))).toBeNull();
+  });
 });

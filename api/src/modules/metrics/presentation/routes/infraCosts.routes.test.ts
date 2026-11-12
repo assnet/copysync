@@ -9,6 +9,8 @@ import { PrismaWorkerCapacityReader } from '../../../sessions/infrastructure/rep
 import { PrismaAuditLogRepository } from '../../../../shared/audit/PrismaAuditLogRepository';
 import { InfraCostSettingsConflictError } from '../../../../shared/errors/internal/InfraCostErrors';
 import { defaultInfraCostSettings } from '../../domain/services/infraCostSettings';
+import { PrismaInfraCostSnapshotRepository } from '../../infrastructure/repositories/PrismaInfraCostSnapshotRepository';
+import { PrismaInfraFxFetchStateRepository } from '../../infrastructure/repositories/PrismaInfraFxFetchStateRepository';
 
 /* Contrato HTTP sem banco: Prisma vazio, auth falsa, repositórios espionados no protótipo. */
 const auth = vi.hoisted(() => ({ isSuperAdmin: false }));
@@ -108,6 +110,11 @@ describe('GET/PUT /admin/costs/settings', () => {
 });
 
 describe('GET /admin/costs/summary', () => {
+  beforeEach(() => {
+    vi.spyOn(PrismaInfraCostSnapshotRepository.prototype, 'latestFxRate').mockResolvedValue(null);
+    vi.spyOn(PrismaInfraFxFetchStateRepository.prototype, 'get').mockResolvedValue(null);
+  });
+
   function stubReads(sessionsSampledAt: Date = new Date()) {
     const settings = defaultInfraCostSettings();
     settings.fx.override = { rate: 5.5, date: '2026-11-10' };

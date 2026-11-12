@@ -29,6 +29,8 @@ export type ProcessJob =
   | 'opsMetricsSampler'
   /** Subida automática de workers (WSCALE-15); só age com `scalerMode = auto`. Nunca no `http`. */
   | 'workerAutoscaler'
+  /** Snapshot horário dos custos (COST-09/10); só com `INFRA_COST_SNAPSHOT_ENABLED`. Nunca no `http`. */
+  | 'infraCostSnapshot'
   /** Desconecta sessões locais de tenant não `ACTIVE` (OWN-04), tick de 30 s. Nunca no `http`. */
   | 'inactiveTenantSweep';
 
@@ -52,6 +54,7 @@ const WORKER_JOBS: readonly ProcessJob[] = [
   'opsMetricsSampler',
   'workerAutoscaler',
   'inactiveTenantSweep',
+  'infraCostSnapshot',
 ];
 
 /** Jobs que este papel liga. `all` = todos (comportamento de hoje). */

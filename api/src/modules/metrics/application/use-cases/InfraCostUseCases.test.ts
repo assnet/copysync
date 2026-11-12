@@ -96,7 +96,7 @@ describe('UpdateInfraCostSettingsUseCase', () => {
 });
 
 describe('GetInfraCostSummaryUseCase', () => {
-  function setup() {
+  function setup(extra: Partial<ConstructorParameters<typeof GetInfraCostSummaryUseCase>[0]> = {}) {
     let scaling: WorkerScalingSettings = {
       maxSessionsPerWorker: 40, maxPendingLoginsPerWorker: 50, alertOccupancyRatio: 0.8,
     } as WorkerScalingSettings;
@@ -106,9 +106,12 @@ describe('GetInfraCostSummaryUseCase', () => {
       start: () => {},
       stop: () => {},
     };
-    const live = { read: vi.fn(async () => ({ sessionsConnected: 3, sessionsCapacity: 40, sessionsSampledAt: NOW, workerInstances: 1 })) };
+    const live = {
+      read: vi.fn(async () => ({ sessionsConnected: 3, sessionsCapacity: 40, sessionsSampledAt: NOW, workerInstances: 1 })),
+      workerInstancesInHour: vi.fn(async () => null),
+    };
     const capacity = { readByPlan: vi.fn(async () => []) };
-    const uc = new GetInfraCostSummaryUseCase({ settings: repo(), live, capacity, scaling: provider, now: () => NOW });
+    const uc = new GetInfraCostSummaryUseCase({ settings: repo(), live, capacity, scaling: provider, now: () => NOW, ...extra });
     return { uc, live, setScaling: (s: Partial<WorkerScalingSettings>) => { scaling = { ...scaling, ...s }; } };
   }
 
@@ -123,6 +126,22 @@ describe('GetInfraCostSummaryUseCase', () => {
     // sem override de cotação na configuração inicial
     expect(out.calculation.fx).toBeNull();
     expect(out.calculation.warnings).toContainEqual({ code: 'fx_missing' });
+  });
+
+  it('usa a cotação gravada pelo job (PTAX) e vira last_known quando a busca de hoje falhou', async () => {
+    const saved = { referenceDate: new Date('2026-11-11T00:00:00Z'), rate: 5.4321, source: 'ptax' as const, fetchedAt: new Date('2026-11-11T16:31:00Z') };
+    const fxRates = { latestFxRate: vi.fn(async () => saved) };
+    const ok = await setup({ fxRates }).uc.execute();
+    expect(fxRates.latestFxRate).toHaveBeenCalledWith(new Date('2026-11-12T00:00:00Z'));
+    expect(ok.calculation.fx).toMatchObject({ rate: 5.4321, referenceDate: '2026-11-11', source: 'ptax', stale: false });
+
+    const failedToday = { referenceDay: '2026-11-12', attempts: 1, lastAttemptAt: NOW, ok: false };
+    const fxFetchState = { get: vi.fn(async () => failedToday), save: vi.fn() };
+    const failed = await setup({ fxRates, fxFetchState }).uc.execute();
+    expect(failed.calculation.fx).toMatchObject({ rate: 5.4321, source: 'last_known' });
+
+    fxFetchState.get.mockResolvedValue({ ...failedToday, referenceDay: '2026-11-11' });
+    expect((await setup({ fxRates, fxFetchState }).uc.execute()).calculation.fx?.source).toBe('ptax');
   });
 
   it('outro mês: 400 INFRA_COST_MONTH_UNAVAILABLE sem ler nada', async () => {

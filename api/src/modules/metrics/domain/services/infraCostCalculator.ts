@@ -236,10 +236,15 @@ function maybeMoney(usd: number | null, fx: ResolvedFxRate | null): InfraMoney |
 }
 
 /** Limite de sessões do preset no canal para tenant ilimitado; sem plano/preset numérico = 1. */
-function presetSessions(planSlug: string | null, channel: LimitChannel): number {
+export function presetSessions(planSlug: string | null, channel: LimitChannel): number {
   if (planSlug === null || !(PLAN_SLUGS as readonly string[]).includes(planSlug)) return 1;
   const value = PLAN_PRESETS[planSlug as PlanSlug][limitKeyOfChannel('sessions', channel)];
   return typeof value === 'number' ? value : 1;
+}
+
+/** Contratadas efetivas de um tenant: limite numérico por canal; `null` (ilimitado) = preset do plano (COST-05). */
+export function effectiveTenantContractedSessions(planSlug: string | null, limits: Record<LimitChannel, number | null>): number {
+  return LIMIT_CHANNELS.reduce((sum, ch) => sum + (limits[ch] ?? presetSessions(planSlug, ch)), 0);
 }
 
 /** Contratadas efetivas do plano (COST-05). */

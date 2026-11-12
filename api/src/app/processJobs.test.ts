@@ -6,11 +6,11 @@ const ALL: ProcessJob[] = [
   'offerDispatch', 'hubOutbox', 'extensionRetention', 'billingReconcile',
   'linkRotationSync', 'sessionBootstrap', 'sessionReconciler', 'leaseKeeper',
   'sessionAdoption', 'workerHeartbeat', 'capacityAlert', 'outboundTmpSweep',
-  'opsMetricsSampler', 'workerAutoscaler', 'inactiveTenantSweep',
+  'opsMetricsSampler', 'workerAutoscaler', 'inactiveTenantSweep', 'infraCostSnapshot',
 ];
 
 describe('jobsFor', () => {
-  it('all liga os 19 jobs', () => {
+  it('all liga os 20 jobs', () => {
     expect([...jobsFor('all')].sort()).toEqual([...ALL].sort());
   });
 
@@ -51,6 +51,12 @@ describe('jobsFor', () => {
     expect(jobsFor('worker').has('opsMetricsSampler')).toBe(true);
     expect(jobsFor('all').has('opsMetricsSampler')).toBe(true);
     expect(jobsFor('http').has('opsMetricsSampler')).toBe(false);
+  });
+
+  it('snapshot de custos só em worker/all, nunca no http (COST-09)', () => {
+    expect(jobsFor('worker').has('infraCostSnapshot')).toBe(true);
+    expect(jobsFor('all').has('infraCostSnapshot')).toBe(true);
+    expect(jobsFor('http').has('infraCostSnapshot')).toBe(false);
   });
 
   it('subida automática só em worker/all, nunca no http (WSCALE-15)', () => {

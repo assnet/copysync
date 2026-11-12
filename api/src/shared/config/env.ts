@@ -383,6 +383,11 @@ const envSchema = z.object({
   // ── Custos da infraestrutura (.specs/features/infra-costs, COST-09) ─────
   // `api=srv-…,worker=srv-…,redis=red-…,postgres=dpg-…,static=srv-…`, só no `worker`. Parse em
   // `infraCostRenderResources.ts` (entrada inválida ignorada com warn sem o id). Nunca logado nem devolvido.
+  // Job horário de snapshot dos custos (COST-09/10), só em worker/all. Desligado por padrão; liga só na Render.
+  INFRA_COST_SNAPSHOT_ENABLED: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
   INFRA_COST_RENDER_RESOURCES: z.preprocess(
     (v) => (typeof v === 'string' ? v.trim() || undefined : v),
     z.string().optional(),
