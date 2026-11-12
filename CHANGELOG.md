@@ -9,6 +9,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — api 0.92.1 — link Shein compartilhado pelo app dava "Link não suportado"
+
+#### api
+
+- **`HttpShortLinkExpander.ts`** — `onelink` do app da Shein traz o salto do app no `input#url`; o produto passa a vir do `goods_id` do `input#deeplink`. Ver `docs/afiliado-shein.md`.
+
 ### Fixed — app 0.114.0 — rascunho do gerador de ofertas some no celular ao sair do navegador
 
 #### app

@@ -139,6 +139,19 @@ describe('HttpShortLinkExpander', () => {
       }
     });
 
+    it('onelink do app (input#url = salto fora da allowlist): produto vem do goods_id do deeplink', async () => {
+      const jump = '<input id="url" value="https://api-shein.shein.com/h5/sharejump/appjump?onelink=60/6800bue62anb&amp;localcountry=BR" style="display: none"/>';
+      const deeplink = (data: string) => `<input id="deeplink" value="sheinlink://applink/goods?data=${encodeURIComponent(data)}" style="display: none"/>`;
+      const fn = stubFetch(async () => page(jump + deeplink('{"goods_id":"162996891","shc":"2_Rde1nGBJwxS"}')));
+      expect((await new HttpShortLinkExpander().expand(ONELINK)).href).toBe('https://br.shein.com/product-p-162996891.html');
+      expect(fn).toHaveBeenCalledTimes(1);
+      // id que não é só dígitos, JSON quebrado, outro esquema ou sem deeplink: segue recusado
+      for (const extra of [deeplink('{"goods_id":"1/../x"}'), deeplink('{"goods_id":162996891}'), deeplink('{'), '<input id="deeplink" value="https://evil.example.com/?data=%7B%22goods_id%22%3A%22162996891%22%7D">', '']) {
+        stubFetch(async () => page(jump + extra));
+        await expect(new HttpShortLinkExpander().expand(ONELINK)).rejects.toMatchObject({ code: 'OFFER_URL_UNSUPPORTED' });
+      }
+    });
+
     it('corpo cortado em 32 KiB: input depois do limite não é achado → URL atual', async () => {
       const fn = stubFetch(async () => page(' '.repeat(32 * 1024) + FIXTURE));
       expect((await new HttpShortLinkExpander().expand(ONELINK)).href).toBe(ONELINK.href);

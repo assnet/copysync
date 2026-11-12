@@ -41,6 +41,12 @@ monitoramento ─▶ BuildTenantAffiliateLinkUseCase ─────────
   `HttpShortLinkExpander` trata esse host à parte: só GET, lê até 32 KiB, extrai o `input#url`, desfaz entidades,
   valida na allowlist e devolve essa URL **sem nova requisição**. A página do produto nunca é aberta (sem cookie cai
   em `/risk/challenge`). `HttpProductPageReader` devolve `null` para host Shein (segunda barreira).
+  **Onelink do app** (botão Compartilhar do aplicativo, api 0.92.1): o `input#url` aponta para o salto do app
+  (`api-shein.shein.com/h5/sharejump/appjump`, fora da allowlist) e o produto só vem no `input#deeplink`
+  (`sheinlink://applink/goods?data={"goods_id":"…"}`). Quando o `input#url` não passa na allowlist, o expansor usa
+  esse `goods_id` (só dígitos) e devolve `https://br.shein.com/product-p-<id>.html`, montada por nós: nada do HTML
+  vira host e nada é requisitado. Sem `goods_id` válido segue `OFFER_URL_UNSUPPORTED`. Nunca incluir
+  `api-shein.shein.com` na allowlist nem seguir o salto.
 - **`sourceUrl`** do monitoramento = `https://br.shein.com/product-p-<goodsId>.html`, montada só com o id. É
   referência interna: nunca requisitada nem exibida como link. Todo link clicável ou enviado é o `onelink`.
 - **Hosts** (`detectMarketplace.ts`): `br.shein.com`, `m.shein.com` (só caminho `/br/`), `onelink.shein.com`. Nunca
@@ -74,6 +80,7 @@ não contrato. `detailNew` é endpoint interno do painel de afiliados, sem docum
 |---|---|
 | `detailNew` com `token` + `siteuid: mbr` e corpo mínimo → 200 `code "0"`; sem token → 403 `100105` | Mac (IP residencial) e **sonda no Shell da API na Render** (portão T0) |
 | `onelink` por GET → 200 com `input#url`, sem login | Mac e Render |
+| `onelink` compartilhado pelo app → `input#url` = `api-shein.shein.com/h5/sharejump/appjump`; produto no `input#deeplink` | Mac (2026-11-12); Render não testada |
 | `AT` expira 30 dias após o login (validade do cookie) | navegador do dono |
 | URL só com o id (`product-p-<id>.html`) abre o produto certo, mas passa por desafio "Eu sou humano" | navegador do dono |
 

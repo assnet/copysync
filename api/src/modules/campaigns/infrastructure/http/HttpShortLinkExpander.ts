@@ -18,6 +18,8 @@ export const USER_AGENT =
 /** Shein: o onelink responde 200 com HTML e a URL do produto em `<input id="url">`, sem redirect. */
 const ONELINK_HOST = 'onelink.shein.com';
 const ONELINK_MAX_BYTES = 32 * 1024;
+/** Mesmo formato de `parseProductRef` (id do produto Shein). */
+const SHEIN_GOODS_ID = /^\d{4,12}$/;
 const HTML_ENTITIES: Record<string, string> = { amp: '&', quot: '"', '#39': "'", '#x27': "'", lt: '<', gt: '>' };
 
 export class HttpShortLinkExpander implements IShortLinkExpander {
@@ -97,27 +99,55 @@ export class HttpShortLinkExpander implements IShortLinkExpander {
   }
 }
 
+/** Valor (entidades desfeitas) do `<input id="<id>" value="…">`: aspas simples ou duplas, qualquer ordem de atributo. */
+function inputValue(html: string, id: string): string | null {
+  for (const [, attrs] of html.matchAll(/<input\b([^>]*)>/gi)) {
+    if (!new RegExp(`(?:^|\\s)id\\s*=\\s*(["'])${id}\\1`, 'i').test(attrs)) continue;
+    const m = /(?:^|\s)value\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(attrs);
+    if (!m) continue;
+    return (m[1] ?? m[2]).trim().replace(/&(amp|quot|#39|#x27|lt|gt);/gi, (e, k: string) => HTML_ENTITIES[k.toLowerCase()] ?? e);
+  }
+  return null;
+}
+
 /**
- * URL do produto no `<input id="url" value="…">` do onelink (aspas simples ou duplas, qualquer
- * ordem de atributo), com entidades desfeitas. Sem `input` → null; destino fora da allowlist → recusa.
+ * Onelink de compartilhamento do app: o `input#url` aponta para o salto do app
+ * (`api-shein.shein.com/h5/sharejump/appjump`, fora da allowlist) e o produto só aparece no
+ * `input#deeplink` (`sheinlink://applink/goods?data={"goods_id":"…"}`). Devolve a URL canônica
+ * montada só com o id (dígitos): nada do HTML vira host nem é requisitado.
+ */
+function deeplinkProduct(html: string): URL | null {
+  const raw = inputValue(html, 'deeplink');
+  if (!raw) return null;
+  try {
+    const link = new URL(raw);
+    if (link.protocol !== 'sheinlink:') return null;
+    const goodsId = (JSON.parse(link.searchParams.get('data') ?? 'null') as { goods_id?: unknown } | null)?.goods_id;
+    return typeof goodsId === 'string' && SHEIN_GOODS_ID.test(goodsId) ? new URL(`https://br.shein.com/product-p-${goodsId}.html`) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * URL do produto do onelink: a do `<input id="url">` quando está na allowlist; senão a montada pelo
+ * `goods_id` do `input#deeplink`. Sem `input#url` → null; destino fora da allowlist e sem produto
+ * no deeplink → recusa.
  */
 export function onelinkTarget(html: string | null): URL | null {
   if (!html) return null;
-  for (const [, attrs] of html.matchAll(/<input\b([^>]*)>/gi)) {
-    if (!/(?:^|\s)id\s*=\s*(["'])url\1/i.test(attrs)) continue;
-    const m = /(?:^|\s)value\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(attrs);
-    if (!m) continue;
-    const raw = (m[1] ?? m[2]).trim().replace(/&(amp|quot|#39|#x27|lt|gt);/gi, (e, k: string) => HTML_ENTITIES[k.toLowerCase()] ?? e);
-    let target: URL;
-    try {
-      target = new URL(raw);
-    } catch {
-      throw new OfferUrlUnsupportedError();
-    }
-    if (!isSupportedProductUrl(target)) throw new OfferUrlUnsupportedError();
-    return target;
+  const raw = inputValue(html, 'url');
+  if (raw === null) return null;
+  let target: URL | null = null;
+  try {
+    target = new URL(raw);
+  } catch {
+    // inválida: tenta o deeplink abaixo
   }
-  return null;
+  if (target && isSupportedProductUrl(target)) return target;
+  const product = deeplinkProduct(html);
+  if (!product) throw new OfferUrlUnsupportedError();
+  return product;
 }
 
 /** Lê no máximo `max` bytes e cancela o resto. */
