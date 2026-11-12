@@ -12,10 +12,11 @@ import { REDIRECT_PUBLIC_PATH } from '@/features/redirectLinks/strings';
  *   subir o botão só passaria a cobrir campo e slider; tela só de super admin, sem uso de suporte.
  * - `/admin/workers/capacity`: cobria o botão de tabela do gráfico no fim da aba; só super admin.
  * - `/admin/workers/scale`: cobria a coluna "Quando" do histórico; só super admin.
+ * - `/admin/costs/prices`: "Revisar e salvar" no fim do formulário de preços; só super admin.
  */
 export const SUPPORT_CHAT_HIDDEN_PATHS: readonly string[] = [
   REDIRECT_PUBLIC_PATH, '/chat', '/admin/workers/settings', '/admin/workers/capacity',
-  '/admin/workers/scale',
+  '/admin/workers/scale', '/admin/costs/prices',
 ];
 
 /**

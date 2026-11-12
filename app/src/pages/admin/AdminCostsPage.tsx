@@ -3,14 +3,17 @@ import { Link, useLocation } from 'react-router-dom';
 import { Box, Skeleton, Tab, Tabs, useMediaQuery, useTheme } from '@mui/material';
 import { PageHeader } from '@/components';
 import { infraCostsStrings as t } from '@/features/infraCosts/strings';
-import { COSTS_PATH } from '@/features/infraCosts/paths';
+import { COSTS_PATH, COSTS_PRICES_PATH } from '@/features/infraCosts/paths';
 
 /** Aba Resumo em chunk próprio (cartões, tabelas por plano e por serviço). */
 const SummaryTab = lazy(() => import('@/features/infraCosts/components/SummaryTab'));
+/** Aba Preços em chunk próprio (formulário, diálogo do diff). */
+const PricesTab = lazy(() => import('@/features/infraCosts/components/PricesTab'));
 
 /** Abas pela URL: caminho → rótulo. A ativa é a de prefixo mais longo que casa com o caminho. */
 export const COST_TABS: { path: string; label: string }[] = [
   { path: COSTS_PATH, label: t.tabs.summary },
+  { path: COSTS_PRICES_PATH, label: t.tabs.prices },
 ];
 
 export function activeCostsTab(pathname: string): string {
@@ -46,6 +49,11 @@ export function AdminCostsPage() {
       {active === COSTS_PATH && (
         <Suspense fallback={<Skeleton variant="rounded" height={320} aria-label={t.summary.loading} />}>
           <SummaryTab />
+        </Suspense>
+      )}
+      {active === COSTS_PRICES_PATH && (
+        <Suspense fallback={<Skeleton variant="rounded" height={320} aria-label={t.prices.loading} />}>
+          <PricesTab />
         </Suspense>
       )}
     </Box>

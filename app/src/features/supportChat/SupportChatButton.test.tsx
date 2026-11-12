@@ -38,7 +38,7 @@ describe('SupportChatButton', () => {
   });
 
   it('lista de rotas ocultas e regra de prefixo', () => {
-    expect(SUPPORT_CHAT_HIDDEN_PATHS).toEqual(['/redirect', '/chat', '/admin/workers/settings', '/admin/workers/capacity', '/admin/workers/scale']);
+    expect(SUPPORT_CHAT_HIDDEN_PATHS).toEqual(['/redirect', '/chat', '/admin/workers/settings', '/admin/workers/capacity', '/admin/workers/scale', '/admin/costs/prices']);
     expect(isSupportChatHidden('/admin/workers')).toBe(false);
     expect(isSupportChatHidden('/redirect')).toBe(true);
     expect(isSupportChatHidden('/redirects')).toBe(false);
