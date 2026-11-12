@@ -19,7 +19,7 @@ export interface UsageKpiTileProps {
   formatValue: (v: number) => string;
 }
 
-/** Até 2 linhas: no tile estreito (celular, 6 por linha no desktop) o rótulo quebra em vez de virar "RAM · P…". */
+/** Até 2 linhas: no tile estreito (celular, 4 por linha no desktop) o rótulo quebra em vez de virar "RAM · P…". */
 const clamp2 = { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } as const;
 
 /** KPI "agora": valor, contexto, status e tendência do período. */

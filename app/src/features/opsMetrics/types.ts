@@ -1,5 +1,6 @@
 /** Métricas de recursos da plataforma (super admin). Contrato de `GET /admin/ops/metrics/{series,latest}`. */
-export type OpsKind = 'api' | 'postgres' | 'worker' | 'query' | 'other';
+/** `worker` = batimento por processo; `worker_service` = CPU/RAM da Render do serviço worker (todas as instâncias). */
+export type OpsKind = 'api' | 'worker_service' | 'postgres' | 'worker' | 'query' | 'other';
 
 export interface OpsSeriesPoint {
   /** Início do balde (ISO). */
@@ -67,7 +68,9 @@ export interface OpsLatest {
 }
 
 export type OpsRange = '1h' | '6h' | '24h' | '7d';
-export type OpsResourceFilter = 'all' | 'api' | 'postgres';
+/** Recursos com CPU e RAM da Render: o filtro usa o mesmo nome do `kind`. */
+export type OpsServerKind = 'api' | 'worker_service' | 'postgres';
+export type OpsResourceFilter = 'all' | OpsServerKind;
 
 /** Filtros da aba Consumo (persistidos por aba do navegador). */
 export interface UsageFilters {

@@ -7,6 +7,22 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.86.0] — 2026-11-12 — Worker separado da API no consumo
+
+Com a api em `PROCESS_ROLE=http` e o serviço worker à parte, as amostras da Render do worker (`srv-<idDoWorker>-<sufixo>`)
+caíam como `api` na aba Consumo. Novo `kind` `worker_service`: `srv-` igual a `WORKER_SCALER_SERVICE_ID` ou com prefixo
+`<id>-`. Sem a env (ou inválida), comportamento antigo. Doc: `docs/ops-metricas.md`.
+**Migration Prisma**: não. **Breaking**: não (valor novo no enum `kind` das respostas).
+
+### Added
+
+#### API — `metrics`
+
+- **`domain/services/opsMetricsSeriesPolicy.ts`** — `opsResourceKind` recebe `workerServiceId` e devolve `worker_service` para o serviço e as instâncias (`-` no prefixo: `srv-ab` não casa `srv-abc`); `opsWorkerServiceId` confere `^srv-[a-z0-9]+$`.
+- **`application/use-cases/GetOpsMetricsSeriesUseCase.ts`**, **`GetOpsMetricsLatestUseCase.ts`** — id do serviço worker opcional no construtor.
+- **`presentation/routes/opsMetrics.routes.ts`** — lê `WORKER_SCALER_SERVICE_ID` na composição; **`schemas/opsMetrics.schema.ts`** — `worker_service` no enum `kind`.
+- Testes da política (api, 1 e 2 instâncias, id parecido, sem env) e dos dois use cases.
+
 ## [0.85.1] — 2026-11-11 — Jobs de sessão só no processo dono
 
 Incidente de 2026-11-11: o 1º worker (Private Service, `PROCESS_ROLE=worker`) subiu ao lado da api `all`, pegou envios

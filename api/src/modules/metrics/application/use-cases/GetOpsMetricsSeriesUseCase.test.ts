@@ -6,9 +6,9 @@ import { ValidationError } from '../../../../shared/errors/internal/ResourceErro
 const NOW = new Date('2026-11-09T12:00:00.750Z');
 const DAY = 86_400_000;
 
-function build(rows: OpsMetricBucketRow[] = []) {
+function build(rows: OpsMetricBucketRow[] = [], workerServiceId: string | null = null) {
   const reader = { aggregate: vi.fn(async () => rows) };
-  return { uc: new GetOpsMetricsSeriesUseCase(reader, () => NOW), reader };
+  return { uc: new GetOpsMetricsSeriesUseCase(reader, () => NOW, workerServiceId), reader };
 }
 
 describe('GetOpsMetricsSeriesUseCase', () => {
@@ -64,6 +64,16 @@ describe('GetOpsMetricsSeriesUseCase', () => {
       ] },
       { resource: 'w1', kind: 'worker', metric: 'rss_mb', points: [{ at: t(0), avg: 300, min: 290, max: 310 }] },
       { resource: 'dpg-b', kind: 'postgres', metric: 'cpu_pct', points: [{ at: t(0), avg: 2, min: 2, max: 2 }] },
+    ]);
+  });
+
+  it('com o id do serviço worker: séries das instâncias dele saem como worker_service', async () => {
+    const at = new Date(Date.UTC(2026, 10, 9, 11, 0));
+    const row = (resource: string) => ({ source: 'render' as const, resource, metric: 'cpu_pct', at, avg: 1, min: 1, max: 1 });
+    const { uc } = build([row('srv-api-x1'), row('srv-wk-a1'), row('srv-wk-b2'), row('srv-wkz')], 'srv-wk');
+    const out = await uc.execute({});
+    expect(out.series.map((s) => [s.resource, s.kind])).toEqual([
+      ['srv-api-x1', 'api'], ['srv-wk-a1', 'worker_service'], ['srv-wk-b2', 'worker_service'], ['srv-wkz', 'api'],
     ]);
   });
 });

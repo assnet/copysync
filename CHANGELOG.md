@@ -9,6 +9,21 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — api 0.86.0 · app 0.105.0 — worker separado da API no consumo
+
+Na aba Consumo de `/admin/workers`, CPU e RAM do serviço worker (Render) caíam junto com a API. A API passa a classificar como `worker_service` as amostras de `WORKER_SCALER_SERVICE_ID` e das instâncias dele (réplicas novas entram sozinhas); o painel ganha o recurso "Worker". Doc: `docs/ops-metricas.md`.
+**Migration Prisma**: não. **Breaking**: não.
+
+#### Backend (api/) — `metrics`
+
+- **`opsMetricsSeriesPolicy.ts`** — `kind` `worker_service` (igual ao id ou prefixo `<id>-`); sem a env, todo `srv-` segue `api`.
+- **`GetOpsMetricsSeriesUseCase.ts`**, **`GetOpsMetricsLatestUseCase.ts`**, **`opsMetrics.routes.ts`**, **`opsMetrics.schema.ts`** — id do serviço vindo da env na composição; enum do contrato.
+
+#### Frontend (app/) — `opsMetrics`
+
+- **`UsageTab.tsx`** — filtro Recurso com "Worker"; cartões `RAM · Worker`/`CPU · Worker` com a pior instância ("pior de N instâncias" com 2+), como os da API; gráficos de CPU e Memória com linha Worker separada da API. Cartões em 4 por linha no desktop.
+- **`rules.ts`** (`resourceCount`), **`types.ts`**, **`strings.ts`**, **`chartColors.ts`** — tipo, textos e 3ª cor categórica.
+
 ### Fixed — api 0.85.1 — jobs de sessão só no processo dono
 
 O 1º worker subiu ao lado da api `all`, pegou envios de oferta de sessões da api e falhou com `SESSION_NOT_CONNECTED` (incidente de 2026-11-11; worker suspenso). Todo job que usa a engine agora só trabalha com sessões cujo lease vivo é do próprio processo (ou sem dono vivo); com um processo só, nada muda. Doc: `docs/arquitetura-escala.md` §3.3/§5.1, `docs/fila-de-envio.md` §2.2. Spec: `.specs/features/owner-scoped-jobs/`.

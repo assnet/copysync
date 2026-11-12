@@ -23,7 +23,8 @@ export function chartColors(mode: PaletteMode) {
     /** Série 2 — Postgres / Ociosas em transação. */
     postgres: c2,
     idleInTx: c2,
-    /** Série 3 — Ociosas. */
+    /** Série 3 — Worker (serviço da Render) / Ociosas. */
+    workerService: c3,
     idle: c3,
     /** Ordem para séries por worker (até 3). */
     ordered: [c1, c2, c3] as const,

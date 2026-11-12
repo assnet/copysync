@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   alignSeries, cacheHitDomainMin, cacheHitStatus, counterDeltas, counterPeriodTotal, countDomainMax, formatBytes,
-  formatDuration, formatPct, isStale, latestValue, newestSampleAt, counterRatePerMinute, parseUsageFilters, querySharePct, rangeWindow, resourceVisible,
+  formatDuration, formatPct, isStale, latestValue, newestSampleAt, counterRatePerMinute, parseUsageFilters, querySharePct, rangeWindow, resourceCount, resourceVisible,
   seriesPoints, shortQueryId, statusFor,
 } from './rules';
 import type { OpsSeries, OpsSeriesPoint } from './types';
@@ -68,6 +68,7 @@ describe('parseUsageFilters', () => {
       .toEqual({ range: '7d', resource: 'api', autoRefresh: false });
     expect(parseUsageFilters({ range: '2y', resource: 'x', autoRefresh: 'sim' }))
       .toEqual({ range: '24h', resource: 'all', autoRefresh: true });
+    expect(parseUsageFilters({ range: '1h', resource: 'worker_service', autoRefresh: true }).resource).toBe('worker_service');
     expect(parseUsageFilters(null)).toEqual({ range: '24h', resource: 'all', autoRefresh: true });
   });
 });
@@ -111,6 +112,19 @@ describe('séries e valores atuais', () => {
     expect(resourceVisible('all', 'api')).toBe(true);
     expect(resourceVisible('api', 'postgres')).toBe(false);
     expect(resourceVisible('postgres', 'postgres')).toBe(true);
+    expect(resourceVisible('worker_service', 'worker_service')).toBe(true);
+    expect(resourceVisible('worker_service', 'api')).toBe(false);
+    expect(resourceVisible('all', 'worker_service')).toBe(true);
+  });
+});
+
+describe('resourceCount', () => {
+  it('conta recursos distintos do tipo com a métrica', () => {
+    const v = (resource: string, kind: 'api' | 'worker_service', metric = 'memory_pct') => ({ resource, kind, metric, value: 1, at: '2026-11-12T00:00:00Z' });
+    const latest = [v('srv-w-a', 'worker_service'), v('srv-w-b', 'worker_service'), v('srv-w-a', 'worker_service', 'cpu_pct'), v('srv-a', 'api')];
+    expect(resourceCount(latest, 'memory_pct', 'worker_service')).toBe(2);
+    expect(resourceCount(latest, 'cpu_pct', 'worker_service')).toBe(1);
+    expect(resourceCount(latest, 'memory_pct', 'postgres')).toBe(0);
   });
 });
 

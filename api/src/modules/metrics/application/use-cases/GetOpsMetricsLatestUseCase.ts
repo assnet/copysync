@@ -45,6 +45,8 @@ export class GetOpsMetricsLatestUseCase {
     private readonly reader: Pick<IOpsMetricsSeriesReader, 'latestSince' | 'latestStatementSnapshot'>,
     private readonly heartbeats: Pick<IWorkerHeartbeatRepository, 'listAlive'>,
     private readonly now: () => Date = () => new Date(),
+    /** `WORKER_SCALER_SERVICE_ID` já conferido (`opsWorkerServiceId`); `null` = todo `srv-` é API. */
+    private readonly workerServiceId: string | null = null,
   ) {}
 
   async execute(): Promise<GetOpsMetricsLatestOutput> {
@@ -55,7 +57,7 @@ export class GetOpsMetricsLatestUseCase {
       this.heartbeats.listAlive(WORKER_ALIVE_MS),
     ]);
     const latest = rows.map((r) => ({
-      resource: r.resource, kind: opsResourceKind(r.source, r.resource, r.metric), metric: r.metric, value: r.value, at: r.at,
+      resource: r.resource, kind: opsResourceKind(r.source, r.resource, r.metric, this.workerServiceId), metric: r.metric, value: r.value, at: r.at,
     }));
     const topQueries = statements.map((s) => ({
       queryid: s.resource,

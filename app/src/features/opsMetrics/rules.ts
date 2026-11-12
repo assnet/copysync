@@ -1,6 +1,6 @@
 /** Regras puras da aba Consumo: janela, status vs limiar, delta de counter, alinhamento e formatação. */
 import type {
-  OpsKind, OpsLatestValue, OpsRange, OpsResourceFilter, OpsSeries, OpsSeriesPoint, OpsStatus, OpsTopQuery, OpsWorker,
+  OpsKind, OpsLatestValue, OpsRange, OpsResourceFilter, OpsSeries, OpsServerKind, OpsSeriesPoint, OpsStatus, OpsTopQuery, OpsWorker,
   UsageFilters,
 } from './types';
 
@@ -24,7 +24,7 @@ export const STALE_AFTER_MIN = 15;
 /** Acima disso o gráfico por worker some e fica só a tabela (sem gerar cor nova). */
 export const MAX_WORKERS_IN_CHART = 3;
 
-export const OPS_RESOURCE_FILTERS: OpsResourceFilter[] = ['all', 'api', 'postgres'];
+export const OPS_RESOURCE_FILTERS: OpsResourceFilter[] = ['all', 'api', 'worker_service', 'postgres'];
 export const DEFAULT_USAGE_FILTERS: UsageFilters = { range: '24h', resource: 'all', autoRefresh: true };
 
 /**
@@ -68,7 +68,7 @@ export function isStale(atIso: string | null | undefined, nowMs: number, maxMinu
 }
 
 /** Filtro de recurso esconde só séries/KPIs de CPU e RAM do outro recurso. */
-export function resourceVisible(filter: OpsResourceFilter, kind: 'api' | 'postgres'): boolean {
+export function resourceVisible(filter: OpsResourceFilter, kind: OpsServerKind): boolean {
   return filter === 'all' || filter === kind;
 }
 
@@ -179,6 +179,11 @@ export function latestValue(latest: OpsLatestValue[], metric: string, kind?: Ops
     if (!best || v.value > best.value) best = v;
   }
   return best;
+}
+
+/** Quantos recursos distintos do tipo têm valor atual da métrica (ex.: instâncias do worker). */
+export function resourceCount(latest: OpsLatestValue[], metric: string, kind: OpsKind): number {
+  return new Set(latest.filter((v) => v.metric === metric && v.kind === kind).map((v) => v.resource)).size;
 }
 
 /** Horário da amostra mais recente entre os valores atuais e as séries (base do "atualizado há"). */

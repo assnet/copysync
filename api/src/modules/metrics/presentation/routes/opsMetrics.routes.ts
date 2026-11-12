@@ -3,6 +3,8 @@ import { authHook } from '../../../../shared/http/hooks/authHook';
 import { superAdminHook } from '../../../../shared/http/hooks/superAdminHook';
 import { httpResponse } from '../../../../shared/http/httpResponse';
 import { prisma } from '../../../../shared/database/prisma.client';
+import { env } from '../../../../shared/config/env';
+import { opsWorkerServiceId } from '../../domain/services/opsMetricsSeriesPolicy';
 import { ListOpsMetricsUseCase } from '../../application/use-cases/ListOpsMetricsUseCase';
 import { PrismaOpsMetricsSampleRepository } from '../../infrastructure/repositories/PrismaOpsMetricsSampleRepository';
 import { PrismaWorkerHeartbeatRepository } from '../../../sessions/infrastructure/repositories/PrismaWorkerHeartbeatRepository';
@@ -24,11 +26,16 @@ let listOps: ListOpsMetricsUseCase | null = null;
 const uc = () =>
   (listOps ??= new ListOpsMetricsUseCase(new PrismaOpsMetricsSampleRepository(prisma), new PrismaWorkerHeartbeatRepository()));
 
+/** Amostras da Render do serviço worker viram `worker_service`; sem a env (ou inválida), tudo `srv-` é API. */
+const workerServiceId = () => opsWorkerServiceId(env.WORKER_SCALER_SERVICE_ID);
 let seriesUc: GetOpsMetricsSeriesUseCase | null = null;
-const series = () => (seriesUc ??= new GetOpsMetricsSeriesUseCase(new PrismaOpsMetricsSampleRepository(prisma)));
+const series = () =>
+  (seriesUc ??= new GetOpsMetricsSeriesUseCase(new PrismaOpsMetricsSampleRepository(prisma), undefined, workerServiceId()));
 let latestUc: GetOpsMetricsLatestUseCase | null = null;
 const latest = () =>
-  (latestUc ??= new GetOpsMetricsLatestUseCase(new PrismaOpsMetricsSampleRepository(prisma), new PrismaWorkerHeartbeatRepository()));
+  (latestUc ??= new GetOpsMetricsLatestUseCase(
+    new PrismaOpsMetricsSampleRepository(prisma), new PrismaWorkerHeartbeatRepository(), undefined, workerServiceId(),
+  ));
 
 interface OpsMetricsSeriesQuery {
   metrics?: string;

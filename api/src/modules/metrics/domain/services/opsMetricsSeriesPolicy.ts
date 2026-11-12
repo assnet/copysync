@@ -1,7 +1,11 @@
 import { OPS_METRIC, type OpsMetricSource } from '../OpsMetric';
 
 /** Classe do recurso no dashboard (derivada, não gravada). */
-export type OpsResourceKind = 'api' | 'postgres' | 'worker' | 'query' | 'other';
+/**
+ * `worker` = batimento por processo (`source='worker'`); `worker_service` = amostra da Render do
+ * serviço worker (`WORKER_SCALER_SERVICE_ID` e instâncias `<id>-<sufixo>`).
+ */
+export type OpsResourceKind = 'api' | 'worker_service' | 'postgres' | 'worker' | 'query' | 'other';
 
 /** Degraus permitidos para o balde (minutos). */
 export const OPS_BUCKET_STEPS_MIN = [1, 5, 15, 30, 60, 120, 360] as const;
@@ -30,14 +34,32 @@ export function opsBucketMinutes(windowMs: number): number {
   return OPS_BUCKET_STEPS_MIN.find((s) => s >= raw) ?? OPS_BUCKET_STEPS_MIN[OPS_BUCKET_STEPS_MIN.length - 1];
 }
 
+/** Formato do id de serviço da Render. */
+export const OPS_RENDER_SERVICE_ID_PATTERN = /^srv-[a-z0-9]+$/;
+
+/** Id do serviço worker já conferido (`srv-...`); fora do formato ou ausente = `null`. Pura. */
+export function opsWorkerServiceId(raw: string | null | undefined): string | null {
+  const id = raw?.trim();
+  return id && OPS_RENDER_SERVICE_ID_PATTERN.test(id) ? id : null;
+}
+
 /**
  * `query` (top do `pg_stat_statements`) > `worker` (heartbeat) > `postgres` (`dpg-` ou catálogo) >
- * `api` (`srv-`) > `other`. Pura.
+ * `worker_service` (`srv-` igual a `workerServiceId` ou `<workerServiceId>-<instância>`) >
+ * `api` (outro `srv-`) > `other`. Sem `workerServiceId` todo `srv-` é `api`. Pura.
  */
-export function opsResourceKind(source: OpsMetricSource | string, resource: string, metric: string): OpsResourceKind {
+export function opsResourceKind(
+  source: OpsMetricSource | string,
+  resource: string,
+  metric: string,
+  workerServiceId: string | null = null,
+): OpsResourceKind {
   if (metric === OPS_METRIC.dbStatementTotalMs) return 'query';
   if (source === 'worker') return 'worker';
   if (source === 'postgres' || resource.startsWith('dpg-')) return 'postgres';
-  if (resource.startsWith('srv-')) return 'api';
+  if (resource.startsWith('srv-')) {
+    if (workerServiceId && (resource === workerServiceId || resource.startsWith(`${workerServiceId}-`))) return 'worker_service';
+    return 'api';
+  }
   return 'other';
 }

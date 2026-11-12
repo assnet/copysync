@@ -7,10 +7,10 @@ import { WORKER_ALIVE_MS } from '../../../sessions/domain/services/sessionAdopti
 const NOW = new Date('2026-11-09T12:00:00.000Z');
 const ago = (min: number) => new Date(NOW.getTime() - min * 60_000);
 
-function build(rows: OpsMetricSample[], statements: OpsMetricSample[]) {
+function build(rows: OpsMetricSample[], statements: OpsMetricSample[], workerServiceId: string | null = null) {
   const reader = { latestSince: vi.fn(async () => rows), latestStatementSnapshot: vi.fn(async () => statements) };
   const heartbeats = { listAlive: vi.fn(async () => []) };
-  return { uc: new GetOpsMetricsLatestUseCase(reader, heartbeats, () => NOW), reader, heartbeats };
+  return { uc: new GetOpsMetricsLatestUseCase(reader, heartbeats, () => NOW, workerServiceId), reader, heartbeats };
 }
 
 describe('GetOpsMetricsLatestUseCase', () => {
@@ -44,5 +44,14 @@ describe('GetOpsMetricsLatestUseCase', () => {
     expect(out.samplerActive).toBe(false);
     expect(out.latest).toEqual([]);
     expect(out.topQueries).toHaveLength(1);
+  });
+
+  it('com o id do serviço worker: instâncias dele viram worker_service, o resto segue api', async () => {
+    const r = (resource: string, value: number) =>
+      ({ at: ago(2), source: 'render' as const, resource, metric: 'memory_pct', value, meta: null });
+    const out = await build([r('srv-api', 40), r('srv-wk-a1', 60), r('srv-wk-b2', 70)], [], 'srv-wk').uc.execute();
+    expect(out.latest.map((l) => [l.resource, l.kind])).toEqual([
+      ['srv-api', 'api'], ['srv-wk-a1', 'worker_service'], ['srv-wk-b2', 'worker_service'],
+    ]);
   });
 });

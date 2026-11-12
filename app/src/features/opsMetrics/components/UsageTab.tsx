@@ -13,11 +13,11 @@ import { chartColors } from '../chartColors';
 import {
   API_MEMORY_LIMIT_MB, DEFAULT_USAGE_FILTERS, MAX_WORKERS_IN_CHART, OPS_RANGES, OPS_RESOURCE_FILTERS, alignSeries,
   cacheHitDomainMin, cacheHitStatus, counterPeriodTotal, counterRatePerMinute, countDomainMax, formatBytes, formatDateTime,
-  formatNumber, formatPct, hasHeartbeat, isStale, latestValue, newestSampleAt, parseUsageFilters, resourceVisible,
+  formatNumber, formatPct, hasHeartbeat, isStale, latestValue, newestSampleAt, parseUsageFilters, resourceCount, resourceVisible,
   seriesByResource, seriesPoints, statusFor, valueStats,
 } from '../rules';
 import { opsMetricsStrings as t } from '../strings';
-import type { OpsLatest, OpsResourceFilter, OpsSeries, OpsSeriesPoint, OpsRange, UsageFilters } from '../types';
+import type { OpsLatest, OpsResourceFilter, OpsSeries, OpsSeriesPoint, OpsServerKind, OpsRange, UsageFilters } from '../types';
 import { useOpsMetrics, type OpsMetricsState } from '../useOpsMetrics';
 import { CollectionOffState } from './CollectionOffState';
 import { CommitsBarChart } from './CommitsBarChart';
@@ -203,18 +203,29 @@ function buildUsageView({ latestRes, series, resource, colors }: ViewInput) {
 
   // ---- Servidores ----
   const showApi = resourceVisible(resource, 'api');
+  const showWorker = resourceVisible(resource, 'worker_service');
   const showDb = resourceVisible(resource, 'postgres');
+  // Várias instâncias do mesmo serviço (API ou worker) viram uma série com o pior valor por balde.
   const cpuApi = seriesPoints(serversSeries, 'cpu_pct', 'api');
+  const cpuWorker = seriesPoints(serversSeries, 'cpu_pct', 'worker_service');
   const cpuDb = seriesPoints(serversSeries, 'cpu_pct', 'postgres');
   const memApi = seriesPoints(serversSeries, 'memory_pct', 'api');
+  const memWorker = seriesPoints(serversSeries, 'memory_pct', 'worker_service');
   const memDb = seriesPoints(serversSeries, 'memory_pct', 'postgres');
-  const renderMissingData = cpuApi.length + cpuDb.length + memApi.length + memDb.length === 0 && dbSeries.some((s) => s.points.length > 0);
+  const renderMissingData = cpuApi.length + cpuWorker.length + cpuDb.length + memApi.length + memWorker.length + memDb.length === 0
+    && dbSeries.some((s) => s.points.length > 0);
 
-  const kpiValue = (metric: string, kind: 'api' | 'postgres' | undefined, pts: OpsSeriesPoint[]) =>
+  const kpiValue = (metric: string, kind: OpsServerKind | undefined, pts: OpsSeriesPoint[]) =>
     latestValue(latest, metric, kind)?.value ?? lastAvg(pts);
 
   const ramApiV = kpiValue('memory_pct', 'api', memApi);
   const cpuApiV = kpiValue('cpu_pct', 'api', cpuApi);
+  const ramWorkerV = kpiValue('memory_pct', 'worker_service', memWorker);
+  const cpuWorkerV = kpiValue('cpu_pct', 'worker_service', cpuWorker);
+  const ramWorkerN = resourceCount(latest, 'memory_pct', 'worker_service');
+  const cpuWorkerN = resourceCount(latest, 'cpu_pct', 'worker_service');
+  // Worker aparece quando há amostra dele: sem `WORKER_SCALER_SERVICE_ID` na API tudo segue em API.
+  const hasWorker = memWorker.length + cpuWorker.length > 0 || ramWorkerV != null || cpuWorkerV != null;
   const ramDbV = kpiValue('memory_pct', 'postgres', memDb);
   const cpuDbV = kpiValue('cpu_pct', 'postgres', cpuDb);
   const connPts = seriesPoints(dbSeries, 'db_connections');
@@ -236,6 +247,18 @@ function buildUsageView({ latestRes, series, resource, colors }: ViewInput) {
       key: 'cpuApi', visible: showApi, label: t.kpi.cpuApi, icon: Cpu, value: formatPct(cpuApiV), context: t.kpi.avg5min,
       status: thresholds ? statusFor(cpuApiV, thresholds.cpuPct) : 'noData', help: t.help.cpu_pct,
       spark: spark(cpuApi), sparkColor: colors.api, formatValue: formatPct,
+    },
+    {
+      key: 'ramWorker', visible: showWorker && hasWorker, label: t.kpi.ramWorker, icon: MemoryStick, value: formatPct(ramWorkerV),
+      context: ramWorkerN > 1 ? t.kpi.worstOf(ramWorkerN) : undefined,
+      status: thresholds ? statusFor(ramWorkerV, thresholds.memoryPct) : 'noData', help: t.help.workerServiceMemory,
+      spark: spark(memWorker), sparkColor: colors.workerService, formatValue: formatPct,
+    },
+    {
+      key: 'cpuWorker', visible: showWorker && hasWorker, label: t.kpi.cpuWorker, icon: Cpu, value: formatPct(cpuWorkerV),
+      context: cpuWorkerN > 1 ? `${t.kpi.avg5min} · ${t.kpi.worstOf(cpuWorkerN)}` : t.kpi.avg5min,
+      status: thresholds ? statusFor(cpuWorkerV, thresholds.cpuPct) : 'noData', help: t.help.workerServiceCpu,
+      spark: spark(cpuWorker), sparkColor: colors.workerService, formatValue: formatPct,
     },
     {
       key: 'ramDb', visible: showDb, label: t.kpi.ramDb, icon: MemoryStick, value: formatPct(ramDbV),
@@ -262,8 +285,9 @@ function buildUsageView({ latestRes, series, resource, colors }: ViewInput) {
     },
   ];
 
-  const serverLines = (apiPts: OpsSeriesPoint[], dbPts: OpsSeriesPoint[], bucket: number) => {
+  const serverLines = (apiPts: OpsSeriesPoint[], workerPts: OpsSeriesPoint[], dbPts: OpsSeriesPoint[], bucket: number) => {
     const list = [...(showApi ? [{ key: 'api', label: t.charts.series.api, color: colors.api, pts: apiPts }] : []),
+      ...(showWorker ? [{ key: 'workerService', label: t.charts.series.workerService, color: colors.workerService, pts: workerPts }] : []),
       ...(showDb ? [{ key: 'postgres', label: t.charts.series.postgres, color: colors.postgres, pts: dbPts }] : [])]
       .filter((x) => x.pts.length > 0);
     const aligned = alignSeries(list.map((x) => x.pts), bucket);
@@ -274,8 +298,8 @@ function buildUsageView({ latestRes, series, resource, colors }: ViewInput) {
     const table = buildTable(aligned.times, list.map((x, i) => ({ label: x.label, rows: aligned.rows[i], format: formatPct })));
     return { aligned, lines, table, list };
   };
-  const cpu = serverLines(cpuApi, cpuDb, bucketS);
-  const mem = serverLines(memApi, memDb, bucketS);
+  const cpu = serverLines(cpuApi, cpuWorker, cpuDb, bucketS);
+  const mem = serverLines(memApi, memWorker, memDb, bucketS);
   const memApiIdx = mem.list.findIndex((x) => x.key === 'api');
 
   // ---- Banco de dados ----
@@ -480,7 +504,7 @@ export default function UsageTab({ headerSlot }: { headerSlot?: HTMLElement | nu
 
       <Grid container spacing={2} sx={{ mt: 1 }}>
         {tiles.filter((k) => k.visible).map(({ key, visible: _v, ...tile }) => (
-          <Grid item xs={6} sm={4} lg={2} key={key}>
+          <Grid item xs={6} sm={4} lg={3} key={key}>
             {loading ? <Skeleton variant="rounded" height={170} /> : <UsageKpiTile {...tile} />}
           </Grid>
         ))}

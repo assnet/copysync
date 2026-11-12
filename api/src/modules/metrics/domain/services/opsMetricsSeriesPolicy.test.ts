@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { OPS_METRIC } from '../OpsMetric';
-import { isOpsMetricName, opsBucketMinutes, opsResourceKind } from './opsMetricsSeriesPolicy';
+import { isOpsMetricName, opsBucketMinutes, opsResourceKind, opsWorkerServiceId } from './opsMetricsSeriesPolicy';
 
 const H = 3_600_000;
 
@@ -33,6 +33,45 @@ describe('opsResourceKind', () => {
     ['render', 'red-123', 'memory_pct', 'other'],
   ])('%s/%s/%s → %s', (source, resource, metric, kind) => {
     expect(opsResourceKind(source, resource, metric)).toBe(kind);
+  });
+
+  describe('com o id do serviço worker', () => {
+    const W = 'srv-ab';
+    it.each([
+      ['srv-api1', 'api'], // API segue API
+      ['srv-api1-5f7d', 'api'],
+      ['srv-ab', 'worker_service'], // serviço sem sufixo
+      ['srv-ab-1a2b', 'worker_service'], // 1 instância
+      ['srv-ab-9z8y', 'worker_service'], // 2ª instância: entra sozinha
+      ['srv-abc', 'api'], // id parecido não casa
+      ['srv-abc-1a2b', 'api'],
+    ])('render/%s → %s', (resource, kind) => {
+      expect(opsResourceKind('render', resource, 'memory_pct', W)).toBe(kind);
+    });
+
+    it('não mexe em postgres, heartbeat nem consulta', () => {
+      expect(opsResourceKind('worker', 'srv-ab-1a2b', 'rss_mb', W)).toBe('worker');
+      expect(opsResourceKind('render', 'dpg-x', 'cpu_pct', W)).toBe('postgres');
+      expect(opsResourceKind('postgres', '-1', OPS_METRIC.dbStatementTotalMs, W)).toBe('query');
+    });
+
+    it('sem a env, todo srv- é API', () => {
+      expect(opsResourceKind('render', 'srv-ab-1a2b', 'cpu_pct', null)).toBe('api');
+    });
+  });
+});
+
+describe('opsWorkerServiceId', () => {
+  it.each([
+    [undefined, null],
+    ['', null],
+    ['  ', null],
+    ['dpg-abc', null],
+    ['srv-AB', null],
+    ['srv-ab-1', null],
+    [' srv-ab ', 'srv-ab'],
+  ])('%s → %s', (raw, out) => {
+    expect(opsWorkerServiceId(raw)).toBe(out);
   });
 });
 

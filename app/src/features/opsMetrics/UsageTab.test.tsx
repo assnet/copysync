@@ -201,4 +201,67 @@ describe('Aba Consumo', () => {
     const [, window] = vi.mocked(opsMetricsService.series).mock.calls[0];
     expect(Date.parse(window.to) - Date.parse(window.from)).toBe(24 * 60 * 60_000);
   });
+
+  describe('worker separado da API', () => {
+    const WORKER_LATEST: OpsLatest = {
+      ...FULL_LATEST,
+      latest: [
+        ...FULL_LATEST.latest,
+        { resource: 'srv-wk-a1', kind: 'worker_service', metric: 'memory_pct', value: 45, at: iso(2) },
+        { resource: 'srv-wk-b2', kind: 'worker_service', metric: 'memory_pct', value: 73, at: iso(2) },
+        { resource: 'srv-wk-a1', kind: 'worker_service', metric: 'cpu_pct', value: 21, at: iso(2) },
+        { resource: 'srv-wk-b2', kind: 'worker_service', metric: 'cpu_pct', value: 9, at: iso(2) },
+      ],
+    };
+    const workerSeries = (m: string[]) => {
+      const base = fullSeries(m);
+      if (!m.includes('cpu_pct')) return base;
+      return result([
+        ...base.series,
+        s('worker_service', 'srv-wk-a1', 'cpu_pct', [20, 21]), s('worker_service', 'srv-wk-b2', 'cpu_pct', [8, 9]),
+        s('worker_service', 'srv-wk-a1', 'memory_pct', [44, 45]), s('worker_service', 'srv-wk-b2', 'memory_pct', [70, 73]),
+      ]);
+    };
+
+    it('cartões do Worker com a pior instância; API não mistura o worker', async () => {
+      mockAll(WORKER_LATEST, workerSeries);
+      renderUsage();
+      const ram = (await screen.findByText(t.kpi.ramWorker)).closest('.MuiCard-root') as HTMLElement;
+      expect(within(ram).getByText('73%')).toBeInTheDocument();
+      expect(within(ram).getByText(t.kpi.worstOf(2))).toBeInTheDocument();
+      const cpu = screen.getByText(t.kpi.cpuWorker).closest('.MuiCard-root') as HTMLElement;
+      expect(within(cpu).getByText('21%')).toBeInTheDocument();
+      const ramApi = screen.getByText(t.kpi.ramApi).closest('.MuiCard-root') as HTMLElement;
+      expect(within(ramApi).getByText('62%')).toBeInTheDocument();
+    });
+
+    it('tabela de Servidores separa API e Worker', async () => {
+      mockAll(WORKER_LATEST, workerSeries);
+      renderUsage();
+      await screen.findByText(t.kpi.ramWorker);
+      const [toggle] = screen.getAllByRole('button', { name: t.charts.showTable });
+      await userEvent.click(toggle);
+      const table = screen.getByRole('table', { name: t.charts.cpu });
+      expect(within(table).getAllByText(t.charts.series.api).length).toBeGreaterThan(0);
+      expect(within(table).getAllByText(t.charts.series.workerService).length).toBeGreaterThan(0);
+    });
+
+    it('filtro "Worker" mostra só os cartões do worker (tema escuro)', async () => {
+      mockAll(WORKER_LATEST, workerSeries);
+      renderUsage('dark');
+      await screen.findByText(t.kpi.ramWorker);
+      await userEvent.click(screen.getByRole('button', { name: t.filters.resources.worker_service }));
+      expect(screen.queryByText(t.kpi.ramApi)).not.toBeInTheDocument();
+      expect(screen.queryByText(t.kpi.ramDb)).not.toBeInTheDocument();
+      expect(screen.getByText(t.kpi.cpuWorker)).toBeInTheDocument();
+      expect(sessionStorage.getItem('ui.workers.usage.filters')).toContain('worker_service');
+    });
+
+    it('sem amostra do worker (API sem o id do serviço): sem cartões de Worker', async () => {
+      mockAll(FULL_LATEST, fullSeries);
+      renderUsage();
+      await screen.findByText(t.kpi.ramApi);
+      expect(screen.queryByText(t.kpi.ramWorker)).not.toBeInTheDocument();
+    });
+  });
 });

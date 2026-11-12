@@ -61,7 +61,15 @@ Duas rotas para a tela "Consumo" dentro de Workers. Mesmos hooks (`authHook` + `
 - Resposta: `{ window:{from,to}, bucketMinutes, series:[{ resource, kind, metric, points:[{ at, avg, min, max }] }] }`;
   `at` = início do balde; valores arredondados a 3 casas. `kind` derivado (`opsResourceKind`):
   `query` (`db_statement_total_ms`) › `worker` (source worker) › `postgres` (`dpg-` ou source
-  postgres) › `api` (`srv-`) › `other` (fonte `sessions`).
+  postgres) › `worker_service` › `api` (outro `srv-`) › `other` (fonte `sessions`).
+- `worker_service` (desde api 0.86.0): amostra da Render (`srv-`) cujo `resource` é igual a
+  `WORKER_SCALER_SERVICE_ID` ou começa com `<WORKER_SCALER_SERVICE_ID>-` (instâncias, `srv-<id>-<sufixo>`).
+  Réplicas novas do worker entram sozinhas, sem mexer em `RENDER_RESOURCE_IDS` na tela; prefixo
+  com `-` para `srv-ab` nunca pegar `srv-abc`. A env é lida no ponto de composição
+  (`opsMetrics.routes.ts`) e conferida por `opsWorkerServiceId` (`^srv-[a-z0-9]+$`); ausente ou
+  inválida = todo `srv-` é `api` (comportamento antigo). Não confundir com `worker`, que é o
+  batimento por processo (`source='worker'`). Só derivado na leitura: nada é regravado, e
+  amostras antigas do worker passam a sair como `worker_service` assim que a env existe no `http`.
 - Counters (`db_xact_*`, `db_deadlocks`, `db_temp_bytes`, `db_statement_total_ms`) são acumulados:
   o avg do balde é do acumulado; taxa (delta) é conta da tela.
 
@@ -89,13 +97,19 @@ Workers → aba **Consumo** (`/admin/workers/usage`; Ocupação segue em `/admin
 gráficos com `@mui/x-charts` 8.29.3 fixo, só no chunk lazy da aba.
 
 - Filtros: período 1 h/6 h/24 h/7 dias (janela `from`/`to` pelo `serverNow()`; o balde é o que a
-  API devolver), recurso Todos/API/Postgres (filtra só CPU/RAM) e atualização de 60 s (pausa com a
+  API devolver), recurso Todos/API/Worker/Postgres (filtra só CPU/RAM) e atualização de 60 s (pausa com a
   aba do navegador oculta). Persistidos em `usePersistedState('workers.usage.filters')`, escopo `tab`.
 - Busca `latest` + 3 chamadas de `series` (servidores, banco, workers; ≤ 12 métricas cada) em
   paralelo, erro por bloco. Counters viram taxa/total na tela (`rules.counterDeltas`: delta negativo
   = reinício, balde vazio). Vários `srv-` do mesmo tipo viram uma série com o pior valor.
 - Status dos KPIs: limiares de `latest.thresholds` (Atenção a partir de 87,5% do limiar); cache hit
   tem faixa própria da tela (Ok ≥ 99, Crítico < 95). `RAM · API` em MB usa 2.048 MB (plano atual).
+- `RAM · Worker` / `CPU · Worker` (`kind = worker_service`): mesma regra dos cartões da API, o
+  **pior valor entre as instâncias** (% é por instância: cada uma tem o próprio limite; somar % não
+  tem sentido). Com 2+ instâncias o contexto diz "pior de N instâncias". Sem MB (limite do worker
+  não fixo na tela). Os cartões só aparecem com amostra do worker; sem `WORKER_SCALER_SERVICE_ID`
+  no `http` tudo segue em API. Nos gráficos de CPU e Memória de Servidores o Worker é a 3ª linha
+  (pior instância por balde), separada da API.
 - Consultas: só `shape` (forma normalizada) do snapshot mais recente, sem flag de borrar (sem dado
   de cliente). Se a API mandar SQL não normalizado, é bug da API.
 
@@ -110,6 +124,7 @@ série; mais de 3 cores (mais de 3 workers = só tabela); persistir dado da API.
 | `OPS_METRICS_SAMPLER_ENABLED` | `false` | liga o sampler; só no serviço `worker` |
 | `RENDER_API_KEY` | vazio | chave da Metrics API; sem ela (ou sem IDs) a fonte Render fica de fora e o resto segue. Também usada pelo escalador dos workers ([`workers-escala.md`](workers-escala.md), Escala): com `WORKER_SCALER_ENABLED=true` passa a existir no `http` além do `worker`. Nunca no painel, nunca em log |
 | `RENDER_RESOURCE_IDS` | vazio | `srv-…`/`dpg-…` separados por vírgula |
+| `WORKER_SCALER_SERVICE_ID` | vazio | id `srv-…` do serviço worker (do escalador). No `http`, também separa as amostras da Render do worker (`worker_service`) das da API no Consumo |
 | `OPS_MEMORY_LIMIT_MB` | vazio | limite de RAM para o alerta de RSS quando a Render não dá `memory-limit` |
 
 Custo no worker dono, por minuto: 4 GETs à Render (`cpu`, `cpu-limit`, `memory`, `memory-limit`,

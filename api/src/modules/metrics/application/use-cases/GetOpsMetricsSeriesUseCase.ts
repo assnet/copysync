@@ -54,6 +54,8 @@ export class GetOpsMetricsSeriesUseCase {
   constructor(
     private readonly reader: Pick<IOpsMetricsSeriesReader, 'aggregate'>,
     private readonly now: () => Date = () => new Date(),
+    /** `WORKER_SCALER_SERVICE_ID` já conferido (`opsWorkerServiceId`); `null` = todo `srv-` é API. */
+    private readonly workerServiceId: string | null = null,
   ) {}
 
   async execute(input: GetOpsMetricsSeriesInput): Promise<GetOpsMetricsSeriesOutput> {
@@ -74,7 +76,7 @@ export class GetOpsMetricsSeriesUseCase {
       const key = `${r.source}|${r.resource}|${r.metric}`;
       let s = bySeries.get(key);
       if (!s) {
-        s = { resource: r.resource, kind: opsResourceKind(r.source, r.resource, r.metric), metric: r.metric, points: [] };
+        s = { resource: r.resource, kind: opsResourceKind(r.source, r.resource, r.metric, this.workerServiceId), metric: r.metric, points: [] };
         bySeries.set(key, s);
       }
       s.points.push({ at: r.at, avg: round3(r.avg), min: round3(r.min), max: round3(r.max) });

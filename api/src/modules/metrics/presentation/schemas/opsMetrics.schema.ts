@@ -72,7 +72,7 @@ const opsWindow = {
   required: ['from', 'to'],
   properties: { from: isoDate, to: isoDate },
 } as const;
-const kind = { type: 'string', enum: ['api', 'postgres', 'worker', 'query', 'other'] } as const;
+const kind = { type: 'string', enum: ['api', 'worker_service', 'postgres', 'worker', 'query', 'other'] } as const;
 
 /** `GET /admin/ops/metrics/series`: `metrics` separado por vírgula (nomes validados no use case). */
 export const opsMetricsSeriesQuery = {
