@@ -41,6 +41,10 @@ monitoramento ─▶ BuildTenantAffiliateLinkUseCase ─────────
   `HttpShortLinkExpander` trata esse host à parte: só GET, lê até 32 KiB, extrai o `input#url`, desfaz entidades,
   valida na allowlist e devolve essa URL **sem nova requisição**. A página do produto nunca é aberta (sem cookie cai
   em `/risk/challenge`). `HttpProductPageReader` devolve `null` para host Shein (segunda barreira).
+- **Endpoints chamados** (lista fechada, só `m.shein.com/br/affiliate/api/`, URLs em constante, sempre `POST`):
+  `goods/recommend/detailNew` (`SheinAffiliateClient`) e, no catálogo do Caçador de Ofertas (`SheinCatalogClient`),
+  `seller/activity/category`, `seller/activity/categoryRate`, `seller/activity/goods/list`,
+  `seller/activity/goods/search`. Endpoint novo só entra mudando esta lista, o `AGENTS.md` e a constante do cliente.
 - **`sourceUrl`** do monitoramento = `https://br.shein.com/product-p-<goodsId>.html`, montada só com o id. É
   referência interna: nunca requisitada nem exibida como link. Todo link clicável ou enviado é o `onelink`.
 - **Hosts** (`detectMarketplace.ts`): `br.shein.com`, `m.shein.com` (só caminho `/br/`), `onelink.shein.com`. Nunca
@@ -77,11 +81,21 @@ não contrato. `detailNew` é endpoint interno do painel de afiliados, sem docum
 | `AT` expira 30 dias após o login (validade do cookie) | navegador do dono |
 | URL só com o id (`product-p-<id>.html`) abre o produto certo, mas passa por desafio "Eu sou humano" | navegador do dono |
 
+| Observado em 2026-11-12 (sonda do catálogo, `seller/activity`) | Como |
+|---|---|
+| Com 5 headers (`token`, `siteuid: mbr`, `language: pt-br`, `mi: <memberId>`, `channel: 1`), sem nenhum anti-bot: `category`, `categoryRate`, `goods/list` (p. 1–3) e `goods/search` → 200 `code "0"`, 10 itens/página, `total` teto 1000 | curl do Mac (IP residencial) e `fetch` do Node no **Shell da API na Render** (portão T0a) |
+| Só `token` + `siteuid`: `category` ok, mas `goods/list` → 200 `code "0"` com **`goodsList: null`** (sintoma de `language`/`mi`/`channel` faltando; o cliente trata como fonte indisponível, não lista vazia) | curl do Mac |
+| `pageSize` ignorado: sempre 10; página 2 não repete a 1; ≈ 30–34 KB por página | Mac e Render |
+| `sort` não muda o resultado (`12` = mesma ordem de `0`): é só dica, a ordem que vale é a pontuação local | curl do Mac |
+| `commRate` 1–5 → `did` distintos; **4 = ">15%" confirmado** na tela; 1 "<5%", 2 "5–10%", 3 "10–15%", 5 sem filtro **inferidos** pela ordem | tela do painel + curl |
+| Categoria (`cateId`) muda o resultado; busca por termo devolve itens com o termo | curl do Mac |
+
 **Não verificado**: duração real do `AT` além do cookie; se novo login/logout mata o token antigo; `detailNew` com
 `goodsId` inexistente (tratado como `code ≠ 0` → `null`); download da foto `ltwebstatic.com` a partir da Render.
 
-Garantido pelo código (com teste): o token nunca sai em resposta/log/canal; nenhum host Shein fora dos três da
-allowlist é chamado; a página de produto não é lida; sem plano ou sem aceite nada chama a Shein.
+Garantido pelo código (com teste): o token nunca sai em resposta/log/canal/mensagem de erro; só os endpoints da lista
+fechada acima são chamados (URL em constante, nada da entrada; o `onelink` é só lido pelo expansor); headers fixos,
+nenhum anti-bot; a página de produto não é lida; sem plano ou sem aceite nada chama a Shein.
 
 Se a Shein mudar: o cliente fica isolado atrás de `ISheinAffiliateClient`, campo ausente vira `null`. Se passar a
 exigir header anti-bot ou bloquear IP de datacenter, **o recurso para e volta para decisão do dono** (não forjar).
@@ -198,9 +212,11 @@ Detalhes em [`extensao-navegador.md`](extensao-navegador.md) (seção "Shein") e
 ## O que não fazer
 
 - Não resolver, pular nem automatizar o desafio anti-bot da Shein (`/risk/challenge`), em servidor ou extensão.
-- Não ler página de produto Shein nem chamar outro host da Shein além dos três da allowlist e do endpoint fixo.
-- Não enviar headers anti-bot forjados (`armortoken`, `smdeviceid`, `x-oest`): se a Shein passar a exigir, o recurso
-  para e volta para decisão.
+- Não ler página de produto Shein nem chamar endpoint da Shein fora da lista fechada (`detailNew` + os 4 de
+  `seller/activity`); não montar URL da Shein com dado de entrada.
+- Não enviar headers anti-bot forjados (`armortoken`, `smdeviceid`, `x-oest`, `anti-in`) nem outro header além dos
+  fixos de cada cliente: se a Shein passar a exigir, o recurso para e volta para decisão.
+- Não tratar `goodsList: null` como "nenhuma oferta": é fonte indisponível.
 - Não montar link de afiliado à mão (`url_from`) como se rendesse comissão.
 - Não devolver, logar nem pôr em evento o `AT`; não guardar fora de `sessionCiphertext`.
 - Não aceitar `memberId` digitado: o ID vem da sessão.
@@ -228,13 +244,23 @@ Detalhes em [`extensao-navegador.md`](extensao-navegador.md) (seção "Shein") e
 
 Antes do smoke nada é ligado em produção sem o dono; a extensão 3.4.0 exige nova publicação na Chrome Web Store.
 
+## Caçador de Ofertas
+
+Recurso MAX que busca sozinho no catálogo de comissão (`seller/activity`), pontua e envia os melhores a 1 grupo.
+Spec, desenho e tarefas: `.specs/features/offer-hunter/`. Cliente: `SheinCatalogClient` (porta
+`ISheinCatalogClient`), mesmos erros, timeout, limite de corpo e `redirect: 'manual'` do `SheinAffiliateClient`;
+headers exatos `token`, `siteuid`, `language`, `mi`, `channel`, `content-type`, `User-Agent`. Palavra-chave ≤ 60
+caracteres sem controle é a única entrada livre enviada; o resto são enums fechados (ordenação, faixa) e ids vindos da
+própria Shein. `sellGoodsEndTime` sem fuso é lido como horário de São Paulo (UTC−3). Link final de cada escolhido
+sai só do `ResolveAffiliateProductUseCase`.
+
 ## Mapa de arquivos
 
 | Camada | Caminho |
 |---|---|
-| Domínio | `integrations/domain/services/{affiliateProviderFields,marketplaceRiskNotice,sheinSessionMemberId}.ts`; `campaigns/domain/services/{detectMarketplace,parseProductRef,verifyAffiliateLink,marketplaceEntitlement,isSupportedShareLink}.ts`; `campaigns/domain/contracts/{ISheinAffiliateClient,IMarketplaceRiskGate}.ts`; `tenants/domain/{entitlementKeys,planPresets,adminEditableEntitlements}.ts` |
+| Domínio | `integrations/domain/services/{affiliateProviderFields,marketplaceRiskNotice,sheinSessionMemberId}.ts`; `campaigns/domain/services/{detectMarketplace,parseProductRef,verifyAffiliateLink,marketplaceEntitlement,isSupportedShareLink}.ts`; `campaigns/domain/contracts/{ISheinAffiliateClient,ISheinCatalogClient,IMarketplaceRiskGate}.ts`; `campaigns/domain/hunter/HuntCandidate.ts`, `campaigns/domain/services/hunter/*`; `tenants/domain/{entitlementKeys,planPresets,adminEditableEntitlements}.ts` |
 | Use cases | `ResolveAffiliateProductUseCase`, `BuildTenantAffiliateLinkUseCase`, `ProcessPendingCapturedOffersUseCase`, `AcceptMarketplaceRiskUseCase`, `SyncSheinSessionUseCase`, `UpsertAffiliateSessionUseCase`, `ListAffiliateCredentialsUseCase`, `{ListAdminPlanEntitlements,SetPlanEntitlement}UseCase`; `campaigns/application/services/requireMarketplaceEnabled.ts`, `integrations/application/services/requireMarketplaceRiskAccepted.ts` |
-| Infra | `campaigns/infrastructure/http/{SheinAffiliateClient,HttpShortLinkExpander,HttpOfferImageFetcher,HttpProductPageReader}.ts`; `PrismaMarketplaceRiskAcceptanceRepository`, `PrismaPlanEntitlementPresetRepository` |
+| Infra | `campaigns/infrastructure/http/{SheinAffiliateClient,SheinCatalogClient,HttpShortLinkExpander,HttpOfferImageFetcher,HttpProductPageReader}.ts`; `PrismaMarketplaceRiskAcceptanceRepository`, `PrismaPlanEntitlementPresetRepository` |
 | Rotas | `extension.routes.ts` (shein), `affiliateCredential.routes.ts` (`risk-acceptance`), `marketplaceRiskAdmin.routes.ts`, `planEntitlementAdmin.routes.ts` |
 | Erros | `shared/errors/internal/{MarketplaceRiskErrors,AffiliateCredentialErrors,ExtensionErrors}.ts` |
 | Painel | `app/src/features/settings/` (card, aviso, diálogo de aceite), `features/extension/`, `pages/admin/AdminPlanEntitlementsPage.tsx`, `features/planEntitlementsAdmin/` |
