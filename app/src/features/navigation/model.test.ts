@@ -33,7 +33,7 @@ describe('buildNavigation', () => {
     const crm = model.products.find((p) => p.key === 'crm-automation')!;
     expect(crm.status).toBe('available');
     expect(crm.children.map((c) => c.path)).toEqual(['/chat']);
-    expect(model.platform.map((l) => l.path)).toEqual(['/admin/ai', '/admin/link-domains', '/admin/workers', '/admin/redirect-links', '/admin/plan-entitlements']);
+    expect(model.platform.map((l) => l.path)).toEqual(['/admin/ai', '/admin/link-domains', '/admin/workers', '/admin/costs', '/admin/redirect-links', '/admin/plan-entitlements']);
   });
 
   it('nenhum rótulo leva nome de marca', () => {
@@ -87,6 +87,11 @@ describe('findActiveEntry', () => {
   it('Workers: abas Ocupação e Consumo ativam o mesmo item', () => {
     expect(findActiveEntry(model, '/admin/workers')?.link.key).toBe('admin-workers');
     expect(findActiveEntry(model, '/admin/workers/usage')?.link.key).toBe('admin-workers');
+  });
+
+  it('Custos: abas por sub-rota ativam o mesmo item', () => {
+    expect(findActiveEntry(model, '/admin/costs')?.link.key).toBe('admin-costs');
+    expect(findActiveEntry(model, '/admin/costs/prices')?.link.key).toBe('admin-costs');
   });
 
   it('rota global e rota desconhecida', () => {

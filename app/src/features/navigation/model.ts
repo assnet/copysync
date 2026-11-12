@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   BadgePercent, Bookmark, Send, Bot, Crown, EyeOff, Flame, Globe, LayoutDashboard, Link2,
-  KeyRound, MessagesSquare, SlidersHorizontal, Server, Settings, Signpost, Tag, UserRoundPlus, Users, Workflow,
+  KeyRound, MessagesSquare, Receipt, SlidersHorizontal, Server, Settings, Signpost, Tag, UserRoundPlus, Users, Workflow,
 } from 'lucide-react';
 import { MODULE_ICONS } from './icons';
 import { plansStrings } from '@/features/plans/strings';
@@ -10,6 +10,7 @@ import { linkRotationStrings } from '@/features/linkRotation/strings';
 import { aiStrings } from '@/features/ai/strings';
 import { linkDomainsAdminStrings } from '@/features/linkDomainsAdmin/strings';
 import { workersAdminStrings } from '@/features/workersAdmin/strings';
+import { infraCostsStrings } from '@/features/infraCosts/strings';
 import { redirectLinksStrings } from '@/features/redirectLinks/strings';
 import { navigationStrings as s } from './strings';
 
@@ -131,6 +132,7 @@ export function buildNavigation({ isSuperAdmin }: BuildNavigationInput): Navigat
           { key: 'admin-ai', label: aiStrings.admin.navLabel, path: '/admin/ai', icon: Bot },
           { key: 'admin-link-domains', label: linkDomainsAdminStrings.navLabel, path: '/admin/link-domains', icon: Globe },
           { key: 'admin-workers', label: workersAdminStrings.navLabel, path: '/admin/workers', icon: Server, matchPrefix: '/admin/workers' },
+          { key: 'admin-costs', label: infraCostsStrings.navLabel, path: '/admin/costs', icon: Receipt, matchPrefix: '/admin/costs' },
           { key: 'admin-redirect-links', label: redirectLinksStrings.navLabel, path: '/admin/redirect-links', icon: Signpost },
           { key: 'admin-plan-entitlements', label: s.links.planEntitlements, path: '/admin/plan-entitlements', icon: SlidersHorizontal },
         ]

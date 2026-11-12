@@ -62,7 +62,7 @@ const tile = (label: string) => screen.getByText(label).closest('.MuiCard-root')
 describe('CapacityTab', () => {
   it('carrega os cartões do cluster e busca a série de 7 dias de sessões × capacidade', async () => {
     const series = mock(view());
-    renderWithTheme(<CapacityTab />, 'dark');
+    renderWithTheme(<MemoryRouter><CapacityTab /></MemoryRouter>, 'dark');
     expect(await screen.findByText(c.cards.capacity.label)).toBeInTheDocument();
     expect(within(tile(c.cards.capacity.label)).getByText(c.sessions(80))).toBeInTheDocument();
     expect(within(tile(c.cards.connected.label)).getByText(c.sessions(30))).toBeInTheDocument();
@@ -79,7 +79,7 @@ describe('CapacityTab', () => {
 
   it('sem amostra: "sem amostra" no lugar dos números, nunca 0', async () => {
     mock(view({ sampledAt: null, capacity: 0, connected: 0, occupancyPct: 0, headroom: 0, mbPerSession: null, suggestedMaxSessions: null }));
-    renderWithTheme(<CapacityTab />);
+    renderWithTheme(<MemoryRouter><CapacityTab /></MemoryRouter>);
     expect(await screen.findByText(c.noSampleNotice)).toBeInTheDocument();
     for (const k of ['capacity', 'connected', 'occupancy', 'headroom', 'replicas', 'mbPerSession', 'suggested'] as const) {
       expect(within(tile(c.cards[k].label)).getByText(c.noSample)).toBeInTheDocument();
@@ -92,13 +92,13 @@ describe('CapacityTab', () => {
 
   it('amostra velha (stale): avisa há quantos minutos e que o coletor pode estar parado', async () => {
     mock(view({ stale: true, sampledAt: new Date(Date.now() - 15 * 60_000 - 5_000).toISOString() }));
-    renderWithTheme(<CapacityTab />);
+    renderWithTheme(<MemoryRouter><CapacityTab /></MemoryRouter>);
     expect(await screen.findByText(c.stale(15))).toBeInTheDocument();
   });
 
   it('amostra recente não mostra o aviso de coletor parado', async () => {
     mock(view({ stale: false }));
-    renderWithTheme(<CapacityTab />);
+    renderWithTheme(<MemoryRouter><CapacityTab /></MemoryRouter>);
     await screen.findByText(c.cards.capacity.label);
     expect(screen.queryByText(/coletor pode estar parado/)).not.toBeInTheDocument();
   });
@@ -106,7 +106,7 @@ describe('CapacityTab', () => {
   it('ajuda da capacidade muda com a adoção (soma dos tetos × teto por processo com sessão)', async () => {
     const user = userEvent.setup();
     mock(view({}, { enforced: false }));
-    renderWithTheme(<CapacityTab />);
+    renderWithTheme(<MemoryRouter><CapacityTab /></MemoryRouter>);
     await screen.findByText(c.cards.capacity.label);
     await user.hover(within(tile(c.cards.capacity.label)).getByRole('button'));
     expect(await screen.findByRole('tooltip')).toHaveTextContent(c.cards.capacity.helpNotEnforced);
@@ -114,7 +114,7 @@ describe('CapacityTab', () => {
 
   it('tabela por plano: clientes, contratadas e conectadas por canal, ilimitados à parte', async () => {
     mock(view());
-    renderWithTheme(<CapacityTab />);
+    renderWithTheme(<MemoryRouter><CapacityTab /></MemoryRouter>);
     const table = await screen.findByRole('table', { name: c.plans.aria });
     const max = within(table).getByText('MAX').closest('tr')!;
     const cells = within(max).getAllByRole('cell').map((td) => td.textContent);
@@ -124,7 +124,7 @@ describe('CapacityTab', () => {
 
   it('projeção "cabem mais N clientes"; ilimitado e sem cliente → "—"', async () => {
     mock(view());
-    renderWithTheme(<CapacityTab />);
+    renderWithTheme(<MemoryRouter><CapacityTab /></MemoryRouter>);
     const table = await screen.findByRole('table', { name: c.plans.aria });
     // LITE: 20 contratadas ÷ 10 = 2 por cliente; folga 50 → 25.
     expect(within(within(table).getByText('LITE').closest('tr')!).getByText(c.plans.fit(25))).toBeInTheDocument();
@@ -135,7 +135,7 @@ describe('CapacityTab', () => {
   it('erro da série não derruba a aba e tem tentar de novo', async () => {
     const user = userEvent.setup();
     const series = mock(view(), new Error('500'));
-    renderWithTheme(<CapacityTab />);
+    renderWithTheme(<MemoryRouter><CapacityTab /></MemoryRouter>);
     expect(await screen.findByText(c.cards.capacity.label)).toBeInTheDocument();
     expect(screen.getByRole('table', { name: c.plans.aria })).toBeInTheDocument();
     const retry = await screen.findByRole('button', { name: /tentar/i });
@@ -146,7 +146,7 @@ describe('CapacityTab', () => {
 
   it('erro da capacidade mostra alerta; a série continua', async () => {
     mock(new Error('500'));
-    renderWithTheme(<CapacityTab />);
+    renderWithTheme(<MemoryRouter><CapacityTab /></MemoryRouter>);
     expect(await screen.findByText(c.errors.loadFailed)).toBeInTheDocument();
     expect(await screen.findByTestId('line-chart')).toBeInTheDocument();
   });
@@ -157,5 +157,10 @@ describe('CapacityTab', () => {
     expect(screen.getByRole('tab', { name: t.tabs.capacity })).toHaveAttribute('aria-selected', 'true');
     expect(await screen.findByText(c.cards.connected.label)).toBeInTheDocument();
     expect(screen.getByText(c.subtitle)).toBeInTheDocument();
+  });
+  it('link "Ver custos" leva à tela de custos', async () => {
+    mock(view());
+    renderWithTheme(<MemoryRouter><CapacityTab /></MemoryRouter>);
+    expect(await screen.findByRole('link', { name: c.seeCosts })).toHaveAttribute('href', '/admin/costs');
   });
 });

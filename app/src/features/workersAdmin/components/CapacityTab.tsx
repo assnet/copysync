@@ -1,11 +1,12 @@
 import { useMemo, type ReactNode } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
 import {
   Alert, Box, Button, Card, CardContent, CircularProgress, Grid, Stack, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Tooltip, Typography, useTheme,
 } from '@mui/material';
 import type { SxProps, Theme } from '@mui/material/styles';
 import type { LucideIcon } from 'lucide-react';
-import { Gauge, HardDrive, Layers, MemoryStick, PlugZap, Server, SlidersHorizontal } from 'lucide-react';
+import { Gauge, HardDrive, Receipt, Layers, MemoryStick, PlugZap, Server, SlidersHorizontal } from 'lucide-react';
 import { AppIcon, SectionCard, ServiceUpdatingState } from '@/components';
 import { HelpTip } from '@/features/opsMetrics/components/HelpTip';
 import { MetricChartCard, type ChartTable } from '@/features/opsMetrics/components/MetricChartCard';
@@ -268,6 +269,13 @@ export default function CapacityTab() {
         <SectionCard
           title={c.clusterTitle}
           subtitle={sampled ? c.clusterSubtitleAt(formatDateTime(k.sampledAt!)) : c.clusterSubtitle}
+          action={(
+            <Tooltip title={c.seeCostsHint} arrow describeChild>
+              <Button component={RouterLink} to="/admin/costs" size="small" startIcon={<AppIcon icon={Receipt} size="sm" />}>
+                {c.seeCosts}
+              </Button>
+            </Tooltip>
+          )}
         >
           <Grid container spacing={2}>
             {tiles.map((tile) => (

@@ -64,6 +64,8 @@ export const workersAdminStrings = {
   capacity: {
     subtitle: 'Quantas sessões o cluster comporta hoje e quantos clientes ainda cabem em cada plano.',
     loading: 'Carregando a capacidade',
+    seeCosts: 'Ver custos',
+    seeCostsHint: 'Quanto custa a infraestrutura no mês, por sessão e por plano.',
     noSample: 'sem amostra',
     noSampleNotice: 'Nenhuma amostra de sessões na última hora. Os números do cluster aparecem quando a coleta de métricas estiver ligada; a primeira amostra leva até 5 min depois de ligar.',
     notEnforced: 'Adoção por capacidade desligada: a capacidade é o teto por worker vezes os processos que mantêm sessões, e o teto ainda não é aplicado.',
