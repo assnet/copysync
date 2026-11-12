@@ -50,7 +50,7 @@ cada passo isolado (falha de um não para os outros, `warn` com o nome do passo)
    arredondada; Render como fallback). Grava sessão-hora → recursos; recursos por último, como marca de "hora
    feita". **Tudo ou nada nos recursos**: um recurso sem leitura ou sem `numInstances` (instâncias desconhecidas, sem
    amostra do worker para cobrir) → hora sem linha, um `warn` por sequência de falha
-   (`infra cost hour without render reading`), tenta de novo no próximo tick. **A sessão-hora é gravada antes de
+   (`infra cost hour without render reading` com `reason` e a chave lógica `key` do recurso que falhou — `not_found` = id daquela chave errado ou fora do workspace da chave), tenta de novo no próximo tick. **A sessão-hora é gravada antes de
    olhar a Render** (desvio aceito: não depende dela e é idempotente por `lastHour`), então sai mesmo com a Render fora,
    em pausa por 429 ou sem configuração. Troca de dono do lease não dobra.
 2. **Banda** das horas fechadas há mais de 1 h ainda sem linha, até 6 h para trás (`INFRA_COST_BANDWIDTH_CATCHUP_HOURS`),

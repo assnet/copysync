@@ -7,6 +7,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.91.1] — 2026-11-12 — Aviso do job de custos diz qual recurso falhou
+
+### Fixed
+
+#### metrics
+
+- **`InfraCostSnapshotJob.ts`** — o aviso `infra cost hour without render reading` passa a trazer `key` (api/worker/static/postgres/redis) do recurso que falhou, nunca o id. Em produção vinha só `reason: not_found`, sem dizer qual id da `INFRA_COST_RENDER_RESOURCES` corrigir. Aviso único por sequência agora considera motivo + chave.
+
 ## [0.91.0] — 2026-11-12 — Preço mensal fixo opcional por modelo de IA
 
 ### Added

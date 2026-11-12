@@ -209,10 +209,13 @@ export class InfraCostSnapshotJob {
     let failure: InfraRenderUnavailableReason | null = keys.length === 0 ? 'not_configured' : null;
     if (!failure && (await this.inRenderBackoff())) failure = 'rate_limited';
     const readings: InfraResourcePlanReading[] = [];
+    // Chave lógica (api/worker/static/postgres/redis) do recurso que falhou: vai no log, o id nunca.
+    let failedKey: string | null = null;
     for (const key of failure ? [] : keys) {
       const r = await plans.readResource(key);
       if (r.status !== 'ok') {
         failure = r.reason;
+        failedKey = key;
         await this.backoffOn(r);
         break;
       }
@@ -229,6 +232,7 @@ export class InfraCostSnapshotJob {
     // Instâncias desconhecidas (sem amostra do worker para cobrir) = falha do recurso: tudo-ou-nada por hora
     if (!failure && readings.some((r) => r.instances == null && !(r.resourceKey === 'worker' && workerSamples !== null))) {
       failure = 'upstream';
+      failedKey = readings.find((r) => r.instances == null)?.resourceKey ?? null;
     }
 
     if (!(await this.renewLease())) {
@@ -237,8 +241,11 @@ export class InfraCostSnapshotJob {
     }
     await snapshots.addSessionHour(hour, sessionSamples);
     if (failure) {
-      if (this.renderFailure !== failure) this.log.warn({ reason: failure }, 'infra cost hour without render reading');
-      this.renderFailure = failure;
+      const signature = `${failure}:${failedKey ?? ''}`;
+      if (this.renderFailure !== signature) {
+        this.log.warn({ reason: failure, ...(failedKey ? { key: failedKey } : {}) }, 'infra cost hour without render reading');
+      }
+      this.renderFailure = signature;
       return;
     }
     if (this.renderFailure) this.log.info('infra cost render reading back');

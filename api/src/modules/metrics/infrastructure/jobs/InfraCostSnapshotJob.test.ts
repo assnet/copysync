@@ -214,6 +214,21 @@ describe('InfraCostSnapshotJob — hora fechada', () => {
     expect(s.snapshots.sessions.get('2026-11-12|t1')?.connectedHours).toBe(2);
   });
 
+  it('recurso não encontrado → warn com a chave lógica do recurso (nunca o id)', async () => {
+    log.warn.mockClear();
+    const plans = fakePlans();
+    plans.plans.readResource.mockImplementation(async (key: InfraRenderKey) =>
+      key === 'postgres'
+        ? ({ status: 'unavailable', reason: 'not_found' } as never)
+        : ({ status: 'ok', reading: reading(key) } as never));
+    const s = setup({ plans });
+    await s.job.runTick();
+    expect(s.snapshots.hours.size).toBe(0);
+    const renderWarns = log.warn.mock.calls.filter((c) => c[1] === 'infra cost hour without render reading');
+    expect(renderWarns).toEqual([[{ reason: 'not_found', key: 'postgres' }, 'infra cost hour without render reading']]);
+    expect(JSON.stringify(renderWarns)).not.toMatch(/srv-|dpg-|red-/);
+  });
+
   it('Render fora → hora sem linha, warn único na sequência, sessão-hora gravada uma vez; volta na leitura seguinte', async () => {
     log.warn.mockClear();
     const plans = fakePlans();
@@ -226,7 +241,7 @@ describe('InfraCostSnapshotJob — hora fechada', () => {
     expect(s.snapshots.repo.upsertResourceHours).not.toHaveBeenCalled();
     expect(s.plans.plans.readBandwidthGb).not.toHaveBeenCalled();
     const renderWarns = log.warn.mock.calls.filter((c) => c[1] === 'infra cost hour without render reading');
-    expect(renderWarns).toEqual([[{ reason: 'rate_limited' }, 'infra cost hour without render reading']]);
+    expect(renderWarns).toEqual([[{ reason: 'rate_limited', key: 'api' }, 'infra cost hour without render reading']]);
     expect(s.snapshots.sessions.get('2026-11-12|t1')?.connectedHours).toBe(2);
 
     plans.setFail(null);
