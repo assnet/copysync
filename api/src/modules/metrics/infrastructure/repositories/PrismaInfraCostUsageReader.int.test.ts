@@ -18,6 +18,7 @@ const clean = async () => {
   await prisma.infraResourceHour.deleteMany({});
   await prisma.tenantSessionHour.deleteMany({});
   await prisma.infraUsageDaily.deleteMany({});
+  await prisma.aiUsageLog.deleteMany({ where: { tenantId: { in: [T1, T2] } } });
 };
 
 beforeAll(async () => {
@@ -33,7 +34,7 @@ afterAll(async () => {
 
 describe('PrismaInfraCostUsageReader', () => {
   it('mês vazio: listas vazias e uso null', async () => {
-    expect(await reader.readMonth(NOV, DEC)).toEqual({ resourceHours: [], bandwidthGb: null, bandwidthHours: 0, buildMinutes: null, tenants: [] });
+    expect(await reader.readMonth(NOV, DEC)).toEqual({ resourceHours: [], bandwidthGb: null, bandwidthHours: 0, buildMinutes: null, tenants: [], aiUsage: [] });
   });
 
   it('horas por recurso só dentro de [início, fim), em ordem', async () => {
@@ -83,6 +84,51 @@ describe('PrismaInfraCostUsageReader', () => {
       { tenantId: T1, planSlug: 'pro', connectedHours: 6, contractedAvg: 2 },
       { tenantId: T2, planSlug: null, connectedHours: 1, contractedAvg: 1 },
     ]);
+  });
+
+  it('IA da plataforma por tenant e modelo: só PLATFORM, success e mês; token nulo contado à parte', async () => {
+    const log = (tenantId: string, createdAt: Date, over: Partial<{ source: 'PLATFORM' | 'TENANT'; kind: 'OPENAI' | 'ANTHROPIC'; model: string; inputTokens: number | null; outputTokens: number | null; success: boolean }> = {}) => ({
+      tenantId, createdAt, source: 'PLATFORM' as const, kind: 'OPENAI' as const, model: 'gpt-x', purpose: 'teste', inputTokens: 1_000, outputTokens: 10, success: true, ...over,
+    });
+    await prisma.aiUsageLog.createMany({
+      data: [
+        log(T1, at(1), { inputTokens: 1_000_000, outputTokens: 0 }),
+        log(T1, at(2)),
+        log(T1, at(3), { outputTokens: null }),
+        log(T1, at(4), { inputTokens: null, outputTokens: null }),
+        log(T1, at(5), { kind: 'ANTHROPIC' }),
+        log(T1, at(6), { source: 'TENANT' }),
+        log(T1, at(7), { success: false }),
+        log(T1, new Date(NOV.getTime() - 1), {}),
+        log(T1, DEC, {}),
+        log(T2, at(719), { model: 'outro', inputTokens: 5, outputTokens: 6 }),
+      ],
+    });
+    const r = await reader.readMonth(NOV, DEC);
+    expect(r.aiUsage).toEqual([
+      { tenantId: T1, kind: 'ANTHROPIC', model: 'gpt-x', calls: 1, inputTokens: 1_000, outputTokens: 10, missingTokenCalls: 0 },
+      { tenantId: T1, kind: 'OPENAI', model: 'gpt-x', calls: 4, inputTokens: 1_001_000, outputTokens: 10, missingTokenCalls: 2 },
+      { tenantId: T2, kind: 'OPENAI', model: 'outro', calls: 1, inputTokens: 5, outputTokens: 6, missingTokenCalls: 0 },
+    ]);
+    const settings = defaultInfraCostSettings();
+    settings.items = [];
+    settings.aiModelPrices = [{ kind: 'OPENAI', model: 'gpt-x', inputPerMTokUsd: 2, outputPerMTokUsd: 8 }];
+    const calc = calculateInfraCosts({
+      settings,
+      fx: null,
+      live: { sessionsConnected: null, workerInstances: null, sessionsSampledAt: null },
+      now: DEC,
+      capacityByPlan: [],
+      scaling: { maxSessionsPerWorker: 40, alertOccupancyRatio: 0.8 },
+      hourly: { monthStart: NOV, monthEnd: DEC, ...r },
+    });
+    // 1.001.000 × 2 + 10 × 8 por 1 M = 2,00208 (4 casas)
+    expect(calc.totals.ai).toEqual({ usd: 2.0021, brl: null });
+    expect(calc.warnings).toEqual(expect.arrayContaining([
+      { code: 'model_without_price', kind: 'ANTHROPIC', model: 'gpt-x', count: 1 },
+      { code: 'model_without_price', kind: 'OPENAI', model: 'outro', count: 1 },
+      { code: 'ai_tokens_missing', count: 2 },
+    ]));
   });
 
   it('alimenta o calculador: 1 → 2 instâncias no meio do mês = 37,50', async () => {

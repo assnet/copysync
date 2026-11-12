@@ -5,6 +5,7 @@
  * só a saída é arredondada a 4 casas (USD e BRL). Divisão por zero → `null`.
  * Ver `.specs/features/infra-costs/design.md` §5.
  */
+import type { AiProviderKind } from '../../../assistants/domain/enums/AiProviderKind';
 import { LIMIT_CHANNELS, limitKeyOfChannel, type LimitChannel } from '../../../tenants/domain/channelLimits';
 import { PLAN_PRESETS, PLAN_SLUGS, type PlanSlug } from '../../../tenants/domain/planPresets';
 import type { WorkerCapacityPlanRow } from '../../../sessions/domain/contracts/IWorkerCapacityReader';
@@ -47,6 +48,20 @@ export interface InfraTenantMonthUsage {
   contractedAvg: number;
 }
 
+/**
+ * Uso de IA da plataforma no mês por tenant e modelo (`ai_usage_logs`, `source = PLATFORM`, `success`). Tokens
+ * somados só das linhas com os dois contadores; `missingTokenCalls` = linhas com algum token nulo (fora do custo).
+ */
+export interface InfraAiUsageRow {
+  tenantId: string;
+  kind: AiProviderKind;
+  model: string;
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+  missingTokenCalls: number;
+}
+
 /** Entradas da conta por hora (P2): `IInfraCostUsageReader.readMonth`. */
 export interface InfraCostHourlyInput {
   /** Início (incl.) e fim (excl.) do mês em UTC; horas do mês = (fim − início) ÷ 1 h. */
@@ -62,6 +77,8 @@ export interface InfraCostHourlyInput {
   bandwidthHours?: number;
   buildMinutes: number | null;
   tenants: readonly InfraTenantMonthUsage[];
+  /** P3 (COST-13): IA da plataforma por tenant e modelo. Ausente = sem leitura de IA (`totals.ai` `null`). */
+  aiUsage?: readonly InfraAiUsageRow[];
 }
 
 export interface InfraCostCalculationInput {
@@ -167,6 +184,11 @@ export interface InfraCostPlanResult {
    */
   projectedShare: InfraMoney | null;
   projectedCostPerTenant: InfraMoney | null;
+  /**
+   * P3: IA direta dos tenants do plano (só modelos com preço); `null` sem leitura de IA ou na foto. Tenant com IA e
+   * sem linha em `tenant_session_hours` entra só em `totals.ai`.
+   */
+  ai: InfraMoney | null;
 }
 
 export type InfraCostWarning =
@@ -183,7 +205,11 @@ export type InfraCostWarning =
   /** Horas do mês sem banda lida (a soma medida fica abaixo do real). */
   | { code: 'bandwidth_missing_hours'; count: number }
   /** Horas do mês sem leitura do worker: a ociosidade cobre só as horas lidas. */
-  | { code: 'idle_partial'; count: number };
+  | { code: 'idle_partial'; count: number }
+  /** Modelo de IA usado sem preço em `aiModelPrices`: chamadas fora do total (`count`), total parcial. */
+  | { code: 'model_without_price'; kind: AiProviderKind; model: string; count: number }
+  /** Chamadas de IA sem contagem de tokens: fora do total, nunca somadas como 0. */
+  | { code: 'ai_tokens_missing'; count: number };
 
 export interface InfraCostCalculation {
   basis: 'snapshot' | 'hours';
@@ -196,12 +222,14 @@ export interface InfraCostCalculation {
     total: InfraMoney;
     /** Itens `fixed` e armazenamento. */
     fixed: InfraMoney;
-    /** Computação `per_instance`, itens `usage` e excedente do workspace. */
+    /** Computação `per_instance`, itens `usage`, excedente do workspace e IA da plataforma (P3). */
     variable: InfraMoney;
     /** Base do rateio: itens `shared` (exceto IA) + excedente do workspace. */
     shared: InfraMoney;
     /** P2: realizado + última hora × horas restantes + excedente projetado; `null` na foto. */
     projected: InfraMoney | null;
+    /** P3: IA da plataforma (custo direto, entra no total e no variável, fora do compartilhado); `null` sem leitura. */
+    ai: InfraMoney | null;
   };
   items: InfraCostItemResult[];
   workspace: InfraWorkspaceResult;
@@ -593,10 +621,16 @@ export interface InfraTenantShare {
   contractedShareUsd: number | null;
   /** Sessão-hora: horas conectadas × custo por sessão-hora. */
   sessionHourShareUsd: number | null;
+  /** IA direta do tenant (só modelos com preço; 0 sem uso). */
+  aiUsd: number;
 }
 
 /** Rateio por tenant do compartilhado (as duas bases); por plano = soma dos tenants. */
-export function allocateInfraTenantShares(sharedUsd: number, tenants: readonly InfraTenantMonthUsage[]) {
+export function allocateInfraTenantShares(
+  sharedUsd: number,
+  tenants: readonly InfraTenantMonthUsage[],
+  aiByTenant: ReadonlyMap<string, number> = new Map(),
+) {
   const contractedTotal = tenants.reduce((s, t) => s + t.contractedAvg, 0);
   const sessionHours = tenants.reduce((s, t) => s + t.connectedHours, 0);
   const perContracted = div(sharedUsd, contractedTotal);
@@ -608,8 +642,49 @@ export function allocateInfraTenantShares(sharedUsd: number, tenants: readonly I
     connectedHours: t.connectedHours,
     contractedShareUsd: perContracted === null ? null : t.contractedAvg * perContracted,
     sessionHourShareUsd: perSessionHour === null ? null : t.connectedHours * perSessionHour,
+    aiUsd: aiByTenant.get(t.tenantId) ?? 0,
   }));
   return { contractedTotal, sessionHours, perContracted, perSessionHour, shares };
+}
+
+/** Resultado de `calculateInfraAiCosts` em USD cheio. */
+export interface InfraAiCosts {
+  /** Σ das chamadas com preço e tokens. */
+  totalUsd: number;
+  byTenant: Map<string, number>;
+  /** Algum modelo sem preço (chamadas fora do total). */
+  partial: boolean;
+  warnings: InfraCostWarning[];
+}
+
+/**
+ * IA da plataforma (COST-13): tokens × `aiModelPrices` (preço por 1 M tokens, por `kind` + `model`). Modelo sem
+ * preço → `model_without_price` com as chamadas, custo fora (nunca 0). Linhas com token nulo já vêm fora dos
+ * tokens; a contagem vira `ai_tokens_missing`.
+ */
+export function calculateInfraAiCosts(settings: InfraCostSettings, rows: readonly InfraAiUsageRow[]): InfraAiCosts {
+  const byTenant = new Map<string, number>();
+  const unpriced = new Map<string, { kind: AiProviderKind; model: string; count: number }>();
+  let totalUsd = 0;
+  let missing = 0;
+  for (const row of rows) {
+    missing += row.missingTokenCalls;
+    const priced = row.calls - row.missingTokenCalls;
+    if (priced <= 0) continue;
+    const price = settings.aiModelPrices.find((p) => p.kind === row.kind && p.model === row.model);
+    if (!price) {
+      const key = `${row.kind}:${row.model}`;
+      const prev = unpriced.get(key);
+      unpriced.set(key, { kind: row.kind, model: row.model, count: (prev?.count ?? 0) + priced });
+      continue;
+    }
+    const usd = (row.inputTokens * price.inputPerMTokUsd + row.outputTokens * price.outputPerMTokUsd) / 1_000_000;
+    totalUsd += usd;
+    byTenant.set(row.tenantId, (byTenant.get(row.tenantId) ?? 0) + usd);
+  }
+  const warnings: InfraCostWarning[] = [...unpriced.values()].map((u) => ({ code: 'model_without_price', ...u }));
+  if (missing > 0) warnings.push({ code: 'ai_tokens_missing', count: missing });
+  return { totalUsd, byTenant, partial: unpriced.size > 0, warnings };
 }
 
 /** Custos do mês: foto do momento (P1) ou Σ por hora com `hourly` (P2). */
@@ -642,6 +717,14 @@ export function calculateInfraCosts(input: InfraCostCalculationInput): InfraCost
   let projectedUsd = bandwidth.projectedUsd + build.projectedUsd;
   /** Compartilhado projetado (mesma regra do `shared`): base do rateio projetado. */
   let projectedSharedUsd = projectedUsd;
+  // IA direta (P3): entra no total e no variável, nunca no compartilhado; projeção = realizado (sem extrapolar).
+  const ai = hourly?.aiUsage ? calculateInfraAiCosts(settings, hourly.aiUsage) : null;
+  if (ai) {
+    totalUsd += ai.totalUsd;
+    variableUsd += ai.totalUsd;
+    projectedUsd += ai.totalUsd;
+    warnings.push(...ai.warnings);
+  }
   for (const { result, computeUsd, storageUsd, projectedUsd: itemProjected } of calcs) {
     if (computeUsd === null) continue;
     const itemUsd = computeUsd + (storageUsd ?? 0);
@@ -675,7 +758,7 @@ export function calculateInfraCosts(input: InfraCostCalculationInput): InfraCost
   let idleUsd: number | null = null;
 
   if (ctx && hourly) {
-    const alloc = allocateInfraTenantShares(sharedUsd, hourly.tenants);
+    const alloc = allocateInfraTenantShares(sharedUsd, hourly.tenants, ai?.byTenant);
     contractedTotal = alloc.contractedTotal;
     perContracted = alloc.perContracted;
     perConnected = alloc.perSessionHour === null ? null : alloc.perSessionHour * INFRA_SESSION_MONTH_HOURS;
@@ -695,6 +778,7 @@ export function calculateInfraCosts(input: InfraCostCalculationInput): InfraCost
         const share = sum((t) => t.contractedShareUsd);
         const connectedShare = sum((t) => t.sessionHourShareUsd);
         const projectedShare = sum((t) => (projectedPerContracted === null ? null : t.contractedAvg * projectedPerContracted));
+        const aiUsd = ai ? list.reduce((s, t) => s + t.aiUsd, 0) : null;
         return {
           planSlug,
           tenants: list.length,
@@ -706,6 +790,7 @@ export function calculateInfraCosts(input: InfraCostCalculationInput): InfraCost
           connectedCostPerTenant: maybeMoney(connectedShare === null ? null : div(connectedShare, list.length), fx),
           projectedShare: maybeMoney(projectedShare, fx),
           projectedCostPerTenant: maybeMoney(projectedShare === null ? null : div(projectedShare, list.length), fx),
+          ai: maybeMoney(aiUsd, fx),
         };
       });
 
@@ -744,6 +829,7 @@ export function calculateInfraCosts(input: InfraCostCalculationInput): InfraCost
         connectedCostPerTenant: connected.perTenant,
         projectedShare: null,
         projectedCostPerTenant: null,
+        ai: null,
       };
     });
   }
@@ -767,13 +853,14 @@ export function calculateInfraCosts(input: InfraCostCalculationInput): InfraCost
     basis: ctx ? 'hours' : 'snapshot',
     fx,
     sessionsSampledAt: input.live.sessionsSampledAt,
-    totalIsPartial: calcs.some((c) => c.computeUsd === null),
+    totalIsPartial: calcs.some((c) => c.computeUsd === null) || (ai?.partial ?? false),
     totals: {
       total: money(totalUsd, fx),
       fixed: money(fixedUsd, fx),
       variable: money(variableUsd, fx),
       shared: money(sharedUsd, fx),
       projected: ctx ? money(projectedUsd, fx) : null,
+      ai: ai ? money(ai.totalUsd, fx) : null,
     },
     items: calcs.map((c) => c.result),
     workspace: { planLabel: ws.planLabel, bandwidth: bandwidth.view, build: build.view, total: money(workspaceUsd, fx) },

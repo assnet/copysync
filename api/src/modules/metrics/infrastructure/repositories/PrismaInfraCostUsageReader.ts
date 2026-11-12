@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type { IInfraCostUsageReader, InfraCostMonthUsage } from '../../domain/contracts/IInfraCostUsageReader';
+import type { AiProviderKind } from '../../../assistants/domain/enums/AiProviderKind';
 import { INFRA_RENDER_KEYS, type InfraRenderKey } from '../../domain/services/infraCostSettings';
 import { OPS_READ_STATEMENT_TIMEOUT } from './PrismaOpsMetricsSampleRepository';
 import { translateInfraCostReadTimeout } from './infraCostReadTimeout';
@@ -11,6 +12,7 @@ const day = (d: Date) => Prisma.sql`${d.toISOString().slice(0, 10)}::date`;
 
 type HourRow = { hour: Date; resourceKey: string; plan: string | null; instances: number; diskGb: number | null; suspended: boolean };
 type UsageRow = { metric: string; total: number; hours: number };
+type AiRow = { tenantId: string; kind: AiProviderKind; model: string; calls: number; inputTokens: number; outputTokens: number; missingTokenCalls: number };
 type TenantRow = { tenantId: string; planSlug: string | null; connectedHours: number; contractedAvg: number };
 
 const isRenderKey = (k: string): k is InfraRenderKey => (INFRA_RENDER_KEYS as readonly string[]).includes(k);
@@ -29,7 +31,7 @@ export class PrismaInfraCostUsageReader implements IInfraCostUsageReader {
   }
 
   private async query(start: Date, end: Date): Promise<InfraCostMonthUsage> {
-    const [, hours, usage, tenants] = await this.prisma.$transaction([
+    const [, hours, usage, tenants, ai] = await this.prisma.$transaction([
       this.prisma.$executeRawUnsafe(`SET LOCAL statement_timeout = '${OPS_READ_STATEMENT_TIMEOUT}'`),
       this.prisma.$queryRaw<HourRow[]>`
         SELECT "hour", "resourceKey", "plan", "instances", "diskGb", "suspended"
@@ -55,6 +57,18 @@ export class PrismaInfraCostUsageReader implements IInfraCostUsageReader {
         WHERE "day" >= ${day(start)} AND "day" < ${day(end)}
         GROUP BY "tenantId"
         ORDER BY "tenantId"`,
+      // IA da plataforma (COST-13): tokens só das linhas com os dois contadores; as com token nulo só contadas.
+      this.prisma.$queryRaw<AiRow[]>`
+        SELECT "tenantId", "kind"::text AS "kind", "model",
+               count(*)::int AS "calls",
+               coalesce(sum("inputTokens") FILTER (WHERE "inputTokens" IS NOT NULL AND "outputTokens" IS NOT NULL), 0)::float8 AS "inputTokens",
+               coalesce(sum("outputTokens") FILTER (WHERE "inputTokens" IS NOT NULL AND "outputTokens" IS NOT NULL), 0)::float8 AS "outputTokens",
+               (count(*) FILTER (WHERE "inputTokens" IS NULL OR "outputTokens" IS NULL))::int AS "missingTokenCalls"
+        FROM "ai_usage_logs"
+        WHERE "source" = 'PLATFORM' AND "success" = true
+          AND "createdAt" >= ${utc(start)} AND "createdAt" < ${utc(end)}
+        GROUP BY "tenantId", "kind", "model"
+        ORDER BY "tenantId", "kind", "model"`,
     ]);
     const total = (metric: string) => usage.find((u) => u.metric === metric)?.total ?? null;
     return {
@@ -76,6 +90,15 @@ export class PrismaInfraCostUsageReader implements IInfraCostUsageReader {
         planSlug: t.planSlug,
         connectedHours: Number(t.connectedHours),
         contractedAvg: Number(t.contractedAvg),
+      })),
+      aiUsage: ai.map((r) => ({
+        tenantId: r.tenantId,
+        kind: r.kind,
+        model: r.model,
+        calls: Number(r.calls),
+        inputTokens: Number(r.inputTokens),
+        outputTokens: Number(r.outputTokens),
+        missingTokenCalls: Number(r.missingTokenCalls),
       })),
     };
   }

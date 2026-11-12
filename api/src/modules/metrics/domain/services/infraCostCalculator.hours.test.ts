@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { ResolvedFxRate } from './fxRate';
 import {
   allocateInfraTenantShares,
+  calculateInfraAiCosts,
   calculateInfraCosts,
+  type InfraAiUsageRow,
   type InfraCostCalculationInput,
   type InfraCostHourlyInput,
   type InfraResourceHourReading,
@@ -273,5 +275,85 @@ describe('config_drift', () => {
     });
     expect(r.basis).toBe('snapshot');
     expect(r.warnings).toContainEqual({ code: 'config_drift', resourceKey: 'postgres', field: 'plan' });
+  });
+});
+
+describe('IA da plataforma por tenant (COST-13)', () => {
+  const priced = (): InfraCostSettings => {
+    const s = workerOnly();
+    s.aiModelPrices = [{ kind: 'OPENAI', model: 'gpt-x', inputPerMTokUsd: 2, outputPerMTokUsd: 8 }];
+    return s;
+  };
+  const row = (over: Partial<InfraAiUsageRow> = {}): InfraAiUsageRow => ({
+    tenantId: 't1', kind: 'OPENAI', model: 'gpt-x', calls: 1, inputTokens: 0, outputTokens: 0, missingTokenCalls: 0, ...over,
+  });
+
+  it('1 M tokens de entrada = preço de entrada; saída pelo preço de saída', () => {
+    expect(calculateInfraAiCosts(priced(), [row({ inputTokens: 1_000_000 })]).totalUsd).toBe(2);
+    const r = calculateInfraAiCosts(priced(), [row({ inputTokens: 500_000, outputTokens: 250_000 }), row({ tenantId: 't2', outputTokens: 1_000_000 })]);
+    expect(r.totalUsd).toBe(11);
+    expect([...r.byTenant]).toEqual([['t1', 3], ['t2', 8]]);
+    expect(r.warnings).toEqual([]);
+    expect(r.partial).toBe(false);
+  });
+
+  it('linha com token nulo: contada no aviso, não somada como 0', () => {
+    const r = calculateInfraAiCosts(priced(), [row({ calls: 3, inputTokens: 1_000_000, missingTokenCalls: 2 }), row({ tenantId: 't2', calls: 1, missingTokenCalls: 1 })]);
+    expect(r.totalUsd).toBe(2);
+    expect(r.byTenant.has('t2')).toBe(false);
+    expect(r.warnings).toEqual([{ code: 'ai_tokens_missing', count: 3 }]);
+    expect(r.partial).toBe(false);
+  });
+
+  it('modelo sem preço (mesmo nome, outro kind): aviso com as chamadas, fora do total, total parcial', () => {
+    const r = calculateInfraAiCosts(priced(), [
+      row({ kind: 'ANTHROPIC', calls: 2, inputTokens: 1_000_000 }),
+      row({ tenantId: 't2', kind: 'ANTHROPIC', calls: 3, inputTokens: 5 }),
+    ]);
+    expect(r.totalUsd).toBe(0);
+    expect(r.byTenant.size).toBe(0);
+    expect(r.warnings).toEqual([{ code: 'model_without_price', kind: 'ANTHROPIC', model: 'gpt-x', count: 5 }]);
+    expect(r.partial).toBe(true);
+  });
+
+  it('no cálculo do mês: direto no total e no variável, fora do compartilhado; por plano = soma dos tenants', () => {
+    const tenants = [
+      { tenantId: 't1', planSlug: 'lite', connectedHours: 10, contractedAvg: 1 },
+      { tenantId: 't2', planSlug: 'lite', connectedHours: 10, contractedAvg: 1 },
+      { tenantId: 't3', planSlug: 'pro', connectedHours: 10, contractedAvg: 2 },
+    ];
+    const resourceHours = range(720, (i) => hr(NOV, i));
+    const base = calc(priced(), { resourceHours, tenants });
+    const r = calc(priced(), {
+      resourceHours,
+      tenants,
+      aiUsage: [row({ inputTokens: 1_000_000 }), row({ tenantId: 't3', outputTokens: 500_000 }), row({ tenantId: 'sem-horas', inputTokens: 500_000 })],
+    });
+    expect(base.totals.ai).toBeNull();
+    expect(base.plans.every((p) => p.ai === null)).toBe(true);
+    expect(r.totals.ai).toEqual({ usd: 7, brl: 35 });
+    expect(r.totals.total.usd).toBe(base.totals.total.usd + 7);
+    expect(r.totals.variable.usd).toBe(base.totals.variable.usd + 7);
+    expect(r.totals.shared).toEqual(base.totals.shared);
+    expect(r.plans.find((p) => p.planSlug === 'lite')!.ai).toEqual({ usd: 2, brl: 10 });
+    expect(r.plans.find((p) => p.planSlug === 'pro')!.ai).toEqual({ usd: 4, brl: 20 });
+    expect(r.plans.find((p) => p.planSlug === 'lite')!.share).toEqual(base.plans.find((p) => p.planSlug === 'lite')!.share);
+    expect(r.totalIsPartial).toBe(false);
+  });
+
+  it('no cálculo do mês: avisos de IA e total parcial com modelo sem preço; leitura vazia = 0', () => {
+    const r = calc(priced(), { aiUsage: [row({ model: 'novo', calls: 4, missingTokenCalls: 1 })] });
+    expect(r.totalIsPartial).toBe(true);
+    expect(r.warnings).toEqual(expect.arrayContaining([
+      { code: 'model_without_price', kind: 'OPENAI', model: 'novo', count: 3 },
+      { code: 'ai_tokens_missing', count: 1 },
+    ]));
+    expect(calc(priced(), { aiUsage: [] }).totals.ai).toEqual({ usd: 0, brl: 0 });
+  });
+
+  it('rateio por tenant leva a IA direta', () => {
+    const a = allocateInfraTenantShares(10, [{ tenantId: 't1', planSlug: 'lite', connectedHours: 1, contractedAvg: 1 }], new Map([['t1', 1.5]]));
+    expect(a.shares[0].aiUsd).toBe(1.5);
+    expect(allocateInfraTenantShares(10, [{ tenantId: 't1', planSlug: null, connectedHours: 1, contractedAvg: 1 }]).shares[0].aiUsd).toBe(0);
   });
 });
