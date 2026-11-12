@@ -11,7 +11,16 @@ import { utcMonthRange } from './GetInfraCostSummaryUseCase';
 
 const DAY_MS = 86_400_000;
 
-export type InfraCostMonthClosingWarning = InfraCostWarning | { code: 'fx_fallback' };
+/** Medição que não chegou até o fim do prazo do fechamento. */
+export type InfraCostMonthUsageMetric = 'bandwidth' | 'build';
+
+export type InfraCostMonthClosingWarning =
+  | InfraCostWarning
+  | { code: 'fx_fallback' }
+  /** Fechado no fim do prazo sem a banda da última hora e/ou o build do último dia. */
+  | { code: 'usage_incomplete'; metrics: InfraCostMonthUsageMetric[] }
+  /** Compartilhado sem base de rateio (sem contratadas nem sessão-hora): fora dos tenants, em USD. */
+  | { code: 'shared_unallocated'; usd: number };
 
 /** JSON congelado em `infra_cost_months.totals`. */
 export interface InfraCostClosedMonthTotals {
@@ -26,6 +35,8 @@ export interface CloseInfraCostMonthInput {
   /** `YYYY-MM`, anterior ao mês de `now`. */
   month: string;
   now: Date;
+  /** Fechamento forçado no fim do prazo: medições que faltaram (vira `usage_incomplete`). */
+  incompleteUsage?: readonly InfraCostMonthUsageMetric[];
 }
 
 export type CloseInfraCostMonthResult = 'closed' | 'already_closed' | 'no_data' | 'not_finished';
@@ -45,13 +56,14 @@ const toSaved = (r: InfraFxRateRecord): SavedFxRate => ({ rate: r.rate, referenc
 /**
  * Fecha o mês (COST-15): conta por hora do mês inteiro com a configuração e a cotação de fechamento
  * (`closingMethod`, override vence, sem gravada no mês → última antes com `fx_fallback`), rateio por tenant
- * pela base padrão (contratadas, `allocateInfraTenantShares`) + IA direta (`calculateInfraAiCosts`). Idempotente: mês já fechado não
+ * pela base padrão (contratadas, `allocateInfraTenantShares`; Σ contratadas 0 → sessão-hora; sem as duas →
+ * `shared_unallocated`) + IA direta (`calculateInfraAiCosts`). Σ tenants + não rateado = compartilhado + IA. Idempotente: mês já fechado não
  * muda (preço editado depois não reescreve). Mês sem snapshot não fecha (`no_data`).
  */
 export class CloseInfraCostMonthUseCase {
   constructor(private readonly deps: CloseInfraCostMonthDeps) {}
 
-  async execute({ month, now }: CloseInfraCostMonthInput): Promise<CloseInfraCostMonthResult> {
+  async execute({ month, now, incompleteUsage }: CloseInfraCostMonthInput): Promise<CloseInfraCostMonthResult> {
     const { start, end } = utcMonthRange(month);
     if (now < end) return 'not_finished';
     const { months, fxRates, settings: settingsRepo, usage: usageReader, scaling } = this.deps;
@@ -85,9 +97,11 @@ export class CloseInfraCostMonthUseCase {
     });
     // Mesma conta de IA do calculador (preços do fechamento): por tenant, só modelos com preço
     const aiByTenant = calculateInfraAiCosts(settings, usage.aiUsage ?? []).byTenant;
-    const tenants = monthTenants(calculation.totals.shared.usd, usage.tenants, aiByTenant);
+    const { tenants, unallocatedUsd } = monthTenants(calculation.totals.shared.usd, usage.tenants, aiByTenant);
     const warnings: InfraCostMonthClosingWarning[] = [...calculation.warnings];
     if (closingFx.fallback) warnings.push({ code: 'fx_fallback' });
+    if (incompleteUsage?.length) warnings.push({ code: 'usage_incomplete', metrics: [...incompleteUsage] });
+    if (unallocatedUsd > 0) warnings.push({ code: 'shared_unallocated', usd: round4(unallocatedUsd) });
     const totals: InfraCostClosedMonthTotals = { version: 1, calculation: { ...calculation, warnings }, settings };
 
     const fx = closingFx.fx;
@@ -106,16 +120,21 @@ export class CloseInfraCostMonthUseCase {
   }
 }
 
-/** Compartilhado por contratadas (DD6) + IA; tenant só com IA entra com parte compartilhada 0. */
+/**
+ * Compartilhado por contratadas (DD6); Σ contratadas 0 → por sessão-hora; sem as duas → não rateado (devolvido
+ * para o aviso). + IA; tenant só com IA entra com parte compartilhada 0.
+ */
 function monthTenants(
   sharedUsd: number,
   usage: Parameters<typeof allocateInfraTenantShares>[1],
   aiByTenant: ReadonlyMap<string, number>,
-): InfraCostClosedMonthTenant[] {
-  const { shares } = allocateInfraTenantShares(sharedUsd, usage, aiByTenant);
+): { tenants: InfraCostClosedMonthTenant[]; unallocatedUsd: number } {
+  const { shares, perContracted, perSessionHour } = allocateInfraTenantShares(sharedUsd, usage, aiByTenant);
+  const byContracted = perContracted !== null;
+  const unallocatedUsd = byContracted || perSessionHour !== null ? 0 : sharedUsd;
   const rows = new Map<string, InfraCostClosedMonthTenant>();
   for (const s of shares) {
-    const shared = round4(s.contractedShareUsd ?? 0);
+    const shared = round4((byContracted ? s.contractedShareUsd : s.sessionHourShareUsd) ?? 0);
     const aiUsd = round4(s.aiUsd);
     rows.set(s.tenantId, {
       tenantId: s.tenantId,
@@ -132,5 +151,5 @@ function monthTenants(
     const aiUsd = round4(usd);
     rows.set(tenantId, { tenantId, planSlug: null, contractedAvg: 0, sessionHours: 0, sharedUsd: 0, aiUsd, totalUsd: aiUsd });
   }
-  return [...rows.values()];
+  return { tenants: [...rows.values()], unallocatedUsd };
 }

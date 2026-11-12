@@ -52,6 +52,14 @@ cada passo isolado (falha de um não para os outros, `warn` com o nome do passo)
    (lease `infra-cost-build` até 01:00 do dia seguinte; falha = nova tentativa 1 h depois), em `infra_usage_daily`
    (`build_minutes`). Teto de 20 páginas por serviço e dia: esgotou com `cursor` ainda presente = falha (`upstream`),
    nunca minutos parciais.
+3b. **Fechamento** do mês anterior (`CloseInfraCostMonthUseCase`, COST-15), nas primeiras 24 h do mês e **depois** da
+   banda e do build no mesmo tick (o mês fechado não reabre). Até 01:00 espera a última hora do mês em
+   `infra_resource_hours`; com a Render configurada, só fecha quando a banda cobre a última hora do mês
+   (`lastUsageHour('bandwidth_gb')`) e o build do último dia foi gravado (`hasUsageDay('build_minutes')`). A partir das
+   23:00 UTC do dia 1 (`INFRA_COST_MONTH_CLOSE_FORCE_AFTER_MS`) fecha assim mesmo, com o aviso
+   `usage_incomplete { metrics }` no `totals` e `warn` `infra cost month closed without full usage`. Sem Render não
+   espera banda nem build. Rateio do compartilhado por tenant: contratadas; Σ contratadas 0 → sessão-hora do mês; sem
+   as duas → aviso `shared_unallocated { usd }`. Invariante: Σ tenants + não rateado = compartilhado + IA.
 4. **Cotação** (com `fx.auto`), ver abaixo.
 5. **Retenção** de 400 dias, 1×/24 h (lease `infra-cost-retention`, não solto).
 

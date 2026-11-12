@@ -80,6 +80,8 @@ function memorySnapshots() {
         .map(([, v]) => v.lastHour!);
       return hs.length ? new Date(Math.max(...hs)) : null;
     }),
+    hasUsageDay: vi.fn(async (metric: string, day: Date) =>
+      [...usage.keys()].some((k) => k.startsWith(`${day.toISOString().slice(0, 10)}|${metric}|`))),
     upsertUsageDay: vi.fn(async (v) => {
       usage.set(`${v.day.toISOString().slice(0, 10)}|${v.metric}|${v.resourceKey}`, { value: v.value, lastHour: null });
     }),
@@ -455,28 +457,74 @@ describe('InfraCostSnapshotJob — ciclo de vida', () => {
 describe('InfraCostSnapshotJob — fechamento mensal', () => {
   const close = () => ({ execute: vi.fn(async () => 'closed') });
 
-  it('na 1ª hora do mês fecha o mês anterior depois de gravar a última hora dele', async () => {
+  it('fecha depois da banda e do build no mesmo tick: 01:05 grava a banda das 23:00 e o build do último dia, depois fecha', async () => {
     const monthClose = close();
     const s = setup({ start: Date.parse('2026-11-01T00:03:00Z'), monthClose });
     await s.job.runTick();
     expect(s.snapshots.hours.size).toBeGreaterThan(0); // 31/10 23:00 gravada no passo da hora
-    expect(monthClose.execute).toHaveBeenCalledWith({ month: '2026-10', now: new Date('2026-11-01T00:03:00Z') });
+    expect(monthClose.execute).not.toHaveBeenCalled(); // banda das 23:00 só a partir de 01:00
+
+    s.setClock(Date.parse('2026-11-01T01:05:00Z'));
+    await s.job.runTick();
+    expect(monthClose.execute).toHaveBeenCalledTimes(1);
+    expect(monthClose.execute).toHaveBeenCalledWith({ month: '2026-10', now: new Date('2026-11-01T01:05:00Z') });
+    const order = (fn: { mock: { invocationCallOrder: number[] } }) => Math.max(...fn.mock.invocationCallOrder);
+    const closedAt = monthClose.execute.mock.invocationCallOrder[0]!;
+    expect(order(s.plans.plans.readBandwidthGb)).toBeLessThan(closedAt);
+    expect(order(s.plans.plans.readBuildMinutes)).toBeLessThan(closedAt);
+    expect(s.snapshots.usage.get('2026-10-31|bandwidth_gb|api')?.lastHour).toBe(Date.parse('2026-10-31T23:00:00Z'));
+    expect(s.snapshots.usage.has('2026-10-31|build_minutes|api')).toBe(true);
   });
 
-  it('até 01:00 espera a última hora do mês; depois fecha com o que houver; fora das 24 h não tenta', async () => {
+  it('banda da última hora ausente: adia; ao chegar, fecha sem aviso', async () => {
+    const monthClose = close();
+    const s = setup({ start: Date.parse('2026-11-01T01:05:00Z'), monthClose });
+    s.plans.plans.readBandwidthGb.mockResolvedValue({ status: 'unavailable', reason: 'upstream' } as never);
+    await s.job.runTick();
+    s.setClock(Date.parse('2026-11-01T03:00:00Z'));
+    await s.job.runTick();
+    expect(monthClose.execute).not.toHaveBeenCalled();
+    expect(s.snapshots.usage.has('2026-10-31|build_minutes|api')).toBe(true); // build já veio
+
+    s.plans.plans.readBandwidthGb.mockResolvedValue({ status: 'ok', byKey: { api: 0.5 }, discardedSeries: 0 } as never);
+    s.setClock(Date.parse('2026-11-01T03:05:00Z'));
+    await s.job.runTick();
+    expect(monthClose.execute).toHaveBeenCalledWith({ month: '2026-10', now: new Date('2026-11-01T03:05:00Z') });
+  });
+
+  it('fim do prazo (23:00 do dia 1) sem banda nem build: fecha assim mesmo com usage_incomplete; depois das 24 h não tenta', async () => {
     const monthClose = close();
     const plans = fakePlans();
-    plans.setFail({ status: 'unavailable', reason: 'upstream' } as never);
-    const s = setup({ start: Date.parse('2026-11-01T00:30:00Z'), monthClose, plans });
+    plans.plans.readBandwidthGb.mockResolvedValue({ status: 'unavailable', reason: 'upstream' } as never);
+    plans.plans.readBuildMinutes.mockResolvedValue({ status: 'unavailable', reason: 'upstream' } as never);
+    const s = setup({ start: Date.parse('2026-11-01T01:10:00Z'), monthClose, plans });
+    await s.job.runTick();
+    s.setClock(Date.parse('2026-11-01T22:55:00Z'));
+    await s.job.runTick();
+    expect(monthClose.execute).not.toHaveBeenCalled();
+
+    s.setClock(Date.parse('2026-11-01T23:00:00Z'));
+    await s.job.runTick();
+    expect(monthClose.execute).toHaveBeenCalledWith({
+      month: '2026-10', now: new Date('2026-11-01T23:00:00Z'), incompleteUsage: ['bandwidth', 'build'],
+    });
+    expect(log.warn).toHaveBeenCalledWith(expect.objectContaining({ month: '2026-10' }), 'infra cost month closed without full usage');
+
+    s.setClock(Date.parse('2026-11-02T00:10:00Z'));
+    await s.job.runTick();
+    expect(monthClose.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('sem Render: até 01:00 espera; depois fecha sem esperar banda nem build; fora das 24 h não tenta', async () => {
+    const monthClose = close();
+    const s = setup({ start: Date.parse('2026-11-01T00:30:00Z'), monthClose, plans: fakePlans([]) });
     await s.job.runTick();
     expect(monthClose.execute).not.toHaveBeenCalled();
 
     s.setClock(Date.parse('2026-11-01T01:10:00Z'));
     await s.job.runTick();
-    expect(monthClose.execute).toHaveBeenCalledTimes(1);
+    expect(monthClose.execute).toHaveBeenCalledWith({ month: '2026-10', now: new Date('2026-11-01T01:10:00Z') });
 
-    s.setClock(Date.parse('2026-11-02T00:10:00Z'));
-    await s.job.runTick();
     s.setClock(Date.parse('2026-11-15T10:00:00Z'));
     await s.job.runTick();
     expect(monthClose.execute).toHaveBeenCalledTimes(1);
@@ -484,7 +532,7 @@ describe('InfraCostSnapshotJob — fechamento mensal', () => {
 
   it('falha do fechamento não derruba os outros passos', async () => {
     const monthClose = { execute: vi.fn(async () => { throw new Error('boom'); }) };
-    const s = setup({ start: Date.parse('2026-11-01T00:03:00Z'), monthClose });
+    const s = setup({ start: Date.parse('2026-11-01T01:05:00Z'), monthClose });
     await s.job.runTick();
     expect(monthClose.execute).toHaveBeenCalled();
     expect(s.snapshots.repo.deleteOlderThan).toHaveBeenCalled();

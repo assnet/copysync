@@ -77,6 +77,8 @@ export interface IInfraCostSnapshotRepository {
   addUsageHour(hour: Date, value: Omit<InfraUsageDailyValue, 'day'>): Promise<boolean>;
   /** Maior `lastHour` da métrica (qualquer recurso) a partir de `since`; null = nenhuma hora gravada. */
   lastUsageHour(metric: InfraUsageMetric, since: Date): Promise<Date | null>;
+  /** Algum recurso tem linha da métrica no dia (UTC)? Fechamento espera o build do último dia. */
+  hasUsageDay(metric: InfraUsageMetric, day: Date): Promise<boolean>;
   /** Build: regrava o valor do dia (idempotente). */
   upsertUsageDay(value: InfraUsageDailyValue): Promise<void>;
   /** Apaga o que for anterior a `cutoff` nas quatro tabelas, em lotes. */

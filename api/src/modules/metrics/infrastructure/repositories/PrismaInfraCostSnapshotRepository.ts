@@ -157,6 +157,12 @@ export class PrismaInfraCostSnapshotRepository implements IInfraCostSnapshotRepo
     return row?.last ?? null;
   }
 
+  async hasUsageDay(metric: InfraUsageMetric, day: Date): Promise<boolean> {
+    const [row] = await this.prisma.$queryRaw<{ found: boolean }[]>`
+      SELECT EXISTS (SELECT 1 FROM "infra_usage_daily" WHERE "metric" = ${metric} AND "day" = ${utcDay(day)}) AS found`;
+    return row?.found === true;
+  }
+
   /** Build: regrava o dia inteiro (idempotente). */
   async upsertUsageDay(v: InfraUsageDailyValue): Promise<void> {
     await this.prisma.$executeRaw`

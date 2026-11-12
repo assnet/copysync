@@ -157,6 +157,71 @@ describe('CloseInfraCostMonthUseCase + PrismaInfraCostSnapshotRepository (Postgr
     expect((await totalsOf()).calculation.warnings).toContainEqual({ code: 'fx_missing' });
   });
 
+  /** Σ tenants (compartilhado + IA) + não rateado = compartilhado + IA do mês fechado. */
+  async function expectAllocated() {
+    const totals = await totalsOf();
+    const rows = await prisma.infraCostMonthTenant.findMany({ where: { month: OCT } });
+    const unallocated = totals.calculation.warnings.find((w) => w.code === 'shared_unallocated');
+    const sum = rows.reduce((acc, r) => acc + r.totalUsd.toNumber(), 0);
+    expect(sum + (unallocated?.code === 'shared_unallocated' ? unallocated.usd : 0))
+      .toBeCloseTo(totals.calculation.totals.shared.usd + (totals.calculation.totals.ai?.usd ?? 0), 3);
+    return { totals, rows, unallocated };
+  }
+
+  it('rateio por contratadas fecha a invariante (Σ tenants = compartilhado + IA)', async () => {
+    await seedMonth();
+    expect(await useCase().execute({ month: '2026-10', now: NOW })).toBe('closed');
+    const { unallocated, totals } = await expectAllocated();
+    expect(unallocated).toBeUndefined();
+    expect(totals.calculation.totals.shared.usd).toBeGreaterThan(0);
+  });
+
+  it('Σ contratadas = 0: rateia o compartilhado pela sessão-hora do mês', async () => {
+    await repo.upsertResourceHours([0, 1].map((h) => ({ hour: at(h), resourceKey: 'api' as const, plan: '1c-2g', instances: 1, instancesSource: 'render' as const, diskGb: 15, suspended: false })));
+    for (const h of [0, 1]) {
+      await repo.addSessionHour(at(h), [
+        { tenantId: T1, planSlug: 'COPYSYNC_PRO', connectedSessions: 3, contractedSessions: 0 },
+        { tenantId: T2, planSlug: 'COPYSYNC_LITE', connectedSessions: 1, contractedSessions: 0 },
+      ]);
+    }
+    expect(await useCase().execute({ month: '2026-10', now: NOW })).toBe('closed');
+    const { rows, unallocated, totals } = await expectAllocated();
+    expect(unallocated).toBeUndefined();
+    const shared = totals.calculation.totals.shared.usd;
+    expect(shared).toBeGreaterThan(0);
+    const byId = new Map(rows.map((r) => [r.tenantId, r.sharedUsd.toNumber()]));
+    expect(byId.get(T1)).toBeCloseTo((shared * 3) / 4, 3);
+    expect(byId.get(T2)).toBeCloseTo(shared / 4, 3);
+  });
+
+  it('sem contratadas nem sessão-hora: shared_unallocated com o valor e Σ tenants + não rateado = compartilhado + IA', async () => {
+    await repo.upsertResourceHours([0, 1].map((h) => ({ hour: at(h), resourceKey: 'api' as const, plan: '1c-2g', instances: 1, instancesSource: 'render' as const, diskGb: 15, suspended: false })));
+    await prisma.aiUsageLog.create({
+      data: { tenantId: T1, createdAt: at(5), source: 'PLATFORM', kind: 'OPENAI', model: 'gpt-x', purpose: 'teste', inputTokens: 1_000_000, outputTokens: 0, success: true },
+    });
+    expect(await useCase().execute({ month: '2026-10', now: NOW })).toBe('closed');
+    const { rows, unallocated, totals } = await expectAllocated();
+    expect(unallocated).toEqual({ code: 'shared_unallocated', usd: expect.closeTo(totals.calculation.totals.shared.usd, 3) });
+    expect(totals.calculation.totals.shared.usd).toBeGreaterThan(0);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ tenantId: T1, planSlug: null });
+    expect(rows[0].sharedUsd.toNumber()).toBe(0);
+    expect(rows[0].aiUsd.toNumber()).toBe(2);
+  });
+
+  it('fechamento forçado no fim do prazo grava usage_incomplete com as medições que faltaram', async () => {
+    await seedMonth();
+    expect(await useCase().execute({ month: '2026-10', now: NOW, incompleteUsage: ['bandwidth', 'build'] })).toBe('closed');
+    expect((await totalsOf()).calculation.warnings).toContainEqual({ code: 'usage_incomplete', metrics: ['bandwidth', 'build'] });
+  });
+
+  it('hasUsageDay: só o dia e a métrica gravados', async () => {
+    await repo.upsertUsageDay({ day: day('2026-10-31'), metric: 'build_minutes', resourceKey: 'api', value: 0, source: 'render_deploys' });
+    expect(await repo.hasUsageDay('build_minutes', day('2026-10-31'))).toBe(true);
+    expect(await repo.hasUsageDay('build_minutes', day('2026-10-30'))).toBe(false);
+    expect(await repo.hasUsageDay('bandwidth_gb', day('2026-10-31'))).toBe(false);
+  });
+
   it('mês sem snapshot não fecha; mês em curso não fecha', async () => {
     expect(await useCase().execute({ month: '2026-10', now: NOW })).toBe('no_data');
     expect(await useCase().execute({ month: '2026-11', now: NOW })).toBe('not_finished');
