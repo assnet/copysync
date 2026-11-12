@@ -32,6 +32,8 @@ import { diskBudget } from '../modules/media/domain/services/diskBudget';
 import { initMediaModule, mediaContainer } from '../modules/media/infrastructure/mediaContainer';
 import { SecretCipherFactory } from '../shared/security/SecretCipherFactory';
 import { registerTenantSuspendedSessionListener } from '../modules/sessions/infrastructure/listeners/TenantSuspendedSessionListener';
+import { InactiveTenantSessionDisconnector } from '../modules/sessions/application/services/InactiveTenantSessionDisconnector';
+import { InactiveTenantSessionSweepJob } from '../modules/sessions/infrastructure/jobs/InactiveTenantSessionSweepJob';
 import { PrismaAuditLogRepository } from '../shared/audit/PrismaAuditLogRepository';
 import { createReconcileSubscriptionsUseCase } from '../modules/integrations/infrastructure/billing/createReconcileSubscriptionsUseCase';
 import { billingWebhookBlockReason } from '../modules/integrations/billing/billingWebhookGuard';
@@ -56,6 +58,7 @@ import type { IMessagingEngine } from '../modules/messaging/domain/contracts/IMe
 import type { ISessionSocketControl } from '../modules/messaging/domain/contracts/ISessionSocketControl';
 import { currentRole, runsSessions, type ProcessRole } from '../shared/config/processRole';
 import { jobsFor } from './processJobs';
+import { bootSessionsWithKeeper } from './sessionBootOrder';
 import { mediaDrainBudgetMs } from './shutdownBudget';
 import { buildOfferWorkerOptions, offerWorkerStopOptions } from './offerWorkerComposition';
 import { composeForRole } from './roleComposition';
@@ -388,12 +391,16 @@ async function start(): Promise<void> {
 
   // ── Session suspension listener ────────────────────────────────────────────
   // Todo papel (WROLE-13): no `http` a engine remota leva o `disconnect` ao dono por BullMQ.
-  registerTenantSuspendedSessionListener(
-    new PrismaSessionRepository(),
-    composition.engine,
-    new PrismaAuditLogRepository(),
-    lease.release,
-  );
+  // OWN-04: em `worker`/`all` só sessões deste processo ou sem dono vivo (filtro no UPDATE); as de
+  // outro processo saem pela varredura dele. Listener e varredura dividem o disconnector (sem duplicar).
+  const inactiveTenantDisconnector = new InactiveTenantSessionDisconnector({
+    sessions: new PrismaSessionRepository(),
+    engine: composition.engine,
+    audit: new PrismaAuditLogRepository(),
+    leaseRelease: lease.release,
+    ...(runsSessions(role) && { ownerWorkerId: lease.workerId }),
+  });
+  registerTenantSuspendedSessionListener(new PrismaSessionRepository(), inactiveTenantDisconnector);
 
   // ── Bootstrap active sessions ──────────────────────────────────────────────
   // Disabled by default in production because reconnecting WhatsApp sessions on
@@ -401,47 +408,47 @@ async function start(): Promise<void> {
   // PostgreSQL instances. Sessions can still be connected manually via API/UI.
   // F1: crash/SIGKILL não solta o lease; a 2ª passada (após o TTL) trata as sessões puladas.
   let cancelBootRecheck: (() => Promise<void>) | null = null;
-  if (env.SESSION_BOOTSTRAP_ON_STARTUP) {
-    if (adoption) {
-      // ADOPT-08/D8: com a adoção o ticker reconecta (com teto), inclusive as sessões puladas por
-      // lease de outro processo; sem `SessionBootstrapService` nem 2ª passada (F1).
-      logger.info('Session bootstrap delegated to adoption ticker');
-    } else if (jobs.has('sessionBootstrap')) {
+  // ── Renovação do lease (LEASE-04, OWN-08) ──────────────────────────────────
+  // Antes do boot das sessões: bootstrap longo não deixa lease vencer. Renova a cada 20 s só as
+  // sessões com socket local (aberturas em curso contam); razão vazio = rodada sem banco.
+  const leaseKeeper = jobs.has('leaseKeeper') ? lease.keeper : null;
+  if (leaseKeeper) logger.info({ workerId: lease.workerId }, 'Session lease keeper started');
+  await bootSessionsWithKeeper(leaseKeeper, async () => {
+    if (env.SESSION_BOOTSTRAP_ON_STARTUP) {
+      if (adoption) {
+        // ADOPT-08/D8: com a adoção o ticker reconecta (com teto), inclusive as sessões puladas por
+        // lease de outro processo; sem `SessionBootstrapService` nem 2ª passada (F1).
+        logger.info('Session bootstrap delegated to adoption ticker');
+      } else if (jobs.has('sessionBootstrap')) {
+        try {
+          const engine = getActiveEngine();
+          if (!engine) throw new Error('MessagingEngine not initialized — session routes must register before bootstrap');
+          const bootstrapService = new SessionBootstrapService(new PrismaSessionRepository(), engine, {
+            maxConcurrent: env.SESSION_BOOTSTRAP_MAX_CONCURRENT,
+          });
+          await bootstrapService.bootstrap();
+          cancelBootRecheck = scheduleLeaseExpiryRecheck(() =>
+            bootstrapService.bootstrap({ onlyWithoutLiveLease: true }),
+          );
+        } catch (err) {
+          logger.error({ err }, 'Session bootstrap failed — server continues without active sessions');
+        }
+      }
+    } else if (jobs.has('sessionReconciler')) {
+      logger.warn(
+        'Session bootstrap disabled; WhatsApp sessions will remain disconnected until manually connected',
+      );
+      // Nenhum socket sobrevive ao restart, mas o status gravado antes do shutdown sim.
+      // Sem reconciliar, a sessão aparece CONNECTED no painel enquanto nada chega.
       try {
-        const engine = getActiveEngine();
-        if (!engine) throw new Error('MessagingEngine not initialized — session routes must register before bootstrap');
-        const bootstrapService = new SessionBootstrapService(new PrismaSessionRepository(), engine, {
-          maxConcurrent: env.SESSION_BOOTSTRAP_MAX_CONCURRENT,
-        });
-        await bootstrapService.bootstrap();
-        cancelBootRecheck = scheduleLeaseExpiryRecheck(() =>
-          bootstrapService.bootstrap({ onlyWithoutLiveLease: true }),
-        );
+        const reconciler = new SessionStatusReconciler(new PrismaSessionRepository());
+        await reconciler.markActiveSessionsAsDisconnected();
+        cancelBootRecheck = scheduleLeaseExpiryRecheck(() => reconciler.markActiveSessionsAsDisconnected());
       } catch (err) {
-        logger.error({ err }, 'Session bootstrap failed — server continues without active sessions');
+        logger.error({ err }, 'Failed to reconcile session statuses on startup');
       }
     }
-  } else if (jobs.has('sessionReconciler')) {
-    logger.warn(
-      'Session bootstrap disabled; WhatsApp sessions will remain disconnected until manually connected',
-    );
-    // Nenhum socket sobrevive ao restart, mas o status gravado antes do shutdown sim.
-    // Sem reconciliar, a sessão aparece CONNECTED no painel enquanto nada chega.
-    try {
-      const reconciler = new SessionStatusReconciler(new PrismaSessionRepository());
-      await reconciler.markActiveSessionsAsDisconnected();
-      cancelBootRecheck = scheduleLeaseExpiryRecheck(() => reconciler.markActiveSessionsAsDisconnected());
-    } catch (err) {
-      logger.error({ err }, 'Failed to reconcile session statuses on startup');
-    }
-  }
-
-  // ── Renovação do lease (LEASE-04) ──────────────────────────────────────────
-  // Depois do boot das sessões: renova a cada 20 s só as sessões com socket local.
-  if (jobs.has('leaseKeeper')) {
-    lease.keeper.start();
-    logger.info({ workerId: lease.workerId }, 'Session lease keeper started');
-  }
+  });
 
   // ── Adoção por capacidade (ADOPT-07/10/11) ─────────────────────────────────
   // Depois do keeper: sessão adotada já tem quem renove o lease. Timers `unref`, nascem parados.
@@ -458,6 +465,19 @@ async function start(): Promise<void> {
       },
       'Session adoption started',
     );
+  }
+
+  // ── Varredura de tenant inativo (OWN-04) ───────────────────────────────────
+  // Só worker/all: desconecta as sessões locais cujo tenant não está ACTIVE. Timer `unref`, 30 s.
+  let inactiveTenantSweep: InactiveTenantSessionSweepJob | null = null;
+  if (jobs.has('inactiveTenantSweep')) {
+    inactiveTenantSweep = new InactiveTenantSessionSweepJob({
+      sessions: new PrismaSessionRepository(),
+      disconnector: inactiveTenantDisconnector,
+      listLocal: () => lease.listLocal(),
+    });
+    inactiveTenantSweep.start();
+    logger.info('Inactive tenant session sweep started');
   }
 
   // ── Métricas de recursos (MQ-22) ───────────────────────────────────────────
@@ -504,13 +524,15 @@ async function start(): Promise<void> {
     // segue batendo até soltar os leases; `heartbeat.stop()` apaga a linha no fim.
     // MQ-22: o sampler para junto (cancela a Render em voo, solta o lease), aguardado em paralelo.
     // WSCALE-15: a subida automática também (espera o tick em curso).
-    if (adoption || opsMetricsSampler || workerAutoscaler) {
+    // OWN-04: a varredura de tenant inativo também (espera a passada em curso).
+    if (adoption || opsMetricsSampler || workerAutoscaler || inactiveTenantSweep) {
       try {
         await Promise.all([
           adoption?.ticker.stop(),
           adoption?.capacityAlert.stop(),
           opsMetricsSampler?.stop(),
           workerAutoscaler?.stop(),
+          inactiveTenantSweep?.stop(),
         ]);
         if (adoption) logger.info('Session adoption stopped');
       } catch (err) {

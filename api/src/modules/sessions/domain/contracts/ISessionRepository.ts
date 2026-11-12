@@ -51,6 +51,17 @@ export interface ISessionRepository {
    * (lease tomado) não é sobrescrito. Devolve se gravou.
    */
   markDisconnectedIfNoLiveLease(id: string, tenantId: string): Promise<boolean>;
+  /**
+   * OWN-04: grava `DISCONNECTED` (com `lastDisconnectedAt` e `connectRequestedAt = null`) só se a
+   * sessão do tenant, não excluída, não tem lease vivo de outro processo (sem dono, lease vencido ou
+   * dono = `workerId`), no relógio do banco. Devolve se gravou.
+   */
+  markDisconnectedUnlessLeasedElsewhere(id: string, tenantId: string, workerId: string): Promise<boolean>;
+  /**
+   * Dentre `sessionIds` (as locais do processo), as não excluídas cujo tenant não está `ACTIVE`.
+   * Lista vazia não consulta o banco.
+   */
+  findWithInactiveTenant(sessionIds: readonly string[]): Promise<Array<{ id: string; tenantId: string }>>;
   /** Sessões não excluídas do tenant, por engine (contador de limite do painel). */
   countByEngine(tenantId: string): Promise<Record<string, number>>;
   /** Engine de uma sessão (inclusive excluída), sem tenant: para o roteador de engines. null = inexistente. */

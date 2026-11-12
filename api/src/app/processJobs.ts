@@ -28,7 +28,9 @@ export type ProcessJob =
   /** Métricas de Render/Postgres/workers (MQ-22); só com `OPS_METRICS_SAMPLER_ENABLED`. Nunca no `http`. */
   | 'opsMetricsSampler'
   /** Subida automática de workers (WSCALE-15); só age com `scalerMode = auto`. Nunca no `http`. */
-  | 'workerAutoscaler';
+  | 'workerAutoscaler'
+  /** Desconecta sessões locais de tenant não `ACTIVE` (OWN-04), tick de 30 s. Nunca no `http`. */
+  | 'inactiveTenantSweep';
 
 /** Uploads em partes e mídia pendente: disco/fila do processo que recebe o upload. */
 const HTTP_JOBS: readonly ProcessJob[] = ['uploadSweeper', 'interruptedUploads', 'pendingMediaBoot', 'pendingMediaSweep'];
@@ -49,6 +51,7 @@ const WORKER_JOBS: readonly ProcessJob[] = [
   'outboundTmpSweep',
   'opsMetricsSampler',
   'workerAutoscaler',
+  'inactiveTenantSweep',
 ];
 
 /** Jobs que este papel liga. `all` = todos (comportamento de hoje). */

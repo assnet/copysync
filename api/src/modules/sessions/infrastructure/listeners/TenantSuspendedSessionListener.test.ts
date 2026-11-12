@@ -1,17 +1,27 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { internalEventBus } from '../../../../shared/events/InternalEventBus';
 import type { ISessionRepository } from '../../domain/contracts/ISessionRepository';
-import type { IMessagingEngine } from '../../../messaging/domain/contracts/IMessagingEngine';
 import { makeAuditRepo, makeSession } from '../../application/use-cases/sessionTestFakes';
+import { InactiveTenantSessionDisconnector } from '../../application/services/InactiveTenantSessionDisconnector';
 import { registerTenantSuspendedSessionListener } from './TenantSuspendedSessionListener';
 
-function setup(sessions = [makeSession({ id: 's1', status: 'CONNECTED' })]) {
+/** Dono do lease por sessão (lease vivo); ausente = sem dono vivo. Simula o filtro do UPDATE. */
+type Owners = Record<string, string>;
+
+function setup(sessions = [makeSession({ id: 's1', status: 'CONNECTED' })], opts: { ownerWorkerId?: string; owners?: Owners } = {}) {
   const calls: string[] = [];
+  const owners = opts.owners ?? {};
   const repo = {
     findAllByTenant: vi.fn(async () => sessions),
     updateStatus: vi.fn(async (id: string) => {
       calls.push(`status:${id}`);
       return null;
+    }),
+    markDisconnectedUnlessLeasedElsewhere: vi.fn(async (id: string, _t: string, workerId: string) => {
+      const owner = owners[id];
+      if (owner && owner !== workerId) return false;
+      calls.push(`status:${id}`);
+      return true;
     }),
   };
   const engine = {
@@ -25,12 +35,14 @@ function setup(sessions = [makeSession({ id: 's1', status: 'CONNECTED' })]) {
     }),
   };
   const audit = makeAuditRepo();
-  registerTenantSuspendedSessionListener(
-    repo as unknown as ISessionRepository,
-    engine as unknown as IMessagingEngine,
+  const disconnector = new InactiveTenantSessionDisconnector({
+    sessions: repo as unknown as ISessionRepository,
+    engine,
     audit,
-    release,
-  );
+    leaseRelease: release,
+    ...(opts.ownerWorkerId && { ownerWorkerId: opts.ownerWorkerId }),
+  });
+  registerTenantSuspendedSessionListener(repo as unknown as ISessionRepository, disconnector);
   return { calls, repo, engine, release, audit };
 }
 
@@ -51,6 +63,9 @@ describe('registerTenantSuspendedSessionListener', () => {
     expect(repo.updateStatus).toHaveBeenCalledWith('s1', 't1', expect.objectContaining({
       status: 'DISCONNECTED',
       clearConnectRequest: true,
+    }));
+    expect(audit.create).toHaveBeenCalledWith(expect.objectContaining({
+      meta: expect.objectContaining({ sessionId: 's1', reason: 'TENANT_SUSPENDED' }),
     }));
   });
 
@@ -91,19 +106,32 @@ describe('registerTenantSuspendedSessionListener', () => {
     expect(release.execute).toHaveBeenCalledWith('s2');
   });
 
-  it('funciona sem leaseRelease', async () => {
-    const engine = { disconnectSession: vi.fn(async () => undefined) };
-    const audit = makeAuditRepo();
-    registerTenantSuspendedSessionListener(
-      {
-        findAllByTenant: vi.fn(async () => [makeSession({ status: 'CONNECTED' })]),
-        updateStatus: vi.fn(async () => null),
-      } as unknown as ISessionRepository,
-      engine as unknown as IMessagingEngine,
-      audit,
+  it('no http (sem dono) usa o caminho de antes: todas as sessões, sem filtro de dono', async () => {
+    const { repo, engine, audit } = setup(
+      [makeSession({ id: 'a', status: 'CONNECTED' }), makeSession({ id: 'b', status: 'CONNECTED' })],
+      { owners: { a: 'wA', b: 'wB' } },
     );
     suspend();
-    await vi.waitFor(() => expect(audit.create).toHaveBeenCalledTimes(1));
-    expect(engine.disconnectSession).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(audit.create).toHaveBeenCalledTimes(2));
+    expect(repo.markDisconnectedUnlessLeasedElsewhere).not.toHaveBeenCalled();
+    expect(engine.disconnectSession).toHaveBeenCalledTimes(2);
+  });
+
+  it('OWN-04: no processo A só sessões de A e sem dono vivo; a de B fica intacta', async () => {
+    const { repo, engine, release, audit, calls } = setup(
+      [
+        makeSession({ id: 'a', status: 'CONNECTED' }),
+        makeSession({ id: 'b', status: 'CONNECTED' }),
+        makeSession({ id: 'free', status: 'AWAITING_QR' }),
+      ],
+      { ownerWorkerId: 'wA', owners: { a: 'wA', b: 'wB' } },
+    );
+    suspend();
+    await vi.waitFor(() => expect(audit.create).toHaveBeenCalledTimes(2));
+    expect(repo.updateStatus).not.toHaveBeenCalled();
+    expect(repo.markDisconnectedUnlessLeasedElsewhere).toHaveBeenCalledWith('b', 't1', 'wA');
+    expect(calls).toEqual(['status:a', 'engine:a', 'release:a', 'status:free', 'engine:free', 'release:free']);
+    expect(engine.disconnectSession).not.toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'b' }));
+    expect(release.execute).not.toHaveBeenCalledWith('b');
   });
 });

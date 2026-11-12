@@ -1,18 +1,19 @@
 import { internalEventBus } from '../../../../shared/events/InternalEventBus';
 import type { InternalTeamEvent } from '../../../../shared/events/InternalTeamEvent';
 import type { ISessionRepository } from '../../domain/contracts/ISessionRepository';
-import type { IMessagingEngine } from '../../../messaging/domain/contracts/IMessagingEngine';
-import type { IAuditLogRepository } from '../../../../shared/audit/IAuditLogRepository';
 import { logger } from '../../../../shared/logger/logger';
-import type { ReleaseSessionLeaseUseCase } from '../../application/use-cases/ReleaseSessionLeaseUseCase';
+import type { InactiveTenantSessionDisconnector } from '../../application/services/InactiveTenantSessionDisconnector';
 
 const log = logger.child({ module: 'TenantSuspendedSessionListener' });
 
+/**
+ * Tenant suspenso: desconecta as sessões ativas dele. O filtro de dono (OWN-04) fica no
+ * `disconnector`: em `worker`/`all` só sessões deste processo ou sem dono vivo (as de outro
+ * processo saem pela varredura dele); no `http` todas, via engine remota.
+ */
 export function registerTenantSuspendedSessionListener(
-  sessionRepo: ISessionRepository,
-  engine: IMessagingEngine,
-  auditRepo: IAuditLogRepository,
-  leaseRelease?: Pick<ReleaseSessionLeaseUseCase, 'execute'>,
+  sessionRepo: Pick<ISessionRepository, 'findAllByTenant'>,
+  disconnector: Pick<InactiveTenantSessionDisconnector, 'disconnect'>,
 ): void {
   internalEventBus.on<Extract<InternalTeamEvent, { type: 'TENANT_SUSPENDED' }>>(
     'TENANT_SUSPENDED',
@@ -26,23 +27,7 @@ export function registerTenantSuspendedSessionListener(
 
         for (const session of active) {
           try {
-            // LEASE-08: status + limpeza do pedido antes da engine, para a adoção não reabrir.
-            await sessionRepo.updateStatus(session.id, event.tenantId, {
-              status: 'DISCONNECTED',
-              lastDisconnectedAt: new Date(),
-              clearConnectRequest: true,
-            });
-            try {
-              await engine.disconnectSession({ sessionId: session.id, tenantId: event.tenantId });
-            } finally {
-              // LEASE-05: solta o lease depois de tentar fechar o socket; nunca lança.
-              await leaseRelease?.execute(session.id);
-            }
-            await auditRepo.create({
-              tenantId: event.tenantId,
-              action: 'SESSION_DISCONNECTED',
-              meta: { sessionId: session.id, reason: 'TENANT_SUSPENDED', actor: 'SYSTEM' },
-            });
+            await disconnector.disconnect(session.id, event.tenantId, 'TENANT_SUSPENDED');
           } catch (err) {
             log.error({ err, sessionId: session.id }, 'Failed to disconnect session on tenant suspension');
           }
