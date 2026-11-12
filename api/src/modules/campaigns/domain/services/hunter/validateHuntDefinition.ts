@@ -48,7 +48,9 @@ export function validateHuntDefinition(d: OfferHuntDefinition): HuntDefinitionCh
   if (!isInt(d.intervalMinutes, L.intervalMinutesMin, L.intervalMinutesMax)) return fail('intervalMinutes', 'Invalid interval');
   if (!isInt(d.windowStartMinute, 0, MINUTES_PER_DAY)) return fail('windowStartMinute', 'Invalid window start');
   if (!isInt(d.windowEndMinute, 0, MINUTES_PER_DAY)) return fail('windowEndMinute', 'Invalid window end');
-  if (d.windowStartMinute === d.windowEndMinute) return fail('windowEndMinute', 'Empty window');
+  // Depois da normalização: início 1440 + fim 0 vira 0/0 (janela vazia)
+  const windowStartMinute = normalizeWindowStartMinute(d.windowStartMinute, d.windowEndMinute);
+  if (windowStartMinute === d.windowEndMinute) return fail('windowEndMinute', 'Empty window');
   if (!isValidWeekdaysMask(d.weekdaysMask)) return fail('weekdaysMask', 'Invalid weekdays');
 
   const f = d.filters ?? {};
@@ -82,7 +84,7 @@ export function validateHuntDefinition(d: OfferHuntDefinition): HuntDefinitionCh
       repeatAfterDays: d.repeatAfterDays,
       deliveryMode: d.deliveryMode,
       intervalMinutes: d.intervalMinutes,
-      windowStartMinute: normalizeWindowStartMinute(d.windowStartMinute, d.windowEndMinute),
+      windowStartMinute,
       windowEndMinute: d.windowEndMinute,
       weekdaysMask: d.weekdaysMask,
     },

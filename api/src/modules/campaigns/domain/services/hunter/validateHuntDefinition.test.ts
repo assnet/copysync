@@ -32,6 +32,7 @@ describe('validateHuntDefinition', () => {
     [{ intervalMinutes: 29 }, 'intervalMinutes'],
     [{ intervalMinutes: 1441 }, 'intervalMinutes'],
     [{ windowStartMinute: 600, windowEndMinute: 600 }, 'windowEndMinute'],
+    [{ windowStartMinute: 1440, windowEndMinute: 0 }, 'windowEndMinute'],
     [{ weekdaysMask: 0 }, 'weekdaysMask'],
     [{ deliveryMode: 'NOW' as never }, 'deliveryMode'],
     [{ filters: { minRating: 6 } }, 'filters.minRating'],

@@ -74,6 +74,11 @@ desconto, comissão %/R$, nota, vendas, avaliações, "só com extra" e "termina
   (link **sempre do tenant**) → `OfferTextComposer` do gerador (público STANDARD) → `EnqueueOfferUseCase` com
   `origin: 'HUNTER'` e `sourceKey: 'hunt:<findId>'` (idempotência: queda entre enfileirar e gravar `offerId` não
   reenvia). O Enqueue cria a `Offer`; o caçador nunca cria à parte. Espaçamento = intervalo do gerador.
+- Decidível: `PENDING_REVIEW`, `FAILED` e `APPROVED` sem `offerId` parado há > 15 min (`HUNT_FIND_STALE_APPROVED_MS`,
+  queda entre aprovar e entregar), retomado por CAS (`reclaimStaleApproved`): dois cliques entregam uma vez. Depois do
+  enqueue a foto nunca é descartada; falha ao marcar SENT tenta de novo com o `offerId`.
+- Repetição dentro do lock do teto (`insertWithinDailyLimit` com `repeatSince`): duas execuções simultâneas não
+  escolhem o mesmo produto. Janela de horário vazia (ex.: início 1440 e fim 0) é recusada.
 - Imagem: `imageMode` padrão `LINK_PREVIEW`, foto vinda do Resolve e gravada no storage (`storeImage`), como no
   gerador ([`mensagens-previa-de-link.md`](mensagens-previa-de-link.md)). `imageUrl` do achado (`mainImage`, só
   https `ltwebstatic.com`) é **só exibição no painel**; nunca vai à mensagem.

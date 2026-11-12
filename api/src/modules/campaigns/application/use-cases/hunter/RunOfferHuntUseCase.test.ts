@@ -207,6 +207,15 @@ describe('RunOfferHuntUseCase — busca, seleção e gravação', () => {
     expect(out.finds.map((f) => f.goodsId)).toEqual(['1002', '1003']);
   });
 
+  it('duas execuções simultâneas da mesma caçada não gravam o mesmo item (repetição rechecada na gravação)', async () => {
+    const s = setup();
+    s.catalog.pages = [{ items: items('1001', '1002', '1003', '1004'), hasNextPage: false, total: 4 }];
+    const [a, b] = await Promise.all([s.run(), s.run({ trigger: 'SCHEDULED' })]);
+    const ids = s.finds.items.map((f) => f.goodsId);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(a.chosenCount + b.chosenCount).toBe(ids.length);
+  });
+
   it('IA ok: reordena o top e grava o motivo; recebe no máx. 15 e topN = min(topN, saldo)', async () => {
     const ranker = new FakeRanker([{ goodsId: '2030', reason: 'Melhor custo' }, { goodsId: '2010', reason: 'Vende muito' }]);
     const s = setup({ hunt: { aiEnabled: true }, ranker });

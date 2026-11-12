@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ApproveHuntFindUseCase, DismissHuntFindUseCase } from './HuntFindDecisionUseCases';
+import { ApproveHuntFindUseCase, DismissHuntFindUseCase, HUNT_FIND_STALE_APPROVED_MS } from './HuntFindDecisionUseCases';
 import { SetOfferHunterDestinationUseCase } from './SetOfferHunterDestinationUseCase';
 import { HuntFindDelivery } from '../../services/hunter/HuntFindDelivery';
 import { EnqueueOfferUseCase } from '../EnqueueOfferUseCase';
@@ -23,18 +23,27 @@ function setup() {
     product: { productRef: '1', title: null, priceCents: null, originalPriceCents: null, imageSourceUrl: 'https://img.ltwebstatic.com/a.jpg' },
   }));
   const composeInputs: unknown[] = [];
+  const images = { storeImage: async () => '/media/offer.jpg', discardImage: vi.fn(async () => {}) };
   const delivery = new HuntFindDelivery({
     finds, runs, settings,
     affiliateProducts: { execute: resolve },
     texts: { compose: async (i) => { composeInputs.push(i); return { text: `${i.title} ${i.affiliateUrl}`, aiFallback: false }; } },
-    images: { storeImage: async () => '/media/offer.jpg', discardImage: vi.fn(async () => {}) },
+    images,
     enqueue: new EnqueueOfferUseCase({ offers, dispatches, rand: () => 0 }),
     configs: new InMemoryOfferGeneratorConfigRepository(),
     now: () => NOW,
   });
   const approve = new ApproveHuntFindUseCase({ finds, entitlements, delivery });
   const dismiss = new DismissHuntFindUseCase({ finds });
-  return { finds, runs, settings, offers, entitlements, resolve, composeInputs, approve, dismiss };
+  const at = (ms: number) => {
+    const now = () => new Date(NOW.getTime() + ms);
+    finds.clock = now;
+    return {
+      approve: new ApproveHuntFindUseCase({ finds, entitlements, delivery, now }),
+      dismiss: new DismissHuntFindUseCase({ finds, now }),
+    };
+  };
+  return { finds, runs, settings, offers, entitlements, resolve, composeInputs, approve, dismiss, images, at };
 }
 
 describe('ApproveHuntFindUseCase', () => {
@@ -85,6 +94,41 @@ describe('ApproveHuntFindUseCase', () => {
     expect(s.finds.items[0]).toMatchObject({ status: 'SENT', failureReason: null });
   });
 
+  it('APPROVED preso (sem offerId) volta a ser decidível só após 15 min; dois cliques entregam uma vez', async () => {
+    const s = setup();
+    await s.settings.upsert(TENANT, 'session-1', 'conv-1');
+    const stuck = s.finds.seed({ status: 'APPROVED', updatedAt: NOW });
+    const withOffer = s.finds.seed({ status: 'APPROVED', updatedAt: NOW, offerId: 'offer-x' });
+    const early = s.at(HUNT_FIND_STALE_APPROVED_MS - 60_000);
+    await expect(early.approve.execute({ tenantId: TENANT, findId: stuck.id })).rejects.toMatchObject({ code: 'OFFER_HUNT_FIND_INVALID_STATE' });
+    const late = s.at(HUNT_FIND_STALE_APPROVED_MS + 60_000);
+    await expect(late.approve.execute({ tenantId: TENANT, findId: withOffer.id })).rejects.toMatchObject({ code: 'OFFER_HUNT_FIND_INVALID_STATE' });
+    const results = await Promise.allSettled([
+      late.approve.execute({ tenantId: TENANT, findId: stuck.id }),
+      late.approve.execute({ tenantId: TENANT, findId: stuck.id }),
+    ]);
+    expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
+    expect(s.offers.items).toHaveLength(1);
+    expect(s.finds.items[0]).toMatchObject({ status: 'SENT', offerId: s.offers.items[0]!.id });
+  });
+
+  it('entrega: SENT falha depois do Enqueue → não apaga a foto da oferta e grava offerId + SENT', async () => {
+    const s = setup();
+    await s.settings.upsert(TENANT, 'session-1', 'conv-1');
+    const find = s.finds.seed({});
+    const real = s.finds.transition.bind(s.finds);
+    let failed = false;
+    vi.spyOn(s.finds, 'transition').mockImplementation(async (...args) => {
+      if (args[3] === 'SENT' && !failed) { failed = true; throw new Error('db down'); }
+      return real(...args);
+    });
+    const out = await s.approve.execute({ tenantId: TENANT, findId: find.id });
+    expect(s.images.discardImage).not.toHaveBeenCalled();
+    expect(s.offers.items[0]!.imageUrl).toBe('/media/offer.jpg');
+    expect(out.offerId).toBe(s.offers.items[0]!.id);
+    expect(s.finds.items[0]).toMatchObject({ status: 'SENT', offerId: s.offers.items[0]!.id });
+  });
+
   it('caçador fora do plano → PLAN_FEATURE_UNAVAILABLE', async () => {
     const s = setup();
     s.entitlements.values[ENTITLEMENT_KEYS.OFFER_HUNTER_ENABLED] = false;
@@ -94,6 +138,14 @@ describe('ApproveHuntFindUseCase', () => {
 });
 
 describe('DismissHuntFindUseCase', () => {
+  it('APPROVED preso há mais de 15 min pode ser dispensado; recente não', async () => {
+    const s = setup();
+    const stuck = s.finds.seed({ status: 'APPROVED', updatedAt: NOW });
+    await expect(s.at(60_000).dismiss.execute({ tenantId: TENANT, findId: stuck.id })).rejects.toMatchObject({ code: 'OFFER_HUNT_FIND_INVALID_STATE' });
+    expect((await s.at(HUNT_FIND_STALE_APPROVED_MS + 60_000).dismiss.execute({ tenantId: TENANT, findId: stuck.id })).status).toBe('DISMISSED');
+    expect(s.finds.items[0]!.status).toBe('DISMISSED');
+  });
+
   it('PENDING_REVIEW → DISMISSED; segue contando no teto; segunda vez 409', async () => {
     const s = setup();
     const find = s.finds.seed({});

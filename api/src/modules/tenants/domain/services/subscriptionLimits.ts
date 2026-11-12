@@ -23,6 +23,8 @@ export interface SubscriptionUsage {
   linkRotations: Record<LimitChannel, number>;
   /** Ofertas geradas hoje (fuso de `startOfDayInZone`). */
   offerGenerationsToday: number;
+  /** Achados do caçador hoje (mesmo `startOfDayInZone` do teto do caçador). */
+  offerHunterFindsToday: number;
   /** Pedidos de IA do dia; `null` se não houver contador. */
   aiRequestsToday: number | null;
   /** Etiquetas do Mercado Livre em uso: principal + vinculadas dentro do limite do plano (0 sem credencial). */
@@ -114,6 +116,7 @@ const KEY_TO_COUNT: ReadonlyMap<EntitlementKey, { kind: CountKind; channel: Limi
 function usedOf(def: SubscriptionLimitItemDef, usage: SubscriptionUsage): number | null {
   if (def.kind === 'feature') return null;
   if (def.key === ENTITLEMENT_KEYS.OFFER_GENERATIONS_PER_DAY) return usage.offerGenerationsToday;
+  if (def.key === ENTITLEMENT_KEYS.OFFER_HUNTER_FINDS_PER_DAY) return usage.offerHunterFindsToday;
   if (def.key === ENTITLEMENT_KEYS.AI_REQUESTS_PER_DAY) return usage.aiRequestsToday;
   if (def.key === ENTITLEMENT_KEYS.MERCADO_LIVRE_AFFILIATE_TAGS) return usage.mercadoLivreAffiliateTags;
   const c = KEY_TO_COUNT.get(def.key);

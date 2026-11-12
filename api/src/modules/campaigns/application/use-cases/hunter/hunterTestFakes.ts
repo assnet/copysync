@@ -95,12 +95,27 @@ export class InMemoryRuns implements Pick<IOfferHuntRunRepository, 'startWithinD
   }
 }
 
-export class InMemoryFinds implements Pick<IOfferHuntFindRepository, 'insertWithinDailyLimit' | 'countCreatedSince' | 'recentGoodsIds' | 'findById' | 'transition'> {
+export class InMemoryFinds implements Pick<
+  IOfferHuntFindRepository, 'insertWithinDailyLimit' | 'countCreatedSince' | 'recentGoodsIds' | 'findById' | 'transition' | 'reclaimStaleApproved'
+> {
+  /** Relógio do `updatedAt` gravado (o Prisma usa o do servidor). */
+  clock: () => Date = () => NOW;
   items: OfferHuntFind[] = [];
   private seq = 0;
-  async insertWithinDailyLimit(tenantId: string, finds: NewOfferHuntFind[], quota: { since: Date; limit: number }) {
+  async insertWithinDailyLimit(tenantId: string, finds: NewOfferHuntFind[], quota: { since: Date; limit: number; repeatSince?: Date }) {
     const room = Math.max(0, quota.limit - (await this.countCreatedSince(tenantId, quota.since)));
-    return finds.slice(0, room).map((f) => {
+    const taken = new Set<string>();
+    if (quota.repeatSince) {
+      for (const f of this.items) if (f.tenantId === tenantId && f.huntId && f.createdAt >= quota.repeatSince) taken.add(`${f.huntId}:${f.goodsId}`);
+    }
+    const fresh = finds.filter((f) => {
+      if (!quota.repeatSince || !f.huntId) return true;
+      const key = `${f.huntId}:${f.goodsId}`;
+      if (taken.has(key)) return false;
+      taken.add(key);
+      return true;
+    });
+    return fresh.slice(0, room).map((f) => {
       const row: OfferHuntFind = { ...f, id: `find-${++this.seq}`, tenantId, failureReason: null, offerId: null, createdAt: NOW, updatedAt: NOW };
       this.items.push(row);
       return row;
@@ -113,6 +128,12 @@ export class InMemoryFinds implements Pick<IOfferHuntFindRepository, 'insertWith
     return new Set(this.items.filter((f) => f.tenantId === tenantId && f.huntId === huntId && f.createdAt >= since).map((f) => f.goodsId));
   }
   async findById(tenantId: string, id: string) { return this.items.find((f) => f.id === id && f.tenantId === tenantId) ?? null; }
+  async reclaimStaleApproved(tenantId: string, id: string, before: Date) {
+    const f = await this.findById(tenantId, id);
+    if (!f || f.status !== 'APPROVED' || f.offerId !== null || f.updatedAt >= before) return false;
+    f.updatedAt = this.clock();
+    return true;
+  }
   async transition(tenantId: string, id: string, from: OfferHuntFindStatus[], to: OfferHuntFindStatus, extra: OfferHuntFindTransition = {}) {
     const f = await this.findById(tenantId, id);
     if (!f || !from.includes(f.status)) return false;

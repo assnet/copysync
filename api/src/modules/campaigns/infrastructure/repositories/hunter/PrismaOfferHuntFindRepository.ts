@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 import type {
   IOfferHuntFindRepository,
   NewOfferHuntFind,
@@ -15,14 +15,17 @@ export class PrismaOfferHuntFindRepository implements IOfferHuntFindRepository {
    * Desenho do `PrismaOfferRepository.createWithinDailyLimit`: `pg_advisory_xact_lock(hashtext(...))` por
    * tenant serializa as reservas até o fim da transação; recontagem + inserção de `min(N, saldo)`.
    */
-  async insertWithinDailyLimit(tenantId: string, finds: NewOfferHuntFind[], quota: { since: Date; limit: number }): Promise<OfferHuntFind[]> {
+  async insertWithinDailyLimit(
+    tenantId: string, finds: NewOfferHuntFind[], quota: { since: Date; limit: number; repeatSince?: Date },
+  ): Promise<OfferHuntFind[]> {
     if (finds.length === 0) return [];
     const rows = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`offer_hunt_finds:${tenantId}`}::text))`;
+      const fresh = await this.withoutRepeats(tx, tenantId, finds, quota.repeatSince);
       const used = await tx.offerHuntFind.count({ where: { tenantId, createdAt: { gte: quota.since } } });
       const room = Math.max(0, quota.limit - used);
       const out = [];
-      for (const f of finds.slice(0, room)) {
+      for (const f of fresh.slice(0, room)) {
         out.push(await tx.offerHuntFind.create({
           data: { ...Mapper.snapshotToData(f), tenantId, huntId: f.huntId, runId: f.runId, status: f.status },
         }));
@@ -30,6 +33,32 @@ export class PrismaOfferHuntFindRepository implements IOfferHuntFindRepository {
       return out;
     });
     return rows.map(Mapper.findToDomain);
+  }
+
+  /**
+   * Anti-join da repetição dentro do lock: duas execuções simultâneas da mesma caçada (MANUAL × AUTO)
+   * leem `recentGoodsIds` antes de qualquer gravação; aqui a 2ª vê o que a 1ª gravou e descarta.
+   */
+  private async withoutRepeats(
+    tx: Prisma.TransactionClient, tenantId: string, finds: NewOfferHuntFind[], repeatSince: Date | undefined,
+  ): Promise<NewOfferHuntFind[]> {
+    if (!repeatSince) return finds;
+    const huntIds = [...new Set(finds.flatMap((f) => (f.huntId ? [f.huntId] : [])))];
+    const taken = new Set<string>();
+    if (huntIds.length > 0) {
+      const rows = await tx.offerHuntFind.findMany({
+        where: { tenantId, huntId: { in: huntIds }, createdAt: { gte: repeatSince } },
+        select: { huntId: true, goodsId: true },
+      });
+      for (const r of rows) taken.add(`${r.huntId}:${r.goodsId}`);
+    }
+    return finds.filter((f) => {
+      if (!f.huntId) return true;
+      const key = `${f.huntId}:${f.goodsId}`;
+      if (taken.has(key)) return false;
+      taken.add(key);
+      return true;
+    });
   }
 
   countCreatedSince(tenantId: string, since: Date): Promise<number> {
@@ -74,6 +103,14 @@ export class PrismaOfferHuntFindRepository implements IOfferHuntFindRepository {
         ...(extra.offerId !== undefined ? { offerId: extra.offerId } : {}),
         ...(extra.failureReason !== undefined ? { failureReason: extra.failureReason } : {}),
       },
+    });
+    return count > 0;
+  }
+
+  async reclaimStaleApproved(tenantId: string, id: string, before: Date): Promise<boolean> {
+    const { count } = await this.prisma.offerHuntFind.updateMany({
+      where: { id, tenantId, status: 'APPROVED', offerId: null, updatedAt: { lt: before } },
+      data: { updatedAt: new Date() },
     });
     return count > 0;
   }

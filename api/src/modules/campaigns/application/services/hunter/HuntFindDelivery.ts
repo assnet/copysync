@@ -62,6 +62,7 @@ export class HuntFindDelivery {
 
   async deliver(tenantId: string, find: OfferHuntFind, destination: HuntDestination): Promise<HuntDeliveryResult> {
     let storedImage: string | null = null;
+    let queuedOfferId: string | null = null;
     try {
       const resolved = await this.deps.affiliateProducts.execute(tenantId, huntProductUrl(find.goodsId), { riskScope: 'OFFER_HUNTER' });
       const p = resolved.product;
@@ -99,13 +100,25 @@ export class HuntFindDelivery {
         sourceKey: huntSourceKey(find.id),
       });
       if (res.kind !== 'queued') return this.fail(tenantId, find, 'EXPIRED', null, storedImage);
+      queuedOfferId = res.offerId;
       await this.deps.finds.transition(tenantId, find.id, ['APPROVED'], 'SENT', { offerId: res.offerId, failureReason: null });
       if (find.runId) await this.deps.runs.incrementSent(tenantId, find.runId);
       return { status: 'SENT', offerId: res.offerId };
     } catch (err) {
+      if (queuedOfferId) return this.settleQueued(tenantId, find, queuedOfferId);
       const reason = err instanceof AppError ? err.code : 'DELIVERY_FAILED';
       return this.fail(tenantId, find, reason, err, storedImage);
     }
+  }
+
+  /**
+   * Oferta já enfileirada (a foto agora é dela: nunca descartar). Grava `offerId` + SENT de novo; se isso
+   * também falhar, o erro sobe e o achado fica APPROVED sem `offerId` (retomável; o Enqueue é idempotente).
+   */
+  private async settleQueued(tenantId: string, find: OfferHuntFind, offerId: string): Promise<HuntDeliveryResult> {
+    logger.warn({ tenantId, findId: find.id, offerId }, 'offer hunt find queued; retrying sent mark');
+    await this.deps.finds.transition(tenantId, find.id, ['APPROVED'], 'SENT', { offerId, failureReason: null });
+    return { status: 'SENT', offerId };
   }
 
   private async fail(tenantId: string, find: OfferHuntFind, reason: string, error: unknown, image: string | null): Promise<HuntDeliveryResult> {

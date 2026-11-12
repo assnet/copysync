@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 import type { ITenantUsageReader } from '../../domain/contracts/ITenantUsageReader';
 import type { SubscriptionUsage } from '../../domain/services/subscriptionLimits';
 import { channelOfEngine, countByChannel, type LimitChannel } from '../../domain/channelLimits';
@@ -10,8 +10,14 @@ import { PrismaEntitlementReader } from './PrismaEntitlementReader';
 
 type UsagePrisma = Pick<
   PrismaClient,
-  'session' | 'monitoredGroup' | 'broadcastGroup' | 'linkRotation' | 'offer' | 'aiUsageLog' | 'affiliateCredential' | 'tenantEntitlement'
+  | 'session' | 'monitoredGroup' | 'broadcastGroup' | 'linkRotation' | 'offer' | 'offerHuntFind' | 'aiUsageLog'
+  | 'affiliateCredential' | 'tenantEntitlement'
 >;
+
+/** Mesmo filtro de `PrismaOfferRepository` (`countsTowardGeneratorQuota`): o caçador tem teto próprio (D4). */
+const generatorOffersSince = (tenantId: string, since: Date): Prisma.OfferWhereInput => ({
+  tenantId, createdAt: { gte: since }, origin: { not: 'HUNTER' },
+});
 
 /**
  * Contagens com `tenantId` em toda consulta. Regras copiadas das telas de recurso:
@@ -19,7 +25,8 @@ type UsagePrisma = Pick<
  * - grupos: sessão dona (e, no disparo, a do monitoramento) existe e não está apagada
  *   (`PrismaGroupMonitorRepository.tenantGroupJids`); sessão sumida = WhatsApp, fora da conta;
  * - rodízios: todos do tenant, canal pela engine da sessão (`PrismaLinkRotationRepository.countByChannel`);
- * - ofertas: `createdAt >= startOfDayInZone(now)` (`GetOfferUsageUseCase`);
+ * - ofertas: `createdAt >= startOfDayInZone(now)` sem `origin = HUNTER` (`GetOfferUsageUseCase`);
+ * - achados do caçador: `offer_hunt_finds` desde o mesmo início do dia (teto do caçador);
  * - IA: só `source = PLATFORM`, a mesma base do teto diário (`PrismaAiUsageLogRepository`);
  * - etiquetas do ML: conjunto **efetivo** (`effectiveLinkedIdentifiers` com o limite do plano), o mesmo
  *   `used` de `GET …/MERCADO_LIVRE/identifiers`; plano rebaixado não mostra uso acima do limite.
@@ -32,15 +39,20 @@ export class PrismaTenantUsageReader implements ITenantUsageReader {
 
   async read(tenantId: string): Promise<SubscriptionUsage> {
     const since = startOfDayInZone(this.now());
-    const [sessions, groups, linkRotations, offerGenerationsToday, aiRequestsToday, mercadoLivreAffiliateTags] = await Promise.all([
+    const [
+      sessions, groups, linkRotations, offerGenerationsToday, offerHunterFindsToday, aiRequestsToday, mercadoLivreAffiliateTags,
+    ] = await Promise.all([
       this.countSessions(tenantId),
       this.countGroups(tenantId),
       this.countLinkRotations(tenantId),
-      this.prisma.offer.count({ where: { tenantId, createdAt: { gte: since } } }),
+      this.prisma.offer.count({ where: generatorOffersSince(tenantId, since) }),
+      this.prisma.offerHuntFind.count({ where: { tenantId, createdAt: { gte: since } } }),
       this.prisma.aiUsageLog.count({ where: { tenantId, source: 'PLATFORM', createdAt: { gte: since } } }),
       this.countMercadoLivreTags(tenantId),
     ]);
-    return { sessions, ...groups, linkRotations, offerGenerationsToday, aiRequestsToday, mercadoLivreAffiliateTags };
+    return {
+      sessions, ...groups, linkRotations, offerGenerationsToday, offerHunterFindsToday, aiRequestsToday, mercadoLivreAffiliateTags,
+    };
   }
 
   private async countMercadoLivreTags(tenantId: string): Promise<number> {

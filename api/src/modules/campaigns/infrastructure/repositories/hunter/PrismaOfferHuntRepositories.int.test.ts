@@ -135,6 +135,35 @@ describe('PrismaOfferHuntFindRepository — teto diário atômico', () => {
     expect(await prisma.offerHuntFind.count({ where: { tenantId: t } })).toBe(5);
   });
 
+  it('concorrência na mesma caçada: 2 execuções com os mesmos itens não repetem goodsId (anti-join no lock)', async () => {
+    const t = await tenant('race-repeat');
+    const h = (await hunts.createWithinLimit(def(t), 5))!;
+    const batch = ['1', '2', '3'].map((g) => find(`7700${g}`, h.id));
+    const quota = { since: SINCE, limit: 10, repeatSince: SINCE };
+    const [a, b] = await Promise.all([finds.insertWithinDailyLimit(t, batch, quota), findsB.insertWithinDailyLimit(t, batch, quota)]);
+    expect(a.length + b.length).toBe(3);
+    expect((await prisma.offerHuntFind.findMany({ where: { tenantId: t }, select: { goodsId: true } })).map((r) => r.goodsId).sort())
+      .toEqual(['77001', '77002', '77003']);
+    // Repetido no próprio lote e fora da janela: só o 1º do lote; outra caçada não bloqueia
+    const h2 = (await hunts.createWithinLimit(def(t), 5))!;
+    const got = await finds.insertWithinDailyLimit(t, [find('77001', h2.id), find('77001', h2.id), find('77001', h.id)], quota);
+    expect(got.map((f) => [f.huntId, f.goodsId])).toEqual([[h2.id, '77001']]);
+  });
+
+  it('reclaimStaleApproved: só APPROVED sem offerId mais velho que o corte; CAS (2º perde)', async () => {
+    const t = await tenant('reclaim');
+    const [a, b] = await finds.insertWithinDailyLimit(t, [{ ...find('66001', null), status: 'APPROVED' }, { ...find('66002', null), status: 'APPROVED' }], { since: SINCE, limit: 10 });
+    const old = new Date(Date.now() - 20 * 60_000);
+    await prisma.offerHuntFind.updateMany({ where: { tenantId: t }, data: { updatedAt: old } });
+    const cut = new Date(Date.now() - 15 * 60_000);
+    expect(await finds.reclaimStaleApproved(t, b!.id, new Date(old.getTime() - 1))).toBe(false);
+    const [r1, r2] = await Promise.all([finds.reclaimStaleApproved(t, a!.id, cut), findsB.reclaimStaleApproved(t, a!.id, cut)]);
+    expect([r1, r2].filter(Boolean)).toHaveLength(1);
+    expect(await finds.reclaimStaleApproved('other-tenant', b!.id, cut)).toBe(false);
+    await prisma.offerHuntFind.update({ where: { id: b!.id }, data: { updatedAt: old, offerId: null, status: 'PENDING_REVIEW' } });
+    expect(await finds.reclaimStaleApproved(t, b!.id, cut)).toBe(false);
+  });
+
   it('repetição por caçada e janela; exclusão da caçada mantém achados e execuções (huntId null)', async () => {
     const t = await tenant('repeat');
     const h = (await hunts.createWithinLimit(def(t), 5))!;

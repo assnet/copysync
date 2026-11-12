@@ -155,7 +155,8 @@ export class RunOfferHuntUseCase {
       counters.seenCount = items.length;
       const matched = items.filter((c) => matchHuntFilters(c, hunt.filters, now));
       counters.matchedCount = matched.length;
-      const recent = await this.deps.finds.recentGoodsIds(tenantId, hunt.id, new Date(now.getTime() - hunt.repeatAfterDays * DAY_MS));
+      const repeatSince = new Date(now.getTime() - hunt.repeatAfterDays * DAY_MS);
+      const recent = await this.deps.finds.recentGoodsIds(tenantId, hunt.id, repeatSince);
       const fresh: Scored[] = matched
         .filter((c) => !recent.has(c.goodsId))
         .map((candidate) => ({ candidate, score: scoreHuntCandidate(candidate, now), aiReason: null }))
@@ -169,7 +170,8 @@ export class RunOfferHuntUseCase {
       const inserted = await this.deps.finds.insertWithinDailyLimit(
         tenantId,
         chosen.map((s) => toNewFind(s, hunt, run.id)),
-        { since, limit },
+        // Repetição rechecada no lock: execução simultânea da mesma caçada pode ter gravado o mesmo item
+        { since, limit, repeatSince },
       );
       counters.chosenCount = inserted.length;
 

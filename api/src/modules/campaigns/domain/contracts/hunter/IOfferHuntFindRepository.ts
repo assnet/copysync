@@ -17,8 +17,12 @@ export interface IOfferHuntFindRepository {
   /**
    * Grava `min(finds.length, limit − achados do tenant desde since)` na ordem dada, numa transação
    * serializada por tenant (desenho do `createWithinDailyLimit`). Devolve os gravados (pode ser `[]`).
+   * Com `repeatSince`, descarta antes de contar o saldo o goodsId que a mesma caçada já escolheu desde
+   * essa data (inclusive no próprio lote), dentro do mesmo lock: execuções simultâneas não repetem item.
    */
-  insertWithinDailyLimit(tenantId: string, finds: NewOfferHuntFind[], quota: { since: Date; limit: number }): Promise<OfferHuntFind[]>;
+  insertWithinDailyLimit(
+    tenantId: string, finds: NewOfferHuntFind[], quota: { since: Date; limit: number; repeatSince?: Date },
+  ): Promise<OfferHuntFind[]>;
   countCreatedSince(tenantId: string, since: Date): Promise<number>;
   /** goodsIds já escolhidos pela caçada desde `since` (qualquer estado): regra de repetição. */
   recentGoodsIds(tenantId: string, huntId: string, since: Date): Promise<Set<string>>;
@@ -26,4 +30,9 @@ export interface IOfferHuntFindRepository {
   listByHunt(tenantId: string, huntId: string, page: { limit: number; after?: OfferHuntPageCursor }): Promise<OfferHuntFind[]>;
   /** CAS: só muda se o estado atual está em `from`. */
   transition(tenantId: string, id: string, from: OfferHuntFindStatus[], to: OfferHuntFindStatus, extra?: OfferHuntFindTransition): Promise<boolean>;
+  /**
+   * CAS da entrega interrompida: APPROVED sem `offerId` com `updatedAt < before` → renova `updatedAt`
+   * (segue APPROVED). Dois pedidos simultâneos: só um vence.
+   */
+  reclaimStaleApproved(tenantId: string, id: string, before: Date): Promise<boolean>;
 }
