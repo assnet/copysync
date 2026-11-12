@@ -1,49 +1,67 @@
 import {
-  Box, Chip, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography,
+  Box, Chip, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip,
 } from '@mui/material';
-import { Server } from 'lucide-react';
-import { AppIcon, EmptyState, SectionCard } from '@/components';
+import { OctagonAlert, Server, TriangleAlert } from 'lucide-react';
+import { AppIcon, EmptyState, OverflowTooltipText, SectionCard } from '@/components';
 import { serverNow } from '@/services/serverClock';
 import { formatRelativeTime } from '@/features/linkDomainsAdmin/rules';
-import { formatNumber, formatPct, statusFor } from '../rules';
+import { formatDateTime, formatNumber, formatPct, statusFor } from '../rules';
 import { opsMetricsStrings as t } from '../strings';
-import type { OpsStatus, OpsThresholds, OpsWorkerInstance } from '../types';
+import type { OpsThresholds, OpsWorkerInstance } from '../types';
 import { HelpTip } from './HelpTip';
 
 const mono = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
-const STATUS_COLOR: Record<OpsStatus, string> = {
-  ok: 'text.primary', warning: 'warning.main', critical: 'error.main', noData: 'text.secondary',
-};
+/** Ícone do limiar: tom `dark` no claro e `light` no escuro (contraste de elemento gráfico ≥ 3:1). */
+const LEVEL = {
+  warning: { icon: TriangleAlert, color: (dark: boolean) => (dark ? 'warning.light' : 'warning.dark') },
+  critical: { icon: OctagonAlert, color: (dark: boolean) => (dark ? 'error.light' : 'error.dark') },
+} as const;
+/** Primeira coluna fixa na rolagem horizontal (390 px), com o fundo do card. */
+const STICKY = { position: 'sticky', left: 0, zIndex: 1, bgcolor: 'background.paper' } as const;
+const dottedHint = { borderBottom: 1, borderColor: 'divider', borderBottomStyle: 'dotted', cursor: 'help' } as const;
 
 type ColKey = keyof typeof t.instances.colHints;
 
 function HeadCell({ col, align = 'right' }: { col: ColKey | 'instance'; align?: 'left' | 'right' }) {
   const label = t.instances.cols[col];
   return (
-    <TableCell align={align} sx={{ whiteSpace: 'nowrap' }}>
+    <TableCell align={align} sx={{ whiteSpace: 'nowrap', ...(col === 'instance' ? STICKY : {}) }}>
       {col === 'instance' ? label : (
-        <Tooltip title={t.instances.colHints[col]} enterTouchDelay={0}>
-          <Box component="span" tabIndex={0} sx={{ borderBottom: 1, borderColor: 'divider', borderBottomStyle: 'dotted', cursor: 'help' }}>
-            {label}
-          </Box>
+        <Tooltip title={t.instances.colHints[col]} arrow describeChild enterTouchDelay={0}>
+          <Box component="span" tabIndex={0} sx={dottedHint}>{label}</Box>
         </Tooltip>
       )}
     </TableCell>
   );
 }
 
+/**
+ * % com limiar: o número fica na cor do texto (contraste de texto garantido) e o nível acima do "ok"
+ * ganha ícone colorido + nome do status para leitor de tela (nunca só cor).
+ */
 function PctCell({ value, threshold }: { value: number | null; threshold?: number }) {
   const status = threshold == null ? 'noData' : statusFor(value, threshold);
+  const level = status === 'warning' || status === 'critical' ? LEVEL[status] : null;
   return (
-    <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums', color: value == null ? 'text.secondary' : STATUS_COLOR[status] }}>
-      {formatPct(value)}
+    <TableCell
+      align="right"
+      sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', color: value == null ? 'text.secondary' : 'text.primary' }}
+    >
+      <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+        {level && (
+          <Box component="span" sx={(th) => ({ display: 'inline-flex', color: level.color(th.palette.mode === 'dark') })}>
+            <AppIcon icon={level.icon} label={t.instances.statusAria(t.status[status])} />
+          </Box>
+        )}
+        {formatPct(value)}
+      </Box>
     </TableCell>
   );
 }
 
 function MissingChip({ label, hint }: { label: string; hint: string }) {
   return (
-    <Tooltip title={hint} enterTouchDelay={0}>
+    <Tooltip title={hint} arrow describeChild enterTouchDelay={0}>
       <Chip size="small" variant="outlined" label={label} tabIndex={0} sx={{ ml: 1 }} />
     </Tooltip>
   );
@@ -52,13 +70,15 @@ function MissingChip({ label, hint }: { label: string; hint: string }) {
 interface Props {
   instances: OpsWorkerInstance[];
   thresholds?: OpsThresholds;
+  /** Motivo da lista vazia (`workerInstancesSection`): sem réplica agora × worker não configurado. */
+  emptyReason?: 'offline' | 'notConfigured';
 }
 
 /**
  * Uma linha por réplica viva do serviço worker (Render × batimento). Dado de infraestrutura: nome
  * curto da instância e números, sem tenant nem cliente, por isso sem flag de borrar.
  */
-export function WorkerInstancesTable({ instances, thresholds }: Props) {
+export function WorkerInstancesTable({ instances, thresholds, emptyReason = 'offline' }: Props) {
   const now = serverNow();
   return (
     <SectionCard
@@ -70,8 +90,8 @@ export function WorkerInstancesTable({ instances, thresholds }: Props) {
       {instances.length === 0 ? (
         <EmptyState
           icon={<AppIcon icon={Server} size="lg" />}
-          title={t.instances.empty}
-          description={t.instances.emptyHint}
+          title={emptyReason === 'notConfigured' ? t.instances.notConfigured : t.instances.empty}
+          description={emptyReason === 'notConfigured' ? t.instances.notConfiguredHint : t.instances.emptyOfflineHint}
           sx={{ py: 4 }}
         />
       ) : (
@@ -93,10 +113,14 @@ export function WorkerInstancesTable({ instances, thresholds }: Props) {
                 const seenIso = hb?.seenAt ?? r.sampledAt;
                 return (
                   <TableRow key={r.resource ?? `hb:${r.instance}`}>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      <Tooltip title={r.resource ?? hb?.workerId ?? r.instance}>
-                        <Typography component="span" variant="body2" sx={{ fontFamily: mono }}>{r.instance}</Typography>
-                      </Tooltip>
+                    <TableCell sx={{ whiteSpace: 'nowrap', ...STICKY }}>
+                      <OverflowTooltipText
+                        text={r.resource ?? hb?.workerId ?? r.instance}
+                        alwaysShow
+                        typographyProps={{ component: 'span', variant: 'body2', sx: { fontFamily: mono, display: 'inline-block', verticalAlign: 'middle' } }}
+                      >
+                        {r.instance}
+                      </OverflowTooltipText>
                       {!hb && <MissingChip label={t.instances.noHeartbeat} hint={t.instances.noHeartbeatHint} />}
                       {!r.resource && <MissingChip label={t.instances.noSample} hint={t.instances.noSampleHint} />}
                     </TableCell>
@@ -104,8 +128,8 @@ export function WorkerInstancesTable({ instances, thresholds }: Props) {
                     <PctCell value={r.memoryPct} threshold={thresholds?.memoryPct} />
                     <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                       {hb ? (
-                        <Tooltip title={t.instances.rss(hb.rssMb)}>
-                          <span>{t.instances.sessions(hb.sessions, hb.maxSessions)}</span>
+                        <Tooltip title={t.instances.rss(hb.rssMb)} arrow describeChild enterTouchDelay={0}>
+                          <Box component="span" tabIndex={0} sx={dottedHint}>{t.instances.sessions(hb.sessions, hb.maxSessions)}</Box>
                         </Tooltip>
                       ) : '—'}
                     </TableCell>
@@ -114,8 +138,10 @@ export function WorkerInstancesTable({ instances, thresholds }: Props) {
                     </TableCell>
                     <TableCell align="right" sx={{ whiteSpace: 'nowrap', color: 'text.secondary' }}>
                       {seenIso ? (
-                        <Tooltip title={new Date(seenIso).toLocaleString('pt-BR')}>
-                          <time dateTime={seenIso}>{formatRelativeTime(seenIso, now, t.header.justNow)}</time>
+                        <Tooltip title={formatDateTime(seenIso)} arrow describeChild enterTouchDelay={0}>
+                          <Box component="time" dateTime={seenIso} tabIndex={0} sx={dottedHint}>
+                            {formatRelativeTime(seenIso, now, t.header.justNow)}
+                          </Box>
                         </Tooltip>
                       ) : '—'}
                     </TableCell>

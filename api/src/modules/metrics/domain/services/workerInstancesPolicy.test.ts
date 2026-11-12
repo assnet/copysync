@@ -59,6 +59,17 @@ describe('matchWorkerInstances', () => {
     expect(out).toEqual([{ instance: 'cur01', resource: `${SVC}-cur01`, cpuPct: null, memoryPct: 40, sampledAt: ago(1), heartbeat: null }]);
   });
 
+  it('batimento ainda vivo da instância trocada por deploy sai junto com a amostra (sem linha órfã)', () => {
+    const out = matchWorkerInstances(
+      SVC,
+      [s('4lx97', 'cpu_pct', 90, ago(8)), s('cur01', 'cpu_pct', 20, ago(1))],
+      [hb('4lx97', { seenAt: ago(1.2) }), hb('cur01'), hb('new02')],
+    );
+    expect(out.map((r) => [r.instance, r.resource != null, r.heartbeat != null])).toEqual([
+      ['cur01', true, true], ['new02', false, true],
+    ]);
+  });
+
   it('valor mais novo por métrica vence', () => {
     const out = matchWorkerInstances(SVC, [s('a1b2c', 'cpu_pct', 5, ago(1.5)), s('a1b2c', 'cpu_pct', 9, ago(1))], []);
     expect(out[0].cpuPct).toBe(9);

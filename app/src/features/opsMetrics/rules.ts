@@ -1,7 +1,7 @@
 /** Regras puras da aba Consumo: janela, status vs limiar, delta de counter, alinhamento e formatação. */
 import type {
   OpsKind, OpsLatestValue, OpsRange, OpsResourceFilter, OpsSeries, OpsServerKind, OpsSeriesPoint, OpsStatus, OpsTopQuery, OpsWorker,
-  UsageFilters, WorkerChartView,
+  OpsWorkerInstance, UsageFilters, WorkerChartView,
 } from './types';
 
 const MIN = 60_000;
@@ -89,6 +89,38 @@ export function seriesPoints(series: OpsSeries[], metric: string, kind?: OpsKind
     }
   }
   return [...byAt.values()].sort((a, b) => a.at.localeCompare(b.at));
+}
+
+/** O que o bloco "Instâncias do worker" mostra. `empty.offline` = worker com dados, nenhuma réplica agora. */
+export type WorkerInstancesSection =
+  | { kind: 'hidden' }
+  | { kind: 'loading' }
+  | { kind: 'error' }
+  | { kind: 'empty'; reason: 'offline' | 'notConfigured' }
+  | { kind: 'table'; instances: OpsWorkerInstance[] };
+
+/**
+ * Decide o bloco "Instâncias do worker". Filtro sem o worker = some. Carregando = skeleton. `/latest`
+ * falhou = erro, se há sinal de worker (série/KPI) ou o filtro é só o worker. Sem instância atual:
+ * worker com dados = "nenhuma online agora"; filtro só no worker sem dado dele = "não configurado";
+ * senão some (instalação sem worker separado, filtro "todos").
+ */
+export function workerInstancesSection(input: {
+  resource: OpsResourceFilter;
+  loading: boolean;
+  latestFailed: boolean;
+  instances: OpsWorkerInstance[] | null | undefined;
+  hasWorkerData: boolean;
+}): WorkerInstancesSection {
+  const { resource, loading, latestFailed, instances, hasWorkerData } = input;
+  if (!resourceVisible(resource, 'worker_service')) return { kind: 'hidden' };
+  if (loading) return { kind: 'loading' };
+  const workerOnly = resource === 'worker_service';
+  if (latestFailed) return hasWorkerData || workerOnly ? { kind: 'error' } : { kind: 'hidden' };
+  if (!instances) return { kind: 'hidden' };
+  if (instances.length > 0) return { kind: 'table', instances };
+  if (hasWorkerData) return { kind: 'empty', reason: 'offline' };
+  return workerOnly ? { kind: 'empty', reason: 'notConfigured' } : { kind: 'hidden' };
 }
 
 export const WORKER_CHART_VIEWS: WorkerChartView[] = ['worst', 'instance'];

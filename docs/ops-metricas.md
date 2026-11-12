@@ -103,6 +103,8 @@ Duas rotas para a tela "Consumo" dentro de Workers. Mesmos hooks (`authHook` + `
   - Instância sem batimento (adoção desligada, processo subindo): `heartbeat = null`. Batimento sem amostra
     atual (réplica nova antes do 1º tick do sampler): `resource`/`cpuPct`/`memoryPct` nulos, `instance` = último
     segmento do host. Batimento fora do serviço (api `all`, `WORKER_ID` manual) é ignorado.
+  - Batimento cujo host traz o sufixo de uma instância descartada pelo corte de 2 min (trocada por deploy,
+    batimento ainda no TTL de 90 s) sai junto: não vira linha órfã "Sem amostra".
   - Sem `WORKER_SCALER_SERVICE_ID` válido no `http`: lista vazia (sem worker separado).
   - O batimento não guarda início do processo: a tela mostra "visto há", não uptime. Uptime exigiria coluna nova.
 
@@ -132,10 +134,14 @@ gráficos com `@mui/x-charts` 8.29.3 fixo, só no chunk lazy da aba.
   no `http` tudo segue em API. Nos gráficos de CPU e Memória de Servidores o Worker é a 2ª linha
   (3ª cor; pior instância por balde), separada da API.
 - **Instâncias do worker** (app 0.106.0, `WorkerInstancesTable.tsx`): tabela abaixo dos gráficos de Servidores,
-  uma linha por `workerInstances` (nome curto = sufixo, CPU %, RAM % com a cor do status pelo limiar, sessões/teto
+  uma linha por `workerInstances` (nome curto = sufixo, CPU %, RAM % com ícone + nome do status acima do limiar,
+  nunca só cor nem texto colorido, sessões/teto
   com RSS no tooltip, logins em andamento, "visto há" do batimento ou, sem ele, da amostra). Chips "Sem batimento"/
   "Sem amostra" marcam o lado que falta. Aparece e some com as réplicas (dado do `/latest` a cada 60 s); sem worker
   separado não aparece. Segue o filtro Recurso (some em API/Postgres). Sem flag de borrar: só id de infraestrutura.
+  Decisão em `workerInstancesSection` (`rules.ts`): skeleton carregando; `/latest` falhou = alerta; vazio com
+  dado do worker = "Nenhuma instância online agora"; vazio com filtro só Worker e nenhum dado = "Worker não
+  configurado". 1ª coluna fixa na rolagem horizontal; dicas com `describeChild` e foco por teclado.
 - **Worker nos gráficos** (alternância acima dos gráficos de Servidores, só com amostra do worker): "Pior instância"
   (padrão, comportamento anterior) × "Por instância" (uma linha por `resource` do `worker_service` no período,
   rotulada pelo sufixo; API e Postgres saem do gráfico para não passar de 3 cores; mais de 3 instâncias no período

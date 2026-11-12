@@ -16,6 +16,7 @@ import {
   cacheHitDomainMin, cacheHitStatus, counterPeriodTotal, counterRatePerMinute, countDomainMax, formatBytes, formatDateTime,
   currentValues, formatNumber, formatPct, hasHeartbeat, isStale, latestValue, newestSampleAt, parseUsageFilters, resourceCount, resourceVisible,
   seriesByResource, seriesPoints, statusFor, valueStats,
+  workerInstancesSection,
 } from '../rules';
 import { opsMetricsStrings as t } from '../strings';
 import type {
@@ -222,13 +223,15 @@ interface ViewInput {
   resource: OpsResourceFilter;
   colors: ReturnType<typeof chartColors>;
   workerView: WorkerChartView;
+  loading: boolean;
+  latestFailed: boolean;
 }
 
 /**
  * Tudo que os KPIs e os gráficos mostram, derivado só dos dados da API e do filtro de recurso.
  * Roda num `useMemo`: render por "buscando", anúncio ou relógio não reconstrói os 12 gráficos.
  */
-function buildUsageView({ latestRes, series, resource, colors, workerView }: ViewInput) {
+function buildUsageView({ latestRes, series, resource, colors, workerView, loading, latestFailed }: ViewInput) {
   const thresholds = latestRes?.thresholds;
   const latest = latestRes?.latest ?? [];
   const serversSeries = series.servers?.series ?? [];
@@ -266,6 +269,9 @@ function buildUsageView({ latestRes, series, resource, colors, workerView }: Vie
   const cpuWorkerN = resourceCount(latest, 'cpu_pct', 'worker_service');
   // Worker aparece quando há amostra dele: sem `WORKER_SCALER_SERVICE_ID` na API tudo segue em API.
   const hasWorker = memWorker.length + cpuWorker.length > 0 || ramWorkerV != null || cpuWorkerV != null;
+  const workerInstances = workerInstancesSection({
+    resource, loading, latestFailed, instances: latestRes?.workerInstances, hasWorkerData: hasWorker,
+  });
   const ramDbV = kpiValue('memory_pct', 'postgres', memDb);
   const cpuDbV = kpiValue('cpu_pct', 'postgres', cpuDb);
   const connPts = seriesPoints(dbSeries, 'db_connections');
@@ -458,7 +464,7 @@ function buildUsageView({ latestRes, series, resource, colors, workerView }: Vie
     tiles, cpu, mem, memExtras, renderMissingData, connAligned, connLines, connTotals, connEmpty, connExtras, connTable,
     idleTxPts, idleValues, idleAligned, idleLines, idleExtras, idleTable, cachePts, cacheAligned, cacheValues, cacheLines, cacheMin,
     cacheTable, commitAligned, commitRates, commitTable, rollbacks, deadlocks, tempBytes, heartbeat, rssByWorker,
-    loopByWorker, rssW, loopW, rssTable, loopTable, showWorker, hasWorker, byInstance,
+    loopByWorker, rssW, loopW, rssTable, loopTable, showWorker, hasWorker, byInstance, workerInstances,
   };
 }
 
@@ -483,8 +489,11 @@ export default function UsageTab({ headerSlot }: { headerSlot?: HTMLElement | nu
   const samplerActive = m.latest ? m.latest.samplerActive : null;
   const now = serverNow();
   const view = useMemo(
-    () => buildUsageView({ latestRes: m.latest, series: m.series, resource: filters.resource, colors, workerView }),
-    [m.latest, m.series, filters.resource, colors, workerView],
+    () => buildUsageView({
+      latestRes: m.latest, series: m.series, resource: filters.resource, colors, workerView,
+      loading: m.loading, latestFailed: m.errors.latest,
+    }),
+    [m.latest, m.series, filters.resource, colors, workerView, m.loading, m.errors.latest],
   );
 
   const onChange = (patch: Partial<UsageFilters>) => setFilters((f) => ({ ...f, ...patch }));
@@ -536,7 +545,7 @@ export default function UsageTab({ headerSlot }: { headerSlot?: HTMLElement | nu
     tiles, cpu, mem, memExtras, renderMissingData, connAligned, connLines, connTotals, connEmpty, connExtras, connTable,
     idleTxPts, idleValues, idleAligned, idleLines, idleExtras, idleTable, cachePts, cacheAligned, cacheValues, cacheLines, cacheMin,
     cacheTable, commitAligned, commitRates, commitTable, rollbacks, deadlocks, tempBytes, heartbeat, rssByWorker,
-    loopByWorker, rssW, loopW, rssTable, loopTable, showWorker, hasWorker, byInstance,
+    loopByWorker, rssW, loopW, rssTable, loopTable, showWorker, hasWorker, byInstance, workerInstances,
   } = view;
   const renderMissing = !loading && renderMissingData;
 
@@ -618,9 +627,21 @@ export default function UsageTab({ headerSlot }: { headerSlot?: HTMLElement | nu
           </MetricChartCard>
         </Grid>
       </Grid>
-      {showWorker && !loading && !m.errors.latest && m.latest && ((m.latest.workerInstances ?? []).length > 0 || hasWorker) && (
+      {workerInstances.kind !== 'hidden' && (
         <Box sx={{ mt: 2 }}>
-          <WorkerInstancesTable instances={m.latest.workerInstances ?? []} thresholds={thresholds} />
+          {workerInstances.kind === 'loading' ? (
+            <Skeleton variant="rounded" height={200} aria-label={t.instances.title} />
+          ) : workerInstances.kind === 'error' ? (
+            <Alert severity="error" action={<Button color="inherit" size="small" onClick={retry}>{t.retry}</Button>}>
+              {t.instances.error}
+            </Alert>
+          ) : (
+            <WorkerInstancesTable
+              instances={workerInstances.kind === 'table' ? workerInstances.instances : []}
+              emptyReason={workerInstances.kind === 'empty' ? workerInstances.reason : undefined}
+              thresholds={thresholds}
+            />
+          )}
         </Box>
       )}
 

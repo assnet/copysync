@@ -333,6 +333,30 @@ describe('Aba Consumo', () => {
       expect(within(table).queryByText('b2')).not.toBeInTheDocument();
     });
 
+    it('limiar na tabela: ícone com o nome do status, não só cor', async () => {
+      mockAll(INSTANCES_LATEST, workerSeries);
+      renderUsage();
+      const table = await screen.findByRole('table', { name: t.instances.tableAria });
+      const rows = within(table).getAllByRole('row').slice(1);
+      expect(within(rows[1]).getByRole('img', { name: t.instances.statusAria(t.status.warning) })).toBeInTheDocument();
+      expect(within(rows[0]).queryByRole('img', { name: /Status/ })).not.toBeInTheDocument();
+    });
+
+    it('worker com dados e nenhuma instância atual: "Nenhuma instância online agora"', async () => {
+      mockAll({ ...WORKER_LATEST, workerInstances: [] }, workerSeries);
+      renderUsage();
+      expect(await screen.findByText(t.instances.empty)).toBeInTheDocument();
+      expect(screen.getByText(t.instances.emptyOfflineHint)).toBeInTheDocument();
+      expect(screen.queryByText(t.instances.notConfigured)).not.toBeInTheDocument();
+    });
+
+    it('/latest falhou: alerta de erro no lugar da tabela (não some)', async () => {
+      mockAll(new Error('latest'), workerSeries);
+      renderUsage();
+      expect(await screen.findByText(t.instances.error)).toBeInTheDocument();
+      expect(screen.queryByRole('table', { name: t.instances.tableAria })).not.toBeInTheDocument();
+    });
+
     it('"Por instância": gráficos com uma linha por instância, escolha persistida', async () => {
       mockAll(INSTANCES_LATEST, workerSeries);
       renderUsage();

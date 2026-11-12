@@ -3,8 +3,9 @@ import {
   alignSeries, cacheHitDomainMin, cacheHitStatus, counterDeltas, counterPeriodTotal, countDomainMax, formatBytes,
   formatDuration, formatPct, isStale, latestValue, newestSampleAt, counterRatePerMinute, parseUsageFilters, querySharePct, rangeWindow, currentValues, resourceCount, resourceVisible,
   seriesPoints, shortQueryId, statusFor, instanceShortName, seriesByInstance, parseWorkerChartView,
+  workerInstancesSection,
 } from './rules';
-import type { OpsSeries, OpsSeriesPoint } from './types';
+import type { OpsSeries, OpsSeriesPoint, OpsWorkerInstance } from './types';
 
 const pt = (at: string, avg: number, min = avg, max = avg): OpsSeriesPoint => ({ at, avg, min, max });
 
@@ -203,5 +204,29 @@ describe('instâncias do worker', () => {
   it('visão persistida inválida cai em "pior instância"', () => {
     expect(parseWorkerChartView('instance')).toBe('instance');
     expect(parseWorkerChartView('x')).toBe('worst');
+  });
+});
+
+describe('workerInstancesSection', () => {
+  const inst: OpsWorkerInstance = { instance: 'a1', resource: 'srv-wk-a1', cpuPct: 1, memoryPct: 2, sampledAt: null, heartbeat: null };
+  const base = { resource: 'all' as const, loading: false, latestFailed: false, instances: [inst], hasWorkerData: true };
+  it('filtro sem o worker some; carregando = skeleton', () => {
+    expect(workerInstancesSection({ ...base, resource: 'api' })).toEqual({ kind: 'hidden' });
+    expect(workerInstancesSection({ ...base, loading: true })).toEqual({ kind: 'loading' });
+  });
+  it('com instâncias = tabela', () => {
+    expect(workerInstancesSection(base)).toEqual({ kind: 'table', instances: [inst] });
+  });
+  it('/latest falhou: erro com sinal de worker ou filtro só worker; senão some', () => {
+    expect(workerInstancesSection({ ...base, latestFailed: true, instances: null })).toEqual({ kind: 'error' });
+    expect(workerInstancesSection({ ...base, latestFailed: true, instances: null, hasWorkerData: false })).toEqual({ kind: 'hidden' });
+    expect(workerInstancesSection({ ...base, resource: 'worker_service', latestFailed: true, instances: null, hasWorkerData: false }))
+      .toEqual({ kind: 'error' });
+  });
+  it('sem instância atual: offline com dados do worker, não configurado só no filtro do worker', () => {
+    expect(workerInstancesSection({ ...base, instances: [] })).toEqual({ kind: 'empty', reason: 'offline' });
+    expect(workerInstancesSection({ ...base, instances: [], hasWorkerData: false })).toEqual({ kind: 'hidden' });
+    expect(workerInstancesSection({ ...base, resource: 'worker_service', instances: [], hasWorkerData: false }))
+      .toEqual({ kind: 'empty', reason: 'notConfigured' });
   });
 });
