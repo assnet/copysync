@@ -33,7 +33,7 @@ const chip = (selected: ReadonlyMap<string, SelectedGroup>, cat: BroadcastGroups
 };
 
 describe('chip de grupos do gerador pela união', () => {
-  beforeEach(() => sessionStorage.clear());
+  beforeEach(() => { sessionStorage.clear(); localStorage.clear(); });
 
   it('3 no gerador + 3 só no monitoramento: 6/10', () => {
     expect(chip(sel('g1', 'g2', 'g3'))).toBe('WhatsApp 6/10');

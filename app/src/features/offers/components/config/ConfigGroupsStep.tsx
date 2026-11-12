@@ -82,7 +82,7 @@ export function parseExcludeTerms(raw: string): string[] {
 /** Passo 2: grupos de todas as sessões, com busca, filtro por sessão, exclusão por palavra e contador × limite. */
 export function ConfigGroupsStep({ sessions, selected, limits, catalog, onToggle, onClear }: Props) {
   // Filtros sobrevivem a reload junto com o rascunho do assistente
-  const [filters, setFilters] = usePersistedState('offers.groupsFilters', { search: '', exclude: '', sessionFilter: null as string | null });
+  const [filters, setFilters] = usePersistedState('offers.groupsFilters', { search: '', exclude: '', sessionFilter: null as string | null }, { scope: 'device' });
   const { search, exclude, sessionFilter } = filters;
   const setSearch = (v: string) => setFilters((f) => ({ ...f, search: v }));
   const setExclude = (v: string) => setFilters((f) => ({ ...f, exclude: v }));

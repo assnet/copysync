@@ -9,6 +9,30 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — app 0.114.0 — rascunho do gerador de ofertas some no celular ao sair do navegador
+
+#### app
+
+- **`usePersistedState.ts`** — novo escopo `device` (localStorage com dono usuário + tenant, validade de 7 dias, leitura do valor antigo da aba) e `clearDevicePersisted()`. Causa: o escopo `tab` usa sessionStorage, que o navegador do celular descarta ao sair do app; no PC a restauração de abas o preservava.
+- **`OfferGeneratorForm.tsx`**, **`useOfferGenerator.ts`**, **`OfferConfigWizard.tsx`**, **`ConfigGroupsStep.tsx`**, **`OfferGeneratorPage.tsx`** — formulário, oferta aberta, assistente e filtros do gerador passam a `device`.
+- **`AuthContext.tsx`** — logout apaga os rascunhos `device` (não ficam para o próximo usuário do aparelho).
+
+**Migration Prisma**: não. **Breaking**: não.
+
+### Added — api 0.92.0 · app 0.113.0 — ordem de envio dos grupos e intervalo zerado no gerador
+
+#### api
+
+- **`offer_destinations.position`** / **`PrismaOfferGeneratorConfigRepository.ts`** — ordem dos grupos persistida e lida por posição (antes `createdAt`, indefinida). Intervalo 0–3600 s (`OfferGeneratorConfigUseCases.ts`, `offer.schema.ts`).
+
+#### app
+
+- **`OfferGroupOrderList.tsx`** (novo) / **`ConfigConfirmStep.tsx`** — passo Confirmar lista os grupos numerados (uma lista por sessão) com "Enviar antes"/"Enviar depois" e remover, como os grupos de disparo do monitoramento; grupo sem permissão de postar fica na lista com o selo.
+- **`OfferConfigWizard.tsx`** — `moveGroup` troca com o vizinho da mesma sessão no rascunho persistido.
+- **`offerConfig.ts`** / **`strings.ts`** — intervalo a partir de 0 ("Sem pausa"); termômetro de risco mantém a escala a partir de 1 min (`INTERVAL_RISK_FLOOR_SECONDS`).
+
+**Migration Prisma**: sim. **Breaking**: não.
+
 ### Added — app 0.112.0 — preço mensal fixo por modelo de IA
 
 #### app

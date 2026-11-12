@@ -36,7 +36,8 @@ export class PrismaOfferGeneratorConfigRepository implements IOfferGeneratorConf
     const rows = await this.prisma.offerDestination.findMany({
       // conversa também filtrada por tenant: defesa extra contra linha inconsistente
       where: { tenantId, conversation: { tenantId } },
-      orderBy: { createdAt: 'asc' },
+      // Ordem de envio escolhida no assistente; desempate estável para linhas antigas
+      orderBy: [{ position: 'asc' }, { createdAt: 'asc' }, { conversationId: 'asc' }],
       select: {
         conversationId: true,
         conversation: { select: { isGroup: true, groupName: true, groupAvatarUrl: true, sessionId: true, groupJid: true } },
@@ -71,7 +72,7 @@ export class PrismaOfferGeneratorConfigRepository implements IOfferGeneratorConf
         }),
         this.prisma.offerDestination.deleteMany({ where: { tenantId } }),
         this.prisma.offerDestination.createMany({
-          data: unique.map((conversationId) => ({ tenantId, conversationId })),
+          data: unique.map((conversationId, position) => ({ tenantId, conversationId, position })),
           skipDuplicates: true,
         }),
       ]);

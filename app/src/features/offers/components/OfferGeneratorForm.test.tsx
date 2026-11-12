@@ -3,7 +3,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { renderWithTheme } from '@/test/renderWithTheme';
 import { OfferGeneratorForm } from './OfferGeneratorForm';
 
-beforeEach(() => sessionStorage.clear());
+beforeEach(() => { sessionStorage.clear(); localStorage.clear(); });
 
 describe('OfferGeneratorForm sem "Reescrita com IA" no plano', () => {
   it('público salvo de IA vale como Padrão: demais travados com aviso e a geração envia STANDARD', async () => {

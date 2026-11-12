@@ -1,26 +1,27 @@
 import { useRef } from 'react';
-import { Alert, Box, Button, Chip, Divider, Stack, Tooltip, Typography } from '@mui/material';
-import { Clock, Lock, Moon } from 'lucide-react';
+import { Alert, Box, Button, Chip, Divider, Stack, Typography } from '@mui/material';
+import { Clock, Moon } from 'lucide-react';
 import { AppIcon, RangeSlider, postingWindowSummary, type PostingWindowValue } from '@/components';
-import { GroupChip } from '../GroupChip';
 import { Blurred, useBlur } from '@/features/privacy';
 import type { OfferDispatchOrder, SessionItem } from '@/types/api.types';
 import { offerStrings } from '../../strings';
 import { INTERVAL_MAX_SECONDS, INTERVAL_MIN_SECONDS, INTERVAL_STEP_SECONDS, intervalRisk, intervalValid } from '../../utils/offerConfig';
-import { isUnpostable, postBlockedText } from '../../utils/postBlocked';
+import { isUnpostable } from '../../utils/postBlocked';
 import type { SelectedGroup } from './ConfigGroupsStep';
 import { DispatchOrderPicker, sessionColor } from './DispatchOrderPicker';
+import { OfferGroupOrderList } from './OfferGroupOrderList';
 
 const t = offerStrings.wizard.confirm;
 const pb = offerStrings.postBlocked;
-const MAX_CHIPS = 12;
 
 interface Props {
   /** Na ordem de envio. */
   sessions: SessionItem[];
   groups: (SelectedGroup & { id: string })[];
-  /** Tira o grupo da seleção (usado nos grupos onde a sessão não posta). */
+  /** Tira o grupo da seleção. */
   onRemoveGroup: (id: string) => void;
+  /** Troca o grupo de lugar com o vizinho da mesma sessão (ordem de envio). */
+  onMoveGroup: (id: string, delta: -1 | 1) => void;
   intervalMin: number;
   intervalMax: number;
   onInterval: (min: number, max: number) => void;
@@ -32,23 +33,20 @@ interface Props {
 
 /** Passo 4: resumo (sessões na ordem, grupos por sessão, horário), intervalo entre envios e ordem com várias sessões. */
 export function ConfigConfirmStep({
-  sessions, groups, onRemoveGroup, intervalMin, intervalMax, onInterval, dispatchOrder, onDispatchOrder, postingWindow,
+  sessions, groups, onRemoveGroup, onMoveGroup, intervalMin, intervalMax, onInterval, dispatchOrder, onDispatchOrder, postingWindow,
 }: Props) {
   const schedule = postingWindowSummary(postingWindow);
   const invalid = !intervalValid(intervalMin, intervalMax);
   const risk = intervalRisk(intervalMin, intervalMax);
   const blurSession = useBlur('offers.sessionName');
-  // Sem permissão de postar: sempre à vista (fora do corte), com motivo e "Remover"
+  // Sem permissão de postar: na lista com selo e motivo; o alerta leva à 1ª linha
   const unpostable = groups.filter(isUnpostable);
-  const others = groups.filter((g) => !isUnpostable(g));
-  const shown = others.slice(0, MAX_CHIPS);
-  const rest = others.length - shown.length;
-  const firstUnpostableRef = useRef<HTMLDivElement>(null);
+  const firstUnpostableRef = useRef<HTMLLIElement>(null);
   const reviewGroups = () => {
     const el = firstUnpostableRef.current;
     el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     // Foco no "Remover" do 1º afetado: ação seguinte óbvia, com anel de foco visível
-    el?.querySelector('button')?.focus({ preventScroll: true });
+    el?.querySelector<HTMLButtonElement>('button[data-remove]')?.focus({ preventScroll: true });
   };
   const groupsPerSession = sessions.map((s) => groups.filter((g) => g.sessionId === s.id).length);
 
@@ -103,42 +101,8 @@ export function ConfigConfirmStep({
       </Box>
 
       <Box>
-        <Typography variant="caption" color="text.secondary" component="p" sx={{ mb: 1 }}>{t.groups}</Typography>
-        {unpostable.length > 0 && (
-          <Stack spacing={0.75} sx={{ mb: 1.25 }}>
-            {unpostable.map((g, i) => {
-              const reason = postBlockedText(g.postBlockedReason);
-              return (
-                <Box
-                  key={g.id}
-                  ref={i === 0 ? firstUnpostableRef : undefined}
-                  sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}
-                >
-                  <GroupChip title={g.title} avatarUrl={g.avatarUrl} untitled={offerStrings.wizard.groups.untitled} sx={{ maxWidth: 240 }} />
-                  {/* Selo + "Remover" juntos: no celular quebram para a linha de baixo lado a lado */}
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <Tooltip title={`${reason.long} ${pb.savedHint}`} arrow describeChild enterTouchDelay={0} leaveTouchDelay={4000}>
-                      <Chip
-                        size="small"
-                        color="warning"
-                        variant="outlined"
-                        icon={<AppIcon icon={Lock} size="sm" />}
-                        label={pb.savedChip}
-                        aria-label={`${pb.savedChip}: ${reason.short}`}
-                        tabIndex={0}
-                      />
-                    </Tooltip>
-                    <Button size="small" color="inherit" onClick={() => onRemoveGroup(g.id)} sx={{ minHeight: 44 }}>{t.removeGroup}</Button>
-                  </Box>
-                </Box>
-              );
-            })}
-          </Stack>
-        )}
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-          {shown.map((g, i) => <GroupChip key={`${g.title}-${i}`} title={g.title} avatarUrl={g.avatarUrl} untitled={offerStrings.wizard.groups.untitled} sx={{ maxWidth: 240 }} />)}
-          {rest > 0 && <Chip size="small" variant="outlined" label={t.more(rest)} />}
-        </Box>
+        <Typography variant="subtitle2">{t.groups}</Typography>
+        <OfferGroupOrderList ref={firstUnpostableRef} sessions={sessions} groups={groups} onMove={onMoveGroup} onRemove={onRemoveGroup} />
       </Box>
 
       <Box>
@@ -150,7 +114,6 @@ export function ConfigConfirmStep({
             min={INTERVAL_MIN_SECONDS}
             max={INTERVAL_MAX_SECONDS}
             step={INTERVAL_STEP_SECONDS}
-            minDistance={INTERVAL_STEP_SECONDS}
             ariaLabel={t.interval}
             minLabel={t.min}
             maxLabel={t.max}

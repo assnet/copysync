@@ -23,7 +23,7 @@ e `.specs/features/tenant-affiliate-link/` (link sempre do tenant; substitui GEN
 
 `GET/PUT /campaigns/offers/config` `{ sessionId, intervalMinSeconds, intervalMaxSeconds, conversationIds }`. Sessão do
 tenant; só grupos dessa sessão; total **por canal** (canal do grupo = engine da sessão dele) ≤ `broadcast_groups`
-(WhatsApp) / `telegram_broadcast_groups` (ausente = sem limite; `PLAN_LIMIT_REACHED` com `meta.key` do canal); 60 ≤ min ≤ max ≤ 3600 s (painel: 1–60 min inteiros; padrão 2–5 min). Config e destinos gravam numa transação. Os destinos usados no
+(WhatsApp) / `telegram_broadcast_groups` (ausente = sem limite; `PLAN_LIMIT_REACHED` com `meta.key` do canal); 0 ≤ min ≤ max ≤ 3600 s (painel: 0–60 min inteiros, 0 = sem pausa como no monitoramento; padrão 2–5 min; api 0.92.0). Config e destinos gravam numa transação. **Ordem dos grupos** (api 0.92.0 · app 0.113.0): a ordem de `conversationIds` é a ordem de envio dentro de cada sessão (`offer_destinations.position`, lida por `position`); o passo Confirmar do assistente lista os grupos numerados por sessão com setas (enviar antes/depois) e remover, como os grupos de disparo do monitoramento. Entre sessões vale `dispatchOrder`. Não ordenar por `createdAt` (a transação grava todos no mesmo instante). Os destinos usados no
 envio são os grupos da configuração **no momento do envio**. O limite de grupos conta a **união** com os
 monitoramentos (sessão + JID distintos; `usage` do GET idem); o envio só checa os próprios alvos.
 

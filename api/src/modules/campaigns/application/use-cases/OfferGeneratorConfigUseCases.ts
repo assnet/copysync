@@ -27,8 +27,8 @@ export const WHATSAPP_SESSIONS = ENTITLEMENT_KEYS.WHATSAPP_SESSIONS;
 /** Entitlement: 2+ sessões do MESMO canal disparando (Business). Ausente = bloqueado. */
 export const CROSS_SESSION_DISPATCH = ENTITLEMENT_KEYS.CROSS_SESSION_DISPATCH;
 export const OFFER_SESSIONS_HARD_MAX = 10;
-/** Intervalo entre grupos em segundos; o painel opera em minutos inteiros (1–60). */
-export const OFFER_INTERVAL_MIN_SECONDS = 60;
+/** Intervalo entre grupos em segundos; o painel opera em minutos inteiros (0–60, 0 = sem pausa, como no monitoramento). */
+export const OFFER_INTERVAL_MIN_SECONDS = 0;
 export const OFFER_INTERVAL_MAX_SECONDS = 3600;
 export const DEFAULT_INTERVAL = { min: 120, max: 300 } as const;
 /** Padrão do horário = comportamento anterior à janela: dia inteiro, todos os dias (PS-02). */
@@ -234,7 +234,7 @@ function validateInterval(min: number, max: number): void {
     Number.isInteger(v) && v >= OFFER_INTERVAL_MIN_SECONDS && v <= OFFER_INTERVAL_MAX_SECONDS;
   if (!ok(min)) {
     throw new OfferInvalidInputError(
-      `Interval must be ${OFFER_INTERVAL_MIN_SECONDS}–${OFFER_INTERVAL_MAX_SECONDS} s (1–60 min)`,
+      `Interval must be ${OFFER_INTERVAL_MIN_SECONDS}–${OFFER_INTERVAL_MAX_SECONDS} s (0–60 min)`,
       'intervalMinSeconds',
     );
   }

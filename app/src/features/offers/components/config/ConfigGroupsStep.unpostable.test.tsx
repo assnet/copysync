@@ -23,7 +23,7 @@ const renderStep = (onToggle = vi.fn()) =>
   render(<ConfigGroupsStep sessions={[session]} selected={new Map()} limits={limits} catalog={null} onToggle={onToggle} onClear={vi.fn()} />);
 
 describe('grupos onde a sessão não posta', () => {
-  beforeEach(() => sessionStorage.clear());
+  beforeEach(() => { sessionStorage.clear(); localStorage.clear(); });
 
   it('ligado (padrão): oculta e conta 1 oculto', () => {
     renderStep();
@@ -49,13 +49,14 @@ describe('grupos onde a sessão não posta', () => {
         sessions={[session]}
         groups={[{ id: 'c2', title: 'Só admins', avatarUrl: null, sessionId: 's1', canPost: false, postBlockedReason: 'ADMINS_ONLY' }]}
         onRemoveGroup={onRemove}
+        onMoveGroup={vi.fn()}
         intervalMin={300} intervalMax={600} onInterval={vi.fn()} dispatchOrder="SEQUENTIAL" onDispatchOrder={vi.fn()}
         postingWindow={{ window: { lo: 0, hi: 1440, overnight: false }, weekdaysMask: 127 }}
       />,
     );
     expect(screen.getByText(/1 grupo não vai receber envios/)).toBeTruthy();
     expect(screen.getByText('Envio bloqueado')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Remover' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remover da lista: Só admins' }));
     expect(onRemove).toHaveBeenCalledWith('c2');
   });
 
@@ -65,6 +66,7 @@ describe('grupos onde a sessão não posta', () => {
         sessions={[session]}
         groups={[{ id: 'c3', title: 'X', avatarUrl: null, sessionId: 's1', canPost: null, postBlockedReason: null }]}
         onRemoveGroup={vi.fn()}
+        onMoveGroup={vi.fn()}
         intervalMin={300} intervalMax={600} onInterval={vi.fn()} dispatchOrder="SEQUENTIAL" onDispatchOrder={vi.fn()}
         postingWindow={{ window: { lo: 0, hi: 1440, overnight: false }, weekdaysMask: 127 }}
       />,

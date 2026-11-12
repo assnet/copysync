@@ -33,6 +33,7 @@ async function opened() {
 
 beforeEach(() => {
   sessionStorage.clear();
+  localStorage.clear();
   vi.clearAllMocks();
   svc.usage.mockResolvedValue({ used: 0, limit: 10 });
   svc.generate.mockResolvedValue({ offer: base, needsManualData: false, aiFallback: false, linkRebuilt: false });

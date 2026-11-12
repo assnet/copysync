@@ -33,9 +33,9 @@ export function OfferGeneratorPage() {
   const gen = useOfferGenerator();
   const { offer } = gen;
   const form = useOfferDraft(offer);
-  const [wizardOpen, setWizardOpen] = usePersistedState('offers.wizardOpen', false);
+  const [wizardOpen, setWizardOpen] = usePersistedState('offers.wizardOpen', false, { scope: 'device' });
   // "+ Novo" com oferta aberta: o card de geração volta; a oferta atual só sai quando outra é gerada
-  const [composing, setComposing] = usePersistedState('offers.composing', false);
+  const [composing, setComposing] = usePersistedState('offers.composing', false, { scope: 'device' });
   const [editing, setEditing] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);

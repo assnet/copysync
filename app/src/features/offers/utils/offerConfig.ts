@@ -43,12 +43,14 @@ export const IMAGE_MODE_ICONS: Record<OfferImageMode, LucideIcon> = { MEDIA: Ima
 export const TYPING_SECONDS_MIN = 1;
 export const TYPING_SECONDS_MAX = 30;
 
-/** Espelha a validação da API: 60 ≤ min ≤ max ≤ 3600 s. O painel mostra minutos inteiros. */
-export const INTERVAL_MIN_SECONDS = 60;
+/** Espelha a validação da API: 0 ≤ min ≤ max ≤ 3600 s (0 = sem pausa, como no monitoramento). O painel mostra minutos inteiros. */
+export const INTERVAL_MIN_SECONDS = 0;
 export const INTERVAL_MAX_SECONDS = 3600;
 export const INTERVAL_STEP_SECONDS = 60;
 export const DEFAULT_INTERVAL = { min: 120, max: 300 } as const;
 
+/** Início da escala do termômetro: média ≤ 1 min (ou sem pausa) = alto risco. */
+export const INTERVAL_RISK_FLOOR_SECONDS = 60;
 /** Média do intervalo a partir da qual o termômetro considera o envio seguro. */
 export const INTERVAL_SAFE_MEAN_SECONDS = 600;
 
@@ -66,7 +68,7 @@ export interface IntervalRisk {
  */
 export function intervalRisk(minSeconds: number, maxSeconds: number): IntervalRisk {
   const mean = (minSeconds + maxSeconds) / 2;
-  const t = (mean - INTERVAL_MIN_SECONDS) / (INTERVAL_SAFE_MEAN_SECONDS - INTERVAL_MIN_SECONDS);
+  const t = (mean - INTERVAL_RISK_FLOOR_SECONDS) / (INTERVAL_SAFE_MEAN_SECONDS - INTERVAL_RISK_FLOOR_SECONDS);
   const score = Math.sqrt(Math.min(1, Math.max(0, t)));
   const level: IntervalRiskLevel = score < 0.25 ? 'high' : score < 0.5 ? 'elevated' : score < 0.75 ? 'moderate' : 'safe';
   return { score, level };

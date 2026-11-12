@@ -49,6 +49,13 @@ trabalho:
 
 - Escopo `tab` (sessionStorage) por padrão: sobrevive a reload, some ao fechar a aba. `browser`
   (localStorage) só para preferência duradoura (tema, menu recolhido, privacidade).
+- Escopo `device` (localStorage com dono e validade): rascunho que não pode se perder ao sair do
+  navegador. **No celular o sistema descarta a aba e o sessionStorage** quando o usuário sai do app;
+  no PC a restauração de abas esconde isso. O salvo leva usuário + tenant ativos (outra conta ou
+  tenant não vê), expira em 7 dias (`maxAgeMs`) e `clearDevicePersisted()` apaga tudo no logout
+  (`AuthContext`). Na 1ª leitura aproveita o valor antigo da aba (troca de escopo sem perder
+  rascunho). Usado no Gerador de ofertas (formulário, oferta aberta, assistente, filtros).
+  Nunca para preferência (use `browser`) nem para dado sensível além do que a tela já mostra.
 - Chave `tela.item` (o hook prefixa `ui.`); `version` quando a forma do estado mudar.
 - `clear()` ao concluir o fluxo (salvar, cancelar, "nova oferta"): rascunho velho não volta.
 - Map/Set: passe `serialize`/`deserialize` ou guarde como array de pares.
