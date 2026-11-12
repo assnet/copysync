@@ -5,15 +5,13 @@ import { PlansHero } from './PlansHero';
 import { plansStrings as t } from '../strings';
 
 describe('PlansHero', () => {
-  it.each(['light', 'dark'] as const)('mostra os 4 marketplaces integrados, Shein com selo MAX e Mercado Livre com selo de etiquetas (%s)', (mode) => {
+  it.each(['light', 'dark'] as const)('mostra os 4 marketplaces integrados, só Shein com selo (MAX) (%s)', (mode) => {
     renderWithTheme(<PlansHero period="monthly" onPeriodChange={vi.fn()} />, mode);
     const list = screen.getByRole('list', { name: t.hero.marketplaces });
     const items = within(list).getAllByRole('listitem');
-    expect(items.map((li) => within(li).getAllByText(/./)[0].textContent)).toEqual(['Shopee', t.hero.mercadoLivreTagsTooltip, 'Amazon', t.hero.sheinTooltip]);
+    expect(items.map((li) => within(li).getAllByText(/./)[0].textContent)).toEqual(['Shopee', 'Mercado Livre', 'Amazon', t.hero.sheinTooltip]);
     expect(within(items[3]).getByText(t.hero.sheinPlan)).toBeInTheDocument();
-    expect(within(items[1]).getByText(t.hero.mercadoLivreTagsPlan)).toBeInTheDocument();
-    expect(within(items[1]).getByText(t.hero.mercadoLivreTagsTooltip)).toBeInTheDocument();
-    expect(within(items[0]).queryByText(t.hero.sheinPlan)).toBeNull();
-    expect(within(items[2]).queryByText(t.hero.mercadoLivreTagsPlan)).toBeNull();
+    for (const i of [0, 1, 2]) expect(within(items[i]).queryByText(t.hero.sheinPlan)).toBeNull();
+    expect(screen.queryByText('PRO+')).toBeNull();
   });
 });

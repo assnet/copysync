@@ -13,10 +13,12 @@ const visuallyHidden = {
   position: 'absolute', width: '1px', height: '1px', p: 0, m: '-1px', overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
 } as const;
 
-/** Selo por marketplace no banner (texto de marketing do plano); provider sem entrada não tem selo. */
+/**
+ * Selo por marketplace no banner: só para o que é exclusivo de um plano (Shein = MAX). Marketplace
+ * liberado em todos os planos não leva selo, mesmo com limite diferente (ex.: etiquetas do ML).
+ */
 const PROVIDER_SEAL: Partial<Record<AffiliateProvider, { label: string; tooltip: string }>> = {
   SHEIN: { label: t.hero.sheinPlan, tooltip: t.hero.sheinTooltip },
-  MERCADO_LIVRE: { label: t.hero.mercadoLivreTagsPlan, tooltip: t.hero.mercadoLivreTagsTooltip },
 };
 
 export function ctaGradient(theme: Theme): string {

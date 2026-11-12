@@ -12,6 +12,17 @@ const url = buildCheckoutUrl('max', 'annual', '', PLAN_CATALOG, { email: 'ana@x.
 afterEach(() => vi.restoreAllMocks());
 
 describe('PlanCard', () => {
+  it.each(['light', 'dark'] as const)('benefício de marketplace mostra os logos: 3 no LITE, Shein no MAX (%s)', (mode) => {
+    const lite = PLAN_CATALOG.find((p) => p.slug === 'lite')!;
+    const { unmount } = renderWithTheme(<PlanCard plan={lite} period="monthly" getCheckoutUrl={() => url} />, mode);
+    expect(screen.getByText('Shopee, Mercado Livre e Amazon')).toBeInTheDocument();
+    expect(screen.getByTestId('plan-benefit-marketplaces').querySelectorAll('img')).toHaveLength(3);
+    unmount();
+    renderWithTheme(<PlanCard plan={max} period="monthly" getCheckoutUrl={() => url} />, mode);
+    const logos = screen.getByTestId('plan-benefit-marketplaces').querySelectorAll('img');
+    expect(Array.from(logos, (img) => img.getAttribute('src'))).toEqual(['/assets/marketplaces/shein.svg']);
+  });
+
   it.each(['light', 'dark'] as const)('"Assinar" é botão sem href, com nome acessível de nova aba (%s)', (mode) => {
     renderWithTheme(<PlanCard plan={max} period="annual" getCheckoutUrl={() => url} />, mode);
     const button = screen.getByRole('button', { name: t.card.ctaNewTab(max.name) });

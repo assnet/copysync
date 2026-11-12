@@ -10,6 +10,27 @@ import { AFFILIATE_PROVIDERS } from '@/features/settings/affiliateProviders';
 import { MarketplaceLogo } from '@/features/settings/components/MarketplaceLogo';
 
 const ML_LOGO = AFFILIATE_PROVIDERS.find((p) => p.provider === 'MERCADO_LIVRE')?.logo;
+const MARKETPLACE_LOGO = new Map(AFFILIATE_PROVIDERS.map((p) => [p.provider, p.logo]));
+
+/** Logos sobrepostos (decorativos): o anel na cor do papel separa um do outro nos dois temas. */
+function MarketplaceLogos({ providers }: { providers: NonNullable<PlanBenefit['marketplaces']> }) {
+  return (
+    <Box aria-hidden data-testid="plan-benefit-marketplaces" sx={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+      {providers.map((provider, i) => {
+        const src = MARKETPLACE_LOGO.get(provider);
+        return src ? (
+          <MarketplaceLogo
+            key={provider}
+            src={src}
+            size={26}
+            round
+            sx={{ ml: i ? '-7px' : 0, zIndex: providers.length - i, boxShadow: (theme) => `0 0 0 2px ${theme.palette.background.paper}` }}
+          />
+        ) : null;
+      })}
+    </Box>
+  );
+}
 
 interface Props {
   plan: PlanCatalogItem;
@@ -107,6 +128,8 @@ function BenefitRow({ benefit, accent }: { benefit: PlanBenefit; accent: string 
   const theme = useTheme();
   if (benefit.featureName) return <FeatureRow benefit={benefit} />;
   const channelColor = benefit.channel ? brandColor(benefit.channel, theme.palette.mode) : null;
+  const marketplaces = benefit.marketplaces?.length ? benefit.marketplaces : null;
+  const isDark = theme.palette.mode === 'dark';
   const row = (
     <Box
       component="li"
@@ -118,12 +141,22 @@ function BenefitRow({ benefit, accent }: { benefit: PlanBenefit; accent: string 
           bgcolor: alpha(channelColor, theme.palette.mode === 'dark' ? 0.14 : 0.08),
           border: 1, borderColor: alpha(channelColor, 0.3),
         }),
+        // Marketplaces: faixa neutra com os logos; as cores vêm das próprias marcas
+        ...(marketplaces && {
+          mx: -1, px: 1, py: 0.75, borderRadius: 1.5, alignItems: 'center', gap: 1.25,
+          bgcolor: alpha(theme.palette.text.primary, isDark ? 0.06 : 0.035),
+          border: 1, borderColor: 'divider',
+        }),
       }}
     >
-      <Box sx={{ color: channelColor ?? accent, mt: '3px', display: 'flex' }}>
-        <AppIcon icon={benefit.channel ? CHANNEL_LOGO[benefit.channel] : Check} size="sm" strokeWidth={3} />
-      </Box>
-      <Typography component="div" variant="body2" sx={{ fontWeight: benefit.strong || benefit.channel ? 700 : 400, color: benefit.strong || benefit.channel ? 'text.primary' : 'text.secondary', lineHeight: 1.45, flex: 1 }}>
+      {marketplaces ? (
+        <MarketplaceLogos providers={marketplaces} />
+      ) : (
+        <Box sx={{ color: channelColor ?? accent, mt: '3px', display: 'flex' }}>
+          <AppIcon icon={benefit.channel ? CHANNEL_LOGO[benefit.channel] : Check} size="sm" strokeWidth={3} />
+        </Box>
+      )}
+      <Typography component="div" variant="body2" sx={{ fontWeight: benefit.strong || benefit.channel || marketplaces ? 700 : 400, color: benefit.strong || benefit.channel || marketplaces ? 'text.primary' : 'text.secondary', lineHeight: 1.45, flex: 1 }}>
         {benefit.label}
         {benefit.exclusive && (
           <Chip label={t.card.exclusive} size="small" color="secondary" variant="outlined" sx={{ ml: 1, height: 18, fontSize: 10, fontWeight: 700, verticalAlign: 'middle' }} />
@@ -135,7 +168,7 @@ function BenefitRow({ benefit, accent }: { benefit: PlanBenefit; accent: string 
         )}
       </Typography>
       {benefit.hint && (
-        <Box sx={{ color: 'text.disabled', display: 'flex', mt: '3px' }}>
+        <Box sx={{ color: 'text.disabled', display: 'flex', mt: marketplaces ? 0 : '3px' }}>
           <AppIcon icon={Info} size="sm" />
         </Box>
       )}

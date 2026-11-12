@@ -60,9 +60,6 @@ export const plansStrings = {
     /** Selo da Shein no banner: igual ao `exclusive` do MAX em `catalog.ts`. */
     sheinPlan: 'MAX',
     sheinTooltip: 'Shein: disponível no plano MAX',
-    /** Selo do Mercado Livre no banner: mais de uma etiqueta a partir do PRO (LITE tem 1). */
-    mercadoLivreTagsPlan: 'PRO+',
-    mercadoLivreTagsTooltip: 'Mercado Livre: várias etiquetas de afiliado no PRO e MAX',
   },
 
   period: {

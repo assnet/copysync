@@ -70,9 +70,13 @@ regra: o preço nunca vai à API; tenant sem plano do catálogo fica sem margem.
 - **Linha do card**: não é limite por canal, então fica fora da `ChannelLimitsTable`: linha própria do `PlanCard`
   logo abaixo da tabela (`MercadoLivreTagsRow`, logo do ML, "Etiquetas do Mercado Livre: N etiqueta(s)", Tooltip
   `strings.mercadoLivreTags.hint`). O número **não** se repete em `benefits`.
-- **Selos por marketplace no banner** (`PlansHero.tsx`): mapa `PROVIDER_SEAL` provider → `{ label, tooltip }`. Shein =
-  `hero.sheinPlan`; Mercado Livre = "PRO+" (`hero.mercadoLivreTagsPlan`, tooltip `mercadoLivreTagsTooltip`).
-  Marketplace novo com selo entra no mapa, não em booleano por provider.
+- **Selos por marketplace no banner** (`PlansHero.tsx`): mapa `PROVIDER_SEAL` provider → `{ label, tooltip }`. Só
+  marketplace **exclusivo** de um plano leva selo (Shein = `hero.sheinPlan`, MAX). Mercado Livre está em todos os
+  planos: **não** leva selo, mesmo com mais etiquetas no PRO/MAX (selo "PRO+" removido: dava a entender que o ML era
+  pago à parte). Marketplace novo com selo entra no mapa, não em booleano por provider.
+- **Logos nos benefícios** (`PlanBenefit.marketplaces` em `catalog.ts`): o `PlanCard` troca o check pelos logos
+  sobrepostos (`MarketplaceLogos`, decorativos, nome no `label`) numa faixa neutra. LITE = Shopee, Mercado Livre e
+  Amazon; MAX = Shein no "Afiliado Shein". Logo vem de `AFFILIATE_PROVIDERS`, nunca caminho solto.
 - `/affiliates/plans?feature=mercadoLivreTags` mostra o aviso `featureNotice.mercadoLivreTags`.
 - **Aviso de upgrade com vários planos**: `PlanLimitKind` `mercadoLivreTags`; `UPSELL_CONFIG` em `planUpsell.ts`
   (`listAll`, `feature`) faz o `PlanLimitBanner` listar **todos** os planos acima (`plansAbove`: LITE → PRO e MAX) e o

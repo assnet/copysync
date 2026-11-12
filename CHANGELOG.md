@@ -9,6 +9,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Changed
+
+#### app — vitrine de planos (app 0.114.1)
+
+- **`PlansHero.tsx`** / **`strings.ts`** — remove o selo "PRO+" do Mercado Livre no banner: o ML está em todos os planos e o selo sugeria o contrário. Só a Shein (exclusiva do MAX) mantém selo.
+- **`catalog.ts`** / **`PlanCard.tsx`** — novo campo `PlanBenefit.marketplaces`: benefício de marketplace mostra os logos sobrepostos no lugar do check (LITE: Shopee, Mercado Livre e Amazon; MAX: Shein).
+
 ### Fixed — api 0.92.1 — link Shein compartilhado pelo app dava "Link não suportado"
 
 #### api

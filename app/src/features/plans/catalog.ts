@@ -6,6 +6,7 @@
  * este arquivo fica só com o texto de vitrine. Nenhum cálculo de desconto ou cupom aqui.
  */
 
+import type { AffiliateProvider } from '@/types/api.types';
 import { TELEGRAM_LINK_ROTATION_LABEL, linkRotationLimitLabel } from './strings';
 
 export type PlanSlug = 'lite' | 'pro' | 'max';
@@ -30,6 +31,8 @@ export interface PlanBenefit {
   featureName?: string;
   /** Ícone do bloco do recurso: `sessions` = setas (Cross Session); `channels` = logos WhatsApp + Telegram. */
   featureIcon?: 'sessions' | 'channels';
+  /** Marketplaces do benefício: logos no lugar do check (decorativos; o nome vem no `label`). */
+  marketplaces?: AffiliateProvider[];
 }
 
 export interface PlanCatalogItem {
@@ -134,7 +137,7 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
       { label: 'Disparo em massa com agendamento de horários' },
       { label: 'Gerador de ofertas' },
       { label: 'Envio "digitando…" antes de cada oferta', hint: PLAN_HINTS.typing },
-      { label: 'Shopee, Amazon e Mercado Livre' },
+      { label: 'Shopee, Mercado Livre e Amazon', marketplaces: ['SHOPEE', 'MERCADO_LIVRE', 'AMAZON'] },
       { label: 'Suporte 24/7 e aulas em vídeo' },
     ],
     fit: 'quem está começando ou mantém uma operação enxuta.',
@@ -197,7 +200,7 @@ export const PLAN_CATALOG: readonly PlanCatalogItem[] = [
       { label: STOREFRONT_BENEFIT_LABEL, hint: PLAN_HINTS.storefront },
       { label: 'Captura fora do horário de postagem', hint: PLAN_HINTS.captureOutsideWindow, exclusive: true },
       { label: 'Template para Instagram', exclusive: true },
-      { label: 'Afiliado Shein', hint: PLAN_HINTS.sheinAffiliate, exclusive: true },
+      { label: 'Afiliado Shein', hint: PLAN_HINTS.sheinAffiliate, exclusive: true, marketplaces: ['SHEIN'] },
       { label: 'Suporte exclusivo 24/7' },
     ],
     fit: 'equipes e operações com mais de um número ou nicho.',
