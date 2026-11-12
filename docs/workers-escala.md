@@ -143,7 +143,7 @@ Envs (nos serviços `http` **e** `worker`: as rotas rodam no `http`, o job da P4
 
 | Env | Default | Uso |
 |---|---|---|
-| `WORKER_SCALER_ENABLED` | `false` | kill switch (D8). Saída da P3/P4 com `false` (D10); ligar só depois do T25 |
+| `WORKER_SCALER_ENABLED` | `false` | kill switch (D8). Saída da P3/P4 com `false` (D10); T25 feito em 2026-11-12 (ver Escala) |
 | `WORKER_SCALER_SERVICE_ID` | vazio | `srv-…` do Private Service `worker`. Fora de `^srv-[a-z0-9]+$` conta como ausente (1 `warn` sem o valor), não derruba o boot |
 | `RENDER_API_KEY` | vazio | a mesma da Metrics API; passa a existir também no `http` quando o escalador for ligado |
 
@@ -214,8 +214,12 @@ no header.
 - `GET /scale`: estado do escalador em cache de 30 s por processo (`WorkerScalerStateCache`); o `POST` lê ao vivo e
   invalida o cache em `finally` (aceito ou recusado). O cache só alimenta a tela, nunca decisão.
 - Descida só manual (D4); a Render escolhe qual instância encerra (`SIGTERM` + grace).
-- **T25 pendente (dono)**: smoke real num Private Service de teste na Render (subir 1→2, reduzir 2→1, `SIGTERM`,
-  `maxShutdownDelaySeconds`). Obrigatório antes de ligar `WORKER_SCALER_ENABLED` em produção; resultado anotado aqui.
+- **T25 feito em produção (2026-11-12)**, no próprio `copysync_worker`, modo manual, teto 37:
+  - Subida 1→2 às 04:48 UTC (`succeeded`): a 2ª réplica adotou sessões órfãs sem QR.
+  - Redução 2→1 pedida às 10:53:42 UTC (`succeeded`). A réplica encerrada drenou e soltou as 9 sessões dela
+    (`DISCONNECTED`, sem dono) antes de 10:54:46. A que ficou readotou todas até 10:55:49: 19/19 `CONNECTED`,
+    nenhuma em QR, ~1 min sem conexão para as sessões da réplica encerrada.
+  - Leitura só no banco (`sessions.ownerWorkerId`/`status`, `worker_scale_events`).
 
 ## Automático (P4)
 
