@@ -33,8 +33,15 @@ processo (ou sem dono vivo). Com um único processo `all`, nada muda. Spec: `.sp
 - **`infrastructure/repositories/PrismaSessionRepository.ts`**, **`domain/contracts/ISessionRepository.ts`** — `markDisconnectedUnlessLeasedElsewhere` (condição de dono no próprio `UPDATE`) e `findWithInactiveTenant`; testes de integração com `TimeZone` ≠ UTC.
 - **`infrastructure/jobs/InactiveTenantSessionSweepJob.ts`**, **`app/processJobs.ts`**, **`app/server.ts`** — job `inactiveTenantSweep` (`worker`/`all`, tick 30 s) desconecta as sessões locais de tenant ≠ `ACTIVE`, cobrindo a suspensão detectada em outro processo.
 - **`app/sessionBootOrder.ts`**, **`app/server.ts`** — keeper do lease inicia antes do bootstrap das sessões: bootstrap longo não deixa o lease das primeiras sessões vencer.
+- **`infrastructure/repositories/PrismaSessionRepository.ts`** — `markDisconnectedUnlessLeasedElsewhere` também exige, no próprio `UPDATE`, tenant ainda ≠ `ACTIVE` (tenant reativado entre a leitura e a desconexão não derruba o socket novo) e sessão ainda ≠ `DISCONNECTED` (listener × varredura não repetem desconexão nem auditoria), salvo `DISCONNECTED` com lease vivo do próprio processo (status gravado pelo `http` cujo comando de disconnect não chegou: a varredura do dono derruba o socket).
+- **`infrastructure/jobs/InactiveTenantSessionSweepJob.ts`**, **`PrismaSessionRepository.findOrphanedWithInactiveTenant`** — ponto cego: sessão de tenant ≠ `ACTIVE` com dono morto (lease nulo/vencido) e status ativo não era varrida por ninguém. A varredura agora pega também essas (até 100 por tick) e aplica a mesma desconexão.
 
 ### Known issues
+
+- **`WORKER_ID`** — nunca igual em dois processos (nunca em env compartilhada; o padrão gera id único por boot). Id igual: o filtro do dono não exclui nada e o incidente volta.
+- **Gestor de Links** — sessão `CONNECTED` sem lease vivo (dono morto, fence) fica sem sync de membros até alguém adotá-la; o sync volta sozinho com o novo dono.
+- **Papel `http`** — a suspensão grava `DISCONNECTED` e manda o `disconnect` ao dono pela fila; se o comando falhar, a varredura do dono corrige em ≤ 30 s.
+- **Deploy** — por alguns minutos o processo antigo (lease global `link-rotation-member-sync`) e o novo (lease por processo) podem sincronizar os mesmos grupos: leitura dobrada passageira, sem efeito em dados.
 
 - **`PrismaOfferDispatchRepository.claimDue`** — compara `notBefore` (`timestamp` sem fuso) com parâmetro `timestamptz`: com conexão em fuso a oeste de UTC o envio atrasa pelo fuso. Latente (banco da Render em UTC); fora do escopo.
 

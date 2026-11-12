@@ -25,7 +25,7 @@ describe('bootSessionsWithKeeper (OWN-08)', () => {
     expect(boot).toHaveBeenCalledTimes(1);
   });
 
-  it('keeper ligado mesmo se o bootstrap falhar', async () => {
+  it('falha do bootstrap propaga depois de ligar o keeper', async () => {
     const start = vi.fn();
     await expect(bootSessionsWithKeeper({ start }, async () => { throw new Error('boom'); })).rejects.toThrow('boom');
     expect(start).toHaveBeenCalledTimes(1);

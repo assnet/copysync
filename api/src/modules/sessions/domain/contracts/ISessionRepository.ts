@@ -54,9 +54,17 @@ export interface ISessionRepository {
   /**
    * OWN-04: grava `DISCONNECTED` (com `lastDisconnectedAt` e `connectRequestedAt = null`) só se a
    * sessão do tenant, não excluída, não tem lease vivo de outro processo (sem dono, lease vencido ou
-   * dono = `workerId`), no relógio do banco. Devolve se gravou.
+   * dono = `workerId`), no relógio do banco. Só se o tenant ainda não está `ACTIVE` (reativado no
+   * meio não derruba o socket novo) e a sessão ainda não está `DISCONNECTED` (sem auditoria
+   * repetida), salvo `DISCONNECTED` com lease vivo de `workerId` (status gravado pelo `http`, comando
+   * de disconnect não chegou ao dono). Devolve se gravou.
    */
   markDisconnectedUnlessLeasedElsewhere(id: string, tenantId: string, workerId: string): Promise<boolean>;
+  /**
+   * Sessões não excluídas de tenant não `ACTIVE`, em status ativo e sem dono vivo (lease nulo ou
+   * vencido, relógio do banco): ninguém as varre. Até `limit` (padrão 100).
+   */
+  findOrphanedWithInactiveTenant(limit?: number): Promise<Array<{ id: string; tenantId: string }>>;
   /**
    * Dentre `sessionIds` (as locais do processo), as não excluídas cujo tenant não está `ACTIVE`.
    * Lista vazia não consulta o banco.

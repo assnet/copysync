@@ -283,7 +283,9 @@ do desenho abaixo:
   `all` ganhou `role`. Worker também drena a fila de mídia antes dos sockets (D8). `http` em 1 réplica (D5).
 - `TENANT_SUSPENDED`: listener em todo papel; no `http` o `disconnect` vai ao dono pela fila. Desde a api 0.85.1 o
   listener só grava status e desconecta sessões **deste processo ou sem dono vivo**; sessão com lease vivo de outro
-  processo fica para a varredura `inactiveTenantSweep` do dono (tabela abaixo).
+  processo fica para a varredura `inactiveTenantSweep` do dono (tabela abaixo). No `http` (sem `ownerWorkerId`) a
+  suspensão grava `DISCONNECTED` e manda o `disconnect` ao dono pela fila; se o comando falhar, a varredura do dono
+  corrige em ≤ 30 s.
 - Decidido (dono, 2026-11-04): timeout do comando de texto fica em 60 s (mídia 300 s); RPC segue 10 s.
 - Pendente: sessão real (QR lido, código, envio, recebimento, grupos) não testada no smoke.
 
@@ -292,6 +294,13 @@ Mesmo código, três modos de boot via `PROCESS_ROLE=http|worker|all`:
 - `http`: Fastify, rotas, WS/SSE, upload. Não instancia engine. Não adota sessão.
 - `worker`: Fastify só com `/health` numa porta interna; adoção (§3.2), consome fila.
 - `all`: comportamento atual (dev e instalação pequena), com o teto de §3.2 se a flag ligar.
+
+**`WORKER_ID` nunca igual em dois processos.** Nunca pôr `WORKER_ID` em env compartilhada (Environment Group, blueprint
+comum a `http`/`worker`); o padrão (vazio) gera id único por boot. Dois processos com o mesmo id se veem como "eu": o
+filtro do dono não exclui nada e o incidente de 2026-11-11 volta.
+
+**Gestor de Links × dono morto.** Sessão `CONNECTED` sem lease vivo (dono morreu, fence) não entra no `listDue` de
+ninguém: fica sem sync de membros até ser adotada; o sync volta sozinho com o novo dono.
 
 **Dono de cada job de boot** (papel em `app/processJobs.ts`). Regra desde a api 0.85.1 (spec `.specs/features/owner-scoped-jobs/`):
 job que usa a engine só trabalha com sessões cujo lease vivo é **deste** processo (ou sem dono vivo, quando o job
@@ -305,8 +314,8 @@ envio pego por quem não tem o socket (incidente de 2026-11-11, §5.1).
 | `HubOutboxWorker` (`HUB_EVENTS_ENABLED` + `HUB_EVENTS_CONFIGURED`), `ExtensionRetentionJob` | `worker` | já seguros: `PrismaHubOutboxRepository` usa `SKIP LOCKED`; `ExtensionRetentionJob` usa `pg_try_advisory_lock` (não copiar como modelo: `$queryRaw` no pool pode dar `unlock` em outra conexão; preferir `JobLease`) |
 | reconcile de billing (`ReconcileSubscriptionsUseCase`, `BILLING_ENABLED`, `BILLING_RECONCILE_INTERVAL_MS`) | `worker` | já usa `JobLease` (`BILLING_RECONCILE_LEASE_TTL_MS`) |
 | Gestor de Links (`LINK_ROTATION_MEMBER_SYNC_ENABLED`) | `worker` | `JobLease` **por processo** `link-rotation-member-sync:<workerId>`; `listDue` só traz grupos das **próprias** sessões (lease vivo deste processo); o tick apaga leases do prefixo vencidos há mais de 1 dia; teto de 50 chamadas/min por processo ([`rodizio-de-links.md`](rodizio-de-links.md)). Nunca voltar ao lease global |
-| `inactiveTenantSweep` (`InactiveTenantSessionSweepJob`) | `worker`/`all` (nunca `http`) | sem lease: tick de 30 s só sobre as sessões **locais** (`listLocal`); desconecta as de tenant ≠ `ACTIVE` (`findWithInactiveTenant`). Cobre a suspensão detectada em outro processo; sem socket local não consulta o banco |
-| listener `TENANT_SUSPENDED` (`TenantSuspendedSessionListener`) | todos | grava status/desconecta só sessão deste processo ou sem dono vivo (`markDisconnectedUnlessLeasedElsewhere`, condição no próprio `UPDATE`); nunca toca sessão com lease vivo de outro processo |
+| `inactiveTenantSweep` (`InactiveTenantSessionSweepJob`) | `worker`/`all` (nunca `http`) | sem lease: tick de 30 s sobre as sessões **locais** (`listLocal`, `findWithInactiveTenant`) e as **sem dono vivo** (lease nulo/vencido, status ativo; `findOrphanedWithInactiveTenant`, até 100) de tenant ≠ `ACTIVE`. Cobre a suspensão detectada em outro processo e a sessão cujo dono morreu (sem isso ninguém a varria). Vários processos podem achar a mesma sessão sem dono: o `UPDATE` decide quem desconecta |
+| listener `TENANT_SUSPENDED` (`TenantSuspendedSessionListener`) | todos | grava status/desconecta só sessão deste processo ou sem dono vivo (`markDisconnectedUnlessLeasedElsewhere`, condição no próprio `UPDATE`); nunca toca sessão com lease vivo de outro processo. O mesmo `UPDATE` exige tenant ainda ≠ `ACTIVE` (reativado no meio não derruba o socket novo) e sessão ainda ≠ `DISCONNECTED` (listener × varredura não repetem desconexão nem auditoria), salvo `DISCONNECTED` com lease vivo do próprio processo (o `http` gravou o status e o comando de disconnect, que solta o lease, não chegou) |
 | keeper do lease (`leaseKeeper`) | `worker`/`all` | inicia **antes** do bootstrap das sessões (`app/sessionBootOrder.ts`): bootstrap longo não deixa lease das primeiras sessões vencer |
 | `WorkerAutoscalerJob` (`workerAutoscaler`; age só com `scalerMode = auto`, limpeza de `worker_scale_events` em todo modo) | `worker`/`all` | `JobLease` `worker-autoscaler` (tick), `worker-autoscaler:rejected:<código>` (1 h, não solto) e `worker-autoscaler:cleanup` (24 h, não solto) |
 | `markActiveSessionsAsDisconnected()` no boot (só com `SESSION_BOOTSTRAP_ON_STARTUP=false`) | `worker`, só sessões sem lease válido | — |
@@ -495,6 +504,10 @@ Envs de papel e adoção (`api/src/shared/config/env.ts`; nunca no `api/.env` lo
   2026-11-11: o 1º worker (Private Service, `PROCESS_ROLE=worker`) subiu ao lado da api `all`, pegou envios de
   oferta de sessões da api e falhou com `SESSION_NOT_CONNECTED` (claim global, engine local); 7 envios
   atrasados e recuperados; worker suspenso até este item.
+- [ ] `WORKER_ID` **ausente** da env de todos os serviços (nunca em Environment Group compartilhado): id igual em dois
+  processos anula o filtro do dono (§3.3) e o incidente volta.
+- [ ] Deploy da 0.85.1: por alguns minutos o processo antigo (lease global `link-rotation-member-sync`) e o novo (lease
+  por processo) podem sincronizar os mesmos grupos do Gestor de Links: leitura dobrada passageira, sem efeito em dados.
 - [ ] Antes de ligar o escalador (`WORKER_SCALER_ENABLED=true`): T25 feito num Private Service de teste (1→2, 2→1,
   `SIGTERM` + grace, `maxShutdownDelaySeconds`); serviço `worker` sem disco e sem autoescala nativa da Render.
 - [ ] `WORKER_SCALER_ENABLED`, `WORKER_SCALER_SERVICE_ID` e `RENDER_API_KEY` iguais no `http` e no `worker`;

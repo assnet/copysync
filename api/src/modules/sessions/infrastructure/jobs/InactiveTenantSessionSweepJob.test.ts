@@ -12,6 +12,7 @@ function setup(local: string[]) {
   const repo = {
     findWithInactiveTenant: vi.fn(async (ids: readonly string[]) =>
       ids.filter((id) => STATUS[TENANT_OF[id]!] !== 'ACTIVE').map((id) => ({ id, tenantId: TENANT_OF[id]! }))),
+    findOrphanedWithInactiveTenant: vi.fn(async (): Promise<Array<{ id: string; tenantId: string }>> => []),
     markDisconnectedUnlessLeasedElsewhere: vi.fn(async () => true),
     updateStatus: vi.fn(async () => null),
   };
@@ -51,17 +52,47 @@ describe('InactiveTenantSessionSweepJob', () => {
     }));
   });
 
-  it('sem sessões locais não consulta o banco', async () => {
-    const { job, repo } = setup([]);
+  it('sem sessões locais não consulta as locais, mas busca as sem dono vivo', async () => {
+    const { job, repo, engine } = setup([]);
     await job.runTick();
     expect(repo.findWithInactiveTenant).not.toHaveBeenCalled();
+    expect(repo.findOrphanedWithInactiveTenant).toHaveBeenCalledTimes(1);
+    expect(engine.disconnectSession).not.toHaveBeenCalled();
+  });
+
+  it('sessão sem dono vivo de tenant inativo é desconectada mesmo sem sockets locais', async () => {
+    const { job, repo, engine, audit } = setup([]);
+    repo.findOrphanedWithInactiveTenant.mockResolvedValueOnce([{ id: 'o1', tenantId: 'suspended' }]);
+    await job.runTick();
+    expect(repo.markDisconnectedUnlessLeasedElsewhere).toHaveBeenCalledWith('o1', 'suspended', 'wA');
+    expect(engine.disconnectSession).toHaveBeenCalledWith({ sessionId: 'o1', tenantId: 'suspended' });
+    expect(audit.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('sessão local que também aparece como sem dono é desconectada uma vez', async () => {
+    const { job, repo, engine } = setup(['s1']);
+    repo.findOrphanedWithInactiveTenant.mockResolvedValueOnce([{ id: 's1', tenantId: 'suspended' }, { id: 'o1', tenantId: 'cancelled' }]);
+    await job.runTick();
+    expect(engine.disconnectSession.mock.calls.map((c) => (c as unknown as [{ sessionId: string }])[0].sessionId))
+      .toEqual(['s1', 'o1']);
+  });
+
+  it('UPDATE recusa (adotada, reativado ou já desconectada): não chama a engine nem audita', async () => {
+    const { job, repo, engine, audit } = setup([]);
+    repo.findOrphanedWithInactiveTenant.mockResolvedValueOnce([{ id: 'o1', tenantId: 'suspended' }]);
+    repo.markDisconnectedUnlessLeasedElsewhere.mockResolvedValueOnce(false);
+    await job.runTick();
+    expect(engine.disconnectSession).not.toHaveBeenCalled();
+    expect(audit.create).not.toHaveBeenCalled();
   });
 
   it('falha na consulta só loga', async () => {
     const { job, repo, engine } = setup(['s1']);
     repo.findWithInactiveTenant.mockRejectedValueOnce(new Error('db'));
     await expect(job.runTick()).resolves.toBeUndefined();
-    expect(engine.disconnectSession).not.toHaveBeenCalled();
+    repo.findOrphanedWithInactiveTenant.mockRejectedValueOnce(new Error('db'));
+    await expect(job.runTick()).resolves.toBeUndefined();
+    expect(engine.disconnectSession).toHaveBeenCalledTimes(0);
   });
 
   it('falha numa sessão não impede as outras', async () => {

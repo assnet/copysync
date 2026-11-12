@@ -135,6 +135,13 @@ describe('markDisconnectedIfNoLiveLease', () => {
 
 describe('markDisconnectedUnlessLeasedElsewhere — dono da sessão (OWN-04)', () => {
   const ME = 'w-me';
+  // No evento (listener) e na varredura o tenant já não está ACTIVE.
+  beforeEach(async () => {
+    await prisma.tenant.update({ where: { id: tenantId }, data: { status: 'SUSPENDED' } });
+  });
+  afterAll(async () => {
+    await prisma.tenant.update({ where: { id: tenantId }, data: { status: 'ACTIVE' } });
+  });
   const read = (id: string) => prisma.session.findUniqueOrThrow({ where: { id } });
   const expectDisconnected = async (id: string) => {
     const s = await read(id);
@@ -167,6 +174,31 @@ describe('markDisconnectedUnlessLeasedElsewhere — dono da sessão (OWN-04)', (
     const del = await newSession({ deletedAt: new Date() });
     expect(await repo.markDisconnectedUnlessLeasedElsewhere(del, tenantId, ME)).toBe(false);
     expect((await read(del)).status).toBe('CONNECTED');
+  });
+
+  it('tenant reativado entre o SELECT e o UPDATE: não derruba o socket novo', async () => {
+    const id = await newSession({ ownerWorkerId: ME, leaseUntil: new Date(Date.now() + 60_000), connectRequestedAt: new Date() });
+    await prisma.tenant.update({ where: { id: tenantId }, data: { status: 'ACTIVE' } });
+    const before = await read(id);
+    expect(await repo.markDisconnectedUnlessLeasedElsewhere(id, tenantId, ME)).toBe(false);
+    expect(await read(id)).toEqual(before);
+  });
+
+  it('já DISCONNECTED (listener concluiu): não grava de novo', async () => {
+    const at = new Date(Date.now() - 3_600_000);
+    const id = await newSession({ status: 'DISCONNECTED', lastDisconnectedAt: at });
+    const before = await read(id);
+    expect(await repo.markDisconnectedUnlessLeasedElsewhere(id, tenantId, ME)).toBe(false);
+    expect(await read(id)).toEqual(before);
+    // Lease vivo de outro (http gravou, comando ainda vai ao dono): também não.
+    const other = await newSession({ status: 'DISCONNECTED', ownerWorkerId: 'w-other', leaseUntil: new Date(Date.now() + 60_000) });
+    expect(await repo.markDisconnectedUnlessLeasedElsewhere(other, tenantId, ME)).toBe(false);
+  });
+
+  it('DISCONNECTED gravado pelo http com lease vivo meu (comando não chegou): grava e o dono derruba o socket', async () => {
+    const id = await newSession({ status: 'DISCONNECTED', ownerWorkerId: ME, leaseUntil: new Date(Date.now() + 60_000) });
+    expect(await repo.markDisconnectedUnlessLeasedElsewhere(id, tenantId, ME)).toBe(true);
+    await expectDisconnected(id);
   });
 
   it('relógio UTC com TimeZone da conexão ≠ UTC (São Paulo)', async () => {
@@ -225,5 +257,38 @@ describe('findWithInactiveTenant — varredura de tenant inativo (OWN-04)', () =
       [{ id: suspended, tenantId: suspendedT }, { id: cancelled, tenantId: cancelledT }].sort((a, b) => a.id.localeCompare(b.id)),
     );
     expect(out.map((s) => s.id)).not.toContain(notAsked);
+  });
+});
+
+describe('findOrphanedWithInactiveTenant — sem dono vivo de tenant inativo (OWN-04)', () => {
+  let suspendedT = '';
+  beforeAll(async () => {
+    suspendedT = (await prisma.tenant.create({ data: { name: 'int-o', slug: `int-session-orphan-${Date.now()}`, status: 'SUSPENDED' } })).id;
+  });
+  afterAll(async () => {
+    await prisma.session.deleteMany({ where: { tenantId: suspendedT } });
+    await prisma.tenant.delete({ where: { id: suspendedT } });
+  });
+  const mk = async (data: Record<string, unknown> = {}) =>
+    (await prisma.session.create({ data: { tenantId: suspendedT, name: 'int-orphan', status: 'CONNECTED', ...data } })).id;
+
+  it('status ativo e lease nulo/vencido entram; vivo, DISCONNECTED, FAILED, PENDING, excluída e tenant ativo ficam fora', async () => {
+    const free = await mk();
+    const expired = await mk({ ownerWorkerId: 'w-dead', leaseUntil: new Date(Date.now() - 1_000), status: 'AWAITING_QR' });
+    const alive = await mk({ ownerWorkerId: 'w-other', leaseUntil: new Date(Date.now() + 60_000) });
+    const disc = await mk({ status: 'DISCONNECTED' });
+    const failed = await mk({ status: 'FAILED' });
+    const pending = await mk({ status: 'PENDING' });
+    const deleted = await mk({ deletedAt: new Date() });
+    const activeTenant = await newSession();
+    const all = [free, expired, alive, disc, failed, pending, deleted, activeTenant];
+    const out = (await repo.findOrphanedWithInactiveTenant()).filter((s) => all.includes(s.id));
+    expect(out.sort((a, b) => a.id.localeCompare(b.id))).toEqual(
+      [{ id: free, tenantId: suspendedT }, { id: expired, tenantId: suspendedT }].sort((a, b) => a.id.localeCompare(b.id)),
+    );
+    expect(await repo.findOrphanedWithInactiveTenant(1)).toHaveLength(1);
+    // A desconexão pela varredura tira a sessão do conjunto.
+    expect(await repo.markDisconnectedUnlessLeasedElsewhere(free, suspendedT, 'w-me')).toBe(true);
+    expect((await repo.findOrphanedWithInactiveTenant()).map((s) => s.id)).not.toContain(free);
   });
 });

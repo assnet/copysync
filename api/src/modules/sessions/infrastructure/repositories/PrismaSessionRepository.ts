@@ -117,12 +117,30 @@ export class PrismaSessionRepository implements ISessionRepository {
 
   async markDisconnectedUnlessLeasedElsewhere(id: string, tenantId: string, workerId: string): Promise<boolean> {
     // Mesmo relógio do lease; lease tomado por outro processo entre o SELECT e aqui vence.
+    // Tenant reativado depois do SELECT não derruba o socket novo; já DISCONNECTED (listener
+    // concluiu) não repete desconexão nem auditoria. Exceção: DISCONNECTED com lease vivo MEU é o
+    // `http` que gravou o status e cujo comando de disconnect não chegou (o comando solta o lease);
+    // o socket ainda está aqui e a varredura precisa derrubá-lo.
     const n = await prisma.$executeRaw`
       UPDATE "sessions" SET "status" = 'DISCONNECTED'::"SessionStatus", "connectRequestedAt" = NULL,
         "lastDisconnectedAt" = (now() AT TIME ZONE 'UTC'), "updatedAt" = (now() AT TIME ZONE 'UTC')
       WHERE "id" = ${id} AND "tenantId" = ${tenantId} AND "deletedAt" IS NULL
+        AND ("status" <> 'DISCONNECTED'::"SessionStatus"
+          OR ("ownerWorkerId" = ${workerId} AND "leaseUntil" >= (now() AT TIME ZONE 'UTC')))
+        AND EXISTS (SELECT 1 FROM "tenants" t WHERE t."id" = "sessions"."tenantId" AND t."status"::text <> 'ACTIVE')
         AND ("leaseUntil" IS NULL OR "leaseUntil" < (now() AT TIME ZONE 'UTC') OR "ownerWorkerId" = ${workerId})`;
     return n > 0;
+  }
+
+  async findOrphanedWithInactiveTenant(limit = 100): Promise<Array<{ id: string; tenantId: string }>> {
+    // Sem dono vivo (lease nulo/vencido, relógio do lease) e ainda em status ativo: ninguém mais varre.
+    return prisma.$queryRaw<Array<{ id: string; tenantId: string }>>`
+      SELECT s."id", s."tenantId" FROM "sessions" s
+      JOIN "tenants" t ON t."id" = s."tenantId"
+      WHERE s."deletedAt" IS NULL AND t."status"::text <> 'ACTIVE'
+        AND s."status"::text IN (${Prisma.join([...ACTIVE_STATUSES])})
+        AND (s."leaseUntil" IS NULL OR s."leaseUntil" < (now() AT TIME ZONE 'UTC'))
+      ORDER BY s."id" LIMIT ${limit}`;
   }
 
   async findWithInactiveTenant(sessionIds: readonly string[]): Promise<Array<{ id: string; tenantId: string }>> {
