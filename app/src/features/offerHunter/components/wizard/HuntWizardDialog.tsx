@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Step, StepLabel, Stepper,
   Tooltip, Typography, useMediaQuery,
@@ -54,6 +54,9 @@ function HuntWizardBody({ options, hunt, onClose, onSaved }: HuntWizardDialogPro
   const step = Math.min(Math.max(draft.step, 0), WIZARD_STEPS - 1);
   const last = step === WIZARD_STEPS - 1;
   const { limits } = options;
+  // Troca de passo volta o conteúdo ao topo (senão o passo novo abre na rolagem do anterior).
+  const contentRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { contentRef.current?.scrollTo?.({ top: 0 }); }, [step]);
 
   const change = (patch: Partial<HuntWizardDraft>) => {
     setDraft((d) => ({ ...d, ...patch }));
@@ -135,7 +138,7 @@ function HuntWizardBody({ options, hunt, onClose, onSaved }: HuntWizardDialogPro
             <IconButton aria-label={wz.close} onClick={requestCancel} disabled={saving}><AppIcon icon={X} size="sm" /></IconButton>
           </Tooltip>
         </DialogTitle>
-        <DialogContent dividers>
+        <DialogContent dividers ref={contentRef}>
           <Stepper activeStep={step} alternativeLabel aria-label={wz.stepsLabel} sx={{ mb: 3 }}>
             {wz.steps.map((label, i) => (
               <Step key={label} completed={i < step}>

@@ -8,6 +8,7 @@ import type {
   OfferHuntDeliveryMode, OfferHuntFindStatus, OfferHuntPauseReason, OfferHuntRunStatus, OfferHuntRunTrigger,
   OfferHuntStatus,
 } from './types';
+import { formatDecimal } from './format';
 
 /** Espelho de `OFFER_HUNTER_RISK_NOTICE_VERSION.SHEIN` (api/.../marketplaceRiskNotice.ts). Mudou o texto → sobe nos dois. */
 export const OFFER_HUNTER_RISK_NOTICE_VERSION = '2026-11-12';
@@ -188,7 +189,7 @@ export const offerHunterStrings = {
       notChosen: 'Fora do corte',
       aiUsed: 'Escolha feita com IA',
       aiFallback: 'A IA não respondeu; a escolha usou só a pontuação.',
-      score: (score: number) => `${score.toFixed(1)} pontos`,
+      score: (score: number) => `${formatDecimal(score)} pontos`,
       factorsTitle: 'Como a pontuação foi montada',
       aiReason: 'Motivo da IA',
       savedOnly: 'O teste usa a versão salva da caçada. Salve as mudanças antes para testar com elas.',
@@ -247,7 +248,7 @@ export const offerHunterStrings = {
     position: (n: number) => `${n}º`,
     noTitle: 'Oferta sem título',
     noImage: 'Sem foto',
-    scoreAria: (score: number) => `Pontuação ${score.toFixed(1)} de 100`,
+    scoreAria: (score: number) => `Pontuação ${formatDecimal(score)} de 100`,
     factorsAria: 'Ver como a pontuação foi montada',
   },
 
@@ -294,7 +295,7 @@ export const offerHunterStrings = {
     extraCommission: { label: 'Comissão extra', hint: 'Bônus de comissão em campanha.' },
     endingSoon: { label: 'Acaba logo', hint: 'Oferta perto do fim: urgência para quem compra.' },
   } satisfies Record<HuntScoreFactorKey, { label: string; hint: string }>,
-  factorPoints: (points: number, max: number) => `${points.toFixed(1)} de ${max}`,
+  factorPoints: (points: number, max: number) => `${formatDecimal(points)} de ${max}`,
 
   finds: {
     title: 'Achados',
@@ -402,35 +403,47 @@ export const offerHunterStrings = {
   gates: {
     plan: {
       title: 'Disponível no plano MAX',
+      /** Mesma etapa já concluída (lista do painel). */
+      doneTitle: 'Plano MAX ativo',
       text: 'O caçador busca e envia ofertas sozinho. Faça upgrade para usar.',
       action: 'Ver planos',
     },
     hunterEntitlement: {
       title: 'Caçador não liberado',
+      /** Mesma etapa já concluída (lista do painel). */
+      doneTitle: 'Caçador liberado na conta',
       text: 'O caçador ainda não está liberado na sua conta.',
       action: 'Ver planos',
     },
     credential: {
       title: 'Conecte a sua conta de afiliado da SHEIN',
+      /** Mesma etapa já concluída (lista do painel). */
+      doneTitle: 'Conta de afiliado da SHEIN conectada',
       text: 'Entre na SHEIN pela extensão do navegador para o caçador gerar links com a sua conta.',
       action: 'Abrir credenciais',
     },
     riskAccepted: {
       title: 'Aceite o aviso de risco do caçador',
+      /** Mesma etapa já concluída (lista do painel). */
+      doneTitle: 'Aviso de risco aceito',
       text: 'Antes de ligar o caçador, um administrador da conta precisa ler e aceitar o aviso.',
       action: 'Ler aviso',
     },
     aiAvailable: {
       title: 'IA indisponível',
+      /** Mesma etapa já concluída (lista do painel). */
+      doneTitle: 'IA disponível',
       text: 'Sem IA, o caçador escolhe as ofertas só pela pontuação.',
       action: 'Configurar IA',
     },
     destination: {
       title: 'Escolha o grupo de destino',
+      /** Mesma etapa já concluída (lista do painel). */
+      doneTitle: 'Grupo de destino escolhido',
       text: 'O caçador precisa de um grupo para enviar as ofertas.',
       action: 'Escolher grupo',
     },
-  } satisfies Record<HuntGateKey, { title: string; text: string; action: string }>,
+  } satisfies Record<HuntGateKey, { title: string; doneTitle: string; text: string; action: string }>,
 
   /** `options.sourceStatus`: estado das categorias vindas da SHEIN. */
   sourceStatus: {
@@ -497,7 +510,7 @@ export const offerHunterStrings = {
     confirming: 'Registrando aceite…',
     cancel: 'Cancelar',
     close: 'Fechar',
-    accepted: 'Aviso aceito. O caçador está liberado.',
+    accepted: 'Aviso de risco aceito.',
     acceptedAt: (date: string, byMe: boolean) => `Aceito em ${date}${byMe ? ' por você' : ''}`,
     adminOnly: 'Só um administrador desta conta pode aceitar o aviso.',
     staleTitle: 'O aviso foi atualizado',

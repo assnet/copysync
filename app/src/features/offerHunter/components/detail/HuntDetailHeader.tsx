@@ -51,10 +51,13 @@ export function HuntDetailHeader({ hunt, blockedBy, running, toggling, onToggle,
             ].join(' · ')}
           </Typography>
         </Box>
-        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1 }}>
-          {gateText && !active ? (
-            <Tooltip title={gateText} arrow describeChild><span>{toggle}</span></Tooltip>
-          ) : toggle}
+        <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* No celular o liga/desliga fica sozinho na linha e os dois botões juntos embaixo */}
+          <Box sx={{ flexBasis: { xs: '100%', sm: 'auto' } }}>
+            {gateText && !active ? (
+              <Tooltip title={gateText} arrow describeChild><span>{toggle}</span></Tooltip>
+            ) : toggle}
+          </Box>
           <Tooltip title={gateText ?? d.runNowTooltip} arrow describeChild>
             <span>
               <Button

@@ -100,8 +100,10 @@ export function buildNavigation({ isSuperAdmin, offerHunterVisible }: BuildNavig
       { key: 'link-rotation', label: linkRotationStrings.menuLabel, path: '/link-rotation', icon: Link2 },
       { key: 'storefront', label: s.links.storefront, path: '/storefront', icon: MODULE_ICONS.storefront, badge: plansStrings.badgeProfessional },
       { key: 'offer-story', label: s.links.offerStory, path: '/offer-story', icon: MODULE_ICONS.offerStory, badge: plansStrings.badgeBusiness },
+      // Sem selo de plano: o item só aparece para quem já tem o caçador (visibilidade vem da API), e o
+      // selo cortava o nome no menu lateral.
       ...(offerHunterVisible
-        ? [{ key: 'offer-hunter', label: s.links.offerHunter, path: '/offer-hunter', icon: MODULE_ICONS.offerHunter, badge: plansStrings.badgeBusiness, matchPrefix: '/offer-hunter' }]
+        ? [{ key: 'offer-hunter', label: s.links.offerHunter, path: '/offer-hunter', icon: MODULE_ICONS.offerHunter, matchPrefix: '/offer-hunter' }]
         : []),
       { key: 'affiliate-credentials', label: s.links.affiliateCredentials, path: AFFILIATE_CREDENTIALS_PATH, icon: KeyRound },
       { key: 'affiliate-plans', label: plansStrings.menuLabel, path: AFFILIATE_PLANS_PATH, icon: Crown },

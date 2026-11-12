@@ -102,7 +102,7 @@ export function HunterGatesPanel({ options, blockedBy, onOpenRisk, onFocusDestin
                     <AppIcon icon={ok ? CircleCheck : current ? GATE_ICONS[key] : CircleDashed} size="md" label={ok ? t.gatesPanel.done : t.gatesPanel.pending} />
                   </Box>
                   <Box sx={{ flex: '1 1 200px', minWidth: 0 }}>
-                    <Typography variant="body2" fontWeight={600} color={ok ? 'text.secondary' : 'text.primary'}>{t.gates[key].title}</Typography>
+                    <Typography variant="body2" fontWeight={600} color={ok ? 'text.secondary' : 'text.primary'}>{ok ? t.gates[key].doneTitle : t.gates[key].title}</Typography>
                     {!ok && <Typography variant="caption" color="text.secondary" display="block">{t.gates[key].text}</Typography>}
                   </Box>
                   {!ok && (

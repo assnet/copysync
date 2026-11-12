@@ -24,10 +24,10 @@ describe('RankingTable', () => {
 
   it('fatores da pontuação aparecem no Tooltip', async () => {
     render(<RankingTable items={[item()]} />);
-    fireEvent.mouseOver(screen.getByRole('button', { name: /Pontuação 81.3 de 100/ }));
+    fireEvent.mouseOver(screen.getByRole('button', { name: /Pontuação 81,3 de 100/ }));
     expect(await screen.findByText('Como a pontuação foi montada')).toBeInTheDocument();
     expect(screen.getByText('Comissão')).toBeInTheDocument();
-    expect(screen.getByText('25.0 de 30')).toBeInTheDocument();
+    expect(screen.getByText('25 de 30')).toBeInTheDocument();
     expect(screen.getByText('Desconto')).toBeInTheDocument();
   });
 

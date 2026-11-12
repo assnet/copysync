@@ -63,7 +63,8 @@ describe('buildNavigation', () => {
       '/affiliates/credentials', '/affiliates/plans',
     ]);
     const hunter = children.find((c) => c.key === 'offer-hunter')!;
-    expect(hunter).toMatchObject({ label: 'Caçador de Ofertas', badge: 'MAX' });
+    expect(hunter).toMatchObject({ label: 'Caçador de Ofertas' });
+    expect(hunter.badge).toBeUndefined();
     expect(hunter.superAdminOnly).toBeUndefined();
     expect(findActiveEntry(model, '/offer-hunter/h1')?.link.key).toBe('offer-hunter');
   });
