@@ -143,8 +143,20 @@ gráficos com `@mui/x-charts` 8.29.3 fixo, só no chunk lazy da aba.
   Decisão em `workerInstancesSection` (`rules.ts`): skeleton carregando; `/latest` falhou = alerta; vazio com
   dado do worker = "Nenhuma instância online agora"; vazio com filtro só Worker e nenhum dado = "Worker não
   configurado". Carregando (skeleton com `role="status"`), erro e vazio ficam dentro do card, com o título.
-  Linhas na ordem do nome curto (igual ao gráfico); em "Por instância" (até 3) um marcador `aria-hidden` mostra a
-  cor da série, estável por instância (`assignInstanceColors`). 1ª coluna fixa; borda + sombra só quando a tabela
+  **Rótulo "Worker N"** (app 0.111.0): vivas numeradas 1…N pela ordem de início (`groupWorkerInstances`). O batimento
+  não traz horário de início (o `workerId` é `<HOSTNAME>-<pid>-<nonce>`), então vale a 1ª vez vista na série de
+  Servidores do período (`instanceFirstSeen`), desempate pelo sufixo, sem série (só batimento) no fim. Numeração só
+  entre vivas: estável enquanto vivem e o período não muda (com período curto, instâncias mais velhas que ele empatam e
+  ficam pelo sufixo). Sufixo + id completo só no tooltip (hover e foco). Sem banco, sem edição.
+  **Encerradas** (`isEndedWorkerInstance`, pura): sem batimento, com amostra e (a) `sampledAt` < amostra mais nova − 1 min
+  ou (b) adoção ligada (outra linha tem batimento) e a instância não acabou de aparecer (1º ponto ≥ último balde da
+  série = "subindo", fica viva com "Sem batimento"; sem série = não é nova). Caso típico: após o deploy a Render ainda
+  devolve a última janela do pod parado no mesmo `persist` das novas, então só o (b) pega. Adoção desligada = só (a).
+  Vão para "Encerradas recentemente (N)" no fim da tabela, recolhida (`usePersistedState('workers.usage.endedInstancesOpen')`,
+  escopo `tab`), com chip "Encerrada", pelo sufixo e sem número; saem sozinhas quando a API corta pelos 2 min.
+  Não fazer: número salvo/editável, horário de início inventado, "Encerrada" para linha com batimento.
+  Em "Por instância" (até 3) um marcador `aria-hidden` mostra a
+  cor da série, estável por instância (`assignInstanceColors`); o gráfico segue rotulado pelo sufixo. 1ª coluna fixa; borda + sombra só quando a tabela
   está rolada. No `xs` os chips ficam só com ícone (palavra para leitor de tela, dica no tooltip, alvo de toque
   ≥ 44 px; a área invisível de 10 px pode cobrir a borda da linha vizinha, aceito); dicas com `describeChild` e foco por teclado; "Visto" = `instanceSeenAt`, tooltip com data completa
   (`formatFullDateTime`); "—" sempre em `text.secondary`; (i) de ajuda ao lado do título.

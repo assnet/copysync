@@ -311,18 +311,31 @@ describe('Aba Consumo', () => {
       ],
     };
 
-    it('tabela "Instâncias do worker": uma linha por instância, com falta de batimento ou de amostra sinalizada', async () => {
+    it('tabela "Instâncias do worker": Worker N nas vivas (sufixo e id no tooltip), encerrada recolhida no fim', async () => {
       mockAll(INSTANCES_LATEST, workerSeries);
       renderUsage();
       const table = await screen.findByRole('table', { name: t.instances.tableAria });
       const rows = within(table).getAllByRole('row').slice(1);
       expect(rows).toHaveLength(3);
-      expect(within(rows[0]).getByText('a1')).toBeInTheDocument();
+      expect(within(rows[0]).getByText(t.instances.workerLabel(1))).toBeInTheDocument();
       expect(within(rows[0]).getByText('21%')).toBeInTheDocument();
       expect(within(rows[0]).getByText(t.instances.sessions(12, 40))).toBeInTheDocument();
-      expect(within(rows[1]).getByText(t.instances.noHeartbeat)).toBeInTheDocument();
-      expect(within(rows[1]).getByText('73%')).toBeInTheDocument();
-      expect(within(rows[2]).getByText(t.instances.noSample)).toBeInTheDocument();
+      expect(within(rows[1]).getByText(t.instances.workerLabel(2))).toBeInTheDocument();
+      expect(within(rows[1]).getByText(t.instances.noSample)).toBeInTheDocument();
+      await userEvent.hover(within(rows[0]).getByText(t.instances.workerLabel(1)));
+      expect(await screen.findByRole('tooltip')).toHaveTextContent(t.instances.instanceTip('a1', 'srv-wk-a1'));
+      // b2: sem batimento com adoção ligada = processo do deploy anterior
+      expect(within(table).queryByText('b2')).not.toBeInTheDocument();
+      expect(within(table).queryByText(t.instances.noHeartbeat)).not.toBeInTheDocument();
+      const toggle = within(table).getByRole('button', { name: t.instances.endedSection(1) });
+      expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      await userEvent.click(toggle);
+      expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      expect(sessionStorage.getItem('ui.workers.usage.endedInstancesOpen')).toContain('true');
+      const ended = within(table).getByText('b2').closest('tr') as HTMLElement;
+      expect(within(ended).getByText(t.instances.ended)).toBeInTheDocument();
+      expect(within(ended).getByText('73%')).toBeInTheDocument();
+      expect(within(ended).queryByText(/^Worker/)).not.toBeInTheDocument();
     });
 
     it('réplica sumiu: a linha some junto (tema escuro)', async () => {
@@ -334,7 +347,8 @@ describe('Aba Consumo', () => {
     });
 
     it('limiar na tabela: ícone com o nome do status, não só cor', async () => {
-      mockAll(INSTANCES_LATEST, workerSeries);
+      const [a1, , c3] = INSTANCES_LATEST.workerInstances;
+      mockAll({ ...INSTANCES_LATEST, workerInstances: [a1, { ...c3, memoryPct: 73 }] }, workerSeries);
       renderUsage();
       const table = await screen.findByRole('table', { name: t.instances.tableAria });
       const rows = within(table).getAllByRole('row').slice(1);
@@ -351,12 +365,17 @@ describe('Aba Consumo', () => {
       expect(within(row).getByRole('img', { name: t.instances.statusAria(t.status.critical) })).toBeInTheDocument();
     });
 
-    it('tabela na ordem do nome e, em "Por instância", com o marcador da cor da série', async () => {
+    it('vivas na ordem de início (empate pelo nome, sem série no fim) e, em "Por instância", com o marcador da cor', async () => {
       const [a1, b2, c3] = INSTANCES_LATEST.workerInstances;
-      mockAll({ ...INSTANCES_LATEST, workerInstances: [c3, b2, a1] }, workerSeries);
+      const b2Live = { ...b2, heartbeat: { ...a1.heartbeat!, workerId: 'srv-wk-h-b2-3-0011aabb' } };
+      mockAll({ ...INSTANCES_LATEST, workerInstances: [c3, b2Live, a1] }, workerSeries);
       renderUsage();
       const table = await screen.findByRole('table', { name: t.instances.tableAria });
-      expect(within(table).getAllByRole('row').slice(1).map((r) => within(r).getByText(/^[abc]\d$/).textContent)).toEqual(['a1', 'b2', 'c3']);
+      const rows = within(table).getAllByRole('row').slice(1);
+      expect(rows.map((r) => within(r).getByText(/^Worker \d$/).textContent)).toEqual(['Worker 1', 'Worker 2', 'Worker 3']);
+      expect(within(rows[0]).getByText('21%')).toBeInTheDocument();
+      expect(within(rows[1]).getByText('9%')).toBeInTheDocument();
+      expect(within(rows[2]).getByText(t.instances.noSample)).toBeInTheDocument();
       expect(within(table).queryAllByTestId('instance-color')).toHaveLength(0);
       const group = screen.getByRole('group', { name: t.charts.workerViewAria });
       await userEvent.click(within(group).getByRole('button', { name: t.charts.workerViews.instance }));

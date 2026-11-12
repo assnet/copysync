@@ -270,7 +270,7 @@ function buildUsageView({ latestRes, series, resource, colors, workerView, loadi
   // Worker aparece quando há amostra dele: sem `WORKER_SCALER_SERVICE_ID` na API tudo segue em API.
   const hasWorker = memWorker.length + cpuWorker.length > 0 || ramWorkerV != null || cpuWorkerV != null;
   const workerInstances = workerInstancesSection({
-    resource, loading, latestFailed, instances: latestRes?.workerInstances, hasWorkerData: hasWorker,
+    resource, loading, latestFailed, instances: latestRes?.workerInstances, hasWorkerData: hasWorker, series: serversSeries,
   });
   const ramDbV = kpiValue('memory_pct', 'postgres', memDb);
   const cpuDbV = kpiValue('cpu_pct', 'postgres', cpuDb);

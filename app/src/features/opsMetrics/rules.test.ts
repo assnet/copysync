@@ -4,6 +4,7 @@ import {
   formatDuration, formatPct, isStale, latestValue, newestSampleAt, counterRatePerMinute, parseUsageFilters, querySharePct, rangeWindow, currentValues, resourceCount, resourceVisible,
   seriesPoints, shortQueryId, statusFor, instanceShortName, seriesByInstance, parseWorkerChartView,
   workerInstancesSection, instanceSeenAt, assignInstanceColors, formatFullDateTime,
+  groupWorkerInstances, instanceFirstSeen, isEndedWorkerInstance,
 } from './rules';
 import type { OpsSeries, OpsSeriesPoint, OpsWorkerInstance } from './types';
 
@@ -221,7 +222,7 @@ describe('workerInstancesSection', () => {
     expect(workerInstancesSection({ ...base, loading: true })).toEqual({ kind: 'loading' });
   });
   it('com instâncias = tabela', () => {
-    expect(workerInstancesSection(base)).toEqual({ kind: 'table', instances: [inst] });
+    expect(workerInstancesSection(base)).toEqual({ kind: 'table', live: [{ row: inst, ordinal: 1 }], ended: [] });
   });
   it('/latest falhou: erro com sinal de worker ou filtro só worker; senão some', () => {
     expect(workerInstancesSection({ ...base, latestFailed: true, instances: null })).toEqual({ kind: 'error' });
@@ -234,6 +235,75 @@ describe('workerInstancesSection', () => {
     expect(workerInstancesSection({ ...base, instances: [], hasWorkerData: false })).toEqual({ kind: 'hidden' });
     expect(workerInstancesSection({ ...base, resource: 'worker_service', instances: [], hasWorkerData: false }))
       .toEqual({ kind: 'empty', reason: 'notConfigured' });
+  });
+});
+
+describe('instâncias do worker: Worker N e encerradas', () => {
+  const T = '2026-11-12T12:00:00.000Z';
+  const ago = (min: number) => new Date(new Date(T).getTime() - min * 60_000).toISOString();
+  const hb = (id: string) => ({ workerId: `srv-teste-abcde-h-${id}-19-0011aabb`, sessions: 1, pendingLogins: 0, maxSessions: 40, rssMb: 100, seenAt: T });
+  const row = (instance: string, o: Partial<OpsWorkerInstance> = {}): OpsWorkerInstance => ({
+    instance, resource: `srv-teste-abcde-${instance}`, cpuPct: 10, memoryPct: 20, sampledAt: ago(4), heartbeat: hb(instance), ...o,
+  });
+  const ser = (instance: string, ats: string[]): OpsSeries[] => ['cpu_pct', 'memory_pct'].map((metric) => ({
+    kind: 'worker_service', resource: `srv-teste-abcde-${instance}`, metric, points: ats.map((at) => pt(at, 1)),
+  }));
+
+  it('instanceFirstSeen: 1º ponto por nome curto e último balde; ignora API e outras métricas', () => {
+    const out = instanceFirstSeen([
+      ...ser('aaaaa', [ago(30), ago(5)]),
+      ...ser('bbbbb', [ago(10), ago(5)]),
+      { kind: 'api', resource: 'srv-api', metric: 'cpu_pct', points: [pt(ago(60), 1), pt(ago(0), 1)] },
+      { kind: 'worker_service', resource: 'srv-teste-abcde-ccccc', metric: 'memory', points: [pt(ago(90), 1)] },
+    ]);
+    expect([...out.firstSeen]).toEqual([['aaaaa', ago(30)], ['bbbbb', ago(10)]]);
+    expect(out.newestBucketAt).toBe(ago(5));
+    expect(instanceFirstSeen([])).toEqual({ firstSeen: new Map(), newestBucketAt: null });
+  });
+
+  it('isEndedWorkerInstance: com batimento ou sem amostra nunca é encerrada', () => {
+    const ctx = { newestSampledAt: ago(0), adoptionActive: true };
+    expect(isEndedWorkerInstance(row('aaaaa', { sampledAt: ago(30) }), ctx)).toBe(false);
+    expect(isEndedWorkerInstance(row('aaaaa', { resource: null, sampledAt: null }), ctx)).toBe(false);
+  });
+
+  it('isEndedWorkerInstance: fora da amostra mais recente (> 1 min) = encerrada, mesmo sem adoção', () => {
+    const r = row('aaaaa', { heartbeat: null, sampledAt: ago(4) });
+    expect(isEndedWorkerInstance(r, { newestSampledAt: ago(2.9), adoptionActive: false })).toBe(true);
+    expect(isEndedWorkerInstance(r, { newestSampledAt: ago(3.5), adoptionActive: false })).toBe(false);
+  });
+
+  it('isEndedWorkerInstance: adoção ligada e já vista antes = encerrada; a que acabou de aparecer está subindo', () => {
+    const r = row('aaaaa', { heartbeat: null, sampledAt: ago(4) });
+    const base = { newestSampledAt: ago(4), adoptionActive: true };
+    expect(isEndedWorkerInstance(r, { ...base, firstSeen: new Map([['aaaaa', ago(60)]]), newestBucketAt: ago(5) })).toBe(true);
+    expect(isEndedWorkerInstance(r, { ...base, firstSeen: new Map([['aaaaa', ago(5)]]), newestBucketAt: ago(5) })).toBe(false);
+    expect(isEndedWorkerInstance(r, base)).toBe(true);
+    expect(isEndedWorkerInstance(r, { ...base, adoptionActive: false })).toBe(false);
+  });
+
+  it('groupWorkerInstances: numera vivas pela 1ª vez vista, desempate pelo nome, sem série no fim', () => {
+    const out = groupWorkerInstances(
+      [row('zzzzz'), row('mmmmm'), row('aaaaa'), row('hbonly', { resource: null, sampledAt: null })],
+      [...ser('zzzzz', [ago(60), ago(5)]), ...ser('mmmmm', [ago(20), ago(5)]), ...ser('aaaaa', [ago(20), ago(5)])],
+    );
+    expect(out.live.map((l) => [l.ordinal, l.row.instance])).toEqual([[1, 'zzzzz'], [2, 'aaaaa'], [3, 'mmmmm'], [4, 'hbonly']]);
+    expect(out.ended).toEqual([]);
+  });
+
+  it('groupWorkerInstances: encerradas saem da numeração (deploy: novas com batimento, antigas sem)', () => {
+    const out = groupWorkerInstances(
+      [row('old02', { heartbeat: null }), row('new01'), row('old01', { heartbeat: null }), row('new02')],
+      [...ser('old01', [ago(120), ago(5)]), ...ser('old02', [ago(120), ago(5)]), ...ser('new01', [ago(15), ago(5)]), ...ser('new02', [ago(10), ago(5)])],
+    );
+    expect(out.live.map((l) => [l.ordinal, l.row.instance])).toEqual([[1, 'new01'], [2, 'new02']]);
+    expect(out.ended.map((r) => r.instance)).toEqual(['old01', 'old02']);
+  });
+
+  it('groupWorkerInstances: adoção desligada e todas na mesma amostra = todas vivas', () => {
+    const out = groupWorkerInstances([row('bbbbb', { heartbeat: null }), row('aaaaa', { heartbeat: null })]);
+    expect(out.live.map((l) => l.row.instance)).toEqual(['aaaaa', 'bbbbb']);
+    expect(out.ended).toEqual([]);
   });
 });
 
@@ -273,12 +343,12 @@ describe('instâncias do worker: visto, cores e data completa', () => {
     const m = assignInstanceColors(['b2', 'a1', 'b2', 'c3'], ['g', 'p', 'm']);
     expect([...m.entries()]).toEqual([['a1', 'g'], ['b2', 'p'], ['c3', 'm']]);
   });
-  it('tabela na ordem do gráfico (nome)', () => {
+  it('sem série: vivas numeradas pelo nome', () => {
     const out = workerInstancesSection({
       resource: 'all', loading: false, latestFailed: false, hasWorkerData: true,
       instances: [{ ...base, instance: 'zz' }, { ...base, instance: 'aa' }],
     });
-    expect(out.kind === 'table' && out.instances.map((r) => r.instance)).toEqual(['aa', 'zz']);
+    expect(out.kind === 'table' && out.live.map((l) => [l.ordinal, l.row.instance])).toEqual([[1, 'aa'], [2, 'zz']]);
   });
   it('data completa com ano e segundos', () => {
     const d = new Date(2026, 10, 12, 9, 5, 7);

@@ -1,17 +1,19 @@
-import { useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import {
-  Alert, Box, Button, Card, Chip, Divider, Skeleton, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  Alert, Box, Button, ButtonBase, Card, Chip, Divider, Skeleton, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Tooltip, Typography, alpha, type Theme,
 } from '@mui/material';
-import { CircleDashed, HeartOff, OctagonAlert, Server, TriangleAlert, type LucideIcon } from 'lucide-react';
+import { ChevronDown, CircleDashed, HeartOff, OctagonAlert, PowerOff, Server, TriangleAlert, type LucideIcon } from 'lucide-react';
 import { AppIcon, EmptyState, OverflowTooltipText } from '@/components';
+import { usePersistedState } from '@/hooks/usePersistedState';
 import { serverNow } from '@/services/serverClock';
 import { formatRelativeTime } from '@/features/linkDomainsAdmin/rules';
 import {
   formatFullDateTime, formatNumber, formatPct, instanceSeenAt, statusFor, type WorkerInstancesSection,
+
 } from '../rules';
 import { opsMetricsStrings as t } from '../strings';
-import type { OpsThresholds } from '../types';
+import type { OpsThresholds, OpsWorkerInstance } from '../types';
 import { HelpTip } from './HelpTip';
 
 const mono = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
@@ -36,6 +38,10 @@ const srOnly = {
   position: 'absolute', width: '1px', height: '1px', padding: 0, margin: '-1px', overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
 } as const;
 const DASH = <Box component="span" sx={{ color: 'text.secondary' }}>—</Box>;
+const COLS = 6;
+/** Aberto/fechado da seção "Encerradas recentemente" (escopo `tab`). */
+export const ENDED_INSTANCES_OPEN_KEY = 'workers.usage.endedInstancesOpen';
+const ENDED_OPEN_PERSIST = { version: 1, deserialize: (raw: unknown) => raw === true } as const;
 
 type ColKey = keyof typeof t.instances.colHints;
 
@@ -114,13 +120,72 @@ interface Props {
 }
 
 /**
- * Uma linha por réplica viva do serviço worker (Render × batimento). Dado de infraestrutura: nome
- * curto da instância e números, sem tenant nem cliente, por isso sem flag de borrar. Carregando e
+ * Uma linha por réplica viva do serviço worker (Render × batimento), rotulada "Worker N" pela ordem
+ * de início (`groupWorkerInstances`); sufixo e id completo no tooltip. Encerradas (deploy anterior)
+ * ficam numa seção recolhida no fim, pelo sufixo. Dado de infraestrutura: id da instância e
+ * números, sem tenant nem cliente, por isso sem flag de borrar. Carregando e
  * erro ficam dentro do card, com o título, como nos gráficos.
  */
 export function WorkerInstancesTable({ section, thresholds, instanceColors, onRetry }: Props) {
   const now = serverNow();
   const [scrolled, setScrolled] = useState(false);
+  const [endedOpen, setEndedOpen] = usePersistedState<boolean>(ENDED_INSTANCES_OPEN_KEY, false, ENDED_OPEN_PERSIST);
+  const endedId = useId();
+
+  const renderRow = (r: OpsWorkerInstance, label: string, ended: boolean) => {
+    const hb = r.heartbeat;
+    const seenIso = instanceSeenAt(r);
+    const color = instanceColors?.get(r.instance);
+    return (
+      <TableRow key={r.resource ?? `hb:${r.instance}`}>
+        <TableCell sx={[{ whiteSpace: 'nowrap' }, sticky(scrolled)]}>
+          {color && (
+            <Box
+              component="span"
+              aria-hidden
+              data-testid="instance-color"
+              sx={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', bgcolor: color, mr: 1, verticalAlign: 'middle' }}
+            />
+          )}
+          <OverflowTooltipText
+            text={t.instances.instanceTip(r.instance, r.resource ?? hb?.workerId ?? r.instance)}
+            alwaysShow
+            typographyProps={{
+              component: 'span', variant: 'body2',
+              sx: { fontFamily: ended ? mono : undefined, fontWeight: ended ? undefined : 600, display: 'inline-block', verticalAlign: 'middle' },
+            }}
+          >
+            {label}
+          </OverflowTooltipText>
+          {ended
+            ? <MissingChip icon={PowerOff} label={t.instances.ended} hint={t.instances.endedHint} />
+            : !hb && <MissingChip icon={HeartOff} label={t.instances.noHeartbeat} hint={t.instances.noHeartbeatHint} />}
+          {!r.resource && <MissingChip icon={CircleDashed} label={t.instances.noSample} hint={t.instances.noSampleHint} />}
+        </TableCell>
+        <PctCell value={r.cpuPct} threshold={thresholds?.cpuPct} />
+        <PctCell value={r.memoryPct} threshold={thresholds?.memoryPct} />
+        <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+          {hb ? (
+            <Tooltip title={t.instances.rss(hb.rssMb)} arrow describeChild enterTouchDelay={0}>
+              <Box component="span" tabIndex={0} sx={dottedHint}>{t.instances.sessions(hb.sessions, hb.maxSessions)}</Box>
+            </Tooltip>
+          ) : DASH}
+        </TableCell>
+        <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+          {hb ? formatNumber(hb.pendingLogins) : DASH}
+        </TableCell>
+        <TableCell align="right" sx={{ whiteSpace: 'nowrap', color: 'text.secondary' }}>
+          {seenIso ? (
+            <Tooltip title={formatFullDateTime(seenIso)} arrow describeChild enterTouchDelay={0}>
+              <Box component="time" dateTime={seenIso} tabIndex={0} sx={dottedHint}>
+                {formatRelativeTime(seenIso, now, t.header.justNow)}
+              </Box>
+            </Tooltip>
+          ) : DASH}
+        </TableCell>
+      </TableRow>
+    );
+  };
 
   let body: ReactNode;
   if (section.kind === 'loading') {
@@ -166,56 +231,43 @@ export function WorkerInstancesTable({ section, thresholds, instanceColors, onRe
             </TableRow>
           </TableHead>
           <TableBody>
-            {section.instances.map((r) => {
-              const hb = r.heartbeat;
-              const seenIso = instanceSeenAt(r);
-              const color = instanceColors?.get(r.instance);
-              return (
-                <TableRow key={r.resource ?? `hb:${r.instance}`}>
-                  <TableCell sx={[{ whiteSpace: 'nowrap' }, sticky(scrolled)]}>
-                    {color && (
-                      <Box
-                        component="span"
-                        aria-hidden
-                        data-testid="instance-color"
-                        sx={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', bgcolor: color, mr: 1, verticalAlign: 'middle' }}
-                      />
-                    )}
-                    <OverflowTooltipText
-                      text={r.resource ?? hb?.workerId ?? r.instance}
-                      alwaysShow
-                      typographyProps={{ component: 'span', variant: 'body2', sx: { fontFamily: mono, display: 'inline-block', verticalAlign: 'middle' } }}
-                    >
-                      {r.instance}
-                    </OverflowTooltipText>
-                    {!hb && <MissingChip icon={HeartOff} label={t.instances.noHeartbeat} hint={t.instances.noHeartbeatHint} />}
-                    {!r.resource && <MissingChip icon={CircleDashed} label={t.instances.noSample} hint={t.instances.noSampleHint} />}
-                  </TableCell>
-                  <PctCell value={r.cpuPct} threshold={thresholds?.cpuPct} />
-                  <PctCell value={r.memoryPct} threshold={thresholds?.memoryPct} />
-                  <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
-                    {hb ? (
-                      <Tooltip title={t.instances.rss(hb.rssMb)} arrow describeChild enterTouchDelay={0}>
-                        <Box component="span" tabIndex={0} sx={dottedHint}>{t.instances.sessions(hb.sessions, hb.maxSessions)}</Box>
-                      </Tooltip>
-                    ) : DASH}
-                  </TableCell>
-                  <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
-                    {hb ? formatNumber(hb.pendingLogins) : DASH}
-                  </TableCell>
-                  <TableCell align="right" sx={{ whiteSpace: 'nowrap', color: 'text.secondary' }}>
-                    {seenIso ? (
-                      <Tooltip title={formatFullDateTime(seenIso)} arrow describeChild enterTouchDelay={0}>
-                        <Box component="time" dateTime={seenIso} tabIndex={0} sx={dottedHint}>
-                          {formatRelativeTime(seenIso, now, t.header.justNow)}
-                        </Box>
-                      </Tooltip>
-                    ) : DASH}
-                  </TableCell>
-                </TableRow>
-              );
-            })}
+            {section.live.map(({ row, ordinal }) => renderRow(row, t.instances.workerLabel(ordinal), false))}
           </TableBody>
+          {section.ended.length > 0 && (
+            <TableBody>
+              <TableRow>
+                <TableCell colSpan={COLS} sx={{ p: 0, borderBottom: endedOpen ? undefined : 0 }}>
+                  <ButtonBase
+                    onClick={() => setEndedOpen((v) => !v)}
+                    aria-expanded={endedOpen}
+                    aria-controls={endedId}
+                    sx={{
+                      position: 'sticky', left: 0, gap: 1, minHeight: 44, px: 2, borderRadius: 1, color: 'text.secondary',
+                      typography: 'body2', fontWeight: 600,
+                      '&.Mui-focusVisible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: -2 },
+                    }}
+                  >
+                    <Box
+                      component="span"
+                      aria-hidden
+                      sx={{
+                        display: 'inline-flex', transition: 'transform 200ms', transform: endedOpen ? 'none' : 'rotate(-90deg)',
+                        '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
+                      }}
+                    >
+                      <AppIcon icon={ChevronDown} size="sm" />
+                    </Box>
+                    {t.instances.endedSection(section.ended.length)}
+                  </ButtonBase>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          )}
+          {section.ended.length > 0 && (
+            <TableBody id={endedId} hidden={!endedOpen}>
+              {endedOpen && section.ended.map((r) => renderRow(r, r.instance, true))}
+            </TableBody>
+          )}
         </Table>
       </TableContainer>
     );

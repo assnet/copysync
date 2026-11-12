@@ -102,7 +102,85 @@ export type WorkerInstancesSection =
   | { kind: 'loading' }
   | { kind: 'error' }
   | { kind: 'empty'; reason: 'offline' | 'notConfigured' }
-  | { kind: 'table'; instances: OpsWorkerInstance[] };
+  | { kind: 'table'; live: LiveWorkerInstance[]; ended: OpsWorkerInstance[] };
+
+/** Instância viva com o número do rótulo "Worker N" (1 = a que começou primeiro). */
+export interface LiveWorkerInstance {
+  row: OpsWorkerInstance;
+  ordinal: number;
+}
+
+/**
+ * Folga para "saiu da amostra mais recente": todas as linhas de um `persist` do sampler têm o mesmo
+ * `at`; amostra mais velha que a mais nova − 1 min é de outra rodada.
+ */
+export const ENDED_SAMPLE_GAP_MS = MIN;
+
+/** Início visto de cada instância do worker na série e o último balde dela (base de "acabou de aparecer"). */
+export interface InstanceFirstSeen {
+  /** Chave = nome curto (`instanceShortName`), valor = `at` do primeiro ponto (ISO). */
+  firstSeen: Map<string, string>;
+  /** Último balde com ponto entre as instâncias do worker; `null` = sem série. */
+  newestBucketAt: string | null;
+}
+
+/** 1ª vez vista de cada instância (`worker_service`, CPU ou RAM) no período carregado. Pura. */
+export function instanceFirstSeen(series: readonly OpsSeries[]): InstanceFirstSeen {
+  const firstSeen = new Map<string, string>();
+  let newestBucketAt: string | null = null;
+  for (const s of series) {
+    if (s.kind !== 'worker_service' || (s.metric !== 'cpu_pct' && s.metric !== 'memory_pct') || s.points.length === 0) continue;
+    const name = instanceShortName(s.resource);
+    const first = s.points[0].at;
+    const last = s.points[s.points.length - 1].at;
+    const prev = firstSeen.get(name);
+    if (!prev || first < prev) firstSeen.set(name, first);
+    if (!newestBucketAt || last > newestBucketAt) newestBucketAt = last;
+  }
+  return { firstSeen, newestBucketAt };
+}
+
+/**
+ * Instância encerrada (processo do deploy anterior): sem batimento, com amostra da Render e
+ * - fora da amostra mais recente (`sampledAt` < mais nova − 1 min), ou
+ * - adoção ligada (outra instância tem batimento) e ela não acabou de aparecer: a Render ainda traz a
+ *   última janela do pod já parado. A que só aparece no último balde da série é tratada como "subindo".
+ * Sem batimento em nenhuma (adoção desligada) só vale o 1º critério. Pura.
+ */
+export function isEndedWorkerInstance(
+  r: OpsWorkerInstance,
+  ctx: { newestSampledAt: string | null; adoptionActive: boolean } & Partial<InstanceFirstSeen>,
+): boolean {
+  if (r.heartbeat || !r.resource || !r.sampledAt) return false;
+  const at = new Date(r.sampledAt).getTime();
+  const newest = ctx.newestSampledAt ? new Date(ctx.newestSampledAt).getTime() : Number.NaN;
+  if (Number.isFinite(newest) && at < newest - ENDED_SAMPLE_GAP_MS) return true;
+  if (!ctx.adoptionActive) return false;
+  const first = ctx.firstSeen?.get(r.instance);
+  const justAppeared = !!first && !!ctx.newestBucketAt && first >= ctx.newestBucketAt;
+  return !justAppeared;
+}
+
+/**
+ * Separa vivas e encerradas e numera as vivas: ordem de início (1ª vez vista na série; sem série,
+ * no fim) e desempate pelo nome curto. O batimento não traz horário de início. Encerradas pelo nome. Pura.
+ */
+export function groupWorkerInstances(
+  instances: readonly OpsWorkerInstance[],
+  series: readonly OpsSeries[] = [],
+): { live: LiveWorkerInstance[]; ended: OpsWorkerInstance[] } {
+  const seen = instanceFirstSeen(series);
+  let newestSampledAt: string | null = null;
+  for (const r of instances) if (r.sampledAt && (!newestSampledAt || r.sampledAt > newestSampledAt)) newestSampledAt = r.sampledAt;
+  const ctx = { ...seen, newestSampledAt, adoptionActive: instances.some((r) => r.heartbeat) };
+  const live: OpsWorkerInstance[] = [];
+  const ended: OpsWorkerInstance[] = [];
+  for (const r of instances) (isEndedWorkerInstance(r, ctx) ? ended : live).push(r);
+  const startKey = (r: OpsWorkerInstance) => seen.firstSeen.get(r.instance) ?? '\uffff';
+  live.sort((a, b) => startKey(a).localeCompare(startKey(b)) || a.instance.localeCompare(b.instance));
+  ended.sort((a, b) => a.instance.localeCompare(b.instance));
+  return { live: live.map((row, i) => ({ row, ordinal: i + 1 })), ended };
+}
 
 /**
  * Decide o bloco "Instâncias do worker". Filtro sem o worker = some. Carregando = skeleton. `/latest`
@@ -116,15 +194,16 @@ export function workerInstancesSection(input: {
   latestFailed: boolean;
   instances: OpsWorkerInstance[] | null | undefined;
   hasWorkerData: boolean;
+  /** Séries de Servidores do período: 1ª vez vista de cada instância (ordem do "Worker N"). */
+  series?: readonly OpsSeries[];
 }): WorkerInstancesSection {
-  const { resource, loading, latestFailed, instances, hasWorkerData } = input;
+  const { resource, loading, latestFailed, instances, hasWorkerData, series } = input;
   if (!resourceVisible(resource, 'worker_service')) return { kind: 'hidden' };
   if (loading) return { kind: 'loading' };
   const workerOnly = resource === 'worker_service';
   if (latestFailed) return hasWorkerData || workerOnly ? { kind: 'error' } : { kind: 'hidden' };
   if (!instances) return { kind: 'hidden' };
-  // Mesma ordem do gráfico "Por instância" (`seriesByInstance`): pelo nome curto.
-  if (instances.length > 0) return { kind: 'table', instances: [...instances].sort((a, b) => a.instance.localeCompare(b.instance)) };
+  if (instances.length > 0) return { kind: 'table', ...groupWorkerInstances(instances, series) };
   if (hasWorkerData) return { kind: 'empty', reason: 'offline' };
   return workerOnly ? { kind: 'empty', reason: 'notConfigured' } : { kind: 'hidden' };
 }

@@ -9,6 +9,17 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — app 0.111.0 — rótulo "Worker N" e instâncias encerradas recolhidas
+
+Tabela "Instâncias do worker" (`/admin/workers/usage`): vivas como "Worker 1", "Worker 2"… pela ordem de início; processos do deploy anterior numa seção recolhida no fim. Só painel, sem banco e sem mudança na API. Doc: `docs/ops-metricas.md`.
+**Migration Prisma**: não. **Breaking**: não.
+
+#### Frontend (app/) — `opsMetrics`
+
+- **`rules.ts`** (`instanceFirstSeen`, `isEndedWorkerInstance`, `groupWorkerInstances`, `workerInstancesSection`) — o batimento não traz horário de início, então a ordem vem da 1ª vez vista na série de Servidores (desempate pelo sufixo; sem série no fim). Encerrada = sem batimento, com amostra, e fora da amostra mais recente (> 1 min) ou com adoção ligada (outra instância com batimento) sem ter acabado de aparecer (a do último balde é tratada como "subindo"). Antes elas apareciam como "Sem batimento" com "visto há 4 minutos" entre as vivas.
+- **`WorkerInstancesTable.tsx`**, **`strings.ts`** — 1ª coluna "Worker N"; sufixo + id completo só no tooltip (hover e foco, `describeChild`). Seção "Encerradas recentemente (N)" (botão com `aria-expanded`, aberto/fechado em `usePersistedState('workers.usage.endedInstancesOpen')`, escopo `tab`), chip "Encerrada" no lugar de "Sem batimento", linhas pelo sufixo, sem numeração.
+- **`UsageTab.tsx`** — passa as séries de Servidores para `workerInstancesSection`.
+
 ### Added — api 0.90.0 · app 0.110.0 — custos por cliente e histórico (P3)
 
 Custo por cliente (compartilhado + IA da plataforma), fechamento mensal congelado pelo job e histórico de 12 meses. Rotas novas `GET /api/admin/costs/tenants?month=&plan=&cursor=` (cursor keyset assinado, 400 `INFRA_COST_CURSOR_INVALID`) e `GET /api/admin/costs/history`, só super admin e só tabelas locais. Doc: `docs/custos-infraestrutura.md`.
