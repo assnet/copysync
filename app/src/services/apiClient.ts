@@ -83,16 +83,21 @@ export function classifyServiceUnavailable(error: Pick<AxiosError, 'response' | 
 /** Status do `/auth/refresh` que é passageiro: indisponível, sem logout. */
 const REFRESH_TRANSIENT_STATUSES: ReadonlySet<number> = new Set([408, 429, 502, 503, 504]);
 
+/** Refresh recusado de vez: token inválido (400/401), sem acesso (403) ou usuário removido (404). */
+const REFRESH_INVALID_STATUSES: ReadonlySet<number> = new Set([400, 401, 403, 404]);
+
 /**
- * Resultado de uma falha do `/auth/refresh`. Só 400/401 = refresh token inválido (desloga).
- * Rede/proxy, 408, 429, 502–504 = indisponível. Resto (403, 404, 500, timeout) = erro comum, sem
- * logout: não derruba a sessão por uma falha que não diz que o token é inválido.
+ * Resultado de uma falha do `/auth/refresh`:
+ * - `invalid` (desloga): 400, 401, 403, 404.
+ * - `unavailable` (estado "atualizando", sem logout): rede/proxy sem resposta, 408, 429, 502–504.
+ * - `failed` (erro comum, sem logout): 500 e outros 5xx, timeout, erro que não veio do HTTP.
  */
-export function classifyRefreshFailure(error: Pick<AxiosError, 'response' | 'code' | 'message'>): RefreshTokenResult {
-  const status = error.response?.status;
-  if (status === 400 || status === 401) return { status: 'invalid' };
-  const message = error.message || 'Erro inesperado';
-  if (status === undefined ? classifyServiceUnavailable(error) : REFRESH_TRANSIENT_STATUSES.has(status)) {
+export function classifyRefreshFailure(err: unknown): RefreshTokenResult {
+  const message = err instanceof Error && err.message ? err.message : 'Erro inesperado';
+  if (!axios.isAxiosError(err)) return { status: 'failed', message };
+  const status = err.response?.status;
+  if (status !== undefined && REFRESH_INVALID_STATUSES.has(status)) return { status: 'invalid' };
+  if (status === undefined ? classifyServiceUnavailable(err) : REFRESH_TRANSIENT_STATUSES.has(status)) {
     return { status: 'unavailable', message };
   }
   return { status: 'failed', message, httpStatus: status };
@@ -114,12 +119,17 @@ async function refreshAccessToken(): Promise<RefreshTokenResult> {
       .post<{ success: true; data: { accessToken: string } }>('/auth/refresh', {
         refreshToken,
       })
-      .then((response) => {
-        const accessToken = response.data.data.accessToken;
+      .then((response): RefreshTokenResult => {
+        // Corpo fora do contrato não é indisponibilidade nem token inválido: erro comum.
+        const accessToken: unknown = response.data?.data?.accessToken;
+        if (typeof accessToken !== 'string' || accessToken === '') {
+          return { status: 'failed', message: 'Resposta inválida do refresh', httpStatus: response.status };
+        }
         localStorage.setItem('accessToken', accessToken);
-        return { status: 'success', accessToken } as const;
-      })
-      .catch((err: unknown) => classifyRefreshFailure(err as AxiosError<ApiErrorPayload>))
+        return { status: 'success', accessToken };
+      }, classifyRefreshFailure)
+      // Erro ao gravar o token (ex.: storage bloqueado) também vira `failed`, nunca rejeição solta.
+      .catch(classifyRefreshFailure)
       .finally(() => {
         refreshPromise = null;
       });

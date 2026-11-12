@@ -199,12 +199,30 @@ describe('apiClient — refresh: o que desloga e o que não', () => {
     expect(localStorage.getItem('refreshToken')).toBe('rt');
   });
 
-  it('refresh 403 rejeita erro comum, sem logout', async () => {
-    const { apiClient, isServiceUnavailable } = await loadWithRefresh(protectedThen(ok({})), rejectWith(403, 'FORBIDDEN'));
+  it.each([400, 403, 404])('refresh %i desloga (token inválido, sem acesso, usuário removido)', async (status) => {
+    const { apiClient, isServiceUnavailable } = await loadWithRefresh(protectedThen(ok({})), rejectWith(status, 'NOPE'));
     const err = await apiClient.get('/x').catch((e: unknown) => e);
     expect(isServiceUnavailable(err)).toBe(false);
-    expect(err).toMatchObject({ status: 403, code: 'REFRESH_FAILED' });
+    expect(location.href).toBe('/login');
+    expect(localStorage.getItem('refreshToken')).toBeNull();
+  });
+
+  it('refresh 200 com corpo fora do contrato rejeita erro comum, sem logout', async () => {
+    const { apiClient, isServiceUnavailable } = await loadWithRefresh(protectedThen(ok({})), ok({ success: true, data: {} }));
+    const err = await apiClient.get('/x').catch((e: unknown) => e);
+    expect(isServiceUnavailable(err)).toBe(false);
+    expect(err).toMatchObject({ code: 'REFRESH_FAILED' });
+    expect(localStorage.getItem('accessToken')).toBe('tok');
+    expect(localStorage.getItem('refreshToken')).toBe('rt');
     expect(location.href).toBe('http://localhost/dashboard');
+  });
+
+  it('refresh com erro que não veio do HTTP (TypeError) rejeita erro comum, sem logout', async () => {
+    const boom: AxiosAdapter = () => Promise.reject(new TypeError('x is not a function'));
+    const { apiClient, isServiceUnavailable } = await loadWithRefresh(protectedThen(ok({})), boom);
+    const err = await apiClient.get('/x').catch((e: unknown) => e);
+    expect(isServiceUnavailable(err)).toBe(false);
+    expect(err).toMatchObject({ code: 'REFRESH_FAILED' });
     expect(localStorage.getItem('refreshToken')).toBe('rt');
   });
 

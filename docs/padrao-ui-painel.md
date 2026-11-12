@@ -165,9 +165,15 @@ erro do usuário nem da tela, então não vira alerta vermelho.
   lida do campo `serviceUnavailable` do erro rejeitado. Conta: falha de rede/proxy sem resposta,
   502, 503, 504. **Não** conta: 500, 4xx, requisição cancelada, timeout (`ECONNABORTED`/`ETIMEDOUT`,
   servidor vivo e lento).
-- **Refresh do token** (`/auth/refresh` após 401): só 400/401 desloga. Rede/proxy, 408, 429, 502–504
-  rejeitam como indisponível; 403, 404, 500 e timeout rejeitam erro comum (`REFRESH_FAILED`). Nenhum
-  dos dois derruba a sessão. 401 tardio com token já renovado por outro pedido repete com o token
+- **Refresh do token** (`/auth/refresh` após 401), `classifyRefreshFailure`:
+
+  | Resultado do refresh | Efeito |
+  |---|---|
+  | 400, 401, 403, 404 (inválido, sem acesso, usuário removido) ou sem refresh token | desloga |
+  | rede/proxy sem resposta, 408, 429, 502–504 | indisponível (`SERVICE_UNAVAILABLE`), sem logout |
+  | 500 e outros 5xx, timeout, 200 sem `data.accessToken`, erro fora do HTTP | erro comum (`REFRESH_FAILED`), sem logout |
+
+  "Sair" limpa a sessão local mesmo com `/auth/logout` falhando (`AuthContext.logout`). 401 tardio com token já renovado por outro pedido repete com o token
   atual, sem novo refresh; 401 concorrentes compartilham um único refresh.
 - **Componente**: `ServiceUpdatingState` (`components/`), textos em `components/serviceUpdatingStrings.ts`.
   Ilustração (rack + engrenagens), "Estamos atualizando o sistema", contagem até a próxima tentativa,
@@ -176,7 +182,7 @@ erro do usuário nem da tela, então não vira alerta vermelho.
 - **Nova tentativa**: `useAutoRetry` (`hooks/`), 5 s → 10 s → 20 s → teto 30 s. Um `setTimeout` por vez
   re-armado por segundo (nunca `setInterval`); aba oculta pausa e retoma do mesmo ponto. Só a
   tentativa automática avança a escada; "Tentar agora" reinicia a espera do degrau atual. Não
-  desiste: após 3 min tentando mostra "Está demorando mais que o normal. Se continuar, avise o suporte."
+  desiste: após 3 min tentando (um `setTimeout` armado na montagem; conta com a aba oculta) mostra "Está demorando mais que o normal. Se continuar, avise o suporte."
   Relógio local, **não** `serverNow()`: a API está fora (sem `X-Server-Time` novo) e a espera não é
   comparada com horário do servidor.
 - **Como ligar numa tela**: o hook de dados guarda `loadUnavailable` (`isServiceUnavailable(err)` no

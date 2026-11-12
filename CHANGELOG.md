@@ -18,7 +18,7 @@ Durante deploy da API na Render, as abas de `/admin/workers` mostravam só um al
 #### Frontend (app/) — `services`, `components`, `hooks`, `workersAdmin`, `opsMetrics`
 
 - **`apiClient.ts`** — `classifyServiceUnavailable`/`isServiceUnavailable`: erro rejeitado leva `serviceUnavailable` (rede/proxy sem resposta, 502/503/504; cancelada, timeout, 4xx e 500 não).
-- **`ServiceUpdatingState.tsx`**, **`serviceUpdatingStrings.ts`** — estado compartilhado (ilustração, textos, contagem, `aria-live="polite"` só no título/"ainda atualizando (tentativa N)", aviso de demora após 3 min, Tooltip no "Tentar agora").
+- **`ServiceUpdatingState.tsx`**, **`serviceUpdatingStrings.ts`** — estado compartilhado (ilustração, textos, contagem, `aria-live="polite"` só no título/"ainda atualizando (tentativa N)", aviso de demora após 3 min por `setTimeout` único da montagem, Tooltip no "Tentar agora").
 - **`useAutoRetry.ts`** — backoff com um `setTimeout` por vez (sem `setInterval`), pausa/retoma por `visibilitychange`, relógio local (sem `serverNow()`: a API está fora); "Tentar agora" reinicia o degrau atual.
 - **`useWorkerSettings.ts`**, **`useWorkerCapacity.ts`**, **`useWorkerScale.ts`**, **`useAdminWorkers.ts`**, **`useOpsMetrics.ts`** — flag de indisponibilidade da 1ª carga, limpa só quando uma leitura conclui; o tick de 20 s da Ocupação pula enquanto indisponível.
 - **`SettingsTab.tsx`**, **`CapacityTab.tsx`**, **`ScaleTab.tsx`**, **`AdminWorkersPage.tsx`** (Ocupação), **`UsageTab.tsx`** — usam o estado novo na indisponibilidade.
@@ -27,7 +27,8 @@ Durante deploy da API na Render, as abas de `/admin/workers` mostravam só um al
 
 Request com 401 → `/auth/refresh` respondia 502/sem resposta no deploy → o `catch` vazio engolia e o 401 caía em `clearSessionAndRedirect()`, deslogando com o refresh token ainda válido.
 
-- **`apiClient.ts`** (`classifyRefreshFailure`) — só refresh 400/401 (ou sem refresh token) desloga. Rede/proxy, 408, 429, 502–504 rejeitam com `serviceUnavailable` (`code: SERVICE_UNAVAILABLE`); 403, 404, 500 e timeout rejeitam erro comum (`code: REFRESH_FAILED`, sem "atualizando" para não ficar em laço). Nenhum limpa a sessão; a próxima tentativa refaz 401 → refresh.
+- **`apiClient.ts`** (`classifyRefreshFailure`) — refresh 400/401/403/404 (inválido, sem acesso, usuário removido) ou sem refresh token desloga. Rede/proxy sem resposta, 408, 429, 502–504 rejeitam com `serviceUnavailable` (`code: SERVICE_UNAVAILABLE`), sem logout. 500 e outros 5xx, timeout, 200 sem `data.accessToken` e erro fora do HTTP rejeitam erro comum (`code: REFRESH_FAILED`, sem "atualizando" para não ficar em laço), sem logout. A próxima tentativa refaz 401 → refresh.
+- **`AuthContext.test.tsx`** — "Sair" limpa a sessão local mesmo com `/auth/logout` falhando (401, refresh falho, rede).
 - **`apiClient.ts`** — 401 tardio de pedido que saiu com token antigo, já renovado por outro, repete com o token atual sem novo `/auth/refresh`.
 
 ### Added — api 0.86.0 · app 0.105.0 — worker separado da API no consumo

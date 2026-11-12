@@ -56,7 +56,8 @@ export function useAutoRetry(onRetry: () => unknown): AutoRetryState {
   const attemptsRef = useRef(0);
   /** Degrau da escada de esperas (só tentativas automáticas avançam). */
   const stepRef = useRef(0);
-  const startedAt = useRef(Date.now());
+  const [slow, setSlow] = useState(false);
+  const slowTimer = useRef<number | undefined>(undefined);
   const onRetryRef = useRef(onRetry);
   onRetryRef.current = onRetry;
   const mounted = useRef(true);
@@ -64,8 +65,12 @@ export function useAutoRetry(onRetry: () => unknown): AutoRetryState {
 
   useEffect(() => {
     mounted.current = true;
+    // Aviso de demora: um único timer desde a montagem (corre mesmo com a aba oculta: o tempo fora
+    // do ar conta igual), limpo ao desmontar.
+    slowTimer.current = window.setTimeout(() => setSlow(true), AUTO_RETRY_SLOW_AFTER_MS);
     return () => {
       mounted.current = false;
+      window.clearTimeout(slowTimer.current);
     };
   }, []);
 
@@ -120,8 +125,6 @@ export function useAutoRetry(onRetry: () => unknown): AutoRetryState {
   }, [running]);
 
   const retryNow = useCallback(() => setRunning((r) => r ?? 'manual'), []);
-  // Recalculado a cada render (a contagem re-renderiza por segundo).
-  const slow = Date.now() - startedAt.current >= AUTO_RETRY_SLOW_AFTER_MS;
 
   return { secondsLeft, retrying, paused, attempts, slow, retryNow };
 }

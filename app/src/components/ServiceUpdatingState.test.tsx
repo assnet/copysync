@@ -164,6 +164,18 @@ describe('ServiceUpdatingState', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it('aviso de 3 min conta também com a aba oculta e aparece ao voltar', async () => {
+    const onRetry = vi.fn().mockRejectedValue(new Error('fora'));
+    renderWithTheme(<ServiceUpdatingState onRetry={onRetry} />);
+    await advance(10_000);
+    setVisibility('hidden');
+    await advance(169_999);
+    expect(screen.queryByText(t.slow)).not.toBeInTheDocument();
+    await advance(1);
+    setVisibility('visible');
+    expect(screen.getByText(t.slow)).toBeInTheDocument();
+  });
+
   it('anuncia por aria-live só o título/texto e o "ainda atualizando", não cada segundo', async () => {
     const onRetry = vi.fn().mockRejectedValue(new Error('fora'));
     renderWithTheme(<ServiceUpdatingState onRetry={onRetry} />);
