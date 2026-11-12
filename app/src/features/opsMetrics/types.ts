@@ -107,7 +107,8 @@ export interface UsageFilters {
 /** Gráficos de Servidores: Worker como pior instância (1 linha) ou uma linha por instância. */
 export type WorkerChartView = 'worst' | 'instance';
 
-export type OpsStatus = 'ok' | 'warning' | 'critical' | 'noData';
+/** `seriesOnly`: há valor (vindo da série), mas sem limiar para julgar (`/latest` falhou). */
+export type OpsStatus = 'ok' | 'warning' | 'critical' | 'noData' | 'seriesOnly';
 
 /** Blocos buscados em paralelo; erro de um não derruba os outros. */
 export type OpsBlock = 'latest' | 'servers' | 'database' | 'workers';

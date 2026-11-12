@@ -1,5 +1,5 @@
 import { Chip } from '@mui/material';
-import { CircleCheck, CircleDashed, OctagonAlert, TriangleAlert } from 'lucide-react';
+import { CircleCheck, CircleDashed, History, OctagonAlert, TriangleAlert } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { opsMetricsStrings as t } from '../strings';
 import type { OpsStatus } from '../types';
@@ -9,6 +9,7 @@ const CONFIG = {
   warning: { color: 'warning', variant: 'outlined', icon: TriangleAlert },
   critical: { color: 'error', variant: 'filled', icon: OctagonAlert },
   noData: { color: 'default', variant: 'outlined', icon: CircleDashed },
+  seriesOnly: { color: 'default', variant: 'outlined', icon: History },
 } as const;
 
 /** Status sempre com ícone + palavra (nunca só cor). */

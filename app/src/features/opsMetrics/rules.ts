@@ -45,9 +45,14 @@ export function rangeWindow(range: OpsRange, nowMs: number): { from: string; to:
   return { from: new Date(nowMs - OPS_RANGE_MS[range]).toISOString(), to: new Date(nowMs).toISOString() };
 }
 
-/** Status de um valor contra o limiar (maior = pior). */
-export function statusFor(value: number | null | undefined, threshold: number): OpsStatus {
+/**
+ * Status de um valor contra o limiar (maior = pior). Mesma fonte do valor exibido: sem valor =
+ * "Sem dados" (KPI mostra "—"); com valor e sem limiar (o limiar vem do `/latest`, que falhou) =
+ * "Dado da série", nunca "Sem dados" ao lado de um número.
+ */
+export function statusFor(value: number | null | undefined, threshold: number | null | undefined): OpsStatus {
   if (value == null || !Number.isFinite(value)) return 'noData';
+  if (threshold == null || !Number.isFinite(threshold)) return 'seriesOnly';
   if (value >= threshold) return 'critical';
   if (value >= threshold * WARNING_RATIO) return 'warning';
   return 'ok';

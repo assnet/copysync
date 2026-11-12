@@ -24,6 +24,12 @@ describe('statusFor', () => {
     expect(statusFor(undefined, 80)).toBe('noData');
     expect(statusFor(Number.NaN, 80)).toBe('noData');
   });
+
+  it('com valor e sem limiar (/latest falhou) = "Dado da série"; sem valor segue "Sem dados"', () => {
+    expect(statusFor(62, undefined)).toBe('seriesOnly');
+    expect(statusFor(0, null)).toBe('seriesOnly');
+    expect(statusFor(null, undefined)).toBe('noData');
+  });
   it('cache hit: menor é pior', () => {
     expect(cacheHitStatus(99.6)).toBe('ok');
     expect(cacheHitStatus(97)).toBe('warning');

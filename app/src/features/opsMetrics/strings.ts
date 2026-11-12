@@ -22,7 +22,7 @@ export const opsMetricsStrings = {
     autoRefresh: 'Atualizar a cada 60 s',
     autoRefreshHint: 'Pausa sozinho quando esta aba do navegador fica em segundo plano.',
   },
-  status: { ok: 'Ok', warning: 'Atenção', critical: 'Acima do limite', noData: 'Sem dados' },
+  status: { ok: 'Ok', warning: 'Atenção', critical: 'Acima do limite', noData: 'Sem dados', seriesOnly: 'Dado da série' },
   kpi: {
     ramApi: 'RAM · API',
     cpuApi: 'CPU · API',

@@ -286,34 +286,34 @@ function buildUsageView({ latestRes, series, resource, colors, workerView, loadi
     {
       key: 'ramApi', visible: showApi, label: t.kpi.ramApi, icon: MemoryStick, value: formatPct(ramApiV),
       context: ramApiV != null ? t.kpi.ofMb(Math.round((ramApiV / 100) * API_MEMORY_LIMIT_MB), API_MEMORY_LIMIT_MB) : undefined,
-      status: thresholds ? statusFor(ramApiV, thresholds.memoryPct) : 'noData', help: t.help.memory_pct,
+      status: statusFor(ramApiV, thresholds?.memoryPct), help: t.help.memory_pct,
       spark: spark(memApi), sparkColor: colors.api, formatValue: formatPct,
     },
     {
       key: 'cpuApi', visible: showApi, label: t.kpi.cpuApi, icon: Cpu, value: formatPct(cpuApiV), context: t.kpi.avg5min,
-      status: thresholds ? statusFor(cpuApiV, thresholds.cpuPct) : 'noData', help: t.help.cpu_pct,
+      status: statusFor(cpuApiV, thresholds?.cpuPct), help: t.help.cpu_pct,
       spark: spark(cpuApi), sparkColor: colors.api, formatValue: formatPct,
     },
     {
       key: 'ramWorker', visible: showWorker && hasWorker, label: t.kpi.ramWorker, icon: MemoryStick, value: formatPct(ramWorkerV),
       context: ramWorkerN > 1 ? t.kpi.worstOf(ramWorkerN) : undefined,
-      status: thresholds ? statusFor(ramWorkerV, thresholds.memoryPct) : 'noData', help: t.help.workerServiceMemory,
+      status: statusFor(ramWorkerV, thresholds?.memoryPct), help: t.help.workerServiceMemory,
       spark: spark(memWorker), sparkColor: colors.workerService, formatValue: formatPct,
     },
     {
       key: 'cpuWorker', visible: showWorker && hasWorker, label: t.kpi.cpuWorker, icon: Cpu, value: formatPct(cpuWorkerV),
       context: cpuWorkerN > 1 ? `${t.kpi.avg5min} · ${t.kpi.worstOf(cpuWorkerN)}` : t.kpi.avg5min,
-      status: thresholds ? statusFor(cpuWorkerV, thresholds.cpuPct) : 'noData', help: t.help.workerServiceCpu,
+      status: statusFor(cpuWorkerV, thresholds?.cpuPct), help: t.help.workerServiceCpu,
       spark: spark(cpuWorker), sparkColor: colors.workerService, formatValue: formatPct,
     },
     {
       key: 'ramDb', visible: showDb, label: t.kpi.ramDb, icon: MemoryStick, value: formatPct(ramDbV),
-      status: thresholds ? statusFor(ramDbV, thresholds.memoryPct) : 'noData', help: t.help.memory_pct,
+      status: statusFor(ramDbV, thresholds?.memoryPct), help: t.help.memory_pct,
       spark: spark(memDb), sparkColor: colors.postgres, formatValue: formatPct,
     },
     {
       key: 'cpuDb', visible: showDb, label: t.kpi.cpuDb, icon: Cpu, value: formatPct(cpuDbV), context: t.kpi.avg5min,
-      status: thresholds ? statusFor(cpuDbV, thresholds.cpuPct) : 'noData', help: t.help.cpu_pct,
+      status: statusFor(cpuDbV, thresholds?.cpuPct), help: t.help.cpu_pct,
       spark: spark(cpuDb), sparkColor: colors.postgres, formatValue: formatPct,
     },
     {
@@ -321,7 +321,7 @@ function buildUsageView({ latestRes, series, resource, colors, workerView, loadi
       value: connV != null ? formatNumber(connV) : '—',
       context: idleTxV != null ? t.kpi.idleInTx(Math.round(idleTxV)) : undefined,
       // Status vem das ociosas em transação: sem esse valor (ou sem limiar) não há como julgar.
-      status: connV == null || idleTxV == null || !thresholds ? 'noData' : statusFor(idleTxV, thresholds.idleInTransaction),
+      status: connV == null ? 'noData' : statusFor(idleTxV, thresholds?.idleInTransaction),
       help: t.help.db_connections, spark: spark(connPts), sparkColor: colors.postgres, formatValue: fmtCount,
     },
     {
