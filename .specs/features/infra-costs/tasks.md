@@ -14,9 +14,12 @@
   no início de cada fase). `git show --stat HEAD` depois de cada commit.
 - Um commit por tarefa, `tipo(escopo): descrição` + `Co-Authored-By`. Migration nova nunca edita migration aplicada; timestamp
   maior que a última do topo (hoje `20261111150000`).
-- **Versões:** próxima minor acima do topo no início de cada fase (hoje api 0.86.0 · app 0.106.0 → P1 previsto
+- **Versões:** próxima minor acima do topo no início de cada fase (topo de `feature/rebranding-app` em `b7a1bae`: api 0.86.0 · app 0.106.0 → P1 previsto
   api 0.87.0 · app 0.107.0, P2 0.88.0 · 0.108.0, P3 0.89.0 · 0.109.0; reconferir no topo antes, outra feature pode
-  ter usado). `package.json` + `CHANGELOG.md` juntos.
+  ter usado). `package.json` + entrada no `CHANGELOG.md` da raiz (e em `api/CHANGELOG.md` quando a fase tocar a api) juntos;
+  `app/` não tem changelog próprio.
+- **Antes da T1:** rebasear `feature/infra-costs` (só commits de plano) sobre o topo real de `feature/rebranding-app`
+  (o worktree do plano saiu de `89bc9ff`, antes de `b7a1bae`) e reconferir versões e última migration.
 
 **Subagentes e RAM** (memória `ram-mac-subagentes`): no máximo **7** ao mesmo tempo; no máximo **1** com Postgres
 descartável (porta 55432), tarefas `integration-db` sempre em sequência. Monitor de `memory_pressure` armado em toda
@@ -79,7 +82,7 @@ P1  onda 1 (3 agentes): T1 ∥ T3 ∥ T7
 P2  onda 1 (3 agentes): T11 (banco) ∥ T12 ∥ T12b
     onda 2 (1 agente) : T13 (banco) → T14 → T15 → T16
     R2
-P3  onda 1 (2 agentes): T17 ∥ T18 (banco)
+P3  onda 1 (1 agente) : T17 (banco) → T18 (banco)
     onda 2 (1 agente) : T19 → T20 → T21
     R3
 ```
@@ -98,10 +101,10 @@ Pico de 3 agentes + 1 revisor.
 **Tests**: unit · **Gate**: quick · **Commit**: `feat(metrics): domínio da configuração de custos da infraestrutura`
 
 ### T2: Calculador, modo foto
-**What**: `resolveFxRate` puro com o ramo manual (`source: 'manual'`, `stale`, `null` → `fx_missing`; a T12b só acrescenta PTAX e `last_known`) e `calculateInfraCosts` com `basis: 'snapshot'`, devolvendo USD e BRL: custo por item (fixo, por instância, uso, armazenamento), total, fixo × variável, por sessão (conectadas e contratadas), por plano proporcional às conectadas, custo por tenant médio, marginal por sessão, avisos `price_to_confirm`; `null` em toda divisão por zero. Assinatura já aceita entradas por hora (vazias na P1) para a T14 só preencher.
+**What**: `resolveFxRate` puro com o ramo manual (`source: 'override'`, `stale`, `null` → `fx_missing`; a T12b só acrescenta PTAX e `last_known`) e `calculateInfraCosts` com `basis: 'snapshot'`, devolvendo USD e BRL: custo por item (fixo, por instância, uso, armazenamento), total, fixo × variável, por sessão (conectadas e contratadas), por plano proporcional às conectadas, custo por tenant médio, marginal por sessão, avisos `storage_to_confirm`; `null` em toda divisão por zero. Assinatura já aceita entradas por hora (vazias na P1) para a T14 só preencher.
 **Where**: `metrics/domain/services/infraCostCalculator.ts`, `metrics/domain/services/fxRate.ts` (+ `.test.ts`)
-**Depends on**: T1 · **Requirement**: COST-04, COST-05, COST-06a, COST-06b
-**Done when**: testes com os valores reais (89 com 1 worker, 114 com 2), sem sessão, sem amostra, storage a confirmar, marginal = 25 ÷ (teto × ratio)
+**Depends on**: T1 · **Requirement**: COST-02a, COST-04, COST-05, COST-06a, COST-06b
+**Done when**: testes com os valores reais (93,50 com 1 worker, 118,50 com 2, disco da api `storage_to_confirm`), plano vizinho (api 25 → 7 e 85; ponta = `null`), sem sessão, sem amostra, storage a confirmar, marginal = 25 ÷ (teto × ratio)
 **Tests**: unit · **Gate**: quick · **Commit**: `feat(metrics): cálculo de custos e rateio por sessão e plano`
 
 ### T3: Ação de auditoria [P]
@@ -126,7 +129,7 @@ Pico de 3 agentes + 1 revisor.
 **Tests**: integration-db · **Gate**: integration-db (depois da T4) · **Commit**: `feat(metrics): leitura do momento para custos`
 
 ### T6: Use cases e rotas
-**What**: `GetInfraCostSettingsUseCase`, `UpdateInfraCostSettingsUseCase` (auditoria antes/depois), `GetInfraCostSummaryUseCase` (lê `workerScalingSettingsProvider().current()` a cada chamada); rotas `GET`/`PUT /admin/costs/settings`, `GET /admin/costs/summary` (super admin, schema, presenter, handlers finos). Composição no container do `metrics`, registro em `routes.ts`.
+**What**: `GetInfraCostSettingsUseCase`, `UpdateInfraCostSettingsUseCase` (auditoria antes/depois), `GetInfraCostSummaryUseCase` (lê `workerScalingSettingsProvider().current()` a cada chamada); rotas `GET`/`PUT /admin/costs/settings`, `GET /admin/costs/summary?month=YYYY-MM` (super admin; na P1 só o mês corrente, outro mês → 400 `INFRA_COST_MONTH_UNAVAILABLE`; schema, presenter, handlers finos). Composição no container do `metrics`, registro em `routes.ts`.
 **Where**: `metrics/application/use-cases/`, `metrics/presentation/routes/infraCosts.routes.ts` (+ schema, presenter, testes), `api/src/app/routes.ts`
 **Depends on**: T2, T4, T5 · **Requirement**: COST-03, COST-04, COST-05, COST-06a
 **Done when**: testes de rota: 401 sem super admin, 400 com `field`, 409, resposta sem preço de plano nem id da Render
@@ -140,7 +143,7 @@ Pico de 3 agentes + 1 revisor.
 **Tests**: unit · **Gate**: quick · **Commit**: `feat(app): regras e serviço dos custos da infraestrutura`
 
 ### T8: Painel: página, navegação, aba Resumo
-**What**: `AdminCostsPage.tsx` com abas por sub-rota (lazy), rotas em `AppRoutes.tsx`, item `admin-costs` em `navigation/model.ts` (+ teste do modelo), `SummaryTab` + `useCostSummary` (cartões, por plano com margem, serviços, avisos, selo "estimado"/"a confirmar", USD e BRL lado a lado, faixa da cotação com data, origem e "Fonte: Banco Central do Brasil (PTAX)" quando `source` for `ptax`/`sgs`), link "Ver custos" no cartão da aba Capacidade, rota em `SUPPORT_CHAT_HIDDEN_PATHS` se houver ação fixa no canto.
+**What**: `AdminCostsPage.tsx` com abas por sub-rota (lazy), rotas em `AppRoutes.tsx`, item `admin-costs` em `navigation/model.ts` (+ teste do modelo), `SummaryTab` + `useCostSummary` (cartões, por plano com margem, serviços com plano vizinho (COST-02a), avisos, selo "estimado"/"a confirmar", USD e BRL lado a lado, faixa da cotação com data, origem e "Fonte: Banco Central do Brasil (PTAX)" quando `source` for `ptax`/`sgs`), link "Ver custos" no cartão da aba Capacidade, rota em `SUPPORT_CHAT_HIDDEN_PATHS` se houver ação fixa no canto.
 **Where**: `app/src/pages/admin/AdminCostsPage.tsx`, `app/src/routes/AppRoutes.tsx`, `features/navigation/model.ts`, `features/infraCosts/components/SummaryTab.tsx`, `features/workersAdmin/components/CapacityTab.tsx`
 **Depends on**: T6, T7 · **Requirement**: COST-07, COST-16
 **Done when**: testes com `renderWithTheme` claro e escuro, estado "sem amostra", sem câmbio sem margem; build verde
@@ -154,7 +157,7 @@ Pico de 3 agentes + 1 revisor.
 **Tests**: unit · **Gate**: full + build · **Commit**: `feat(app): edição dos preços da infraestrutura`
 
 ### T10: Docs, versão e changelog da P1
-**What**: `docs/custos-infraestrutura.md` (o que existe, conta, rateio, margem, o que não fazer), linha no `AGENTS.md` ("Marca e domínios"), linha em "Ferramentas operacionais" do roadmap, nota em `docs/planos.md` (margem lê o catálogo), versões e `CHANGELOG.md` dos dois apps.
+**What**: `docs/custos-infraestrutura.md` (o que existe, conta, rateio, margem, o que não fazer), linha no `AGENTS.md` ("Marca e domínios"), linha em "Ferramentas operacionais" do roadmap, nota em `docs/planos.md` (margem lê o catálogo), versões e `CHANGELOG.md` da raiz e `api/CHANGELOG.md`.
 **Depends on**: T9 · **Requirement**: COST-17
 **Done when**: gate `full` + build; smoke P1 (spec, critério 1) no descartável
 **Tests**: none · **Gate**: full · **Commit**: `docs(metrics): custos da infraestrutura (P1)`
@@ -172,7 +175,7 @@ Pico de 3 agentes + 1 revisor.
 **What**: `IInfraResourcePlanReader`, `RenderInfraResourcePlanReader` (tipo pelo prefixo, timeout 5 s, 429 com `Retry-After`, erro traduzido sem id), `NotConfiguredInfraResourcePlanReader`; parse de `INFRA_COST_RENDER_RESOURCES` (fallback `worker` = `WORKER_SCALER_SERVICE_ID`) em `shared/config`.
 **Where**: `metrics/infrastructure/sources/` (+ testes), `api/src/shared/config/`
 **Depends on**: R1 · **Reuses**: `RenderWorkerScaler.ts`, `RenderPlatformMetricsSource.ts` · **Requirement**: COST-09
-**Done when**: testes com `fetchFn` falso: serviço, Postgres, Key Value, suspenso, 429, timeout, env inválida ignorada sem logar o id
+**Done when**: testes com `fetchFn` falso: serviço (com `disk.sizeGB`), Postgres (`diskSizeGB`), Key Value, suspenso, divergência (`config_drift`), 429, timeout, env inválida ignorada sem logar o id
 **Tests**: unit · **Gate**: quick · **Commit**: `feat(metrics): leitura do plano e das instâncias na Render`
 
 ### T12b: Cotação PTAX do BCB [P]
@@ -183,14 +186,14 @@ Pico de 3 agentes + 1 revisor.
 **Tests**: unit · **Gate**: quick · **Commit**: `feat(metrics): cotação PTAX do dólar para os custos`
 
 ### T13: Job de snapshot horário
-**What**: `InfraCostSnapshotJob` (com `fx.auto`, passo da cotação 1×/dia após 16h30 UTC sob lease `infra-fx-rate`: PTAX → SGS → mantém a última e no máximo 1 nova tentativa 1 h depois, grava `infra_fx_rates`; lease `infra-cost-snapshot`, tick 5 min `unref`, grava só se a hora cheia ainda não tem linha, renova lease antes de gravar, sessão-hora e contratadas por tenant via `IInfraTenantUsageReader` novo (design §4), limpeza diária com lease de 24 h); `INFRA_COST_SNAPSHOT_ENABLED` (default `false`) em `env.ts`; registro em `WORKER_JOBS`; linha no §3.3.
+**What**: `InfraCostSnapshotJob` (com `fx.auto`, passo da cotação 1×/dia após 16h30 UTC sob lease `infra-fx-rate`: PTAX → SGS → mantém a última e no máximo 1 nova tentativa 1 h depois, grava `infra_fx_rates`; instâncias do worker pelas amostras `srv-<id>-<sufixo>` distintos da hora, Render como fallback; plano e disco pela Render; lease `infra-cost-snapshot`, tick 5 min `unref`, grava só se a hora cheia ainda não tem linha, renova lease antes de gravar, sessão-hora e contratadas por tenant via `IInfraTenantUsageReader` novo (design §4), limpeza diária com lease de 24 h); `INFRA_COST_SNAPSHOT_ENABLED` (default `false`) em `env.ts`; registro em `WORKER_JOBS`; linha no §3.3.
 **Where**: `metrics/infrastructure/jobs/InfraCostSnapshotJob.ts` (+ `.test.ts`, `.int.test.ts`), `metrics/infrastructure/repositories/PrismaInfraTenantUsageReader.ts`, `api/src/app/processJobs.ts`, `shared/config/env.ts`
 **Depends on**: T11, T12 · **Reuses**: `OpsMetricsSamplerJob.ts` · **Requirement**: COST-09, COST-10
 **Done when**: flag desligada não chama nada; Render fora → hora sem linha e `warn` único; troca de dono do lease não dobra
 **Tests**: unit + integration-db · **Gate**: integration-db + full · **Commit**: `feat(metrics): job horário de snapshot de custos`
 
 ### T14: Calculador por hora + leitor do mês
-**What**: `calculateInfraCosts` com `basis: 'hours'` (COST-11/12: hora × preço do plano lido, hora sem leitura = manual + `missing_hours`, `plan_without_price`, projeção, sessão-hora, contratadas, ociosidade); `PrismaInfraCostUsageReader` (horas por recurso, sessão-hora por plano no mês).
+**What**: `calculateInfraCosts` com `basis: 'hours'` (COST-11/12: hora × preço do plano lido, hora sem leitura = manual + `missing_hours`, `plan_without_price`, projeção, sessão-hora, contratadas, ociosidade); `PrismaInfraCostUsageReader` (horas por recurso, sessão-hora por plano **e por tenant** no mês).
 **Where**: `metrics/domain/services/infraCostCalculator.ts`, `metrics/infrastructure/repositories/PrismaInfraCostUsageReader.ts` (+ testes)
 **Depends on**: T11 · **Requirement**: COST-11, COST-12
 **Done when**: teste 1 → 2 instâncias no dia 15 de um mês de 30 dias = 25 + 12,50; fevereiro (672 h); plano sem preço → `null` + aviso
@@ -236,7 +239,7 @@ Pico de 3 agentes + 1 revisor.
 **Tests**: unit · **Gate**: full + build · **Commit**: `feat(app): custos por cliente e histórico`
 
 ### T21: Docs, versão e changelog da P3
-**What**: `docs/custos-infraestrutura.md` (por cliente, IA, fechamento, privacidade), `docs/ops-metricas.md` (passo de fechamento do job), `docs/planos.md` (margem por cliente), `docs/padrao-ui-painel.md` só se surgir padrão novo; versões e `CHANGELOG.md` dos dois apps.
+**What**: `docs/custos-infraestrutura.md` (por cliente, IA, fechamento, privacidade), `docs/ops-metricas.md` (passo de fechamento do job), `docs/planos.md` (margem por cliente), `docs/padrao-ui-painel.md` só se surgir padrão novo; versões e `CHANGELOG.md` da raiz e `api/CHANGELOG.md`.
 **Where**: arquivos acima, `api/package.json`, `app/package.json`, changelogs
 **Tests**: none · **Depends on**: T20 · **Requirement**: COST-17 · **Gate**: full · **Commit**: `docs(metrics): custos por cliente e histórico (P3)`
 

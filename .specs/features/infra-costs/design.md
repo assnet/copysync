@@ -52,13 +52,13 @@ testável sem banco. Preços em USD; a API devolve USD e BRL (cotação da respo
 | Componente | Camada | Responsabilidade |
 | --- | --- | --- |
 | `InfraCostSettings`, `parseInfraCostSettings`, `DEFAULT_INFRA_COST_SETTINGS` | `domain/services/infraCostSettings.ts` | Faixas, unicidade de `key`, limites de lista, valores iniciais, origem |
-| `calculateInfraCosts(input)` | `domain/services/infraCostCalculator.ts` | Função pura: custo por item (fixo, por instância, uso), por hora quando há leitura, projeção, rateio por sessão-hora/contratadas, por plano e por tenant, custo marginal por sessão, avisos (`plan_without_price`, `model_without_price`, `missing_hours`, `price_to_confirm`, `fx_missing`, `unlimited_contracted`) |
+| `calculateInfraCosts(input)` | `domain/services/infraCostCalculator.ts` | Função pura: custo por item (fixo, por instância, uso), por hora quando há leitura, projeção, rateio por sessão-hora/contratadas, por plano e por tenant, custo marginal por sessão, avisos (`config_drift`, `plan_without_price`, `model_without_price`, `missing_hours`, `storage_to_confirm`, `fx_missing`, `unlimited_contracted`) |
 | `IInfraCostSettingsRepository` / `PrismaInfraCostSettingsRepository` | contrato / `infrastructure/repositories` | `platform_settings`, 409 por `updatedAt` |
 | `IInfraCostUsageReader` / `PrismaInfraCostUsageReader` | contrato / repositório | Agregados do mês: horas por recurso (P2), sessão-hora por plano/tenant (P2), tokens por modelo e tenant (P3); `statement_timeout` 2 s |
 | `GetInfraCostSettingsUseCase`, `UpdateInfraCostSettingsUseCase` | `application/use-cases` | Leitura com origem; validação, gravação, auditoria |
 | `GetInfraCostSummaryUseCase` | `application/use-cases` | Junta configuração, leitor de capacidade (porta do `sessions`), amostras, uso do mês; chama o calculador |
 | `ListInfraCostTenantsUseCase` (P3) | `application/use-cases` | Página por cliente, ordenada por custo |
-| `IInfraResourcePlanReader` / `RenderInfraResourcePlanReader` / `NotConfiguredInfraResourcePlanReader` | contrato / `infrastructure/sources` | `GET /v1/services/{id}` (`serviceDetails.plan`, `numInstances`, `suspended`), `GET /v1/postgres/{id}` e `GET /v1/key-value/{id}` (`plan`, `status`). Tipo pelo prefixo do id (`srv-`, `dpg-`, `red-`). Formato das respostas conferido numa leitura real antes de ligar (como a unidade das métricas) |
+| `IInfraResourcePlanReader` / `RenderInfraResourcePlanReader` / `NotConfiguredInfraResourcePlanReader` | contrato / `infrastructure/sources` | `GET /v1/services/{id}` (`serviceDetails.plan`, `numInstances`, `disk.sizeGB`, `suspended`), `GET /v1/postgres/{id}` (`plan`, `diskSizeGB`, `status`) e `GET /v1/key-value/{id}` (`plan`, `status`). Instâncias do worker vêm primeiro das amostras (`srv-<id>-<sufixo>` distintos na hora); plano, disco e divergência (`config_drift`) da Render. Tipo pelo prefixo do id (`srv-`, `dpg-`, `red-`). Formato das respostas conferido numa leitura real antes de ligar (como a unidade das métricas) |
 | `InfraCostSnapshotJob` | `infrastructure/jobs` | COST-09/10/15; lease, hora cheia, idempotência, limpeza |
 | `IInfraCostSnapshotRepository` / `PrismaInfraCostSnapshotRepository` | contrato / repositório | `upsert` de `infra_resource_hours`; incremento condicional de `tenant_session_hours`; fechamento; limpeza em lotes |
 | `IFxRateSource` / `BcbPtaxFxRateSource` + `BcbSgsFxRateSource` (P2) | contrato / `infrastructure/sources` | Olinda `CotacaoDolarPeriodo` (janela 7 dias, `cotacaoVenda`, `dataHoraCotacao`) e SGS série 1 (`ultimos/1`); URLs fixas, timeout 5 s, `fetchFn` injetável, valor finito 1–20 |
@@ -90,7 +90,8 @@ Capacidade de Workers ganha link "Ver custos".
 - **`AuditAction`** (migration `add_audit_action_infra_costs`): `INFRA_COST_SETTINGS_CHANGED`; união em
   `shared/audit/IAuditLogRepository.ts`.
 - **`infra_resource_hours`** (P2, migration `create_infra_cost_snapshots`): `hour timestamp` (UTC, hora cheia),
-  `resourceKey text` (`api`|`worker`|`redis`|`postgres`|`static`), `plan text null`, `instances int`, `suspended bool`,
+  `resourceKey text` (`api`|`worker`|`redis`|`postgres`|`static`), `plan text null`, `instances int`, `instancesSource text`
+  (`samples`|`render`), `diskGb int null`, `suspended bool`,
   `readAt timestamp default now()`. PK `(hour, resourceKey)`. Sem tenant (infra), sem id da Render.
 - **`tenant_session_hours`** (P2, mesma migration): `day date`, `tenantId text` (FK `tenants`, `onDelete Cascade`),
   `planSlug text null` (último visto no dia), `connectedHours int`, `contractedSessions int null` (null = ilimitado), `lastHour timestamp`.
@@ -115,11 +116,13 @@ Contagem por hora (job): sessões com `leaseUntil` vivo e status `CONNECTED` agr
 - Horas do mês = horas do calendário em UTC (720/744/672/696). Custo de uma hora de um recurso = `monthlyUsd(plano) ÷ horas do mês × instâncias`
   (suspenso = 0). A Render cobra por segundo; a proporção por hora é aproximação documentada.
 - Item `per_instance` sem leitura: `monthlyUsd × quantity`. Item `fixed`: `monthlyUsd × quantity`. Item `usage`: `monthlyUsd` informado.
-- Armazenamento: `+ storage.gb × storage.usdPerGb` por mês (não multiplica por instância; disco/storage é do serviço). `gb` ou `usdPerGb` nulo → soma só a computação e aviso `price_to_confirm` com `key`; a tela mostra o item com "+ armazenamento a confirmar".
+- Armazenamento: `+ storage.gb × storage.usdPerGb` por mês (`diskGb` lido na hora vence o cadastrado) (não multiplica por instância; disco/storage é do serviço). `gb` ou `usdPerGb` nulo → soma só a computação e aviso `storage_to_confirm` com `key`; a tela mostra o item com "+ armazenamento a confirmar".
 - **Compartilhado** = itens `allocation = shared` exceto IA. **Direto** = IA da plataforma por tenant (P3).
 - Custo por sessão-hora = compartilhado do período ÷ Σ `connectedHours`; por sessão-mês = × 730 (média). Por tenant =
-  `connectedHours × custo por sessão-hora + IA do tenant`. Por plano = soma dos tenants; por tenant médio = ÷ tenants
+  `connectedHours × custo por sessão-hora + IA do tenant`. Por plano = soma dos tenants; por tenant médio (P2) = ÷ tenants
   `ACTIVE` do plano com sessão-hora > 0 (os sem uso aparecem à parte).
+- P1 (foto): por tenant médio = parte do plano ÷ tenants `ACTIVE` do plano com sessão conectada (contagem atual do
+  leitor de capacidade); a P2 troca pela sessão-hora.
 - Leitura por contratadas: compartilhado ÷ Σ sessões contratadas (último valor do mês).
 - Ociosidade: `compartilhado × (1 − Σ sessão-hora ÷ (capacidade instalada × horas))` quando há `sessions_capacity`;
   senão `null`.
@@ -130,6 +133,8 @@ Contagem por hora (job): sessões com `leaseUntil` vivo e status `CONNECTED` agr
 - Cotação: `resolveFxRate(fx, latestSaved, today)` (função pura) → `{ rate, referenceDate, source, stale }` na ordem
   override → última PTAX/SGS gravada → `null` (`fx_missing`); `last_known` quando a gravada é de busca anterior que
   falhou hoje. BRL = USD × `rate`, no servidor, para todo número da resposta.
+- Plano vizinho (COST-02a): para cada item com `renderKey`, preço do plano imediatamente abaixo e acima do atual na
+  `renderPlanPrices` do mesmo `resourceType` (ordem pelo preço), diferença mensal; `null` nas pontas.
 - Arredondamento só na apresentação (COST-06b); a API devolve 4 casas em USD e BRL; somas sobre valores cheios.
 
 ## 6. Erros
@@ -138,7 +143,8 @@ Contagem por hora (job): sessões com `leaseUntil` vivo e status `CONNECTED` agr
 | --- | --- | --- |
 | Configuração inválida | 400 `INVALID_INFRA_COST_SETTINGS` com `field` | Erro no campo |
 | Outro admin salvou antes | 409 `INFRA_COST_SETTINGS_CONFLICT` | Recarrega e descarta o rascunho |
-| Preço por GB nulo | Aviso `price_to_confirm`; soma só a computação | Selo "a confirmar" no item |
+| Cadastro diverge do lido (plano, instâncias, disco) | Aviso `config_drift` com `resourceKey` e campo; custo usa o lido quando há preço | Cartão "cadastro diferente da Render" |
+| Preço por GB nulo | Aviso `storage_to_confirm`; soma só a computação | Selo "a confirmar" no item |
 | Plano lido sem preço | Aviso `plan_without_price` com `resourceKey` e `plan`; item com custo `null` | Cartão de aviso com atalho para Preços |
 | Hora sem leitura | Usa quantidade manual; aviso `missing_hours` com contagem | Selo "estimado" |
 | Render 429/5xx/timeout no job | Não grava a hora; `warn` uma vez por sequência; sem retry além do próximo tick | Hora "sem leitura" |

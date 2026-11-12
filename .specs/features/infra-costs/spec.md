@@ -17,18 +17,21 @@ Serviços em 2026-11-12 (dados do painel da Render enviados pelo dono; ids ficam
 
 | Serviço | Tipo | Plano | US$/mês | Componente à parte |
 | --- | --- | --- | --- | --- |
-| `copysync_api` | Web Service, Docker, `PROCESS_ROLE=http` | 1 CPU/2 GB | 25 | **disco** (por GB; tamanho e preço por GB a confirmar). Com disco a Render não escala o serviço |
+| `copysync_api` | Web Service, Docker, `PROCESS_ROLE=http` | 1 CPU/2 GB | 25 | **disco** US$ 0,25/GB/mês (só cresce); tamanho a confirmar (dono ou `disk.sizeGB` pela API na P2). Com disco a Render não escala o serviço |
 | `copysync_worker` | Private Service, Docker, `PROCESS_ROLE=worker` | 1 CPU/2 GB, **por instância** | 25 × N | — (hoje 2 instâncias por causa do teste T25; normalmente 1). Autoescala nativa exige workspace Pro: não usada |
 | `copysync_app` | Static Site | — | 0 | — |
 | `copysync-redis` | Key Value (Valkey 8) | 1 GB / 1.000 conexões | 20 | — |
-| `db-copysync-postgres` | PostgreSQL 18, sem HA | 0.5 CPU/1 GB | 19 | **armazenamento 15 GB** (por GB; preço por GB a confirmar), sem autoescala de storage |
-| Workspace Render | Hobby (gratuito, botão "Upgrade") | — | 0 | taxa por membro só se mudar de plano |
+| `db-copysync-postgres` | PostgreSQL 18, sem HA | 0.5 CPU/1 GB | 19 | **armazenamento 15 GB** × US$ 0,30 = US$ 4,50, sem autoescala de storage |
+| Workspace Render | Hobby | inclui 5 GB de banda e 500 min de build | 0 | excedente: banda US$ 0,15/GB, build US$ 5 por 1.000 min; tráfego interno na região é grátis; sem taxa por membro |
 | Cloudflare R2 | mídia (`MEDIA_STORAGE_DRIVER=s3`) | por GB e por operação | variável | — |
 | IA da plataforma | provedores do super admin | por token | variável | — |
 | E-mail | central (PulsoSocial), SMTP do domínio | — | ? | — |
 
-Total fixo conhecido hoje: US$ 25 + 25 × N + 20 + 19 = **US$ 89 com 1 worker** (114 com 2), mais disco da api,
-storage do Postgres, R2, IA e e-mail.
+Preços de render.com/pricing (2026-11-12); cobrança proporcional por segundo: instância extra = compute proporcional
+ao tempo ligada. A API da Render não expõe preço, fatura nem plano do workspace: a tabela de preços é nossa.
+
+Total conhecido hoje: 25 + 25 × N + 20 + 19 + 4,50 = **US$ 93,50 com 1 worker** e **US$ 118,50 com 2**, mais o disco
+da api (0,25 × GB, tamanho desconhecido), excedente de banda/build, R2, IA e e-mail.
 
 ## Objetivo
 
@@ -55,7 +58,11 @@ sob lease, desligado por flag (mesmo padrão do coletor).
 | | **Job no `worker` (lease, flag) grava por hora plano + instâncias de cada recurso** | ✅ | Mesmo dono e chave do coletor; histórico durável para o custo proporcional ao tempo |
 | Réplicas no tempo | `worker_scale_events` | ❌ | Só registra escaladas feitas pelo nosso escalador; mudança no painel da Render não aparece |
 | | `ops_metrics_samples` (instâncias `srv-<id>-<sufixo>`) | 🟡 | Serve para "agora" na P1 (sem chamada externa); retenção de 7 dias não fecha o mês |
-| | **Snapshot horário próprio (`infra_resource_hours`, 400 dias)** | ✅ | Fecha o mês e o histórico; ~5 recursos × 8.760 h/ano |
+| | **Snapshot horário próprio (`infra_resource_hours`, 400 dias)** | ✅ | Fecha o mês e o histórico; ~5 recursos × 8.760 h/ano. Instâncias do worker na hora = `srv-<id>-<sufixo>` distintos nas amostras (sem chamada); Render como fallback |
+| Tamanho de disco/storage | Só manual | 🟡 | Fallback quando o job está desligado |
+| | **Job lê `disk.sizeGB` (`GET /services/{id}`) e `diskSizeGB` (`GET /postgres/{id}`) e avisa divergência com o cadastro (`config_drift`)** | ✅ | Mesma chamada horária; disco só cresce e ninguém lembra de atualizar à mão |
+| Custo de trocar de plano | Simulador livre | ❌ | Infla o escopo |
+| | **Coluna "plano vizinho" (um abaixo e um acima na tabela `renderPlanPrices`) por serviço, só leitura** | ✅ | Conta pura sobre a tabela que já existe; ex.: api 1c-2g 25 → 0.5c-512mb 7 (o `http` não segura sessões) |
 | Rateio por sessão | Sessões contratadas | 🟡 | Mostra "custo por vaga vendida"; exibido como segunda leitura |
 | | **Sessão-hora conectada (uso real)** | ✅ | Reflete quem consome socket/RAM; tenant parado não paga pela vaga de quem usa |
 | | Por tenant (divisão igual) | ❌ | Um MAX com 4 sessões custaria o mesmo que um LITE com 1 |
@@ -79,17 +86,18 @@ sob lease, desligado por flag (mesmo padrão do coletor).
 
 | ID | Requisito |
 | --- | --- |
-| COST-01 | Configuração `InfraCostSettings` em `platform_settings` (chave `infra_costs`, JSON validado no domínio): `fx` = `{ auto: boolean, override: { rate (1–20, 4 casas), date } | null }` (override manual vale até ser removido); lista `items[]` com `key` (slug estável, único), `label`, `category` (`compute`\|`database`\|`cache`\|`static`\|`storage`\|`ai`\|`email`\|`platform`\|`other`), `billing` (`fixed` = US$/mês × quantidade; `per_instance` = US$/mês por instância; `usage` = total do mês informado), `monthlyUsd` (componente de computação/plano, 0–100.000), `quantity` (manual, 0–100), `storage` = `null` (não se aplica) ou `{ gb (0–10.000) | null = tamanho a confirmar, usdPerGb }` com `usdPerGb` (0–10, **null = a confirmar**); `gb` ou `usdPerGb` nulos → o item soma só a computação e a resposta traz aviso `price_to_confirm`, `renderKey` (`api`\|`worker`\|`redis`\|`postgres`\|`static`\|null; liga o item ao snapshot), `planLabel` (texto, ex.: "Standard 1 CPU/2 GB"), `allocation` (`shared`\|`excluded`), `note`; tabela `renderPlanPrices[]` (`resourceType` `service`\|`postgres`\|`key_value`, `plan` como a Render devolve, `monthlyUsd`); `aiModelPrices[]` (`kind`, `model`, `inputPerMTokUsd`, `outputPerMTokUsd`). Até 40 itens, 60 planos e 60 modelos. Campo desconhecido → 400 com o campo |
-| COST-02 | Sem linha salva, valores iniciais do código (tabela do Problema: api 25 + disco ? GB × ?; worker 25/instância, `quantity` 1; static 0; redis 20; postgres 19 + 15 GB × ?; workspace 0; R2/e-mail `usage` 0 a preencher; câmbio `null` = só US$) com origem `default`; a tela pede revisão. Valores iniciais são **ponto de partida**, rotulados "conferir no painel da Render" |
+| COST-01 | Configuração `InfraCostSettings` em `platform_settings` (chave `infra_costs`, JSON validado no domínio): `fx` = `{ auto: boolean, override: { rate (1–20, 4 casas), date } | null }` (override manual vale até ser removido); lista `items[]` com `key` (slug estável, único), `label`, `category` (`compute`\|`database`\|`cache`\|`static`\|`storage`\|`ai`\|`email`\|`platform`\|`other`), `billing` (`fixed` = US$/mês × quantidade; `per_instance` = US$/mês por instância; `usage` = total do mês informado), `monthlyUsd` (componente de computação/plano, 0–100.000), `quantity` (manual, 0–100), `storage` = `null` (não se aplica) ou `{ gb (0–10.000) | null = tamanho a confirmar, usdPerGb }` com `usdPerGb` (0–10, **null = a confirmar**); `gb` ou `usdPerGb` nulos → o item soma só a computação e a resposta traz aviso `storage_to_confirm`, `renderKey` (`api`\|`worker`\|`redis`\|`postgres`\|`static`\|null; liga o item ao snapshot), `planLabel` (texto, ex.: "Standard 1 CPU/2 GB"), `allocation` (`shared`\|`excluded`), `note`; tabela `renderPlanPrices[]` (`resourceType` `service`\|`postgres`\|`key_value`, `plan` como a Render devolve, `monthlyUsd`); `aiModelPrices[]` (`kind`, `model`, `inputPerMTokUsd`, `outputPerMTokUsd`). Até 40 itens, 60 planos e 60 modelos. Campo desconhecido → 400 com o campo |
+| COST-02 | Sem linha salva, valores iniciais do código com origem `default`: api compute 25 + disco `{ gb: null, usdPerGb: 0,25 }`; worker 25 por instância (`quantity` 1); static 0; redis 20; postgres 19 + `{ gb: 15, usdPerGb: 0,30 }`; workspace 0; `bandwidth_build` (`usage`, 0); R2 e e-mail (`usage`, 0, a preencher); `renderPlanPrices`: serviço 0.5c-512mb 7, 1c-2g 25, 2c-4g 85, 2c-8g 135; Postgres 0.1c-256mb 6, 0.5c-1g 19, 1c-2g 40, 1c-4g 55, 2c-4g 75; Key Value 1 GB 20; cotação sem override. A tela pede revisão; valores rotulados "conferir no painel da Render" |
+| COST-02a | Aba Resumo mostra, por serviço com `renderKey`, o custo do plano vizinho abaixo e acima em `renderPlanPrices` (diferença em USD e BRL), só leitura |
 | COST-03 | `GET`/`PUT /admin/costs/settings` (super admin), `PUT` com `expectedUpdatedAt` (409), `updatedById` e auditoria `INFRA_COST_SETTINGS_CHANGED` com antes/depois. Sem segredo na configuração (sem id de recurso da Render) |
 | COST-04 | P1 (sem job): `GET /admin/costs/summary?month=YYYY-MM` (super admin, só tabelas locais) devolve por item: quantidade efetiva e origem (`manual` \| `measured_now`), custo mensal em US$; total; custo fixo × variável; **custo marginal por sessão** = preço da instância do worker ÷ (`maxSessionsPerWorker` × `alertOccupancyRatio`) da configuração de escala. Instâncias do worker "agora" = instâncias distintas `worker_service` nas amostras da Render dos últimos 15 min (`ops_metrics_samples`), senão `quantity` manual |
 | COST-05 | Rateio P1 (foto do momento): custo mensal ÷ sessões conectadas (última `sessions_connected`) e ÷ sessões contratadas (leitor de capacidade); por plano, parte de cada plano proporcional às sessões conectadas do plano (`PrismaWorkerCapacityReader`), custo por tenant médio do plano. Sem amostra ou sem sessão → `null`, nunca divisão por zero. Contratadas: entitlement ausente/não numérico = ilimitado (regra do leitor de capacidade); com algum tenant ilimitado, a leitura por contratadas fica `null` com aviso `unlimited_contracted` |
 | COST-06 | Margem no painel: para cada plano, `preço de vitrine (R$) − custo por tenant em R$` para o mensal e o anual-equivalente de `PLAN_CATALOG`; rotulada "margem bruta de infraestrutura (sem gateway, impostos e IA da chave do tenant)". Sem cotação, a margem não aparece. A API nunca recebe nem devolve preço de plano |
 | COST-06a | Cotação: a API devolve `fx = { rate, referenceDate, source: 'override' | 'ptax' | 'sgs' | 'last_known', fetchedAt, stale }` e cada número em USD e BRL (USD × `rate`). Ordem: override manual → PTAX do dia → SGS → última salva → sem cotação (só USD, aviso `fx_missing`). P1: só override. P2 (`fx.auto`): o job, num único processo (lease `infra-fx-rate`, §3.3), roda 1×/dia depois das 16h30 UTC (boletim de fechamento ~13h BRT): PTAX de venda pela Olinda com janela de 7 dias (`$orderby=dataHoraCotacao desc&$top=1`; fim de semana/feriado devolve `value: []`, a janela resolve); falhou → SGS série 1 (`ultimos/1`); falhou → mantém a última e tenta **uma** vez 1 h depois. Timeout 5 s, URLs fixas no código (sem SSRF), valor aceito só se número finito entre 1 e 20. Grava `infra_fx_rates` (`referenceDate`, `rate`, `source`, `fetchedAt`). `stale` = `referenceDate` com mais de 5 dias corridos; a tela mostra "cotação de DD/MM" e a atribuição "Fonte: Banco Central do Brasil (PTAX)" (ODbL). Mês fechado guarda `rate`, `referenceDate` e `source` usados (D7) |
 | COST-06b | Arredondamento: cálculo em precisão cheia (USD com 6 casas internas, cotação com 4); a API devolve USD e BRL com 4 casas; o painel exibe 2 casas (`Intl.NumberFormat`, meio para cima) em totais, serviço, tenant e plano, e 4 casas quando o valor absoluto é menor que 0,01 (custo por sessão-hora). Percentual de margem com 1 casa. Somas sempre sobre os valores não arredondados |
-| COST-07 | Aba **Resumo** em `/admin/costs`: cartões (total do mês, projeção, por sessão, marginal por sessão), tabela por plano com margem, tabela de serviços com plano, quantidade, origem e custo; selo "estimado" em todo número com entrada manual. cada valor em USD e em BRL lado a lado (BRL some só sem cotação), com a cotação, a data e a origem no topo |
+| COST-07 | Aba **Resumo** em `/admin/costs`: cartões (total do mês, projeção — a partir da P2; na P1 o total já é o mês cheio com as quantidades de agora —, por sessão, marginal por sessão), tabela por plano com margem, tabela de serviços com plano, quantidade, origem e custo; selo "estimado" em todo número com entrada manual. cada valor em USD e em BRL lado a lado (BRL some só sem cotação), com a cotação, a data e a origem no topo |
 | COST-08 | Aba **Preços** em `/admin/costs/prices`: edição da configuração com confirmação mostrando o diff, erro por campo, rascunho em `usePersistedState` (escopo `tab`) limpo ao salvar, 409 recarrega |
-| COST-09 | P2: `InfraCostSnapshotJob` (papéis `worker`/`all`, lease `infra-cost-snapshot`, tick 5 min, grava uma vez por hora cheia UTC) lê da Render plano e instâncias de cada recurso mapeado em `INFRA_COST_RENDER_RESOURCES` (env só no `worker`, `chave=id`) e grava `infra_resource_hours` (`hour`, `resourceKey`, `plan`, `instances`, `suspended`). Liga só com `INFRA_COST_SNAPSHOT_ENABLED=true` + `RENDER_API_KEY`; timeout 5 s; 429 respeita `Retry-After`; hora perdida não é inventada (fica "sem leitura"). Idempotente por `(hour, resourceKey)` |
+| COST-09 | P2: `InfraCostSnapshotJob` (papéis `worker`/`all`, lease `infra-cost-snapshot`, tick 5 min, grava uma vez por hora cheia UTC) lê instâncias do worker das amostras (`srv-<id>-<sufixo>` distintos na hora; Render como fallback) e da Render plano, instâncias dos demais e disco de cada recurso mapeado em `INFRA_COST_RENDER_RESOURCES` (env só no `worker`, `chave=id`) e grava `infra_resource_hours` (`hour`, `resourceKey`, `plan`, `instances`, `suspended`). Liga só com `INFRA_COST_SNAPSHOT_ENABLED=true` + `RENDER_API_KEY`; timeout 5 s; 429 respeita `Retry-After`; hora perdida não é inventada (fica "sem leitura"). Idempotente por `(hour, resourceKey)` |
 | COST-10 | P2: o mesmo job grava `tenant_session_hours` (`day` UTC, `tenantId`, `planSlug` do momento, `connectedHours`, `contractedSessions` último valor, `lastHour`): soma 1 hora × sessões `CONNECTED` com lease vivo do tenant, só se `lastHour < hora atual` (sem dobra em troca de dono do lease). Retenção 400 dias nos dois, limpeza diária por lease de 24 h, em lotes |
 | COST-11 | P2: custo do mês = Σ por hora (preço mensal do plano lido ÷ horas do mês × instâncias) para itens com `renderKey`; hora sem leitura usa a quantidade manual e marca "estimado"; plano lido sem preço na tabela → aviso "plano X sem preço" e custo `null` daquele item (nunca 0 silencioso). Projeção = realizado + (última hora lida × horas restantes) |
 | COST-12 | P2: rateio do mês por **sessão-hora**: custo compartilhado ÷ Σ `connectedHours` = custo por sessão-hora; × 730 = custo por sessão-mês. Por plano e por tenant = sessão-hora × custo. Segunda leitura por sessões contratadas. Capacidade ociosa = custo − parte usada (mostrado, não rateado) |
@@ -112,7 +120,7 @@ sob lease, desligado por flag (mesmo padrão do coletor).
 
 ## Critérios de aceite (smoke, depois da última tarefa de cada fase)
 
-1. **P1:** em ambiente local com Postgres descartável, sem linha salva, a aba Resumo mostra os 5 serviços com os valores iniciais, total US$ 89 (1 worker) com avisos `price_to_confirm` do disco da api e do storage do Postgres, custo por sessão com as amostras sintéticas, e a margem por plano depois de salvar um câmbio. Nenhuma chamada externa.
+1. **P1:** em ambiente local com Postgres descartável, sem linha salva, a aba Resumo mostra os 5 serviços com os valores iniciais, total US$ 93,50 (1 worker; 118,50 com 2) com aviso `storage_to_confirm` do disco da api, custo por sessão com as amostras sintéticas, e a margem por plano depois de salvar um câmbio. Nenhuma chamada externa.
 2. **P2:** com `fetchFn` falso da Render devolvendo 1 → 2 instâncias do worker no meio do mês sintético, o custo do worker é proporcional às horas; `tenant_session_hours` não dobra com dois processos disputando o lease.
 3. **P3:** tenants com nomes borrados pela flag; IA de um tenant com 1 M tokens de entrada aparece como custo direto; o mês anterior fechado não muda ao editar um preço.
 
@@ -128,16 +136,15 @@ sob lease, desligado por flag (mesmo padrão do coletor).
 | D6 | Preços em USD; API devolve USD e BRL; cotação PTAX automática com fallback (P2), manual na P1 | Só manual / guardar R$ | Decisão do dono (USD e BRL em todo número); PTAX é oficial e sem chave |
 | D7 | Mês fechado congela preços e a cotação usada (valor, data, origem) | Recalcular sempre | Histórico não muda por edição de preço |
 | D8 | Fase P1 sem tabela nova nem chamada externa | Começar pelo job | Tela útil já com os números de hoje |
-| D10 | Componentes de armazenamento (disco da api, storage do Postgres) como campos do item, preço por GB nulo até o dono confirmar | Item separado por componente | Mantém um item por serviço na tabela; nulo gera aviso em vez de custo inventado |
+| D10 | Componentes de armazenamento (disco da api, storage do Postgres) como campos do item, preço por GB fixado (0,25 disco, 0,30 Postgres) e **tamanho** nulo até o dono confirmar ou o job ler | Item separado por componente | Mantém um item por serviço na tabela; tamanho nulo gera aviso `storage_to_confirm` em vez de custo inventado |
 | D9 | Linha nova "Custos da infraestrutura" em "Ferramentas operacionais" do roadmap | Sem item | Regra: feature nova cabe em item do roadmap |
 
 ## Perguntas ao dono
 
-1. Tamanho do disco da `copysync_api` e o preço por GB do disco na Render (o disco ainda é usado? `arquitetura-escala.md` §5.1 prevê tirá-lo do caminho com mídia no R2).
-2. Preço por GB do armazenamento do Postgres (15 GB hoje).
-3. E-mail pela central: há custo atribuível ao CopySync (valor mensal fixo) ou entra como 0?
-4. R2: valor do mês corrente no painel da Cloudflare (GB e operações) para o valor inicial.
-5. Cotação USD→BRL: PTAX de venda do BCB automática com fallback SGS e override manual (recomendado) ou só manual? Qual cotação usar no mês: a do dia (mês corrente) e a do último dia útil do mês no fechamento (proposta), ou a média do mês?
-6. Margem: comparar com o mensal, o anual-equivalente ou os dois (a tela não sabe o período pago pelo tenant)?
-7. Rateio padrão: sessão-hora conectada (proposta D4) ou sessões contratadas?
-8. Banda de saída e build minutes da Render: entram como item manual ou ficam fora?
+1. Tamanho do disco da `copysync_api` e se ele ainda é necessário (mídia já no R2; disco só cresce e impede escalar a api).
+2. E-mail pela central: há custo atribuível ao CopySync (valor mensal fixo) ou entra como 0?
+3. R2: valor do mês corrente no painel da Cloudflare (GB e operações) para o valor inicial.
+4. Cotação USD→BRL: PTAX de venda do BCB automática com fallback SGS e override manual (recomendado) ou só manual? No fechamento, a do último dia útil do mês (proposta) ou a média do mês?
+5. Margem: comparar com o mensal, o anual-equivalente ou os dois (a tela não sabe o período pago pelo tenant)? Proposta: os dois.
+6. Rateio padrão: sessão-hora conectada (proposta D4) ou sessões contratadas?
+7. Banda e build da Render: **default proposto** = workspace Hobby (US$ 0) com item manual `bandwidth_build` zerado, preenchido pelo admin só quando a fatura trouxer excedente (5 GB/500 min inclusos; US$ 0,15/GB e US$ 5 por 1.000 min). Ler o excedente pelas métricas de banda da Render fica para a P4. Aceita?
