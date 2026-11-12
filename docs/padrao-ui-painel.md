@@ -169,9 +169,9 @@ erro do usuário nem da tela, então não vira alerta vermelho.
 
   | Resultado do refresh | Efeito |
   |---|---|
-  | 400, 401, 403, 404 (inválido, sem acesso, usuário removido) ou sem refresh token | desloga |
+  | 400, 401, 404 (inválido, usuário removido) ou sem refresh token | desloga |
   | rede/proxy sem resposta, 408, 429, 502–504 | indisponível (`SERVICE_UNAVAILABLE`), sem logout |
-  | 500 e outros 5xx, timeout, 200 sem `data.accessToken`, erro fora do HTTP | erro comum (`REFRESH_FAILED`), sem logout |
+  | 403 (a API não o devolve ali: é proxy/WAF), 500 e outros 5xx, timeout, 200 sem `data.accessToken`, erro fora do HTTP | erro comum (`REFRESH_FAILED`), sem logout |
 
   "Sair" limpa a sessão local mesmo com `/auth/logout` falhando (`AuthContext.logout`). 401 tardio com token já renovado por outro pedido repete com o token
   atual, sem novo refresh; 401 concorrentes compartilham um único refresh.

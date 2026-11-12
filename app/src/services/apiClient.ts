@@ -83,14 +83,17 @@ export function classifyServiceUnavailable(error: Pick<AxiosError, 'response' | 
 /** Status do `/auth/refresh` que é passageiro: indisponível, sem logout. */
 const REFRESH_TRANSIENT_STATUSES: ReadonlySet<number> = new Set([408, 429, 502, 503, 504]);
 
-/** Refresh recusado de vez: token inválido (400/401), sem acesso (403) ou usuário removido (404). */
-const REFRESH_INVALID_STATUSES: ReadonlySet<number> = new Set([400, 401, 403, 404]);
+/**
+ * Refresh recusado de vez: token inválido (400/401) ou usuário removido (404). 403 fica de fora: a
+ * API nunca o devolve no `/auth/refresh`, então ali é proxy/WAF, e falha de infra não desloga.
+ */
+const REFRESH_INVALID_STATUSES: ReadonlySet<number> = new Set([400, 401, 404]);
 
 /**
  * Resultado de uma falha do `/auth/refresh`:
- * - `invalid` (desloga): 400, 401, 403, 404.
+ * - `invalid` (desloga): 400, 401, 404.
  * - `unavailable` (estado "atualizando", sem logout): rede/proxy sem resposta, 408, 429, 502–504.
- * - `failed` (erro comum, sem logout): 500 e outros 5xx, timeout, erro que não veio do HTTP.
+ * - `failed` (erro comum, sem logout): 403 (proxy/WAF), 500 e outros 5xx, timeout, erro fora do HTTP.
  */
 export function classifyRefreshFailure(err: unknown): RefreshTokenResult {
   const message = err instanceof Error && err.message ? err.message : 'Erro inesperado';

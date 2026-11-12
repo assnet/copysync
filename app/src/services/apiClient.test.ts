@@ -199,12 +199,21 @@ describe('apiClient — refresh: o que desloga e o que não', () => {
     expect(localStorage.getItem('refreshToken')).toBe('rt');
   });
 
-  it.each([400, 403, 404])('refresh %i desloga (token inválido, sem acesso, usuário removido)', async (status) => {
+  it.each([400, 401, 404])('refresh %i desloga (token inválido ou usuário removido)', async (status) => {
     const { apiClient, isServiceUnavailable } = await loadWithRefresh(protectedThen(ok({})), rejectWith(status, 'NOPE'));
     const err = await apiClient.get('/x').catch((e: unknown) => e);
     expect(isServiceUnavailable(err)).toBe(false);
     expect(location.href).toBe('/login');
     expect(localStorage.getItem('refreshToken')).toBeNull();
+  });
+
+  it('refresh 403 (proxy/WAF) rejeita erro comum, sem logout', async () => {
+    const { apiClient, isServiceUnavailable } = await loadWithRefresh(protectedThen(ok({})), rejectWith(403, 'FORBIDDEN'));
+    const err = await apiClient.get('/x').catch((e: unknown) => e);
+    expect(isServiceUnavailable(err)).toBe(false);
+    expect(err).toMatchObject({ status: 403, code: 'REFRESH_FAILED' });
+    expect(location.href).toBe('http://localhost/dashboard');
+    expect(localStorage.getItem('refreshToken')).toBe('rt');
   });
 
   it('refresh 200 com corpo fora do contrato rejeita erro comum, sem logout', async () => {

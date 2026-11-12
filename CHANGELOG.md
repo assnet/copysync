@@ -27,7 +27,7 @@ Durante deploy da API na Render, as abas de `/admin/workers` mostravam só um al
 
 Request com 401 → `/auth/refresh` respondia 502/sem resposta no deploy → o `catch` vazio engolia e o 401 caía em `clearSessionAndRedirect()`, deslogando com o refresh token ainda válido.
 
-- **`apiClient.ts`** (`classifyRefreshFailure`) — refresh 400/401/403/404 (inválido, sem acesso, usuário removido) ou sem refresh token desloga. Rede/proxy sem resposta, 408, 429, 502–504 rejeitam com `serviceUnavailable` (`code: SERVICE_UNAVAILABLE`), sem logout. 500 e outros 5xx, timeout, 200 sem `data.accessToken` e erro fora do HTTP rejeitam erro comum (`code: REFRESH_FAILED`, sem "atualizando" para não ficar em laço), sem logout. A próxima tentativa refaz 401 → refresh.
+- **`apiClient.ts`** (`classifyRefreshFailure`) — refresh 400/401/404 (inválido, usuário removido) ou sem refresh token desloga. Rede/proxy sem resposta, 408, 429, 502–504 rejeitam com `serviceUnavailable` (`code: SERVICE_UNAVAILABLE`), sem logout. 403 (a API não o devolve no refresh: é proxy/WAF), 500 e outros 5xx, timeout, 200 sem `data.accessToken` e erro fora do HTTP rejeitam erro comum (`code: REFRESH_FAILED`, sem "atualizando" para não ficar em laço), sem logout. A próxima tentativa refaz 401 → refresh.
 - **`AuthContext.test.tsx`** — "Sair" limpa a sessão local mesmo com `/auth/logout` falhando (401, refresh falho, rede).
 - **`apiClient.ts`** — 401 tardio de pedido que saiu com token antigo, já renovado por outro, repete com o token atual sem novo `/auth/refresh`.
 
