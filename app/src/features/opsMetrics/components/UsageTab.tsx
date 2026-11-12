@@ -13,7 +13,7 @@ import { chartColors } from '../chartColors';
 import {
   API_MEMORY_LIMIT_MB, DEFAULT_USAGE_FILTERS, MAX_WORKERS_IN_CHART, OPS_RANGES, OPS_RESOURCE_FILTERS, alignSeries,
   cacheHitDomainMin, cacheHitStatus, counterPeriodTotal, counterRatePerMinute, countDomainMax, formatBytes, formatDateTime,
-  formatNumber, formatPct, hasHeartbeat, isStale, latestValue, newestSampleAt, parseUsageFilters, resourceCount, resourceVisible,
+  currentValues, formatNumber, formatPct, hasHeartbeat, isStale, latestValue, newestSampleAt, parseUsageFilters, resourceCount, resourceVisible,
   seriesByResource, seriesPoints, statusFor, valueStats,
 } from '../rules';
 import { opsMetricsStrings as t } from '../strings';
@@ -220,8 +220,11 @@ function buildUsageView({ latestRes, series, resource, colors }: ViewInput) {
 
   const ramApiV = kpiValue('memory_pct', 'api', memApi);
   const cpuApiV = kpiValue('cpu_pct', 'api', cpuApi);
-  const ramWorkerV = kpiValue('memory_pct', 'worker_service', memWorker);
-  const cpuWorkerV = kpiValue('cpu_pct', 'worker_service', cpuWorker);
+  // Worker: só instâncias atuais (a trocada por deploy ainda está no `/latest` de 15 min).
+  const workerKpi = (metric: string, pts: OpsSeriesPoint[]) =>
+    latestValue(currentValues(latest, metric, 'worker_service'), metric, 'worker_service')?.value ?? lastAvg(pts);
+  const ramWorkerV = workerKpi('memory_pct', memWorker);
+  const cpuWorkerV = workerKpi('cpu_pct', cpuWorker);
   const ramWorkerN = resourceCount(latest, 'memory_pct', 'worker_service');
   const cpuWorkerN = resourceCount(latest, 'cpu_pct', 'worker_service');
   // Worker aparece quando há amostra dele: sem `WORKER_SCALER_SERVICE_ID` na API tudo segue em API.

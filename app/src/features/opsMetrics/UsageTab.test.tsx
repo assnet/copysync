@@ -244,6 +244,10 @@ describe('Aba Consumo', () => {
       const table = screen.getByRole('table', { name: t.charts.cpu });
       expect(within(table).getAllByText(t.charts.series.api).length).toBeGreaterThan(0);
       expect(within(table).getAllByText(t.charts.series.workerService).length).toBeGreaterThan(0);
+      // Valor da série do worker (pior instância no último balde: 21%) na linha "Worker"
+      const workerRow = within(table).getAllByRole('row').find((r) => within(r).queryByText(t.charts.series.workerService)
+        && within(r).queryByText('21%'));
+      expect(workerRow).toBeDefined();
     });
 
     it('filtro "Worker" mostra só os cartões do worker (tema escuro)', async () => {
@@ -255,6 +259,17 @@ describe('Aba Consumo', () => {
       expect(screen.queryByText(t.kpi.ramDb)).not.toBeInTheDocument();
       expect(screen.getByText(t.kpi.cpuWorker)).toBeInTheDocument();
       expect(sessionStorage.getItem('ui.workers.usage.filters')).toContain('worker_service');
+    });
+
+    it('instância antiga (trocada por deploy) não entra no pior valor nem na contagem', async () => {
+      mockAll({
+        ...WORKER_LATEST,
+        latest: [...WORKER_LATEST.latest, { resource: 'srv-wk-old', kind: 'worker_service', metric: 'memory_pct', value: 97, at: iso(12) }],
+      }, workerSeries);
+      renderUsage();
+      const ram = (await screen.findByText(t.kpi.ramWorker)).closest('.MuiCard-root') as HTMLElement;
+      expect(within(ram).getByText('73%')).toBeInTheDocument();
+      expect(within(ram).getByText(t.kpi.worstOf(2))).toBeInTheDocument();
     });
 
     it('sem amostra do worker (API sem o id do serviço): sem cartões de Worker', async () => {

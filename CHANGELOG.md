@@ -18,11 +18,12 @@ Na aba Consumo de `/admin/workers`, CPU e RAM do serviço worker (Render) caíam
 
 - **`opsMetricsSeriesPolicy.ts`** — `kind` `worker_service` (igual ao id ou prefixo `<id>-`); sem a env, todo `srv-` segue `api`.
 - **`GetOpsMetricsSeriesUseCase.ts`**, **`GetOpsMetricsLatestUseCase.ts`**, **`opsMetrics.routes.ts`**, **`opsMetrics.schema.ts`** — id do serviço vindo da env na composição; enum do contrato.
+- **`samplerResourceIds.ts`**, **`opsMetricsContainer.ts`** — sampler coleta o `WORKER_SCALER_SERVICE_ID` válido junto com `RENDER_RESOURCE_IDS`, sem duplicar.
 
 #### Frontend (app/) — `opsMetrics`
 
-- **`UsageTab.tsx`** — filtro Recurso com "Worker"; cartões `RAM · Worker`/`CPU · Worker` com a pior instância ("pior de N instâncias" com 2+), como os da API; gráficos de CPU e Memória com linha Worker separada da API. Cartões em 4 por linha no desktop.
-- **`rules.ts`** (`resourceCount`), **`types.ts`**, **`strings.ts`**, **`chartColors.ts`** — tipo, textos e 3ª cor categórica.
+- **`UsageTab.tsx`** — filtro Recurso com "Worker"; cartões `RAM · Worker`/`CPU · Worker` com a pior instância ("pior de N instâncias" com 2+), como os da API, só com instâncias atuais (amostra até 2 min antes da mais nova; a trocada por deploy fica de fora); gráficos de CPU e Memória com linha Worker separada da API. Cartões em 4 por linha no desktop.
+- **`rules.ts`** (`currentValues`, `resourceCount`), **`types.ts`**, **`strings.ts`**, **`chartColors.ts`** — tipo, textos e 3ª cor categórica.
 
 ### Fixed — api 0.85.1 — jobs de sessão só no processo dono
 

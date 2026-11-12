@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   alignSeries, cacheHitDomainMin, cacheHitStatus, counterDeltas, counterPeriodTotal, countDomainMax, formatBytes,
-  formatDuration, formatPct, isStale, latestValue, newestSampleAt, counterRatePerMinute, parseUsageFilters, querySharePct, rangeWindow, resourceCount, resourceVisible,
+  formatDuration, formatPct, isStale, latestValue, newestSampleAt, counterRatePerMinute, parseUsageFilters, querySharePct, rangeWindow, currentValues, resourceCount, resourceVisible,
   seriesPoints, shortQueryId, statusFor,
 } from './rules';
 import type { OpsSeries, OpsSeriesPoint } from './types';
@@ -125,6 +125,18 @@ describe('resourceCount', () => {
     expect(resourceCount(latest, 'memory_pct', 'worker_service')).toBe(2);
     expect(resourceCount(latest, 'cpu_pct', 'worker_service')).toBe(1);
     expect(resourceCount(latest, 'memory_pct', 'postgres')).toBe(0);
+  });
+
+  it('instância trocada por deploy (amostra > 2 min antes da mais nova) fica de fora', () => {
+    const v = (resource: string, at: string, value: number) => ({ resource, kind: 'worker_service' as const, metric: 'memory_pct', value, at });
+    const latest = [
+      v('srv-w-old', '2026-11-12T00:00:00Z', 95), // instância antiga, 10 min antes
+      v('srv-w-a', '2026-11-12T00:09:00Z', 40),
+      v('srv-w-b', '2026-11-12T00:10:00Z', 50),
+    ];
+    expect(currentValues(latest, 'memory_pct', 'worker_service').map((x) => x.resource)).toEqual(['srv-w-a', 'srv-w-b']);
+    expect(resourceCount(latest, 'memory_pct', 'worker_service')).toBe(2);
+    expect(currentValues([], 'memory_pct', 'worker_service')).toEqual([]);
   });
 });
 

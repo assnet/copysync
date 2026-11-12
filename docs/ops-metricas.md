@@ -64,7 +64,9 @@ Duas rotas para a tela "Consumo" dentro de Workers. Mesmos hooks (`authHook` + `
   postgres) › `worker_service` › `api` (outro `srv-`) › `other` (fonte `sessions`).
 - `worker_service` (desde api 0.86.0): amostra da Render (`srv-`) cujo `resource` é igual a
   `WORKER_SCALER_SERVICE_ID` ou começa com `<WORKER_SCALER_SERVICE_ID>-` (instâncias, `srv-<id>-<sufixo>`).
-  Réplicas novas do worker entram sozinhas, sem mexer em `RENDER_RESOURCE_IDS` na tela; prefixo
+  Réplicas novas do worker entram sozinhas: o sampler já pede à Render o `WORKER_SCALER_SERVICE_ID`
+  válido junto com `RENDER_RESOURCE_IDS` (`samplerResourceIds`, sem duplicar), e a Render devolve
+  cada instância como `<id>-<sufixo>`; não é preciso pôr o worker na lista. Prefixo
   com `-` para `srv-ab` nunca pegar `srv-abc`. A env é lida no ponto de composição
   (`opsMetrics.routes.ts`) e conferida por `opsWorkerServiceId` (`^srv-[a-z0-9]+$`); ausente ou
   inválida = todo `srv-` é `api` (comportamento antigo). Não confundir com `worker`, que é o
@@ -107,9 +109,11 @@ gráficos com `@mui/x-charts` 8.29.3 fixo, só no chunk lazy da aba.
 - `RAM · Worker` / `CPU · Worker` (`kind = worker_service`): mesma regra dos cartões da API, o
   **pior valor entre as instâncias** (% é por instância: cada uma tem o próprio limite; somar % não
   tem sentido). Com 2+ instâncias o contexto diz "pior de N instâncias". Sem MB (limite do worker
-  não fixo na tela). Os cartões só aparecem com amostra do worker; sem `WORKER_SCALER_SERVICE_ID`
-  no `http` tudo segue em API. Nos gráficos de CPU e Memória de Servidores o Worker é a 3ª linha
-  (pior instância por balde), separada da API.
+  não fixo na tela). Só contam instâncias atuais: amostra com `at` ≥ (mais nova do worker − 2 min)
+  (`rules.currentValues`); a instância trocada por deploy, ainda nos 15 min do `/latest`, fica de
+  fora do N e do pior valor. Os cartões só aparecem com amostra do worker; sem `WORKER_SCALER_SERVICE_ID`
+  no `http` tudo segue em API. Nos gráficos de CPU e Memória de Servidores o Worker é a 2ª linha
+  (3ª cor; pior instância por balde), separada da API.
 - Consultas: só `shape` (forma normalizada) do snapshot mais recente, sem flag de borrar (sem dado
   de cliente). Se a API mandar SQL não normalizado, é bug da API.
 
@@ -124,7 +128,7 @@ série; mais de 3 cores (mais de 3 workers = só tabela); persistir dado da API.
 | `OPS_METRICS_SAMPLER_ENABLED` | `false` | liga o sampler; só no serviço `worker` |
 | `RENDER_API_KEY` | vazio | chave da Metrics API; sem ela (ou sem IDs) a fonte Render fica de fora e o resto segue. Também usada pelo escalador dos workers ([`workers-escala.md`](workers-escala.md), Escala): com `WORKER_SCALER_ENABLED=true` passa a existir no `http` além do `worker`. Nunca no painel, nunca em log |
 | `RENDER_RESOURCE_IDS` | vazio | `srv-…`/`dpg-…` separados por vírgula |
-| `WORKER_SCALER_SERVICE_ID` | vazio | id `srv-…` do serviço worker (do escalador). No `http`, também separa as amostras da Render do worker (`worker_service`) das da API no Consumo |
+| `WORKER_SCALER_SERVICE_ID` | vazio | id `srv-…` do serviço worker (do escalador). No `worker`, o sampler o coleta automaticamente além de `RENDER_RESOURCE_IDS` (sem duplicar; réplicas incluídas). No `http`, separa as amostras da Render do worker (`worker_service`) das da API no Consumo. Inválido = ignorado |
 | `OPS_MEMORY_LIMIT_MB` | vazio | limite de RAM para o alerta de RSS quando a Render não dá `memory-limit` |
 
 Custo no worker dono, por minuto: 4 GETs à Render (`cpu`, `cpu-limit`, `memory`, `memory-limit`,

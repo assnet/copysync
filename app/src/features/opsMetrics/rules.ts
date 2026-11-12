@@ -181,9 +181,24 @@ export function latestValue(latest: OpsLatestValue[], metric: string, kind?: Ops
   return best;
 }
 
+/** Tolerância da "instância atual": amostras até 2 min antes da mais nova do mesmo tipo e métrica. */
+export const CURRENT_INSTANCE_SLACK_MS = 2 * MIN;
+
+/**
+ * Valores atuais de um tipo e métrica: só os com `at` ≥ (mais nova − 2 min). O `/latest` cobre
+ * 15 min, então instância trocada por deploy ainda vem nele; sem esse corte ela entraria na
+ * contagem e poderia ser o "pior" valor.
+ */
+export function currentValues(latest: OpsLatestValue[], metric: string, kind: OpsKind): OpsLatestValue[] {
+  const own = latest.filter((v) => v.metric === metric && v.kind === kind);
+  const newest = Math.max(...own.map((v) => new Date(v.at).getTime()).filter(Number.isFinite));
+  if (!Number.isFinite(newest)) return [];
+  return own.filter((v) => new Date(v.at).getTime() >= newest - CURRENT_INSTANCE_SLACK_MS);
+}
+
 /** Quantos recursos distintos do tipo têm valor atual da métrica (ex.: instâncias do worker). */
 export function resourceCount(latest: OpsLatestValue[], metric: string, kind: OpsKind): number {
-  return new Set(latest.filter((v) => v.metric === metric && v.kind === kind).map((v) => v.resource)).size;
+  return new Set(currentValues(latest, metric, kind).map((v) => v.resource)).size;
 }
 
 /** Horário da amostra mais recente entre os valores atuais e as séries (base do "atualizado há"). */

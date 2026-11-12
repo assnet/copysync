@@ -20,6 +20,7 @@ caíam como `api` na aba Consumo. Novo `kind` `worker_service`: `srv-` igual a `
 
 - **`domain/services/opsMetricsSeriesPolicy.ts`** — `opsResourceKind` recebe `workerServiceId` e devolve `worker_service` para o serviço e as instâncias (`-` no prefixo: `srv-ab` não casa `srv-abc`); `opsWorkerServiceId` confere `^srv-[a-z0-9]+$`.
 - **`application/use-cases/GetOpsMetricsSeriesUseCase.ts`**, **`GetOpsMetricsLatestUseCase.ts`** — id do serviço worker opcional no construtor.
+- **`infrastructure/samplerResourceIds.ts`**, **`infrastructure/opsMetricsContainer.ts`** — o sampler coleta também o `WORKER_SCALER_SERVICE_ID` válido (sem duplicar com `RENDER_RESOURCE_IDS`): o worker e as réplicas entram sem mexer na lista.
 - **`presentation/routes/opsMetrics.routes.ts`** — lê `WORKER_SCALER_SERVICE_ID` na composição; **`schemas/opsMetrics.schema.ts`** — `worker_service` no enum `kind`.
 - Testes da política (api, 1 e 2 instâncias, id parecido, sem env) e dos dois use cases.
 
