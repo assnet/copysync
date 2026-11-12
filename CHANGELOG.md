@@ -12,7 +12,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ### Added — api 0.89.0 · app 0.109.0 — custos proporcionais ao tempo (P2)
 
 A P1 só tinha a foto do momento × mês cheio. Agora o job horário `InfraCostSnapshotJob` (só no `worker`, flag `INFRA_COST_SNAPSHOT_ENABLED` default `false`) grava plano, instâncias e disco de cada recurso da Render, sessão-hora e contratadas por tenant, banda e build medidos e a cotação PTAX do BCB (SGS e última gravada como fallback, uma nova tentativa 1 h depois). O resumo soma o mês hora a hora, projeta o mês cheio (margem do mês corrente projetada) e ganha seletor de mês e a leitura por sessão-hora. Nenhuma rota chama a Render nem o BCB. Doc: `docs/custos-infraestrutura.md`.
-**Migration Prisma**: sim (`create_infra_cost_snapshots`). **Breaking**: não (campos novos na resposta).
+**Migration Prisma**: sim (`create_infra_cost_snapshots`, `add_infra_usage_daily_hours`). **Breaking**: não (campos novos na resposta).
 
 #### Backend (api/) — `metrics`
 

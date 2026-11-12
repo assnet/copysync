@@ -11,7 +11,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 Job horário de snapshot dos custos no `worker` e custo do mês somado hora a hora, com projeção, sessão-hora e cotação
 PTAX automática. Rotas seguem só com tabelas locais. Doc: `docs/custos-infraestrutura.md`.
-**Migration Prisma**: sim (`create_infra_cost_snapshots`: `infra_resource_hours`, `tenant_session_hours`,
+**Migration Prisma**: sim (`add_infra_usage_daily_hours`: coluna `hours` em `infra_usage_daily`; `create_infra_cost_snapshots`: `infra_resource_hours`, `tenant_session_hours`,
 `infra_fx_rates`, `infra_usage_daily`). **Breaking**: não (campos novos no resumo).
 
 ### Added
