@@ -7,6 +7,39 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.85.1] — 2026-11-11 — Jobs de sessão só no processo dono
+
+Incidente de 2026-11-11: o 1º worker (Private Service, `PROCESS_ROLE=worker`) subiu ao lado da api `all`, pegou envios
+de oferta de sessões da api e falhou com `SESSION_NOT_CONNECTED` (claim global, engine local; 7 envios atrasados e
+recuperados; worker suspenso). Agora todo job que usa a engine só trabalha com sessões cujo lease vivo é do próprio
+processo (ou sem dono vivo). Com um único processo `all`, nada muda. Spec: `.specs/features/owner-scoped-jobs/`
+(OWN-01..08). Doc: `docs/arquitetura-escala.md` §3.3 e §5.1, `docs/fila-de-envio.md` §2.2, `docs/rodizio-de-links.md`.
+**Migration Prisma**: não. **Breaking**: não.
+
+### Fixed
+
+#### API — `campaigns`
+
+- **`infrastructure/repositories/PrismaOfferDispatchRepository.ts`**, **`infrastructure/offersContainer.ts`** — `claimDue` exclui envio cuja sessão tem lease vivo de outro processo (anti-join, relógio `now() AT TIME ZONE 'UTC'`; `workerId` = `currentWorkerId()` no construtor; sequencial e concorrente). `sessionId` nulo nunca é excluído. `EXPLAIN` no descartável: subquery como `hashed SubPlan`, avaliada uma vez.
+
+#### API — `link-rotation`
+
+- **`infrastructure/jobs/LinkRotationMemberSyncJob.ts`**, **`infrastructure/repositories/PrismaLinkRotationMemberSyncStore.ts`**, **`application/use-cases/SyncLinkRotationMembersUseCase.ts`** — lease por processo `link-rotation-member-sync:<workerId>`; `listDue` só lista grupos das próprias sessões; o tick apaga leases do prefixo vencidos há mais de 1 dia; teto de 50 chamadas/min passa a ser por processo.
+- **`shared/jobs/IJobLease.ts`**, **`shared/infrastructure/jobs/PrismaJobLease.ts`** — limpeza de leases vencidos por prefixo.
+
+#### API — `sessions`
+
+- **`application/services/InactiveTenantSessionDisconnector.ts`**, **`infrastructure/listeners/TenantSuspendedSessionListener.ts`** — tenant suspenso só grava status e desconecta sessões deste processo ou sem dono vivo; nunca toca sessão com lease vivo de outro processo.
+- **`infrastructure/repositories/PrismaSessionRepository.ts`**, **`domain/contracts/ISessionRepository.ts`** — `markDisconnectedUnlessLeasedElsewhere` (condição de dono no próprio `UPDATE`) e `findWithInactiveTenant`; testes de integração com `TimeZone` ≠ UTC.
+- **`infrastructure/jobs/InactiveTenantSessionSweepJob.ts`**, **`app/processJobs.ts`**, **`app/server.ts`** — job `inactiveTenantSweep` (`worker`/`all`, tick 30 s) desconecta as sessões locais de tenant ≠ `ACTIVE`, cobrindo a suspensão detectada em outro processo.
+- **`app/sessionBootOrder.ts`**, **`app/server.ts`** — keeper do lease inicia antes do bootstrap das sessões: bootstrap longo não deixa o lease das primeiras sessões vencer.
+
+### Known issues
+
+- **`PrismaOfferDispatchRepository.claimDue`** — compara `notBefore` (`timestamp` sem fuso) com parâmetro `timestamptz`: com conexão em fuso a oeste de UTC o envio atrasa pelo fuso. Latente (banco da Render em UTC); fora do escopo.
+
+---
+
 ## [0.85.0 · app 0.104.0] — 2026-11-11 — Subida automática dos workers
 
 Com o escalador pronto, subir réplica ainda dependia de alguém olhar o alerta e clicar. Com `scalerMode = auto`, o

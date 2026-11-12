@@ -281,7 +281,9 @@ do desenho abaixo:
   antigo em deploy escalonado) executa. Depende de relógio sincronizado (NTP) entre `http` e worker.
 - Worker sobe só `GET /health` na `PORT` (`role`, `workerId`, sessões, Redis, banco); `/health` do `http`/
   `all` ganhou `role`. Worker também drena a fila de mídia antes dos sockets (D8). `http` em 1 réplica (D5).
-- `TENANT_SUSPENDED`: listener em todo papel; no `http` o `disconnect` vai ao dono pela fila.
+- `TENANT_SUSPENDED`: listener em todo papel; no `http` o `disconnect` vai ao dono pela fila. Desde a api 0.85.1 o
+  listener só grava status e desconecta sessões **deste processo ou sem dono vivo**; sessão com lease vivo de outro
+  processo fica para a varredura `inactiveTenantSweep` do dono (tabela abaixo).
 - Decidido (dono, 2026-11-04): timeout do comando de texto fica em 60 s (mídia 300 s); RPC segue 10 s.
 - Pendente: sessão real (QR lido, código, envio, recebimento, grupos) não testada no smoke.
 
@@ -291,15 +293,21 @@ Mesmo código, três modos de boot via `PROCESS_ROLE=http|worker|all`:
 - `worker`: Fastify só com `/health` numa porta interna; adoção (§3.2), consome fila.
 - `all`: comportamento atual (dev e instalação pequena), com o teto de §3.2 se a flag ligar.
 
-**Dono de cada job de boot** (hoje nenhum checa role; só o rodízio usa `JobLease`):
+**Dono de cada job de boot** (papel em `app/processJobs.ts`). Regra desde a api 0.85.1 (spec `.specs/features/owner-scoped-jobs/`):
+job que usa a engine só trabalha com sessões cujo lease vivo é **deste** processo (ou sem dono vivo, quando o job
+sabe esperar adoção); o relógio é sempre o do lease (`now() AT TIME ZONE 'UTC'`). Claim global + engine local =
+envio pego por quem não tem o socket (incidente de 2026-11-11, §5.1).
 
 | Job (`server.ts`) | Role dono | Lease |
 |---|---|---|
 | `UploadSessionSweeper`, `ReconcileInterruptedUploadsUseCase` (boot), drain de mídia no shutdown, `failOrphanPendingMedia.runBoot()` e `pendingMediaSweep` periódico (`MEDIA_PENDING_RECOVERY_ENABLED`) | `http` | disco `/var/data` é de um processo só; worker com a flag mataria envios em voo do http |
-| `OfferDispatchWorker` (`OFFER_DISPATCH_WORKER_ENABLED`, `GROUP_MONITORING_ENABLED`) | `worker` | claim `pg_advisory_xact_lock('offer_dispatch_claim')` + `claimToken` em `PrismaOfferDispatchRepository.claimDue` (multi-instância segura; o comentário de `OfferDispatchWorker.ts:18` cita SKIP LOCKED por engano); lease opcional |
+| `OfferDispatchWorker` (`OFFER_DISPATCH_WORKER_ENABLED`, `GROUP_MONITORING_ENABLED`) | `worker` | claim `pg_advisory_xact_lock('offer_dispatch_claim')` + `claimToken` em `PrismaOfferDispatchRepository.claimDue` (multi-instância segura; o comentário de `OfferDispatchWorker.ts:18` cita SKIP LOCKED por engano); lease opcional. **Dono:** o claim exclui envio cuja sessão tem lease vivo de **outro** processo (anti-join, `workerId` = `currentWorkerId()` no construtor do repositório, nos caminhos sequencial e concorrente); sessão minha ou sem dono vivo segue como antes; `sessionId` nulo nunca é excluído. Logo após restart, sessão com lease ainda vivo do processo anterior fica fora até ele vencer (≤ 60 s) |
 | `HubOutboxWorker` (`HUB_EVENTS_ENABLED` + `HUB_EVENTS_CONFIGURED`), `ExtensionRetentionJob` | `worker` | já seguros: `PrismaHubOutboxRepository` usa `SKIP LOCKED`; `ExtensionRetentionJob` usa `pg_try_advisory_lock` (não copiar como modelo: `$queryRaw` no pool pode dar `unlock` em outra conexão; preferir `JobLease`) |
 | reconcile de billing (`ReconcileSubscriptionsUseCase`, `BILLING_ENABLED`, `BILLING_RECONCILE_INTERVAL_MS`) | `worker` | já usa `JobLease` (`BILLING_RECONCILE_LEASE_TTL_MS`) |
-| Gestor de Links (`LINK_ROTATION_MEMBER_SYNC_ENABLED`) | `worker` | já usa `JobLease` |
+| Gestor de Links (`LINK_ROTATION_MEMBER_SYNC_ENABLED`) | `worker` | `JobLease` **por processo** `link-rotation-member-sync:<workerId>`; `listDue` só traz grupos das **próprias** sessões (lease vivo deste processo); o tick apaga leases do prefixo vencidos há mais de 1 dia; teto de 50 chamadas/min por processo ([`rodizio-de-links.md`](rodizio-de-links.md)). Nunca voltar ao lease global |
+| `inactiveTenantSweep` (`InactiveTenantSessionSweepJob`) | `worker`/`all` (nunca `http`) | sem lease: tick de 30 s só sobre as sessões **locais** (`listLocal`); desconecta as de tenant ≠ `ACTIVE` (`findWithInactiveTenant`). Cobre a suspensão detectada em outro processo; sem socket local não consulta o banco |
+| listener `TENANT_SUSPENDED` (`TenantSuspendedSessionListener`) | todos | grava status/desconecta só sessão deste processo ou sem dono vivo (`markDisconnectedUnlessLeasedElsewhere`, condição no próprio `UPDATE`); nunca toca sessão com lease vivo de outro processo |
+| keeper do lease (`leaseKeeper`) | `worker`/`all` | inicia **antes** do bootstrap das sessões (`app/sessionBootOrder.ts`): bootstrap longo não deixa lease das primeiras sessões vencer |
 | `WorkerAutoscalerJob` (`workerAutoscaler`; age só com `scalerMode = auto`, limpeza de `worker_scale_events` em todo modo) | `worker`/`all` | `JobLease` `worker-autoscaler` (tick), `worker-autoscaler:rejected:<código>` (1 h, não solto) e `worker-autoscaler:cleanup` (24 h, não solto) |
 | `markActiveSessionsAsDisconnected()` no boot (só com `SESSION_BOOTSTRAP_ON_STARTUP=false`) | `worker`, só sessões sem lease válido | — |
 | `prisma migrate deploy` (`CMD pnpm start:migrate`) | todos; Prisma serializa por advisory lock | subir `http` antes das réplicas `worker` no deploy, para o código novo não rodar com schema velho |
@@ -423,8 +431,8 @@ porque o `CMD` subia o servidor direto. Postgres: **dedicado ao CopySync desde ~
 (informado pelo owner em 2026-11-06); até então era compartilhado com o PulsoSocial (Basic-256mb),
 que não aguentava auth state de 100 sessões e deixava um produto derrubar o outro.
 
-Escada do Postgres dedicado do CopySync (decisão 2026-10-26; região **Virginia**, mesma do `copysync_api` e do banco `waioprime`;
-a central fica em Oregon e não deve ser seguida):
+Escada do Postgres dedicado do CopySync (decisão 2026-10-26; região **Oregon**, a mesma de todos os serviços do CopySync e
+do Postgres `db_copysync_postgres_w398`):
 
 | Momento | Plano Render | Observação |
 |---|---|---|
@@ -483,6 +491,10 @@ Envs de papel e adoção (`api/src/shared/config/env.ts`; nunca no `api/.env` lo
 - [x] Timeout de comando de texto: 60 s (decisão do dono 2026-11-04).
 - [x] QR sem leitura não ocupa vaga do worker (decisão do dono 2026-11-04; E4 T24).
 - [ ] Smoke com sessão real autorizada: QR lido, código, envio texto/mídia, recebimento, grupos, readoção sem 440.
+- [x] Jobs de sessão por dono (envio de ofertas, sync de membros, suspensão) — api 0.85.1 (§3.3). Incidente
+  2026-11-11: o 1º worker (Private Service, `PROCESS_ROLE=worker`) subiu ao lado da api `all`, pegou envios de
+  oferta de sessões da api e falhou com `SESSION_NOT_CONNECTED` (claim global, engine local); 7 envios
+  atrasados e recuperados; worker suspenso até este item.
 - [ ] Antes de ligar o escalador (`WORKER_SCALER_ENABLED=true`): T25 feito num Private Service de teste (1→2, 2→1,
   `SIGTERM` + grace, `maxShutdownDelaySeconds`); serviço `worker` sem disco e sem autoescala nativa da Render.
 - [ ] `WORKER_SCALER_ENABLED`, `WORKER_SCALER_SERVICE_ID` e `RENDER_API_KEY` iguais no `http` e no `worker`;
@@ -513,7 +525,7 @@ Hetzner troca peça em horas), setup em horas em vez de minutos. Linha SX/EX nã
 caro para o mesmo caso.
 
 Total em 3.000 sessões: **~€260-360/mês**, 5-6× mais barato que a Render. Usar datacenter
-Ashburn se o Postgres ficar na Render (latência Virginia ↔ Alemanha pesa no auth state).
+Hillsboro (Oregon) se o Postgres ficar na Render (latência Oregon ↔ Alemanha pesa no auth state).
 
 Alternativa sem painel: `docker-compose.yml` com `api`, `worker`, `postgres`, `redis`, `minio`,
 `caddy` (HTTPS automático). O compose do legado2 serve de base.

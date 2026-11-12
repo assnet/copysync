@@ -48,7 +48,19 @@ faixa da sessão até o `releaseStale` (no máximo 5 min).
 2. só entra se a sessão **não tem envio `SENDING`**, nem **`SENT` iniciado (`claimedAt`) há menos
    de `gapSeconds`** do candidato, nem **`FAILED/SEND_TIMEOUT` há menos de
    `max(gapSeconds, 120 s)`** (a mensagem pode ainda estar saindo: timeout 60 s + digitação), menos 5 s de tolerância (`LANE_GAP_TOLERANCE_SECONDS`: o claim
-   acontece até um tick depois do `notBefore`, e sem folga a cadência da própria oferta escorregaria).
+   acontece até um tick depois do `notBefore`, e sem folga a cadência da própria oferta escorregaria);
+3. **dono da sessão** (api 0.85.1): não entra envio cuja sessão tem lease vivo de **outro** processo
+   (`ownerWorkerId <> eu AND leaseUntil > now() AT TIME ZONE 'UTC'`, o relógio do lease). Só o processo que
+   segura o socket envia; sessão minha ou sem dono vivo segue como antes (sem dono: §2.2.1); `sessionId`
+   nulo nunca é excluído. O `workerId` (`currentWorkerId()`) entra no construtor de
+   `PrismaOfferDispatchRepository` e vale nos caminhos sequencial e concorrente. Não voltar ao claim
+   global: o worker ao lado da api `all` pegou envios de sessões da api e falhou com
+   `SESSION_NOT_CONNECTED` (incidente de 2026-11-11, `docs/arquitetura-escala.md` §5.1).
+
+**Pendência conhecida (fora do escopo da 0.85.1):** `claimDue` compara `notBefore` (`timestamp` sem fuso)
+com parâmetro `timestamptz`; numa conexão com `TimeZone` a oeste de UTC o envio atrasa pelo tamanho do fuso.
+Latente porque o banco da Render está em UTC; corrigir comparando com `now() AT TIME ZONE 'UTC'` (ou parâmetro
+`timestamp`) e cobrir com teste de integração com `TimeZone` ≠ UTC.
 
 Resultado: no máximo um envio por sessão por tick, nunca dois em voo na mesma sessão, espaçamento
 mínimo entre ofertas diferentes. O lock substitui o `SKIP LOCKED` (incompatível com `DISTINCT ON`) e

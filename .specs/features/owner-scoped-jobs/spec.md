@@ -1,7 +1,7 @@
 # Jobs de sessão só no processo dono — Spec
 
-**Tamanho:** Medium. **Status:** em execução (aprovado pelo dono em 2026-11-11).
-**Origem:** incidente de 2026-11-12. O 1º `copysync_worker` (Private Service, `PROCESS_ROLE=worker`) subiu ao lado da api
+**Tamanho:** Medium. **Status:** implementado (api 0.85.1).
+**Origem:** incidente de 2026-11-11. O 1º `copysync_worker` (Private Service, `PROCESS_ROLE=worker`) subiu ao lado da api
 `all`, pegou envios de oferta de sessões que pertencem à api e falhou com `SESSION_NOT_CONNECTED` (7 envios atrasados,
 recuperados; worker suspenso). O mesmo aconteceria com 2+ workers: o claim é global e a engine é local.
 

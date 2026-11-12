@@ -9,6 +9,21 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — api 0.85.1 — jobs de sessão só no processo dono
+
+O 1º worker subiu ao lado da api `all`, pegou envios de oferta de sessões da api e falhou com `SESSION_NOT_CONNECTED` (incidente de 2026-11-11; worker suspenso). Todo job que usa a engine agora só trabalha com sessões cujo lease vivo é do próprio processo (ou sem dono vivo); com um processo só, nada muda. Doc: `docs/arquitetura-escala.md` §3.3/§5.1, `docs/fila-de-envio.md` §2.2. Spec: `.specs/features/owner-scoped-jobs/`.
+**Migration Prisma**: não. **Breaking**: não.
+
+#### Backend (api/) — `campaigns`, `link-rotation`, `sessions`
+
+- **`PrismaOfferDispatchRepository.ts`** — claim exclui envio de sessão com lease vivo de outro processo (anti-join, relógio UTC do lease).
+- **`LinkRotationMemberSyncJob.ts`**, **`PrismaLinkRotationMemberSyncStore.ts`** — lease por processo `link-rotation-member-sync:<workerId>`; só grupos das próprias sessões; limpeza de leases vencidos há 1 dia.
+- **`TenantSuspendedSessionListener.ts`**, **`InactiveTenantSessionDisconnector.ts`**, **`PrismaSessionRepository.ts`** — suspensão não toca sessão de outro dono (`markDisconnectedUnlessLeasedElsewhere`).
+- **`InactiveTenantSessionSweepJob.ts`**, **`processJobs.ts`** — varredura `inactiveTenantSweep` (`worker`/`all`, 30 s) das sessões locais de tenant ≠ `ACTIVE`.
+- **`sessionBootOrder.ts`**, **`server.ts`** — keeper do lease antes do bootstrap das sessões.
+
+Pendência conhecida: `claimDue` compara `notBefore` (sem fuso) com `timestamptz`; latente com o banco em UTC.
+
 ### Added — api 0.85.0 · app 0.104.0 — subida automática dos workers
 
 Subir réplica dependia de alguém ver o alerta e clicar. Com `scalerMode = auto`, o `WorkerAutoscalerJob` pede +1 réplica quando a ocupação fica alta por tempo sustentado ou há sessão aguardando vaga; nunca reduz. Doc: `docs/workers-escala.md` (Automático). Spec: `.specs/features/worker-scaling/` (WSCALE-14..16, 19; fase P4).
