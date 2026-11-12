@@ -15,7 +15,8 @@
 - Um commit por tarefa, `tipo(escopo): descrição` + `Co-Authored-By`. Migration nova nunca edita migration aplicada; timestamp
   maior que a última do topo (hoje `20261111150000`).
 - **Versões:** próxima minor acima do topo no início de cada fase (topo de `feature/rebranding-app` em `b7a1bae`: api 0.86.0 · app 0.106.0 → P1 previsto
-  api 0.87.0 · app 0.107.0, P2 0.88.0 · 0.108.0, P3 0.89.0 · 0.109.0; reconferir no topo antes, outra feature pode
+  api 0.88.0 · app 0.108.0, P2 0.89.0 · 0.109.0, P3 0.90.0 · 0.110.0 (api 0.87.0 · app 0.107.0 ficam com a tabela de
+  instâncias, que vai ao ar antes); reconferir no topo antes, outra feature pode
   ter usado). `package.json` + entrada no `CHANGELOG.md` da raiz (e em `api/CHANGELOG.md` quando a fase tocar a api) juntos;
   `app/` não tem changelog próprio.
 - **Antes da T1:** rebasear `feature/infra-costs` (só commits de plano) sobre o topo real de `feature/rebranding-app`
@@ -59,12 +60,12 @@ visual pelo `agent-browser` (claro, escuro, 390 px). Registro em `review.md`.
 | T11 | Tabelas de snapshot (migration + repositório) | R1 | | pendente |
 | T12 | Leitor de plano da Render | R1 | P | pendente |
 | T12b | Cotação PTAX do BCB | R1 | P | pendente |
-| T13 | Job de snapshot horário | T11, T12, T12b | | pendente |
+| T13 | Job de snapshot horário e passo diário | T11, T12, T12b | | pendente |
 | T14 | Calculador por hora + leitor do mês | T11 | | pendente |
 | T15 | Summary por mês e projeção; painel com mês e avisos | T13, T14 | | pendente |
 | T16 | Docs, versão e changelog da P2 | T15 | | pendente |
 | R2 | Revisão da P2 e merge | T16 | | pendente |
-| T17 | Custo de IA por tenant | R2 | P | pendente |
+| T17 | Custo de IA por tenant | R2 | | pendente |
 | T18 | Fechamento mensal (migration + job) | R2 | | pendente |
 | T19 | Rotas por cliente e histórico | T17, T18 | | pendente |
 | T20 | Painel: abas Por cliente e Histórico, privacidade | T19 | | pendente |
@@ -94,17 +95,17 @@ Pico de 3 agentes + 1 revisor.
 ### P1 — mínima útil (sem tabela nova, sem chamada externa)
 
 ### T1: Domínio da configuração de custos [P]
-**What**: `InfraCostSettings`, `parseInfraCostSettings` (COST-01: faixas, `key` única, limites de lista, campo desconhecido → erro com `field`), `DEFAULT_INFRA_COST_SETTINGS` (COST-02, valores da tabela do Problema, preço por GB `null`), `resolveInfraCostSettings(saved)` com origem `default`/`saved`. Contratos `IInfraCostSettingsRepository`.
+**What**: `InfraCostSettings`, `parseInfraCostSettings` (COST-01: faixas, `key` única, limites de lista, campo desconhecido → erro com `field`), `DEFAULT_INFRA_COST_SETTINGS` (COST-02, decisões do dono: disco 15 GB, e-mail 23, R2 0, workspace Hobby, `fx.auto` e `closingMethod`), `resolveInfraCostSettings(saved)` com origem `default`/`saved`. Contratos `IInfraCostSettingsRepository`.
 **Where**: `api/src/modules/metrics/domain/services/infraCostSettings.ts` (+ `.test.ts`), `metrics/domain/contracts/IInfraCostSettingsRepository.ts`
 **Depends on**: — · **Reuses**: `sessions/domain/services/workerScalingSettings.ts` (estilo) · **Requirement**: COST-01, COST-02
-**Done when**: testes cobrem limites, `key` duplicada, `renderKey` inválida, `storageUsdPerGb` nulo aceito, default sem linha
+**Done when**: testes cobrem limites, `key` duplicada, `renderKey` inválida, `storage.usdPerGb` nulo aceito, `storage.gb` nulo aceito, `workspace` (inclusive `cycleStartDay` fora de 1–28) e `fx.closingMethod` inválidos, default sem linha
 **Tests**: unit · **Gate**: quick · **Commit**: `feat(metrics): domínio da configuração de custos da infraestrutura`
 
 ### T2: Calculador, modo foto
-**What**: `resolveFxRate` puro com o ramo manual (`source: 'override'`, `stale`, `null` → `fx_missing`; a T12b só acrescenta PTAX e `last_known`) e `calculateInfraCosts` com `basis: 'snapshot'`, devolvendo USD e BRL: custo por item (fixo, por instância, uso, armazenamento), total, fixo × variável, por sessão (conectadas e contratadas), por plano proporcional às conectadas, custo por tenant médio, marginal por sessão, avisos `storage_to_confirm`; `null` em toda divisão por zero. Assinatura já aceita entradas por hora (vazias na P1) para a T14 só preencher.
+**What**: `resolveFxRate` puro com o ramo manual (`source: 'override'`, `stale`, `null` → `fx_missing`; a T12b só acrescenta PTAX e `last_known`) e `calculateInfraCosts` com `basis: 'snapshot'`, devolvendo USD e BRL: custo por item (fixo, por instância, uso, armazenamento), total, fixo × variável, por sessão na base padrão **contratadas** (contratadas efetivas por canal, ilimitado pelo preset do canal, `unlimited_contracted`) e na segunda leitura por conectadas (Σ `connected` dos planos `ACTIVE`, sessões não alocadas à parte), por plano, tenant médio = parte do plano ÷ `WorkerCapacityPlanRow.tenants`, excedente do workspace com valores manuais, marginal por sessão, `totalIsPartial`, avisos `storage_to_confirm`/`plan_without_price`; `null` em toda divisão por zero. Assinatura já aceita entradas por hora (vazias na P1) para a T14 só preencher.
 **Where**: `metrics/domain/services/infraCostCalculator.ts`, `metrics/domain/services/fxRate.ts` (+ `.test.ts`)
 **Depends on**: T1 · **Requirement**: COST-02a, COST-04, COST-05, COST-06a, COST-06b
-**Done when**: testes com os valores reais (93,50 com 1 worker, 118,50 com 2, disco da api `storage_to_confirm`), plano vizinho (api 25 → 7 e 85; ponta = `null`), sem sessão, sem amostra, storage a confirmar, marginal = 25 ÷ (teto × ratio)
+**Done when**: testes com os valores reais (120,25 com 1 worker, 145,25 com 2), excedente (banda 7 GB manual → 2 × 0,15 = 0,30; build 800 min → 1,50), tenant ilimitado no WhatsApp e no Telegram pelo preset de cada canal, plano com `tenants` 0 → `null`, não alocadas, item sem preço → total parcial, plano vizinho (api 25 → 7 e 85; ponta = `null`), sem sessão, sem amostra, storage a confirmar, marginal = 25 ÷ (teto × ratio)
 **Tests**: unit · **Gate**: quick · **Commit**: `feat(metrics): cálculo de custos e rateio por sessão e plano`
 
 ### T3: Ação de auditoria [P]
@@ -122,35 +123,35 @@ Pico de 3 agentes + 1 revisor.
 **Tests**: integration-db · **Gate**: integration-db · **Commit**: `feat(metrics): repositório da configuração de custos`
 
 ### T5: Leitor do momento [P]
-**What**: `IInfraCostLiveReader` + Prisma: última `sessions_connected` e `sessions_capacity` (janela 1 h), instâncias distintas do worker (`worker_service`) nos últimos 15 min, via `PrismaOpsMetricsSampleRepository`; capacidade por plano pela porta `IWorkerCapacityReader` injetada. `statement_timeout` 2 s.
+**What**: `IInfraCostLiveReader` + Prisma: última `sessions_connected` e `sessions_capacity` (janela 1 h), instâncias distintas do worker (`worker_service`) nos últimos 15 min, via `PrismaOpsMetricsSampleRepository`. A capacidade por plano **não** é consulta nova: o use case (T6) recebe `IWorkerCapacityReader` (`readByPlan()`: `tenants`, `contracted`, `unlimitedTenants`, `connected`) injetado na composição. `statement_timeout` 2 s.
 **Where**: `metrics/domain/contracts/IInfraCostLiveReader.ts`, `metrics/infrastructure/repositories/PrismaInfraCostLiveReader.ts` (+ `.int.test.ts`)
 **Depends on**: — · **Reuses**: `opsWorkerServiceId`, `opsResourceKind` · **Requirement**: COST-04, COST-05
 **Done when**: integração com amostras sintéticas de 1 e 2 instâncias, sem amostra → `null`, instância antiga (> 15 min) fora
 **Tests**: integration-db · **Gate**: integration-db (depois da T4) · **Commit**: `feat(metrics): leitura do momento para custos`
 
 ### T6: Use cases e rotas
-**What**: `GetInfraCostSettingsUseCase`, `UpdateInfraCostSettingsUseCase` (auditoria antes/depois), `GetInfraCostSummaryUseCase` (lê `workerScalingSettingsProvider().current()` a cada chamada); rotas `GET`/`PUT /admin/costs/settings`, `GET /admin/costs/summary?month=YYYY-MM` (super admin; na P1 só o mês corrente, outro mês → 400 `INFRA_COST_MONTH_UNAVAILABLE`; schema, presenter, handlers finos). Composição no container do `metrics`, registro em `routes.ts`.
+**What**: `GetInfraCostSettingsUseCase`, `UpdateInfraCostSettingsUseCase` (auditoria antes/depois), `GetInfraCostSummaryUseCase` (recebe `IWorkerScalingSettingsProvider` e `IWorkerCapacityReader` por injeção e lê `.current().value` a cada chamada; a composição no container chama `workerScalingSettingsProvider()`, como `opsMetricsContainer.ts:26`); rotas `GET`/`PUT /admin/costs/settings`, `GET /admin/costs/summary?month=YYYY-MM` (super admin; na P1 só o mês corrente, outro mês → 400 `INFRA_COST_MONTH_UNAVAILABLE`; schema, presenter, handlers finos). Composição no container do `metrics`, registro em `routes.ts`.
 **Where**: `metrics/application/use-cases/`, `metrics/presentation/routes/infraCosts.routes.ts` (+ schema, presenter, testes), `api/src/app/routes.ts`
 **Depends on**: T2, T4, T5 · **Requirement**: COST-03, COST-04, COST-05, COST-06a
-**Done when**: testes de rota: 401 sem super admin, 400 com `field`, 409, resposta sem preço de plano nem id da Render
+**Done when**: testes de rota: 401 sem super admin, 400 com `field`, 409, resposta sem preço de plano nem id da Render; teste do use case com provider falso trocando o teto entre duas chamadas
 **Tests**: unit + rota · **Gate**: full · **Commit**: `feat(metrics): rotas de custos da infraestrutura`
 
 ### T7: Painel: contratos, regras, serviço [P]
 **What**: `types.ts`, `strings.ts`, `rules.ts` (`formatUsd`/`formatBrl` com o arredondamento de COST-06b, `planMargin` mensal e anual-equivalente com `PLAN_CATALOG`, `catalogSlugOf`, `diffSettings`, `validateSettingsDraft`), `adminCosts.service.ts`.
 **Where**: `app/src/features/infraCosts/`, `app/src/services/adminCosts.service.ts` (+ testes)
 **Depends on**: — · **Requirement**: COST-06, COST-06b, COST-16
-**Done when**: testes de margem com câmbio, sem câmbio (`null`), plano sem catálogo; nenhum preço sai no corpo do serviço
+**Done when**: testes de margem com cotação, sem cotação (`null`), plano sem catálogo; nenhum preço sai no corpo do serviço
 **Tests**: unit · **Gate**: quick · **Commit**: `feat(app): regras e serviço dos custos da infraestrutura`
 
 ### T8: Painel: página, navegação, aba Resumo
 **What**: `AdminCostsPage.tsx` com abas por sub-rota (lazy), rotas em `AppRoutes.tsx`, item `admin-costs` em `navigation/model.ts` (+ teste do modelo), `SummaryTab` + `useCostSummary` (cartões, por plano com margem, serviços com plano vizinho (COST-02a), avisos, selo "estimado"/"a confirmar", USD e BRL lado a lado, faixa da cotação com data, origem e "Fonte: Banco Central do Brasil (PTAX)" quando `source` for `ptax`/`sgs`), link "Ver custos" no cartão da aba Capacidade, rota em `SUPPORT_CHAT_HIDDEN_PATHS` se houver ação fixa no canto.
 **Where**: `app/src/pages/admin/AdminCostsPage.tsx`, `app/src/routes/AppRoutes.tsx`, `features/navigation/model.ts`, `features/infraCosts/components/SummaryTab.tsx`, `features/workersAdmin/components/CapacityTab.tsx`
 **Depends on**: T6, T7 · **Requirement**: COST-07, COST-16
-**Done when**: testes com `renderWithTheme` claro e escuro, estado "sem amostra", sem câmbio sem margem; build verde
+**Done when**: testes com `renderWithTheme` claro e escuro, estado "sem amostra", sem cotação sem margem; build verde
 **Tests**: unit · **Gate**: full + build · **Commit**: `feat(app): página de custos com resumo por serviço e plano`
 
 ### T9: Painel: aba Preços
-**What**: `PricesTab` + `useCostSettings`: itens, preços por plano da Render, preços por modelo de IA, cotação (liga `fx.auto` a partir da P2; override manual com valor e data, botão "remover override"); rascunho `usePersistedState('costs.prices.draft', null, { scope: 'tab' })` (toda chamada do plano passa valor inicial; filtros: `usePersistedState('costs.filters', DEFAULT_COST_FILTERS, { scope: 'tab' })`), diálogo próprio com diff, erro por campo, 409 recarrega.
+**What**: `PricesTab` + `useCostSettings`: itens, preços por plano da Render, preços por modelo de IA, workspace (incluso, preços, consumo manual), cotação (`closingMethod`; (liga `fx.auto` a partir da P2; override manual com valor e data, botão "remover override"); rascunho `usePersistedState('costs.prices.draft', null, { scope: 'tab' })` (toda chamada do plano passa valor inicial; filtros: `usePersistedState('costs.filters', DEFAULT_COST_FILTERS, { scope: 'tab' })`), diálogo próprio com diff, erro por campo, 409 recarrega.
 **Where**: `features/infraCosts/components/PricesTab.tsx`, `useCostSettings.ts` (+ testes)
 **Depends on**: T8 · **Reuses**: `workersAdmin/components/SettingsTab.tsx` · **Requirement**: COST-08
 **Done when**: testes de rascunho restaurado, diff, 409, campo inválido; build verde
@@ -165,17 +166,17 @@ Pico de 3 agentes + 1 revisor.
 ### P2 — custo proporcional ao tempo
 
 ### T11: Tabelas de snapshot
-**What**: migration `create_infra_cost_snapshots` (`infra_resource_hours`, `tenant_session_hours`, design §4); `IInfraCostSnapshotRepository` + Prisma: `upsert` por `(hour, resourceKey)`, incremento condicional por `lastHour`, limpeza > 400 dias em lotes de 5 mil com `statement_timeout` 2 s.
+**What**: migration `create_infra_cost_snapshots` (`infra_resource_hours`, `tenant_session_hours`, `infra_fx_rates`, `infra_usage_daily`, design §4); `IInfraCostSnapshotRepository` + Prisma: `upsert` por `(hour, resourceKey)`, incremento condicional por `lastHour`, limpeza > 400 dias em lotes de 5 mil com `statement_timeout` 2 s.
 **Where**: `api/prisma/schema.prisma`, migration, `metrics/infrastructure/repositories/PrismaInfraCostSnapshotRepository.ts` (+ `.int.test.ts`)
 **Depends on**: R1 · **Requirement**: COST-09, COST-10
 **Done when**: integração: gravar a mesma hora duas vezes não dobra; dois processos na mesma hora somam uma vez; limpeza por lote
 **Tests**: integration-db · **Gate**: integration-db · **Commit**: `feat(prisma): snapshots horários de recursos e sessão-hora`
 
 ### T12: Leitor de plano da Render [P]
-**What**: `IInfraResourcePlanReader`, `RenderInfraResourcePlanReader` (tipo pelo prefixo, timeout 5 s, 429 com `Retry-After`, erro traduzido sem id), `NotConfiguredInfraResourcePlanReader`; parse de `INFRA_COST_RENDER_RESOURCES` (fallback `worker` = `WORKER_SCALER_SERVICE_ID`) em `shared/config`.
+**What**: `IInfraResourcePlanReader`, `RenderInfraResourcePlanReader` (plano, instâncias, disco; banda por hora pela `GET /v1/metrics/bandwidth` (unidade do campo `unit`, todos os serviços inclusive o static); minutos de build pelos deploys do dia (`finishedAfter`/`finishedBefore`, cursor, `finishedAt − startedAt`); tipo pelo prefixo, timeout 5 s, 429 com `Retry-After`, erro traduzido sem id), `NotConfiguredInfraResourcePlanReader`; parse de `INFRA_COST_RENDER_RESOURCES` (fallback `worker` = `WORKER_SCALER_SERVICE_ID`) em `shared/config`.
 **Where**: `metrics/infrastructure/sources/` (+ testes), `api/src/shared/config/`
 **Depends on**: R1 · **Reuses**: `RenderWorkerScaler.ts`, `RenderPlatformMetricsSource.ts` · **Requirement**: COST-09
-**Done when**: testes com `fetchFn` falso: serviço (com `disk.sizeGB`), Postgres (`diskSizeGB`), Key Value, suspenso, divergência (`config_drift`), 429, timeout, env inválida ignorada sem logar o id
+**Done when**: testes com `fetchFn` falso: banda em bytes e em GB pelo `unit`, série sem `unit` descartada, deploys com 2 páginas de cursor (sem deploy = 0; sem `finishedAt`/`startedAt` ignorado), 429 com `Ratelimit-*`, serviço (com `disk.sizeGB`), Postgres (`diskSizeGB`), Key Value, suspenso, divergência (`config_drift`), 429, timeout, env inválida ignorada sem logar o id
 **Tests**: unit · **Gate**: quick · **Commit**: `feat(metrics): leitura do plano e das instâncias na Render`
 
 ### T12b: Cotação PTAX do BCB [P]
@@ -186,21 +187,21 @@ Pico de 3 agentes + 1 revisor.
 **Tests**: unit · **Gate**: quick · **Commit**: `feat(metrics): cotação PTAX do dólar para os custos`
 
 ### T13: Job de snapshot horário
-**What**: `InfraCostSnapshotJob` (com `fx.auto`, passo da cotação 1×/dia após 16h30 UTC sob lease `infra-fx-rate`: PTAX → SGS → mantém a última e no máximo 1 nova tentativa 1 h depois, grava `infra_fx_rates`; instâncias do worker pelas amostras `srv-<id>-<sufixo>` distintos da hora, Render como fallback; plano e disco pela Render; lease `infra-cost-snapshot`, tick 5 min `unref`, grava só se a hora cheia ainda não tem linha, renova lease antes de gravar, sessão-hora e contratadas por tenant via `IInfraTenantUsageReader` novo (design §4), limpeza diária com lease de 24 h); `INFRA_COST_SNAPSHOT_ENABLED` (default `false`) em `env.ts`; registro em `WORKER_JOBS`; linha no §3.3.
-**Where**: `metrics/infrastructure/jobs/InfraCostSnapshotJob.ts` (+ `.test.ts`, `.int.test.ts`), `metrics/infrastructure/repositories/PrismaInfraTenantUsageReader.ts`, `api/src/app/processJobs.ts`, `shared/config/env.ts`
-**Depends on**: T11, T12 · **Reuses**: `OpsMetricsSamplerJob.ts` · **Requirement**: COST-09, COST-10
-**Done when**: flag desligada não chama nada; Render fora → hora sem linha e `warn` único; troca de dono do lease não dobra
+**What**: `InfraCostSnapshotJob` (com `fx.auto`, passo da cotação 1×/dia após 16h30 UTC sob lease `infra-fx-rate`: PTAX → SGS → mantém a última e no máximo 1 nova tentativa 1 h depois, grava `infra_fx_rates`; estado da tentativa em `platform_settings["infra_fx_fetch_state"]`; banda da hora fechada há mais de 1 h e build 1×/dia em `infra_usage_daily`; instâncias do worker pelas amostras `srv-<id>-<sufixo>` distintos da hora, Render como fallback; plano e disco pela Render; lease `infra-cost-snapshot`, tick 5 min `unref`, grava só se a hora cheia ainda não tem linha, renova lease antes de gravar, sessão-hora e contratadas por tenant via `IInfraTenantUsageReader` novo (design §4), limpeza diária com lease de 24 h); `INFRA_COST_SNAPSHOT_ENABLED` (default `false`) em `env.ts`; registro em `WORKER_JOBS`; linha no §3.3.
+**Where**: `metrics/infrastructure/jobs/InfraCostSnapshotJob.ts` (+ `.test.ts`, `.int.test.ts`), `metrics/infrastructure/repositories/PrismaInfraTenantUsageReader.ts`, `api/src/app/processJobs.ts` + `processJobs.test.ts` (lista fixa de `jobsFor('all')`), `shared/config/env.ts`
+**Depends on**: T11, T12, T12b · **Reuses**: `OpsMetricsSamplerJob.ts` · **Requirement**: COST-09, COST-10
+**Done when**: flag desligada não chama nada; Render fora → hora sem linha e `warn` único; amostras zeradas → instâncias pela Render (fallback); troca de dono do lease não dobra; PTAX e SGS falhando → uma tentativa 1 h depois, estado sobrevive a reinício
 **Tests**: unit + integration-db · **Gate**: integration-db + full · **Commit**: `feat(metrics): job horário de snapshot de custos`
 
 ### T14: Calculador por hora + leitor do mês
-**What**: `calculateInfraCosts` com `basis: 'hours'` (COST-11/12: hora × preço do plano lido, hora sem leitura = manual + `missing_hours`, `plan_without_price`, projeção, sessão-hora, contratadas, ociosidade); `PrismaInfraCostUsageReader` (horas por recurso, sessão-hora por plano **e por tenant** no mês).
+**What**: `calculateInfraCosts` com `basis: 'hours'` (COST-11/12: hora × preço do plano lido, hora sem leitura = manual + `missing_hours`, `plan_without_price`, projeção, sessão-hora, contratadas, ociosidade, excedente medido do workspace, `totalIsPartial`); `PrismaInfraCostUsageReader` (horas por recurso, banda e build do mês, contratadas médias e sessão-hora por plano **e por tenant** no mês).
 **Where**: `metrics/domain/services/infraCostCalculator.ts`, `metrics/infrastructure/repositories/PrismaInfraCostUsageReader.ts` (+ testes)
 **Depends on**: T11 · **Requirement**: COST-11, COST-12
-**Done when**: teste 1 → 2 instâncias no dia 15 de um mês de 30 dias = 25 + 12,50; fevereiro (672 h); plano sem preço → `null` + aviso
+**Done when**: teste 1 → 2 instâncias no dia 15 de um mês de 30 dias = 25 + 12,50; fevereiro (672 h); plano sem preço → item `null`, `totalIsPartial = true`, aviso `plan_without_price` e total só do que tem preço; banda medida 7 GB → excedente 0,30
 **Tests**: unit + integration-db · **Gate**: integration-db · **Commit**: `feat(metrics): custo proporcional ao tempo e rateio por sessão-hora`
 
 ### T15: Summary por mês e painel
-**What**: `?month=YYYY-MM` (mês corrente por padrão; meses sem dado → `basis: 'snapshot'` só no corrente, senão vazio), projeção; painel com seletor de mês e divisor (sessão-hora × contratadas) persistidos, avisos com atalho para Preços.
+**What**: `?month=YYYY-MM` (mês corrente por padrão; meses sem dado → `basis: 'snapshot'` só no corrente, senão vazio), projeção; painel com seletor de mês e base (contratadas, padrão × sessão-hora) persistidos, bloco do workspace medido, avisos com atalho para Preços.
 **Where**: use case e rota da T6, `SummaryTab.tsx`, `useCostSummary.ts`
 **Depends on**: T13, T14 · **Requirement**: COST-11, COST-12, COST-16
 **Done when**: smoke P2 (spec, critério 2); testes do painel claro/escuro
@@ -212,21 +213,22 @@ Pico de 3 agentes + 1 revisor.
 
 ### P3 — por cliente, IA e histórico
 
-### T17: Custo de IA por tenant [P]
-**What**: leitor de `ai_usage_logs` (`source = PLATFORM`, `success`, mês, `GROUP BY tenantId, kind, model`) e cálculo com `aiModelPrices` (`model_without_price`).
+### T17: Custo de IA por tenant
+**What**: leitor de `ai_usage_logs` (`source = PLATFORM`, `success`, mês, `GROUP BY tenantId, kind, model`, com `COUNT(*) FILTER (WHERE inputTokens IS NULL OR outputTokens IS NULL)`) e cálculo com `aiModelPrices` (`model_without_price`; linhas com token nulo → aviso `ai_tokens_missing` com a contagem, custo fora do total).
 **Where**: `PrismaInfraCostUsageReader.ts`, `infraCostCalculator.ts` (+ testes)
 **Depends on**: R2 · **Requirement**: COST-13
+**Done when**: 1 M tokens de entrada = preço de entrada; linha com token nulo contada no aviso, não somada como 0
 **Tests**: unit + integration-db · **Gate**: integration-db · **Commit**: `feat(metrics): custo de IA da plataforma por cliente`
 
 ### T18: Fechamento mensal
-**What**: migration `create_infra_cost_months` (`infra_cost_months`, `infra_cost_month_tenants`); passo do job na 1ª hora do mês (idempotente, lease); mês fechado com preços e câmbio usados.
+**What**: migration `create_infra_cost_months` (`infra_cost_months`, `infra_cost_month_tenants`); passo do job na 1ª hora do mês (idempotente, lease); mês fechado com preços, cotação (valor, data, origem) e `closingMethod` usados; `infra_cost_month_tenants` com `totalUsd` e índice do cursor.
 **Where**: migration, `PrismaInfraCostSnapshotRepository.ts`, `InfraCostSnapshotJob.ts` (+ testes)
 **Depends on**: R2 · **Requirement**: COST-15
-**Done when**: fechar duas vezes não duplica; editar preço depois não muda o mês fechado
+**Done when**: fechar duas vezes não duplica; editar preço depois não muda o mês fechado; `last_business_day` e `month_average` com e sem cotação no mês (`fx_fallback`)
 **Tests**: integration-db · **Gate**: integration-db · **Commit**: `feat(metrics): fechamento mensal dos custos`
 
 ### T19: Rotas por cliente e histórico
-**What**: `GET /admin/costs/tenants?month=&plan=&cursor=` (cursor opaco, página do servidor, ordem por custo) e `GET /admin/costs/history` (12 meses).
+**What**: `GET /admin/costs/tenants?month=&plan=&cursor=` (cursor opaco; mês corrente por `contractedSessions desc, tenantId` com custo calculado só na página; mês fechado por `totalUsd desc, tenantId`) e `GET /admin/costs/history` (12 meses).
 **Where**: `metrics/application/use-cases/`, `infraCosts.routes.ts` (+ testes)
 **Depends on**: T17, T18 · **Requirement**: COST-14, COST-15
 **Tests**: unit + rota · **Gate**: full · **Commit**: `feat(metrics): custos por cliente e histórico mensal`
