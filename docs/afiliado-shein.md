@@ -247,7 +247,7 @@ Antes do smoke nada é ligado em produção sem o dono; a extensão 3.4.0 exige 
 ## Caçador de Ofertas
 
 Recurso MAX que busca sozinho no catálogo de comissão (`seller/activity`), pontua e envia os melhores a 1 grupo.
-Spec, desenho e tarefas: `.specs/features/offer-hunter/`. Cliente: `SheinCatalogClient` (porta
+Doc: [`cacador-de-ofertas.md`](cacador-de-ofertas.md) (plano em `.specs/features/offer-hunter/`). Cliente: `SheinCatalogClient` (porta
 `ISheinCatalogClient`), mesmos erros, timeout, limite de corpo e `redirect: 'manual'` do `SheinAffiliateClient`;
 headers exatos `token`, `siteuid`, `language`, `mi`, `channel`, `content-type`, `User-Agent`. Palavra-chave ≤ 60
 caracteres sem controle é a única entrada livre enviada; o resto são enums fechados (ordenação, faixa) e ids vindos da

@@ -34,7 +34,7 @@ pelo do cliente, reescreve o texto com IA e reposta nos grupos dele, no horário
 | 14 | 👥 Menção a todos | Post em grupo de disparo menciona todos os participantes (menção estruturada; metadata do grupo em cache) | `campaigns/broadcast-mention-all` sobre `sendTextMessage.mentions` | ⏳ (envio com `mentions` ✅ existe) |
 | 15 | 🌐 Domínio personalizado | Site de ofertas e Gestor de Links servidos no domínio do cliente (CNAME + TLS automático) | `storefront/custom-domain` | ⏳ |
 | 16 | 🎧 Níveis de suporte | Suporte 24/7, prioritário ou exclusivo conforme o plano; só muda fila/SLA, nada no código além do entitlement | `tenants` (entitlement `support_tier`) | ⏳ |
-| 17 | 🎯 Caçador de Ofertas | Procura sozinho, no catálogo de comissão da Shein, as ofertas com melhor retorno (comissão × chance de venda), refina com ou sem IA e envia só as melhores para 1 grupo, de tempos em tempos | `campaigns/hunter` (spec `.specs/features/offer-hunter/`) | ⏳ em construção; prévia só super admin; MAX |
+| 17 | 🎯 Caçador de Ofertas | Procura sozinho, no catálogo de comissão da Shein, as ofertas com melhor retorno (comissão × chance de venda), refina com ou sem IA e envia só as melhores para 1 grupo, de tempos em tempos | `campaigns/hunter` ([`cacador-de-ofertas.md`](cacador-de-ofertas.md)) | ✅ prévia só super admin (job desligado até o smoke); MAX |
 
 ## Produtos (menu)
 
