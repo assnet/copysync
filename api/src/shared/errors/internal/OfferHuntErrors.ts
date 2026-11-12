@@ -51,3 +51,17 @@ export class OfferHuntFindInvalidStateError extends AppError {
     super('OFFER_HUNT_FIND_INVALID_STATE', 'Offer hunt find already handled', 409, { status });
   }
 }
+
+/** Portão de audiência (`OFFER_HUNTER_AUDIENCE`): usuário/tenant fora da prévia ou sem o entitlement. */
+export class OfferHunterUnavailableError extends AppError {
+  constructor() {
+    super('OFFER_HUNTER_UNAVAILABLE', 'Offer hunter is not available for this account', 403);
+  }
+}
+
+/** Cursor de página (execuções/achados) inválido, adulterado, de outra caçada ou expirado. */
+export class OfferHuntCursorInvalidError extends AppError {
+  constructor() {
+    super('OFFER_HUNT_CURSOR_INVALID', 'Offer hunt page cursor is invalid or expired, reload the list', 400, { field: 'cursor' });
+  }
+}

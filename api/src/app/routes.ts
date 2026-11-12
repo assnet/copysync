@@ -21,6 +21,7 @@ import {
 import { affiliateCredentialRoutes } from '../modules/integrations/presentation/routes/affiliateCredential.routes';
 import { marketplaceRiskAdminRoutes } from '../modules/integrations/presentation/routes/marketplaceRiskAdmin.routes';
 import { offerRoutes } from '../modules/campaigns/presentation/routes/offer.routes';
+import { offerHuntRoutes } from '../modules/campaigns/presentation/routes/offerHunt.routes';
 import { sendQueueRoutes } from '../modules/campaigns/presentation/routes/sendQueue.routes';
 import { broadcastGroupsRoutes } from '../modules/campaigns/presentation/routes/broadcastGroups.routes';
 import { groupMonitoringRoutes } from '../modules/automation/presentation/routes/groupMonitoring.routes';
@@ -113,6 +114,7 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
 
   // ── Gerador de ofertas (auth + tenant scope required) ──────────────────────
   await app.register(offerRoutes, { prefix: `${env.API_PREFIX}/campaigns/offers` });
+  await app.register(offerHuntRoutes, { prefix: `${env.API_PREFIX}/offer-hunts` });
   await app.register(sendQueueRoutes, { prefix: `${env.API_PREFIX}/campaigns/send-queue` });
   await app.register(broadcastGroupsRoutes, { prefix: `${env.API_PREFIX}/campaigns/broadcast-groups` });
   await app.register(groupMonitoringRoutes, { prefix: `${env.API_PREFIX}/automation/group-monitoring` });

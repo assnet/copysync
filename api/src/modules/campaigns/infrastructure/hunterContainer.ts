@@ -13,6 +13,16 @@ import { HuntFindDelivery } from '../application/services/hunter/HuntFindDeliver
 import { RunOfferHuntUseCase } from '../application/use-cases/hunter/RunOfferHuntUseCase';
 import { ApproveHuntFindUseCase, DismissHuntFindUseCase } from '../application/use-cases/hunter/HuntFindDecisionUseCases';
 import { SetOfferHunterDestinationUseCase } from '../application/use-cases/hunter/SetOfferHunterDestinationUseCase';
+import {
+  CreateOfferHuntUseCase, DeleteOfferHuntUseCase, GetOfferHuntUseCase, ListOfferHuntsUseCase, PauseOfferHuntUseCase,
+  ResumeOfferHuntUseCase, UpdateOfferHuntUseCase, type OfferHuntCrudDeps,
+} from '../application/use-cases/hunter/OfferHuntCrudUseCases';
+import { ListOfferHuntFindsUseCase, ListOfferHuntRunsUseCase } from '../application/use-cases/hunter/OfferHuntHistoryUseCases';
+import {
+  GetOfferHunterDestinationUseCase, GetOfferHunterOptionsUseCase, GetOfferHunterUsageUseCase,
+} from '../application/use-cases/hunter/OfferHunterInfoUseCases';
+import { OfferHunterAudienceGate } from '../application/services/hunter/offerHunterAudience';
+import { LazyHuntAiAvailability } from './adapters/LazyHuntAiAvailability';
 
 /*
  * Composição do Caçador de Ofertas (mesmo padrão lazy do `offersContainer`: importar não toca banco,
@@ -60,6 +70,28 @@ const setDestination = lazy(() => new SetOfferHunterDestinationUseCase({
   settings: settings(), configs: configs(), groupUsage: groupUsage(), entitlements: offersContainer.entitlements(),
 }));
 
+const crudDeps = (): OfferHuntCrudDeps => ({ hunts: hunts(), entitlements: offersContainer.entitlements() });
+const createHunt = lazy(() => new CreateOfferHuntUseCase(crudDeps()));
+const updateHunt = lazy(() => new UpdateOfferHuntUseCase(crudDeps()));
+const deleteHunt = lazy(() => new DeleteOfferHuntUseCase(crudDeps()));
+const pauseHunt  = lazy(() => new PauseOfferHuntUseCase(crudDeps()));
+const resumeHunt = lazy(() => new ResumeOfferHuntUseCase(crudDeps()));
+const getHunt    = lazy(() => new GetOfferHuntUseCase(crudDeps()));
+const listHunts  = lazy(() => new ListOfferHuntsUseCase(crudDeps()));
+const listRuns   = lazy(() => new ListOfferHuntRunsUseCase({ hunts: hunts(), runs: runs() }));
+const listFinds  = lazy(() => new ListOfferHuntFindsUseCase({ hunts: hunts(), finds: finds() }));
+const usage      = lazy(() => new GetOfferHunterUsageUseCase({ finds: finds(), runs: runs(), entitlements: offersContainer.entitlements() }));
+const options    = lazy(() => new GetOfferHunterOptionsUseCase({
+  entitlements: offersContainer.entitlements(),
+  credentials: offersContainer.credentialGateway(),
+  riskGate: offersContainer.riskGate(),
+  ai: new LazyHuntAiAvailability(),
+  settings: settings(),
+  catalog: catalog(),
+}));
+const getDestination = lazy(() => new GetOfferHunterDestinationUseCase({ settings: settings(), configs: configs() }));
+const audienceGate = lazy(() => new OfferHunterAudienceGate(offersContainer.entitlements()));
+
 export const hunterContainer = {
   hunts,
   runs,
@@ -69,4 +101,17 @@ export const hunterContainer = {
   approveHuntFind:       approveFind,
   dismissHuntFind:       dismissFind,
   setOfferHunterDestination: setDestination,
+  createOfferHunt:       createHunt,
+  updateOfferHunt:       updateHunt,
+  deleteOfferHunt:       deleteHunt,
+  pauseOfferHunt:        pauseHunt,
+  resumeOfferHunt:       resumeHunt,
+  getOfferHunt:          getHunt,
+  listOfferHunts:        listHunts,
+  listOfferHuntRuns:     listRuns,
+  listOfferHuntFinds:    listFinds,
+  getOfferHunterUsage:   usage,
+  getOfferHunterOptions: options,
+  getOfferHunterDestination: getDestination,
+  audienceGate,
 };

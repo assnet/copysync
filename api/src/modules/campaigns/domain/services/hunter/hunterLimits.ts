@@ -11,6 +11,11 @@ export const HUNTER_LIMITS = {
   repeatAfterDaysMin: 1,
   repeatAfterDaysMax: 30,
   intervalMinutesMin: 30,
+  /** 1 execução por dia no mínimo. */
+  intervalMinutesMax: 1440,
+  nameMaxLength: 80,
+  /** Filtro "termina em até N dias". */
+  endsWithinDaysMax: 90,
   /** Itens enviados à IA por execução (HUNT-06). */
   aiTopCandidates: 15,
   keywordMaxLength: 60,
