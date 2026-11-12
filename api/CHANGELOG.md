@@ -7,6 +7,16 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.92.1] — 2026-11-12 — Link Shein compartilhado pelo app
+
+### Fixed
+
+#### campaigns
+
+- **`HttpShortLinkExpander.ts`** (`onelinkTarget`) — `onelink` gerado pelo botão Compartilhar do app da Shein dava `OFFER_URL_UNSUPPORTED` ("Link não suportado") mesmo com plano e credencial. Causa: nesse formato o `input#url` aponta para o salto do app (`api-shein.shein.com/h5/sharejump/appjump`), fora da allowlist. Agora, quando o `input#url` não é aceito, o produto vem do `goods_id` do `input#deeplink` e vira `br.shein.com/product-p-<id>.html` (montada só com dígitos; nada é requisitado).
+
+**Migration Prisma**: não. **Breaking**: não.
+
 ## [0.92.0] — 2026-11-12 — Ordem dos grupos e intervalo zerado no gerador de ofertas
 
 ### Added
