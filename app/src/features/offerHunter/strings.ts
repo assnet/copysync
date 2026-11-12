@@ -191,7 +191,64 @@ export const offerHunterStrings = {
       score: (score: number) => `${score.toFixed(1)} pontos`,
       factorsTitle: 'Como a pontuação foi montada',
       aiReason: 'Motivo da IA',
+      savedOnly: 'O teste usa a versão salva da caçada. Salve as mudanças antes para testar com elas.',
+      spendsQuota: 'É uma busca de verdade: as ofertas escolhidas contam no limite de hoje e, em "Enviar direto", vão ao grupo.',
+      failed: 'O teste não terminou.',
     },
+
+    /** Explicação curta dos campos (Tooltip do ícone de ajuda). */
+    tips: {
+      name: 'Um nome para você reconhecer a caçada na lista.',
+      preset: 'Um ponto de partida: preenche a faixa de comissão e os filtros. Você pode ajustar depois.',
+      category: 'Só ofertas desta categoria da SHEIN. Vazio = todas.',
+      commissionBand: 'Faixa de comissão pedida à SHEIN na busca.',
+      keyword: 'Palavra que precisa aparecer no título da oferta.',
+      price: 'Ofertas fora da faixa ficam de fora. Nas pontas da barra, sem limite.',
+      minDiscount: 'Desconto mínimo sobre o preço cheio.',
+      minCommissionPct: 'Percentual mínimo de comissão por venda.',
+      minCommissionValue: 'Valor mínimo que você ganha por venda.',
+      minRating: 'Nota média mínima, de 0 a 5.',
+      minSales: 'A SHEIN informa vendas por faixa (ex.: 100+).',
+      minReviews: 'Quantidade mínima de avaliações.',
+      endsWithin: 'Só ofertas que terminam em até tantos dias.',
+      topN: 'Quantas ofertas, no máximo, cada busca escolhe.',
+      repeatAfter: 'A mesma oferta só volta a ser escolhida depois deste prazo.',
+      interval: 'De quanto em quanto tempo o caçador busca, dentro do horário e dos dias marcados.',
+      deliveryMode: 'Como as ofertas escolhidas chegam ao grupo de destino.',
+      window: 'Dias e faixa do dia em que o caçador pode buscar. Fora dela, a busca espera.',
+      helpAria: (field: string) => `Ajuda: ${field}`,
+    },
+
+    /** Validação por passo (antes de avançar/salvar). */
+    validation: {
+      nameRequired: 'Dê um nome à caçada.',
+      tooLong: (max: number) => `Use até ${max} caracteres.`,
+      range: (min: number, max: number) => `Use um valor de ${min} a ${max}.`,
+      required: 'Preencha este campo.',
+      window: 'Escolha um horário com pelo menos 15 minutos e um dia da semana.',
+      stepHasErrors: 'Confira os campos destacados para continuar.',
+    },
+    percentUnit: '%',
+    currencyUnit: 'R$',
+    ratingUnit: 'de 5',
+    daysUnit: 'dias',
+    priceMaxOpen: (label: string) => `${label}+`,
+    sortHintLabel: (sort: string) => `Ordem sugerida à SHEIN: ${sort}`,
+    intervalHelp: (min: string) => `O menor intervalo é ${min}.`,
+    presetsLabel: 'Predefinições',
+    presetSelected: 'Selecionada',
+    categorySaved: 'Categoria salva',
+    close: 'Fechar',
+  },
+
+  /** Ranking de uma busca (Testar agora / Rodar agora). */
+  ranking: {
+    listLabel: 'Ranking das ofertas',
+    position: (n: number) => `${n}º`,
+    noTitle: 'Oferta sem título',
+    noImage: 'Sem foto',
+    scoreAria: (score: number) => `Pontuação ${score.toFixed(1)} de 100`,
+    factorsAria: 'Ver como a pontuação foi montada',
   },
 
   /** Predefinições (`HUNT_PRESETS`). */
@@ -303,6 +360,44 @@ export const offerHunterStrings = {
     SCHEDULED: 'Agendada',
   } satisfies Record<OfferHuntRunTrigger, string>,
 
+  /** Detalhe de uma caçada (T15). */
+  detail: {
+    loadError: 'Não conseguimos carregar esta caçada.',
+    runNow: 'Rodar agora',
+    runNowTooltip: 'Faz uma busca agora com esta caçada. As ofertas escolhidas contam no limite de hoje.',
+    running: 'Buscando…',
+    edit: 'Editar',
+    editTooltip: 'Muda filtros, horário e entrega desta caçada',
+    activeSwitch: 'Caçada ligada',
+    gatedTooltip: (reason: string) => `Indisponível: ${reason}`,
+    resultTitle: 'Resultado da busca',
+    closeResult: 'Fechar resultado',
+    tabsLabel: 'Seções da caçada',
+    tabFinds: 'Achados',
+    tabRuns: 'Execuções',
+    updatedActive: 'Caçada ligada.',
+    updatedPaused: 'Caçada pausada.',
+    approveTitle: 'Enviar esta oferta?',
+    approveText: 'A oferta entra na fila do grupo de destino com o seu link de afiliado.',
+    dismissTitle: 'Dispensar esta oferta?',
+    dismissText: 'O achado sai da revisão e não é enviado.',
+    resend: 'Reenviar',
+    resendTooltip: 'Tenta enviar esta oferta ao grupo de novo',
+    resendTitle: 'Reenviar esta oferta?',
+    confirmCancel: 'Voltar',
+    showDetails: 'Ver detalhes',
+    hideDetails: 'Ocultar detalhes',
+    newCommission: 'Comissão (1ª compra)',
+    noValue: '—',
+    loadMoreError: 'Não conseguimos carregar mais itens.',
+    listError: 'Não conseguimos carregar a lista.',
+    runsListLabel: 'Execuções da caçada',
+    findsListLabel: 'Achados da caçada',
+    duration: 'Duração',
+    stillRunning: 'Em andamento',
+    unknownError: (code: string) => `Código ${code}`,
+  },
+
   /** Estados travados (`options.gates`), na ordem em que a tela deve cobrar. */
   gates: {
     plan: {
@@ -410,6 +505,87 @@ export const offerHunterStrings = {
     reloadPage: 'Recarregar página',
     reloadPageTooltip: 'Recarrega o painel com o texto atual do aviso',
     acceptFailed: 'Não foi possível registrar o aceite. Tente de novo.',
+  },
+
+  /** Tela inicial (T13): textos que não cabem em `list`/`destination`/`usage`. */
+  home: {
+    loadError: 'Não conseguimos carregar as suas caçadas.',
+    listLabel: 'Lista de caçadas',
+    emptyCta: 'Criar a primeira caçada',
+    emptySteps: [
+      'Você escolhe o que caçar: categoria, faixa de comissão, preço e desconto.',
+      'No horário definido, o caçador busca e dá uma pontuação a cada oferta.',
+      'As melhores vão para o grupo de destino, com o seu link de afiliado.',
+    ] as readonly string[],
+    emptyStepsLabel: 'Como funciona',
+    createBlocked: (reason: string) => `Indisponível: ${reason.charAt(0).toLowerCase()}${reason.slice(1)}`,
+    actionsLabel: (name: string) => `Ações da caçada ${name}`,
+    moreActions: 'Mais ações',
+    modeLabel: 'Entrega',
+    aiOn: 'Com IA',
+    aiOff: 'Sem IA',
+    aiOnTooltip: 'A IA ajuda a escolher as ofertas desta caçada',
+    aiOffTooltip: 'Esta caçada escolhe só pela pontuação',
+    noFilters: 'Sem filtros extras',
+    categoryUnknown: 'Categoria escolhida',
+    priceRange: (min: string | null, max: string | null) =>
+      (min && max ? `${min} a ${max}` : min ? `A partir de ${min}` : `Até ${max ?? ''}`),
+    keyword: (k: string) => `"${k}"`,
+    filtersLabel: 'Filtros da caçada',
+    nextRunOverdue: 'Próxima busca em instantes',
+    /** `diffMs` = horário − agora no servidor (negativo = passado): "em 25 minutos", "há 2 horas". */
+    relative: (diffMs: number) => {
+      const rtf = new Intl.RelativeTimeFormat('pt-BR', { numeric: 'auto' });
+      const s = Math.round(diffMs / 1000);
+      if (Math.abs(s) < 60) return diffMs >= 0 ? 'em instantes' : 'agora mesmo';
+      const m = Math.round(s / 60);
+      if (Math.abs(m) < 60) return rtf.format(m, 'minute');
+      const h = Math.round(m / 60);
+      if (Math.abs(h) < 24) return rtf.format(h, 'hour');
+      return rtf.format(Math.round(h / 24), 'day');
+    },
+    lastRunAt: (relative: string) => `Última busca ${relative}`,
+    filterLabel: 'Mostrar caçadas',
+    filters: { ALL: 'Todas', ACTIVE: 'Ativas', PAUSED: 'Pausadas' },
+    filterEmpty: 'Nenhuma caçada neste filtro.',
+    toggleFailed: 'Não foi possível mudar a caçada. Tente de novo.',
+    updatedActive: 'Caçada ligada.',
+    updatedPaused: 'Caçada pausada.',
+    gatedSwitch: 'Resolva o que falta acima para ligar a caçada',
+    destinationPicker: {
+      title: 'Escolher grupo de destino',
+      subtitle: 'As ofertas de todas as caçadas vão para este grupo, enviadas pela sessão escolhida.',
+      session: 'Sessão',
+      sessionsLoading: 'Carregando sessões…',
+      sessionsFailed: 'Não conseguimos carregar as sessões.',
+      noSessions: 'Nenhuma sessão conectada. Conecte uma sessão para escolher o grupo.',
+      disconnected: 'Desconectada',
+      search: 'Buscar grupo',
+      searchPlaceholder: 'Nome do grupo',
+      groupsLoading: 'Carregando grupos…',
+      groupsFailed: 'Não conseguimos carregar os grupos desta sessão.',
+      groupsEmpty: 'Nenhum grupo encontrado nesta sessão.',
+      partial: 'O WhatsApp não respondeu: mostramos só os grupos que o chat já conhece.',
+      noConversation: 'Grupo ainda sem conversa no chat',
+      adminsOnly: 'Só admins podem enviar',
+      readOnly: 'Canal só de leitura',
+      selected: 'Selecionado',
+      retry: 'Tentar de novo',
+      cancel: 'Cancelar',
+      close: 'Fechar',
+    },
+  },
+
+  /** Painel de portões (T16): o que falta para ligar o caçador. */
+  gatesPanel: {
+    title: 'O que falta para ligar o caçador',
+    progress: (done: number, total: number) => `${done} de ${total} ${plural(total, 'etapa concluída', 'etapas concluídas')}`,
+    pending: 'Pendente',
+    done: 'Pronto',
+    askAdmin: 'Peça a um administrador da conta para aceitar o aviso.',
+    superAdminCannot: 'O aceite é do titular da conta: entre como administrador do cliente para aceitar.',
+    staleReloaded: 'O aviso foi atualizado. Recarregamos as opções: recarregue a página para ler o texto novo.',
+    aiInfo: 'Aviso informativo: não impede ligar as caçadas.',
   },
 
   /** Dias da semana (bit 0 = domingo), para `weekdaysMask`. */
