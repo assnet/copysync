@@ -380,6 +380,13 @@ const envSchema = z.object({
     (v) => (typeof v === 'string' ? v.trim() || undefined : v),
     z.string().optional(),
   ),
+  // ── Custos da infraestrutura (.specs/features/infra-costs, COST-09) ─────
+  // `api=srv-…,worker=srv-…,redis=red-…,postgres=dpg-…,static=srv-…`, só no `worker`. Parse em
+  // `infraCostRenderResources.ts` (entrada inválida ignorada com warn sem o id). Nunca logado nem devolvido.
+  INFRA_COST_RENDER_RESOURCES: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim() || undefined : v),
+    z.string().optional(),
+  ),
   // Limite de RAM do container (MB): fallback do alerta de RSS quando a Render não dá o limite.
   OPS_MEMORY_LIMIT_MB: z.preprocess(
     (v) => (typeof v === 'string' ? v.trim() || undefined : v),
