@@ -14,11 +14,11 @@ const CHART_COLORS: Record<PaletteMode, readonly [string, string, string]> = {
 /**
  * Séries por instância do worker ("Por instância"): começa no verde do Worker e segue em roxo e
  * magenta, sem o azul da API nem o laranja do Postgres (essas cores têm significado na mesma tela).
- * Roxo e magenta passam 3:1 contra o `background.paper` de cada modo. O verde é a cor já existente do
- * Worker e no claro fica em 2,82:1: a série não depende só dela, pois ganha rótulo no fim da linha.
+ * As três passam 3:1 contra o `background.paper` de cada modo (no xs o gráfico não tem rótulo no fim
+ * da linha). No claro o verde é um tom mais escuro que o do Worker (`#1baf7a` = 2,82:1) para isso.
  */
 const INSTANCE_COLORS: Record<PaletteMode, readonly [string, string, string]> = {
-  light: ['#1baf7a', '#7c4fd6', '#b0367a'],
+  light: ['#15935f', '#7c4fd6', '#b0367a'],
   dark: ['#199e70', '#9b7af0', '#e06aa8'],
 };
 

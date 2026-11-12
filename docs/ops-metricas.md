@@ -134,7 +134,7 @@ gráficos com `@mui/x-charts` 8.29.3 fixo, só no chunk lazy da aba.
   fora do N e do pior valor. Os cartões só aparecem com amostra do worker; sem `WORKER_SCALER_SERVICE_ID`
   no `http` tudo segue em API. Nos gráficos de CPU e Memória de Servidores o Worker é a 2ª linha
   (3ª cor; pior instância por balde), separada da API.
-- **Instâncias do worker** (app 0.106.0, `WorkerInstancesTable.tsx`): tabela abaixo dos gráficos de Servidores,
+- **Instâncias do worker** (app 0.107.0, `WorkerInstancesTable.tsx`): tabela abaixo dos gráficos de Servidores,
   uma linha por `workerInstances` (nome curto = sufixo, CPU %, RAM % com ícone + nome do status acima do limiar,
   nunca só cor nem texto colorido, sessões/teto
   com RSS no tooltip, logins em andamento, "visto há" do batimento ou, sem ele, da amostra). Chips "Sem batimento"/
@@ -146,7 +146,7 @@ gráficos com `@mui/x-charts` 8.29.3 fixo, só no chunk lazy da aba.
   Linhas na ordem do nome curto (igual ao gráfico); em "Por instância" (até 3) um marcador `aria-hidden` mostra a
   cor da série, estável por instância (`assignInstanceColors`). 1ª coluna fixa; borda + sombra só quando a tabela
   está rolada. No `xs` os chips ficam só com ícone (palavra para leitor de tela, dica no tooltip, alvo de toque
-  ≥ 44 px); dicas com `describeChild` e foco por teclado; "Visto" = `instanceSeenAt`, tooltip com data completa
+  ≥ 44 px; a área invisível de 10 px pode cobrir a borda da linha vizinha, aceito); dicas com `describeChild` e foco por teclado; "Visto" = `instanceSeenAt`, tooltip com data completa
   (`formatFullDateTime`); "—" sempre em `text.secondary`; (i) de ajuda ao lado do título.
 - **Worker nos gráficos** (alternância acima dos gráficos de Servidores, só com amostra do worker): "Pior instância"
   (padrão, comportamento anterior) × "Por instância" (uma linha por `resource` do `worker_service` no período,

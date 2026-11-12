@@ -245,8 +245,10 @@ describe('chartColors.instances', () => {
       expect(c.instances).toHaveLength(3);
       expect(c.instances).not.toContain(c.api);
       expect(c.instances).not.toContain(c.postgres);
-      expect(c.instances[0]).toBe(c.workerService);
     }
+    // Verde do Worker no escuro; no claro, tom mais escuro para passar 3:1 (sem rótulo no fim da linha no xs).
+    expect(chartColors('dark').instances[0]).toBe(chartColors('dark').workerService);
+    expect(chartColors('light').instances[0]).toBe('#15935f');
   });
 });
 

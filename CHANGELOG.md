@@ -46,6 +46,17 @@ Request com 401 → `/auth/refresh` respondia 502/sem resposta no deploy → o `
 - **`AuthContext.test.tsx`** — "Sair" limpa a sessão local mesmo com `/auth/logout` falhando (401, refresh falho, rede).
 - **`apiClient.ts`** — 401 tardio de pedido que saiu com token antigo, já renovado por outro, repete com o token atual sem novo `/auth/refresh`.
 
+#### Revisão (mesma versão)
+
+- **`workerInstancesPolicy.ts`** — batimento vivo (≤ 90 s) de instância sem amostra atual aparece como "Sem amostra" (instância nova ou saindo de deploy); nunca descartado por sufixo, para nenhuma sessão sumir da tela.
+- **`WorkerInstancesTable.tsx`** — a11y: Tooltips com `describeChild` e foco por teclado, limiar por ícone + rótulo (número em `text.primary`), skeleton com `role="status"`, alvo de toque de 44 px no xs; coluna fixa com separação só ao rolar; ordem por nome e marcador com a cor da série; carregando/erro (com "Tentar de novo")/vazio dentro do card. Vazio distingue "Nenhuma instância online agora" de worker não configurado.
+- **`chartColors.ts`** — paleta `instances` própria (sem o azul da API nem o laranja do Postgres) para "Por instância"; nota e unidade "% do limite da instância" nos cards de CPU e Memória.
+- **`EmptyState.tsx`** (compartilhado) — descrição em `text.secondary` (contraste de `text.disabled` era ~2,2:1).
+
+### Fixed — app 0.107.0 — KPI do consumo coerente quando a leitura atual falha
+
+- **`rules.ts`** (`statusFor`), **`StatusChip.tsx`**, **`types.ts`**, **`strings.ts`**, **`UsageTab.tsx`** — com `/latest` em erro, o KPI que tem valor da série mostrava o valor junto de "Sem dados". Agora mostra o chip neutro "Dado da série" (`seriesOnly`); sem valor segue "—" + "Sem dados".
+
 ### Added — api 0.86.0 · app 0.105.0 — worker separado da API no consumo
 
 Na aba Consumo de `/admin/workers`, CPU e RAM do serviço worker (Render) caíam junto com a API. A API passa a classificar como `worker_service` as amostras de `WORKER_SCALER_SERVICE_ID` e das instâncias dele (réplicas novas entram sozinhas); o painel ganha o recurso "Worker". Doc: `docs/ops-metricas.md`.
