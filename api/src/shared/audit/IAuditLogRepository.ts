@@ -33,7 +33,8 @@ export type AuditAction =
   | 'PLAN_ENTITLEMENT_CHANGED'
   | 'MARKETPLACE_RISK_ACCEPTED'
   | 'WORKER_SCALING_SETTINGS_CHANGED'
-  | 'WORKER_SCALE_REQUESTED';
+  | 'WORKER_SCALE_REQUESTED'
+  | 'INFRA_COST_SETTINGS_CHANGED';
 
 export interface CreateAuditLogInput {
   tenantId?: string;
