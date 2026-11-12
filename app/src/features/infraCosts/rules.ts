@@ -10,6 +10,7 @@ import { planEntitlementsAdminStrings, planName } from '@/features/planEntitleme
 import { sortPlansByCatalog } from '@/features/workersAdmin/rules';
 import { infraCostsStrings as S } from './strings';
 import type {
+  InfraAiBilling,
   CostFilters,
   InfraCostAllocation,
   InfraCostBilling,
@@ -139,6 +140,7 @@ const RENDER_KEYS: readonly InfraRenderKey[] = ['api', 'worker', 'redis', 'postg
 const ALLOCATIONS: readonly InfraCostAllocation[] = ['shared', 'excluded'];
 const RESOURCE_TYPES: readonly InfraRenderResourceType[] = ['service', 'postgres', 'key_value'];
 const CLOSING_METHODS: readonly InfraFxClosingMethod[] = ['last_business_day', 'month_average'];
+const AI_BILLINGS: readonly InfraAiBilling[] = ['tokens', 'monthly'];
 const AI_KINDS: readonly AiProviderKind[] = ['ANTHROPIC', 'OPENAI', 'GEMINI', 'XAI', 'DEEPSEEK', 'GROQ', 'MISTRAL', 'OPENROUTER', 'OPENAI_COMPATIBLE'];
 const KEY_FORMAT = /^[a-z0-9][a-z0-9_-]{0,39}$/;
 const DATE_FORMAT = /^\d{4}-\d{2}-\d{2}$/;
@@ -289,11 +291,19 @@ export function parseSettingsDraft(
     const kind = option(`${p}.kind`, m.kind, AI_KINDS);
     const model = text(`${p}.model`, m.model, L.maxModelLength);
     if (model) unique(`${p}.model`, modelIds, `${kind}:${model}`);
+    // Ausente (rascunho/API antiga) = por token; só os campos do modo são lidos, os do outro saem `null`
+    const billing = option(`${p}.billing`, m.billing ?? 'tokens', AI_BILLINGS);
+    if (billing === 'monthly') {
+      const monthlyUsd = num(`${p}.monthlyUsd`, m.monthlyUsd, { min: 0, max: 100_000 });
+      return { kind, model, billing, inputPerMTokUsd: null, outputPerMTokUsd: null, monthlyUsd };
+    }
     return {
       kind,
       model,
-      inputPerMTokUsd: num(`${p}.inputPerMTokUsd`, m.inputPerMTokUsd, { min: 0, max: 1_000 }) as number,
-      outputPerMTokUsd: num(`${p}.outputPerMTokUsd`, m.outputPerMTokUsd, { min: 0, max: 1_000 }) as number,
+      billing,
+      inputPerMTokUsd: num(`${p}.inputPerMTokUsd`, m.inputPerMTokUsd, { min: 0, max: 1_000 }),
+      outputPerMTokUsd: num(`${p}.outputPerMTokUsd`, m.outputPerMTokUsd, { min: 0, max: 1_000 }),
+      monthlyUsd: null,
     };
   });
 
@@ -354,8 +364,11 @@ export function toSettingsPayload(s: InfraCostSettings): InfraCostSettings {
     aiModelPrices: s.aiModelPrices.map((m) => ({
       kind: m.kind,
       model: m.model,
-      inputPerMTokUsd: m.inputPerMTokUsd,
-      outputPerMTokUsd: m.outputPerMTokUsd,
+      // Salvo antes do modo mensal vem sem `billing`: por token
+      billing: m.billing ?? 'tokens',
+      inputPerMTokUsd: m.inputPerMTokUsd ?? null,
+      outputPerMTokUsd: m.outputPerMTokUsd ?? null,
+      monthlyUsd: m.monthlyUsd ?? null,
     })),
     workspace: {
       planLabel: s.workspace.planLabel,
@@ -462,6 +475,7 @@ export function changeValue(path: string, value: InfraCostSettingsChange['from']
     return USD_FIELDS.has(field) ? formatUsdExact(value) : value.toLocaleString('pt-BR', { maximumFractionDigits: 4 });
   }
   if (field === 'kind') return aiProviderName(value as AiProviderKind);
+  if (field === 'billing' && path.startsWith('aiModelPrices')) return PR.aiModels.billingOptions[value as InfraAiBilling] ?? value;
   const maps: Record<string, Record<string, string>> = {
     category: S.category, billing: S.billing, renderKey: S.renderKey, allocation: S.allocation,
     closingMethod: S.closingMethod, resourceType: S.resourceType,
@@ -602,6 +616,12 @@ const ROW_FIELD_NAMES: Record<string, string> = {
   outputPerMTokUsd: pf.aiModels.output,
 };
 
+/** Campos que mudam de nome na linha de modelo de IA (mesmo nome de campo dos itens). */
+const AI_ROW_FIELD_NAMES: Record<string, string> = {
+  billing: pf.aiModels.billing,
+  monthlyUsd: pf.aiModels.monthlyUsd,
+};
+
 const FX_FIELD_NAMES: Record<string, string> = {
   auto: S.pricesReview.autoField,
   closingMethod: pf.fx.closingMethod,
@@ -650,7 +670,8 @@ function labelOf(path: string, settings: InfraCostSettings | null, items: readon
   const [, list, id, field] = m;
   if (id === undefined) return LIST_TITLES[list];
   const name = rowName(list, id, settings, items);
-  return field ? `${name} · ${ROW_FIELD_NAMES[field] ?? field}` : `${LIST_TITLES[list]} · ${name}`;
+  const fieldName = (list === 'aiModelPrices' ? AI_ROW_FIELD_NAMES[field] : undefined) ?? ROW_FIELD_NAMES[field] ?? field;
+  return field ? `${name} · ${fieldName}` : `${LIST_TITLES[list]} · ${name}`;
 }
 
 /**

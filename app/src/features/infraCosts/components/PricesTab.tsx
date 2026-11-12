@@ -15,7 +15,7 @@ import {
 } from '../rules';
 import { infraCostsStrings as S } from '../strings';
 import type {
-  InfraCostBilling, InfraCostCategory, InfraCostSettingsDraft, InfraFxClosingMethod, InfraRenderKey, InfraRenderResourceType,
+  InfraAiBilling, InfraCostBilling, InfraCostCategory, InfraCostSettingsDraft, InfraFxClosingMethod, InfraRenderKey, InfraRenderResourceType,
 } from '../types';
 import { useCostSettings } from '../useCostSettings';
 import { HelpTip } from '@/features/opsMetrics/components/HelpTip';
@@ -30,6 +30,7 @@ const BILLINGS = Object.keys(S.billing) as InfraCostBilling[];
 const RENDER_KEYS = Object.keys(S.renderKey) as InfraRenderKey[];
 const RESOURCE_TYPES = Object.keys(S.resourceType) as InfraRenderResourceType[];
 const CLOSING_METHODS = Object.keys(S.closingMethod) as InfraFxClosingMethod[];
+const AI_BILLINGS = Object.keys(p.aiModels.billingOptions) as InfraAiBilling[];
 const AI_KINDS: AiProviderKind[] = ['ANTHROPIC', 'OPENAI', 'GEMINI', 'XAI', 'DEEPSEEK', 'GROQ', 'MISTRAL', 'OPENROUTER', 'OPENAI_COMPATIBLE'];
 
 /** Itens abertos na aba (`key` do serviço, não o índice), por aba do navegador. */
@@ -477,13 +478,26 @@ export default function PricesTab() {
           const name = asText(m.model) || p.aiModels.model;
           return rowFrame('aiModelPrices', i, (
             <Grid container spacing={1.5} alignItems="flex-start">
-              <Grid item xs={12} sm={3}>
+              <Grid item xs={12} sm={4} md={2.5}>
                 {select(`${base}.kind`, p.aiModels.kind, m.kind as AiProviderKind, AI_KINDS, (v) => aiProviderName(v))}
               </Grid>
-              <Grid item xs={12} sm={3}>{field(`${base}.model`, p.aiModels.model, m.model)}</Grid>
-              <Grid item xs={5} sm={2.5}>{field(`${base}.inputPerMTokUsd`, p.aiModels.input, m.inputPerMTokUsd, { numeric: 'decimal', prefix: 'US$' })}</Grid>
-              <Grid item xs={5} sm={2.5}>{field(`${base}.outputPerMTokUsd`, p.aiModels.output, m.outputPerMTokUsd, { numeric: 'decimal', prefix: 'US$' })}</Grid>
-              <Grid item xs={2} sm={1} sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <Grid item xs={12} sm={4} md={2.5}>{field(`${base}.model`, p.aiModels.model, m.model)}</Grid>
+              <Grid item xs={12} sm={4} md={2}>
+                {select(`${base}.billing`, p.aiModels.billing, (m.billing ?? 'tokens') as InfraAiBilling, AI_BILLINGS, (v) => p.aiModels.billingOptions[v])}
+              </Grid>
+              {m.billing === 'monthly' ? (
+                <Grid item xs={10} sm={11} md={4}>
+                  {field(`${base}.monthlyUsd`, p.aiModels.monthlyUsd, m.monthlyUsd, {
+                    numeric: 'decimal', prefix: 'US$', nullable: true, help: p.aiModels.monthlyHelp,
+                  })}
+                </Grid>
+              ) : (
+                <>
+                  <Grid item xs={5} sm={5.5} md={2}>{field(`${base}.inputPerMTokUsd`, p.aiModels.input, m.inputPerMTokUsd, { numeric: 'decimal', prefix: 'US$' })}</Grid>
+                  <Grid item xs={5} sm={5.5} md={2}>{field(`${base}.outputPerMTokUsd`, p.aiModels.output, m.outputPerMTokUsd, { numeric: 'decimal', prefix: 'US$' })}</Grid>
+                </>
+              )}
+              <Grid item xs={2} sm={1} md={1} sx={{ display: 'flex', justifyContent: 'flex-end' }}>
                 {removeButton(name, () => {
                   focusAfterRemoval('aiModelPrices', values.aiModelPrices.length, i, (x) => `[data-cost-row="aiModelPrices-${x}"]`);
                   c.replace((d) => ({ ...d, aiModelPrices: d.aiModelPrices.filter((_, x) => x !== i) }));
@@ -499,7 +513,7 @@ export default function PricesTab() {
           'aiModelPrices',
           p.aiModels.add,
           () => c.replace((d) => ({
-            ...d, aiModelPrices: [...d.aiModelPrices, { kind: 'OPENAI', model: '', inputPerMTokUsd: '', outputPerMTokUsd: '' }],
+            ...d, aiModelPrices: [...d.aiModelPrices, { kind: 'OPENAI', model: '', billing: 'tokens', inputPerMTokUsd: '', outputPerMTokUsd: '', monthlyUsd: null }],
           })),
           values.aiModelPrices.length >= INFRA_COST_LIMITS.maxAiModelPrices,
         )}

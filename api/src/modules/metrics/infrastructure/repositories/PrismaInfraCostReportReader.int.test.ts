@@ -88,7 +88,7 @@ describe('PrismaInfraCostReportReader', () => {
   it('mês fechado: total congelado desc + tenantId e histórico por plano', async () => {
     const settings = defaultInfraCostSettings();
     settings.fx.override = { rate: 5, date: '2026-10-31' };
-    settings.aiModelPrices = [{ kind: 'OPENAI', model: 'gpt-x', inputPerMTokUsd: 2, outputPerMTokUsd: 8 }];
+    settings.aiModelPrices = [{ kind: 'OPENAI', model: 'gpt-x', billing: 'tokens', inputPerMTokUsd: 2, outputPerMTokUsd: 8, monthlyUsd: null }];
     const closed = await new CloseInfraCostMonthUseCase({
       months: repo,
       fxRates: repo,

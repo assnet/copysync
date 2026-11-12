@@ -142,7 +142,8 @@ export class ListInfraCostTenantsUseCase {
 
     const { start, end } = utcMonthRange(month);
     const { rows, aiUsage } = await this.deps.reports.pageOpenMonth(start, end, page);
-    const aiByTenant = calculateInfraAiCosts(settings, aiUsage).byTenant;
+    // Mensal fixo pela taxa por token do mês inteiro (a página só tem os tokens dos seus tenants)
+    const aiByTenant = calculateInfraAiCosts(settings, aiUsage, { monthlyUsdPerToken: rates.aiMonthlyUsdPerToken }).byTenant;
     const rate = fx?.rate ?? null;
     const projected = month === current;
     // Mesma base do fechamento: contratadas; Σ 0 → sessão-hora; sem as duas → não rateado

@@ -306,7 +306,7 @@ describe('config_drift', () => {
 describe('IA da plataforma por tenant (COST-13)', () => {
   const priced = (): InfraCostSettings => {
     const s = workerOnly();
-    s.aiModelPrices = [{ kind: 'OPENAI', model: 'gpt-x', inputPerMTokUsd: 2, outputPerMTokUsd: 8 }];
+    s.aiModelPrices = [{ kind: 'OPENAI', model: 'gpt-x', billing: 'tokens', inputPerMTokUsd: 2, outputPerMTokUsd: 8, monthlyUsd: null }];
     return s;
   };
   const row = (over: Partial<InfraAiUsageRow> = {}): InfraAiUsageRow => ({
@@ -380,5 +380,77 @@ describe('IA da plataforma por tenant (COST-13)', () => {
     const a = allocateInfraTenantShares(10, [{ tenantId: 't1', planSlug: 'lite', connectedHours: 1, contractedAvg: 1 }], new Map([['t1', 1.5]]));
     expect(a.shares[0].aiUsd).toBe(1.5);
     expect(allocateInfraTenantShares(10, [{ tenantId: 't1', planSlug: null, connectedHours: 1, contractedAvg: 1 }]).shares[0].aiUsd).toBe(0);
+  });
+});
+
+describe('IA mensal fixa por modelo', () => {
+  const monthly = (usd = 30): InfraCostSettings => {
+    const s = workerOnly();
+    s.aiModelPrices = [
+      { kind: 'OPENAI', model: 'gpt-x', billing: 'tokens', inputPerMTokUsd: 2, outputPerMTokUsd: 8, monthlyUsd: null },
+      { kind: 'GROQ', model: 'assinatura', billing: 'monthly', inputPerMTokUsd: null, outputPerMTokUsd: null, monthlyUsd: usd },
+    ];
+    return s;
+  };
+  const row = (over: Partial<InfraAiUsageRow> = {}): InfraAiUsageRow => ({
+    tenantId: 't1', kind: 'GROQ', model: 'assinatura', calls: 1, inputTokens: 0, outputTokens: 0, missingTokenCalls: 0, ...over,
+  });
+  const tenants = [
+    { tenantId: 't1', planSlug: 'lite', connectedHours: 10, contractedAvg: 1 },
+    { tenantId: 't2', planSlug: 'pro', connectedHours: 10, contractedAvg: 3 },
+  ];
+  const resourceHours = range(720, (i) => hr(NOV, i));
+
+  it('rateado pela proporção de tokens (entrada + saída) do modelo no mês', () => {
+    const r = calculateInfraAiCosts(monthly(), [row({ inputTokens: 100, outputTokens: 200 }), row({ tenantId: 't2', inputTokens: 700 }), row({ model: 'gpt-x', kind: 'OPENAI', inputTokens: 1_000_000 })]);
+    expect(r.totalUsd).toBeCloseTo(32, 6);
+    expect(r.byTenant.get('t1')).toBeCloseTo(9 + 2, 6);
+    expect(r.byTenant.get('t2')).toBeCloseTo(21, 6);
+    expect(r.unattributedUsd).toBe(0);
+    expect(r.monthlyUsdPerToken['GROQ:assinatura']).toBeCloseTo(0.03, 9);
+    expect(r.warnings).toEqual([]);
+  });
+
+  it('página de tenants usa a taxa por token do mês inteiro', () => {
+    const r = calculateInfraAiCosts(monthly(), [row({ tenantId: 't2', inputTokens: 700 })], { monthlyUsdPerToken: { 'GROQ:assinatura': 0.03 } });
+    expect(r.byTenant.get('t2')).toBeCloseTo(21, 6);
+    expect(r.totalUsd).toBeCloseTo(21, 6);
+  });
+
+  it('sem tokens no mês: vai para o compartilhado com aviso; total e fixo levam o mensal', () => {
+    const base = calc(workerOnly(), { resourceHours, tenants, aiUsage: [] });
+    const r = calc(monthly(), { resourceHours, tenants, aiUsage: [] });
+    expect(r.warnings).toContainEqual({ code: 'ai_monthly_unused', kind: 'GROQ', model: 'assinatura', usd: 30 });
+    expect(r.totals.ai).toEqual({ usd: 0, brl: 0 });
+    expect(r.totals.shared.usd).toBeCloseTo(base.totals.shared.usd + 30, 4);
+    expect(r.totals.total.usd).toBeCloseTo(base.totals.total.usd + 30, 4);
+    expect(r.totals.fixed.usd).toBeCloseTo(base.totals.fixed.usd + 30, 4);
+    expect(r.totals.variable).toEqual(base.totals.variable);
+    // compartilhado rateado por contratadas: t1 1/4, t2 3/4
+    expect(r.tenantRates!.perContractedUsd! * 4).toBeCloseTo(r.totals.shared.usd, 4);
+  });
+
+  it('com tokens: IA direta do tenant, fora do compartilhado; Σ tenants + não rateado = total', () => {
+    const base = calc(workerOnly(), { resourceHours, tenants, aiUsage: [] });
+    const r = calc(monthly(), { resourceHours, tenants, aiUsage: [row({ inputTokens: 1 }), row({ tenantId: 't2', inputTokens: 2 })] });
+    expect(r.totals.ai!.usd).toBeCloseTo(30, 4);
+    expect(r.totals.shared).toEqual(base.totals.shared);
+    expect(r.plans.find((p) => p.planSlug === 'lite')!.ai!.usd).toBeCloseTo(10, 4);
+    expect(r.plans.find((p) => p.planSlug === 'pro')!.ai!.usd).toBeCloseTo(20, 4);
+    const sumTenants = r.plans.reduce((s, p) => s + p.share!.usd + p.ai!.usd, 0);
+    expect(sumTenants).toBeCloseTo(r.totals.total.usd, 3);
+    expect(r.tenantRates!.aiMonthlyUsdPerToken).toEqual({ 'GROQ:assinatura': 10 });
+  });
+
+  it('mês parcial: realizado proporcional às horas decorridas, projeção = mês cheio', () => {
+    const half = new Date(NOV.getTime() + 360 * H);
+    const r = calc(monthly(), { resourceHours: range(360, (i) => hr(NOV, i)), tenants, aiUsage: [row({ inputTokens: 5 })] }, { now: half });
+    const base = calc(workerOnly(), { resourceHours: range(360, (i) => hr(NOV, i)), tenants, aiUsage: [] }, { now: half });
+    expect(r.totals.ai!.usd).toBeCloseTo(15, 4);
+    expect(r.totals.total.usd).toBeCloseTo(base.totals.total.usd + 15, 4);
+    expect(r.totals.projected!.usd).toBeCloseTo(base.totals.projected!.usd + 30, 4);
+    const unused = calc(monthly(), { resourceHours: range(360, (i) => hr(NOV, i)), tenants, aiUsage: [] }, { now: half });
+    expect(unused.warnings).toContainEqual({ code: 'ai_monthly_unused', kind: 'GROQ', model: 'assinatura', usd: 15 });
+    expect(unused.totals.shared.usd).toBeCloseTo(base.totals.shared.usd + 15, 4);
   });
 });

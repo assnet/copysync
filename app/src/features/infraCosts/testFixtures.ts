@@ -23,7 +23,7 @@ export function sampleSettings(): InfraCostSettings {
       { resourceType: 'service', plan: '1c-2g', monthlyUsd: 25 },
       { resourceType: 'postgres', plan: '0.5c-1g', monthlyUsd: 19 },
     ],
-    aiModelPrices: [{ kind: 'OPENAI', model: 'gpt-x', inputPerMTokUsd: 0.15, outputPerMTokUsd: 0.6 }],
+    aiModelPrices: [{ kind: 'OPENAI', model: 'gpt-x', billing: 'tokens', inputPerMTokUsd: 0.15, outputPerMTokUsd: 0.6, monthlyUsd: null }],
     workspace: {
       planLabel: 'Hobby', cycleStartDay: 1, includedBandwidthGb: 5, includedBuildMinutes: 500,
       bandwidthUsdPerGb: 0.15, buildUsdPer1000Min: 5, manualBandwidthGb: null, manualBuildMinutes: null,

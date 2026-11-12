@@ -208,6 +208,19 @@ Memória só para não repetir `warn`; todo estado que importa está no banco.
 - **Modelo sem preço**: aviso `model_without_price { kind, model, count }`, custo fora do total (nunca 0).
 - IA entra como custo **direto** do tenant (`ai`), somada ao compartilhado em `total`. No mês aberto é só o
   realizado (sem extrapolar na projeção).
+- **Mensal fixo (opcional por modelo)**: `billing: 'tokens' | 'monthly'` em cada `aiModelPrices[]`. Ausente =
+  `tokens` (documentos salvos antes continuam válidos). `tokens` exige `inputPerMTokUsd`/`outputPerMTokUsd` e
+  `monthlyUsd: null`; `monthly` exige `monthlyUsd` (0–100.000) e entrada/saída `null` (ausente também vale). A API
+  sempre devolve os seis campos.
+  - Conta: `monthlyUsd` × horas decorridas ÷ horas do mês (igual aos itens fixos; projeção = mês cheio; fechamento =
+    cheio). Entra em `fixed`, não em `variable`.
+  - Por cliente: rateado pela proporção de tokens (entrada + saída) de cada tenant **naquele modelo** no mês.
+    A lista paginada usa `tenantRates.aiMonthlyUsdPerToken` (US$/token do mês inteiro), nunca a proporção da página.
+  - Sem tokens no mês: o valor vai para o **compartilhado** (rateado como os itens; sem base → `shared_unallocated`)
+    e sai fora de `totals.ai`, com aviso `ai_monthly_unused { kind, model, usd }`. Assim Σ tenants + não rateado +
+    fora do rateio = total continua valendo.
+  - Não fazer: somar o mensal em `totals.ai` quando foi para o compartilhado (conta dobrada no `excludedUsd` do
+    fechamento); recalcular a proporção só com os tenants da página.
 
 ## Fechamento mensal (COST-15)
 

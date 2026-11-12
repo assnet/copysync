@@ -65,6 +65,31 @@ describe('PricesTab', () => {
     await waitFor(() => expect(update).toHaveBeenCalledWith({ settings: saved, expectedUpdatedAt: '2026-11-01T10:00:00.000Z' }));
   });
 
+  it('modelo de IA mensal fixo: troca a cobrança, mostra só US$/mês e salva o modo', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(adminCostsService, 'getSettings').mockResolvedValue(view());
+    const saved: InfraCostSettings = {
+      ...sampleSettings(),
+      aiModelPrices: [{ kind: 'OPENAI', model: 'gpt-x', billing: 'monthly', inputPerMTokUsd: null, outputPerMTokUsd: null, monthlyUsd: 19.9 }],
+    };
+    const update = vi.spyOn(adminCostsService, 'updateSettings').mockResolvedValue(view({ settings: saved }));
+    renderTab();
+    expect(await screen.findByRole('textbox', { name: p.aiModels.input })).toBeInTheDocument();
+    await user.click(screen.getByRole('combobox', { name: p.aiModels.billing }));
+    await user.click(await screen.findByRole('option', { name: p.aiModels.billingOptions.monthly }));
+    expect(screen.queryByRole('textbox', { name: p.aiModels.input })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: p.aiModels.output })).not.toBeInTheDocument();
+    const ai = within(document.querySelector('[data-cost-row="aiModelPrices-0"]') as HTMLElement);
+    const monthly = ai.getByRole('textbox', { name: p.aiModels.monthlyUsd });
+    await user.type(monthly, '19,90');
+    await user.click(screen.getByRole('button', { name: p.actions.review }));
+    const dialog = await screen.findByRole('dialog');
+    const row = within(dialog).getByText(/gpt-x · Cobrança$/).closest('tr') as HTMLElement;
+    expect(row.textContent).toContain(p.aiModels.billingOptions.monthly);
+    await user.click(within(dialog).getByRole('button', { name: p.confirm.save }));
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ settings: saved, expectedUpdatedAt: '2026-11-01T10:00:00.000Z' }));
+  });
+
   it('cotação manual: informa valor e data, revisa o diff e salva com expectedUpdatedAt; rascunho limpo', async () => {
     const user = userEvent.setup();
     vi.spyOn(adminCostsService, 'getSettings').mockResolvedValue(view());

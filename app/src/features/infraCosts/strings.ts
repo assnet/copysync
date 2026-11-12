@@ -1,5 +1,6 @@
 /** Textos dos custos da infraestrutura (super admin). pt-BR, sem nome de marca. */
 import type {
+  InfraAiBilling,
   InfraCostBilling,
   InfraCostCategory,
   InfraCostSettingsSource,
@@ -75,6 +76,7 @@ export const infraCostsStrings = {
     fx_fallback: 'Cotação do mês indisponível: usando a última salva',
     fx_missing: 'Sem cotação: valores só em dólar',
     ai_tokens_missing: 'Uso de IA sem contagem de tokens fora do total',
+    ai_monthly_unused: 'Modelo de IA com valor mensal sem uso no mês: valor dividido como custo compartilhado',
     plan_without_price: 'Plano lido sem preço cadastrado: total parcial',
     model_without_price: 'Modelo de IA sem preço cadastrado',
     missing_hours: 'Horas sem leitura: quantidade manual usada',
@@ -326,13 +328,17 @@ export const infraCostsStrings = {
     },
     aiModels: {
       title: 'Preços por modelo de IA',
-      subtitle: 'Preço por milhão de tokens, para o custo de IA da plataforma.',
+      subtitle: 'Preço por milhão de tokens ou valor mensal fixo (assinatura), para o custo de IA da plataforma.',
       empty: 'Nenhum modelo cadastrado.',
       add: 'Adicionar modelo',
       kind: 'Provedor',
       model: 'Modelo',
+      billing: 'Cobrança',
+      billingOptions: { tokens: 'Por token', monthly: 'Mensal fixo' } satisfies Record<InfraAiBilling, string>,
       input: 'Entrada (US$/1M)',
       output: 'Saída (US$/1M)',
+      monthlyUsd: 'US$/mês',
+      monthlyHelp: 'Valor fixo do mês, como uma assinatura. Entra no custo mesmo sem uso e é dividido entre os clientes pelos tokens de cada um nesse modelo. Sem uso no mês, vira custo compartilhado.',
     },
     workspace: {
       title: 'Workspace',

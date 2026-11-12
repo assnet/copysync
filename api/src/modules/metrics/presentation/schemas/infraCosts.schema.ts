@@ -3,6 +3,7 @@
  * `additionalProperties: false` em tudo: campo fora do contrato (ex.: id da Render) nunca sai.
  */
 import {
+  INFRA_AI_BILLINGS,
   INFRA_COST_ALLOCATIONS,
   INFRA_COST_BILLINGS,
   INFRA_COST_CATEGORIES,
@@ -63,7 +64,15 @@ const settingsSchema = obj({
   },
   aiModelPrices: {
     type: 'array',
-    items: obj({ kind: strEnum(AI_PROVIDER_KINDS), model: str, inputPerMTokUsd: num, outputPerMTokUsd: num }),
+    // `billing` = tokens (entrada/saída) ou monthly (`monthlyUsd`); campos do outro modo saem `null`
+    items: obj({
+      kind: strEnum(AI_PROVIDER_KINDS),
+      model: str,
+      billing: strEnum(INFRA_AI_BILLINGS),
+      inputPerMTokUsd: nullableNum,
+      outputPerMTokUsd: nullableNum,
+      monthlyUsd: nullableNum,
+    }),
   },
   workspace: obj({
     planLabel: str,
@@ -199,6 +208,7 @@ const summarySchema = obj({
           'fx_fallback',
           'fx_missing',
           'ai_tokens_missing',
+          'ai_monthly_unused',
           'plan_without_price',
           'model_without_price',
           'missing_hours',

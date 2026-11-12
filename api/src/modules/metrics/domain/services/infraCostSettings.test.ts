@@ -173,10 +173,26 @@ describe('parseInfraCostSettings', () => {
     // mesmo nome de plano em tipos diferentes é permitido (serviço e Postgres têm 1c-2g)
     expect(parseInfraCostSettings(valid()).renderPlanPrices.filter((p) => p.plan === '1c-2g')).toHaveLength(2);
     const price = { kind: 'ANTHROPIC', model: 'modelo-a', inputPerMTokUsd: 3, outputPerMTokUsd: 15 };
-    expect(parseInfraCostSettings(withChange((d) => (d.aiModelPrices = [price]))).aiModelPrices).toEqual([price]);
+    expect(parseInfraCostSettings(withChange((d) => (d.aiModelPrices = [price]))).aiModelPrices).toEqual([{ ...price, billing: 'tokens', monthlyUsd: null }]);
     expect(fieldOf(withChange((d) => (d.aiModelPrices = [price, { ...price }])))).toBe('aiModelPrices[1].model');
     expect(fieldOf(withChange((d) => (d.aiModelPrices = [{ ...price, kind: 'OUTRO' }])))).toBe('aiModelPrices[0].kind');
     expect(fieldOf(withChange((d) => (d.aiModelPrices = [{ ...price, outputPerMTokUsd: -1 }])))).toBe('aiModelPrices[0].outputPerMTokUsd');
+  });
+
+  it('preço de IA mensal fixo: `billing` ausente = tokens; campos do outro modo só nulos', () => {
+    const tokens = { kind: 'OPENAI', model: 'm-tok', billing: 'tokens', inputPerMTokUsd: 1, outputPerMTokUsd: 2, monthlyUsd: null };
+    const monthly = { kind: 'OPENAI', model: 'm-mes', billing: 'monthly', inputPerMTokUsd: null, outputPerMTokUsd: null, monthlyUsd: 20 };
+    expect(parseInfraCostSettings(withChange((d) => (d.aiModelPrices = [tokens, monthly]))).aiModelPrices).toEqual([tokens, monthly]);
+    // mensal sem entrada/saída no corpo também vale
+    const bare = { kind: 'OPENAI', model: 'm-mes', billing: 'monthly', monthlyUsd: 20 };
+    expect(parseInfraCostSettings(withChange((d) => (d.aiModelPrices = [bare]))).aiModelPrices).toEqual([monthly]);
+    expect(fieldOf(withChange((d) => (d.aiModelPrices = [{ ...monthly, monthlyUsd: null }])))).toBe('aiModelPrices[0].monthlyUsd');
+    expect(fieldOf(withChange((d) => (d.aiModelPrices = [{ ...monthly, monthlyUsd: -1 }])))).toBe('aiModelPrices[0].monthlyUsd');
+    expect(fieldOf(withChange((d) => (d.aiModelPrices = [{ ...monthly, inputPerMTokUsd: 1 }])))).toBe('aiModelPrices[0].inputPerMTokUsd');
+    expect(fieldOf(withChange((d) => (d.aiModelPrices = [{ ...tokens, monthlyUsd: 5 }])))).toBe('aiModelPrices[0].monthlyUsd');
+    expect(fieldOf(withChange((d) => (d.aiModelPrices = [{ ...tokens, inputPerMTokUsd: null }])))).toBe('aiModelPrices[0].inputPerMTokUsd');
+    expect(fieldOf(withChange((d) => (d.aiModelPrices = [{ ...tokens, billing: 'anual' }])))).toBe('aiModelPrices[0].billing');
+    expect(fieldOf(withChange((d) => (d.aiModelPrices = [{ ...tokens, extra: 1 }])))).toBe('aiModelPrices[0].extra');
   });
 
   it('valida o workspace, inclusive `cycleStartDay` fora de 1–28', () => {

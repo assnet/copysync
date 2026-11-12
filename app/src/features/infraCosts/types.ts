@@ -53,11 +53,17 @@ export interface InfraRenderPlanPrice {
   monthlyUsd: number;
 }
 
+/** Cobrança do modelo: `tokens` = US$ por 1 M tokens (padrão); `monthly` = valor fixo por mês (assinatura). */
+export type InfraAiBilling = 'tokens' | 'monthly';
+
+/** Só os campos do modo valem; os do outro modo vêm `null`. */
 export interface InfraAiModelPrice {
   kind: AiProviderKind;
   model: string;
-  inputPerMTokUsd: number;
-  outputPerMTokUsd: number;
+  billing: InfraAiBilling;
+  inputPerMTokUsd: number | null;
+  outputPerMTokUsd: number | null;
+  monthlyUsd: number | null;
 }
 
 export interface InfraWorkspaceSettings {
@@ -265,6 +271,8 @@ export type InfraCostWarningCode =
   | 'fx_fallback'
   | 'fx_missing'
   | 'ai_tokens_missing'
+  /** Modelo de IA mensal fixo sem tokens no mês: valor no compartilhado (`kind`, `model`, `usd`). */
+  | 'ai_monthly_unused'
   | 'plan_without_price'
   | 'model_without_price'
   | 'missing_hours'

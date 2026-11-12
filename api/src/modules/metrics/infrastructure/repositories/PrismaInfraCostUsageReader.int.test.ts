@@ -112,7 +112,7 @@ describe('PrismaInfraCostUsageReader', () => {
     ]);
     const settings = defaultInfraCostSettings();
     settings.items = [];
-    settings.aiModelPrices = [{ kind: 'OPENAI', model: 'gpt-x', inputPerMTokUsd: 2, outputPerMTokUsd: 8 }];
+    settings.aiModelPrices = [{ kind: 'OPENAI', model: 'gpt-x', billing: 'tokens', inputPerMTokUsd: 2, outputPerMTokUsd: 8, monthlyUsd: null }];
     const calc = calculateInfraCosts({
       settings,
       fx: null,

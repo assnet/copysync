@@ -67,12 +67,18 @@ export interface InfraRenderPlanPrice {
   monthlyUsd: number;
 }
 
-export interface InfraAiModelPrice {
-  kind: AiProviderKind;
-  model: string;
-  inputPerMTokUsd: number;
-  outputPerMTokUsd: number;
-}
+/** Cobrança de um modelo de IA: `tokens` = US$ por 1 M tokens (padrão); `monthly` = valor fixo por mês (assinatura). */
+export const INFRA_AI_BILLINGS = ['tokens', 'monthly'] as const;
+export type InfraAiBilling = (typeof INFRA_AI_BILLINGS)[number];
+
+/**
+ * Preço de um modelo por `kind` + `model`. `billing` ausente no salvo = `tokens` (documentos antigos). Só os
+ * campos do modo valem; os do outro modo saem `null`.
+ */
+export type InfraAiModelPrice = { kind: AiProviderKind; model: string } & (
+  | { billing: 'tokens'; inputPerMTokUsd: number; outputPerMTokUsd: number; monthlyUsd: null }
+  | { billing: 'monthly'; inputPerMTokUsd: null; outputPerMTokUsd: null; monthlyUsd: number }
+);
 
 export interface InfraWorkspaceSettings {
   planLabel: string;
@@ -276,7 +282,7 @@ const ITEM_FIELDS = [
 ] as const;
 const STORAGE_FIELDS = ['gb', 'usdPerGb'] as const;
 const PLAN_PRICE_FIELDS = ['resourceType', 'plan', 'monthlyUsd'] as const;
-const AI_PRICE_FIELDS = ['kind', 'model', 'inputPerMTokUsd', 'outputPerMTokUsd'] as const;
+const AI_PRICE_FIELDS = ['kind', 'model', 'billing', 'inputPerMTokUsd', 'outputPerMTokUsd', 'monthlyUsd'] as const;
 const WORKSPACE_FIELDS = [
   'planLabel',
   'cycleStartDay',
@@ -347,12 +353,36 @@ function parsePlanPrice(raw: unknown, index: number): InfraRenderPlanPrice {
 
 function parseAiPrice(raw: unknown, index: number): InfraAiModelPrice {
   const f = `aiModelPrices[${index}]`;
-  const obj = readObject(raw, f, AI_PRICE_FIELDS);
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) fail(f, 'must be an object');
+  const obj = raw as Raw;
+  for (const key of Object.keys(obj)) {
+    if (!(AI_PRICE_FIELDS as readonly string[]).includes(key)) fail(`${f}.${key}`, 'unknown field');
+  }
+  const kind = readEnum(obj.kind, `${f}.kind`, AI_PROVIDER_KINDS);
+  const model = readString(obj.model, `${f}.model`, INFRA_COST_LIMITS.maxModelLength);
+  // `billing` ausente = `tokens` (salvo antes do modo mensal); campo do outro modo só ausente ou `null`
+  const billing = obj.billing === undefined ? 'tokens' : readEnum(obj.billing, `${f}.billing`, INFRA_AI_BILLINGS);
+  const required = (key: string) => {
+    if (obj[key] === undefined || obj[key] === null) fail(`${f}.${key}`, 'is required');
+    return obj[key];
+  };
+  const unused = (key: string) => {
+    if (obj[key] !== undefined && obj[key] !== null) fail(`${f}.${key}`, `must be null when billing is ${billing}`);
+  };
+  if (billing === 'monthly') {
+    unused('inputPerMTokUsd');
+    unused('outputPerMTokUsd');
+    const monthlyUsd = readNumber(required('monthlyUsd'), `${f}.monthlyUsd`, 0, 100_000);
+    return { kind, model, billing, inputPerMTokUsd: null, outputPerMTokUsd: null, monthlyUsd };
+  }
+  unused('monthlyUsd');
   return {
-    kind: readEnum(obj.kind, `${f}.kind`, AI_PROVIDER_KINDS),
-    model: readString(obj.model, `${f}.model`, INFRA_COST_LIMITS.maxModelLength),
-    inputPerMTokUsd: readNumber(obj.inputPerMTokUsd, `${f}.inputPerMTokUsd`, 0, 1_000),
-    outputPerMTokUsd: readNumber(obj.outputPerMTokUsd, `${f}.outputPerMTokUsd`, 0, 1_000),
+    kind,
+    model,
+    billing,
+    inputPerMTokUsd: readNumber(required('inputPerMTokUsd'), `${f}.inputPerMTokUsd`, 0, 1_000),
+    outputPerMTokUsd: readNumber(required('outputPerMTokUsd'), `${f}.outputPerMTokUsd`, 0, 1_000),
+    monthlyUsd: null,
   };
 }
 

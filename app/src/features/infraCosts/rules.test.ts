@@ -228,6 +228,36 @@ describe('diff da confirmação', () => {
   });
 });
 
+describe('IA mensal fixa', () => {
+  it('mensal: exige só US$/mês e zera entrada/saída; por token zera o mensal; ausente = por token', () => {
+    const draft = sampleSettings() as InfraCostSettingsDraft;
+    draft.aiModelPrices[0] = { ...draft.aiModelPrices[0], billing: 'monthly', inputPerMTokUsd: '', outputPerMTokUsd: '', monthlyUsd: '' };
+    expect(Object.keys(validateSettingsDraft(draft))).toEqual(['aiModelPrices[0].monthlyUsd']);
+    draft.aiModelPrices[0].monthlyUsd = '19,90';
+    expect(draftToSettings(draft)!.aiModelPrices[0]).toEqual({
+      kind: 'OPENAI', model: 'gpt-x', billing: 'monthly', inputPerMTokUsd: null, outputPerMTokUsd: null, monthlyUsd: 19.9,
+    });
+    draft.aiModelPrices[0] = { ...draft.aiModelPrices[0], billing: 'tokens', inputPerMTokUsd: '1', outputPerMTokUsd: '2' };
+    expect(draftToSettings(draft)!.aiModelPrices[0]).toMatchObject({ billing: 'tokens', inputPerMTokUsd: 1, outputPerMTokUsd: 2, monthlyUsd: null });
+    const legacy = { kind: 'OPENAI', model: 'antigo', inputPerMTokUsd: 1, outputPerMTokUsd: 2 };
+    expect(toSettingsPayload({ ...sampleSettings(), aiModelPrices: [legacy as never] }).aiModelPrices[0]).toEqual({ ...legacy, billing: 'tokens', monthlyUsd: null });
+  });
+
+  it('diff e rótulos do modo de cobrança', () => {
+    const settings = sampleSettings();
+    expect(fieldLabel('aiModelPrices[0].billing', settings)).toMatch(/gpt-x · Cobrança$/);
+    expect(fieldLabel('aiModelPrices[0].monthlyUsd', settings)).toMatch(/gpt-x · US\$\/mês$/);
+    expect(changeValue('aiModelPrices[OPENAI:gpt-x].billing', 'monthly')).toBe(S.prices.aiModels.billingOptions.monthly);
+    expect(changeValue('items[api].billing', 'fixed')).toBe(S.billing.fixed);
+    const after = sampleSettings();
+    after.aiModelPrices[0] = { ...after.aiModelPrices[0], billing: 'monthly', inputPerMTokUsd: null, outputPerMTokUsd: null, monthlyUsd: 20 };
+    expect(diffSettings(settings, after).map((c) => c.path).sort()).toEqual([
+      'aiModelPrices[OPENAI:gpt-x].billing', 'aiModelPrices[OPENAI:gpt-x].inputPerMTokUsd',
+      'aiModelPrices[OPENAI:gpt-x].monthlyUsd', 'aiModelPrices[OPENAI:gpt-x].outputPerMTokUsd',
+    ]);
+  });
+});
+
 describe('payload do PUT', () => {
   it('descarta campos fora do contrato (nenhum preço de plano sai do painel)', () => {
     const s = sampleSettings();

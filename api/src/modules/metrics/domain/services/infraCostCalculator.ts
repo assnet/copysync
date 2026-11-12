@@ -208,6 +208,8 @@ export type InfraCostWarning =
   | { code: 'idle_partial'; count: number }
   /** Modelo de IA usado sem preço em `aiModelPrices`: chamadas fora do total (`count`), total parcial. */
   | { code: 'model_without_price'; kind: AiProviderKind; model: string; count: number }
+  /** Modelo de IA mensal fixo sem tokens no mês: o valor (`usd`) vai para o compartilhado, sem base por tenant. */
+  | { code: 'ai_monthly_unused'; kind: AiProviderKind; model: string; usd: number }
   /** Chamadas de IA sem contagem de tokens: fora do total, nunca somadas como 0. */
   | { code: 'ai_tokens_missing'; count: number }
   /** Horas: Σ contratadas 0 → compartilhado rateado pela sessão-hora (mesma regra do fechamento). */
@@ -224,7 +226,7 @@ export interface InfraCostCalculation {
   totalIsPartial: boolean;
   totals: {
     total: InfraMoney;
-    /** Itens `fixed` e armazenamento. */
+    /** Itens `fixed`, armazenamento e modelos de IA mensais fixos. */
     fixed: InfraMoney;
     /** Computação `per_instance`, itens `usage`, excedente do workspace e IA da plataforma (P3). */
     variable: InfraMoney;
@@ -232,7 +234,10 @@ export interface InfraCostCalculation {
     shared: InfraMoney;
     /** P2: realizado + última hora × horas restantes + excedente projetado; `null` na foto. */
     projected: InfraMoney | null;
-    /** P3: IA da plataforma (custo direto, entra no total e no variável, fora do compartilhado); `null` sem leitura. */
+    /**
+     * P3: IA da plataforma rateada a tenants (por token + mensal fixo com uso; entra no total, fora do compartilhado).
+     * Mensal sem tokens no mês vai para o compartilhado, não para cá. `null` sem leitura.
+     */
     ai: InfraMoney | null;
   };
   items: InfraCostItemResult[];
@@ -279,6 +284,8 @@ export interface InfraTenantRates {
   projectedPerContractedUsd: number | null;
   /** Compartilhado projetado ÷ sessão-hora até agora (base `session_hours`: mantém a proporção do tenant). */
   projectedPerSessionHourUsd: number | null;
+  /** US$ por token (entrada + saída) de cada modelo de IA mensal fixo com uso no mês (`kind:model`). */
+  aiMonthlyUsdPerToken: Record<string, number>;
 }
 
 /** Base do rateio: contratadas; Σ 0 → sessão-hora; sem as duas → `null`. */
@@ -679,22 +686,54 @@ export function allocateInfraTenantShares(
 
 /** Resultado de `calculateInfraAiCosts` em USD cheio. */
 export interface InfraAiCosts {
-  /** Σ das chamadas com preço e tokens. */
+  /** IA direta (rateada a tenants): chamadas com preço e tokens + modelos mensais com tokens no mês. */
   totalUsd: number;
   byTenant: Map<string, number>;
+  /** Modelos mensais (proporcional ao mês decorrido), com ou sem uso. */
+  monthlyUsd: number;
+  /** Mensal de modelo sem tokens no mês: sem base por tenant, vai para o compartilhado. */
+  unattributedUsd: number;
+  /** Mensal cheio de modelo sem tokens no mês (projeção do compartilhado). */
+  projectedUnattributedUsd: number;
+  /** Mensal cheio de todos os modelos mensais (projeção do mês). */
+  projectedMonthlyUsd: number;
+  /** US$ por token de cada modelo mensal com uso (`kind:model`), para precificar uma página de tenants. */
+  monthlyUsdPerToken: Record<string, number>;
   /** Algum modelo sem preço (chamadas fora do total). */
   partial: boolean;
   warnings: InfraCostWarning[];
 }
 
+export interface InfraAiCostOptions {
+  /** Fração do mês decorrida (horas decorridas ÷ horas do mês); 1 = mês fechado. */
+  monthFraction?: number;
+  /**
+   * US$ por token dos modelos mensais já calculado no mês inteiro (`tenantRates.aiMonthlyUsdPerToken`). Presente =
+   * `rows` é só uma página de tenants: o mensal sai por token, sem refazer a proporção.
+   */
+  monthlyUsdPerToken?: Readonly<Record<string, number>>;
+}
+
+const aiModelKey = (kind: AiProviderKind, model: string) => `${kind}:${model}`;
+
 /**
- * IA da plataforma (COST-13): tokens × `aiModelPrices` (preço por 1 M tokens, por `kind` + `model`). Modelo sem
- * preço → `model_without_price` com as chamadas, custo fora (nunca 0). Linhas com token nulo já vêm fora dos
- * tokens; a contagem vira `ai_tokens_missing`.
+ * IA da plataforma (COST-13). Por token: tokens × `aiModelPrices` (preço por 1 M tokens, por `kind` + `model`).
+ * Mensal fixo: `monthlyUsd` × fração do mês, rateado pela proporção de tokens (entrada + saída) de cada tenant
+ * no modelo; sem tokens no mês → `unattributedUsd` (o calculador põe no compartilhado, aviso
+ * `ai_monthly_unused`). Modelo sem preço → `model_without_price` com as chamadas, custo fora (nunca 0). Linhas
+ * com token nulo já vêm fora dos tokens; a contagem vira `ai_tokens_missing`.
  */
-export function calculateInfraAiCosts(settings: InfraCostSettings, rows: readonly InfraAiUsageRow[]): InfraAiCosts {
+export function calculateInfraAiCosts(
+  settings: InfraCostSettings,
+  rows: readonly InfraAiUsageRow[],
+  options: InfraAiCostOptions = {},
+): InfraAiCosts {
+  const fraction = options.monthFraction ?? 1;
   const byTenant = new Map<string, number>();
   const unpriced = new Map<string, { kind: AiProviderKind; model: string; count: number }>();
+  const add = (tenantId: string, usd: number) => byTenant.set(tenantId, (byTenant.get(tenantId) ?? 0) + usd);
+  /** Tokens dos modelos mensais por modelo e tenant. */
+  const monthlyTokens = new Map<string, Map<string, number>>();
   let totalUsd = 0;
   let missing = 0;
   for (const row of rows) {
@@ -703,18 +742,67 @@ export function calculateInfraAiCosts(settings: InfraCostSettings, rows: readonl
     if (priced <= 0) continue;
     const price = settings.aiModelPrices.find((p) => p.kind === row.kind && p.model === row.model);
     if (!price) {
-      const key = `${row.kind}:${row.model}`;
+      const key = aiModelKey(row.kind, row.model);
       const prev = unpriced.get(key);
       unpriced.set(key, { kind: row.kind, model: row.model, count: (prev?.count ?? 0) + priced });
       continue;
     }
+    if (price.billing === 'monthly') {
+      const key = aiModelKey(row.kind, row.model);
+      const perTenant = monthlyTokens.get(key) ?? new Map<string, number>();
+      perTenant.set(row.tenantId, (perTenant.get(row.tenantId) ?? 0) + row.inputTokens + row.outputTokens);
+      monthlyTokens.set(key, perTenant);
+      continue;
+    }
     const usd = (row.inputTokens * price.inputPerMTokUsd + row.outputTokens * price.outputPerMTokUsd) / 1_000_000;
     totalUsd += usd;
-    byTenant.set(row.tenantId, (byTenant.get(row.tenantId) ?? 0) + usd);
+    add(row.tenantId, usd);
   }
+
   const warnings: InfraCostWarning[] = [...unpriced.values()].map((u) => ({ code: 'model_without_price', ...u }));
+  let monthlyUsd = 0;
+  let unattributedUsd = 0;
+  let projectedUnattributedUsd = 0;
+  let projectedMonthlyUsd = 0;
+  const monthlyUsdPerToken: Record<string, number> = {};
+  for (const price of settings.aiModelPrices) {
+    if (price.billing !== 'monthly') continue;
+    const key = aiModelKey(price.kind, price.model);
+    const cost = price.monthlyUsd * fraction;
+    const perTenant = monthlyTokens.get(key);
+    const given = options.monthlyUsdPerToken;
+    monthlyUsd += cost;
+    projectedMonthlyUsd += price.monthlyUsd;
+    if (given) {
+      // Página de tenants: só a parte de cada um, pela taxa do mês inteiro
+      const rate = given[key] ?? 0;
+      for (const [tenantId, tokens] of perTenant ?? []) add(tenantId, tokens * rate);
+      continue;
+    }
+    const tokens = perTenant ? [...perTenant.values()].reduce((s, t) => s + t, 0) : 0;
+    if (tokens <= 0) {
+      unattributedUsd += cost;
+      projectedUnattributedUsd += price.monthlyUsd;
+      if (cost > 0) warnings.push({ code: 'ai_monthly_unused', kind: price.kind, model: price.model, usd: round4(cost) });
+      continue;
+    }
+    monthlyUsdPerToken[key] = cost / tokens;
+    totalUsd += cost;
+    for (const [tenantId, t] of perTenant!) add(tenantId, (cost * t) / tokens);
+  }
+  if (options.monthlyUsdPerToken) totalUsd = [...byTenant.values()].reduce((s, v) => s + v, 0);
   if (missing > 0) warnings.push({ code: 'ai_tokens_missing', count: missing });
-  return { totalUsd, byTenant, partial: unpriced.size > 0, warnings };
+  return {
+    totalUsd,
+    byTenant,
+    monthlyUsd,
+    unattributedUsd,
+    projectedUnattributedUsd,
+    projectedMonthlyUsd,
+    monthlyUsdPerToken,
+    partial: unpriced.size > 0,
+    warnings,
+  };
 }
 
 /** Custos do mês: foto do momento (P1) ou Σ por hora com `hourly` (P2). */
@@ -748,11 +836,18 @@ export function calculateInfraCosts(input: InfraCostCalculationInput): InfraCost
   /** Compartilhado projetado (mesma regra do `shared`): base do rateio projetado. */
   let projectedSharedUsd = projectedUsd;
   // IA direta (P3): entra no total e no variável, nunca no compartilhado; projeção = realizado (sem extrapolar).
-  const ai = hourly?.aiUsage ? calculateInfraAiCosts(settings, hourly.aiUsage) : null;
+  // Mensal fixo (assinatura): no fixo, proporcional às horas decorridas como os itens fixos (projeção = mês cheio);
+  // sem tokens no mês vai para o compartilhado (sem base por tenant).
+  const fraction = ctx ? ctx.elapsed / ctx.hoursInMonth : 1;
+  const ai = hourly?.aiUsage ? calculateInfraAiCosts(settings, hourly.aiUsage, { monthFraction: fraction }) : null;
   if (ai) {
-    totalUsd += ai.totalUsd;
-    variableUsd += ai.totalUsd;
-    projectedUsd += ai.totalUsd;
+    const tokensUsd = ai.totalUsd + ai.unattributedUsd - ai.monthlyUsd;
+    totalUsd += ai.totalUsd + ai.unattributedUsd;
+    variableUsd += tokensUsd;
+    fixedUsd += ai.monthlyUsd;
+    sharedUsd += ai.unattributedUsd;
+    projectedUsd += tokensUsd + ai.projectedMonthlyUsd;
+    projectedSharedUsd += ai.projectedUnattributedUsd;
     warnings.push(...ai.warnings);
   }
   for (const { result, computeUsd, storageUsd, projectedUsd: itemProjected } of calcs) {
@@ -808,6 +903,7 @@ export function calculateInfraCosts(input: InfraCostCalculationInput): InfraCost
       perSessionHourUsd: alloc.perSessionHour,
       projectedPerContractedUsd: projectedPerContracted,
       projectedPerSessionHourUsd: projectedPerSessionHour,
+      aiMonthlyUsdPerToken: ai?.monthlyUsdPerToken ?? {},
     };
 
     const byPlan = new Map<string | null, InfraTenantShare[]>();

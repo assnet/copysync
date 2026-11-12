@@ -86,7 +86,7 @@ beforeEach(async () => {
   await clean();
   settings = defaultInfraCostSettings();
   settings.fx.auto = true;
-  settings.aiModelPrices = [{ kind: 'OPENAI', model: 'gpt-x', inputPerMTokUsd: 2, outputPerMTokUsd: 8 }];
+  settings.aiModelPrices = [{ kind: 'OPENAI', model: 'gpt-x', billing: 'tokens', inputPerMTokUsd: 2, outputPerMTokUsd: 8, monthlyUsd: null }];
 });
 afterAll(async () => {
   await clean();
@@ -152,7 +152,7 @@ describe('CloseInfraCostMonthUseCase + PrismaInfraCostSnapshotRepository (Postgr
     const closedAt = (await repo.findClosedMonth(OCT))!.closedAt;
 
     settings.items = settings.items.map((i) => (i.key === 'api' ? { ...i, monthlyUsd: i.monthlyUsd * 10 } : i));
-    settings.aiModelPrices = [{ kind: 'OPENAI', model: 'gpt-x', inputPerMTokUsd: 20, outputPerMTokUsd: 80 }];
+    settings.aiModelPrices = [{ kind: 'OPENAI', model: 'gpt-x', billing: 'tokens', inputPerMTokUsd: 20, outputPerMTokUsd: 80, monthlyUsd: null }];
     settings.fx.override = { rate: 7, date: '2026-10-31' };
     await fxRate('2026-10-31', 6.1);
 
@@ -233,6 +233,21 @@ describe('CloseInfraCostMonthUseCase + PrismaInfraCostSnapshotRepository (Postgr
     expect(totals.allocation.excludedUsd).toBeGreaterThanOrEqual(51 - 0.001);
     const history = await new PrismaInfraCostReportReader(prisma).listClosedMonths(OCT, new Date('2026-11-01T00:00:00Z'));
     expect(history[0]).toMatchObject({ excludedUsd: totals.allocation.excludedUsd, unallocatedUsd: 0 });
+  });
+
+  it('IA mensal fixa: com tokens vai ao tenant, sem tokens vai ao compartilhado; invariante fecha', async () => {
+    settings.aiModelPrices = [
+      { kind: 'OPENAI', model: 'gpt-x', billing: 'monthly', inputPerMTokUsd: null, outputPerMTokUsd: null, monthlyUsd: 40 },
+      { kind: 'GROQ', model: 'sem-uso', billing: 'monthly', inputPerMTokUsd: null, outputPerMTokUsd: null, monthlyUsd: 12 },
+    ];
+    await seedMonth();
+    expect(await useCase().execute({ month: '2026-10', now: NOW })).toBe('closed');
+    const { totals, rows } = await expectAllocated();
+    expect(totals.calculation.totals.ai?.usd).toBe(40);
+    expect(totals.calculation.warnings).toContainEqual({ code: 'ai_monthly_unused', kind: 'GROQ', model: 'sem-uso', usd: 12 });
+    expect(rows.find((r) => r.tenantId === T1)!.aiUsd.toNumber()).toBe(40);
+    // Preço congelado leva o modo
+    expect(totals.settings.aiModelPrices[1]).toMatchObject({ billing: 'monthly', monthlyUsd: 12 });
   });
 
   it('rateio por contratadas fecha a invariante (Σ tenants = compartilhado + IA)', async () => {

@@ -13,7 +13,7 @@ const OCT = new Date('2026-10-01T00:00:00.000Z');
 
 function settings() {
   const s = defaultInfraCostSettings();
-  s.aiModelPrices = [{ kind: 'OPENAI', model: 'gpt-x', inputPerMTokUsd: 2, outputPerMTokUsd: 8 }];
+  s.aiModelPrices = [{ kind: 'OPENAI', model: 'gpt-x', billing: 'tokens', inputPerMTokUsd: 2, outputPerMTokUsd: 8, monthlyUsd: null }];
   return s;
 }
 
@@ -21,7 +21,7 @@ function calc(over: Partial<InfraCostCalculation> = {}): InfraCostCalculation {
   return {
     basis: 'hours',
     fx: { rate: 5, referenceDate: '2026-11-10', source: 'ptax', fetchedAt: null, stale: false },
-    tenantRates: { sharedBasis: 'contracted', perContractedUsd: 10, perSessionHourUsd: 0.5, projectedPerContractedUsd: 30, projectedPerSessionHourUsd: 1.5 },
+    tenantRates: { sharedBasis: 'contracted', perContractedUsd: 10, perSessionHourUsd: 0.5, projectedPerContractedUsd: 30, projectedPerSessionHourUsd: 1.5, aiMonthlyUsdPerToken: {} },
     ...over,
   } as InfraCostCalculation;
 }
@@ -108,7 +108,7 @@ describe('ListInfraCostTenantsUseCase — mês aberto', () => {
     const { uc } = useCase({
       summary: summary(calc({
         fx: null,
-        tenantRates: { sharedBasis: null, perContractedUsd: null, perSessionHourUsd: null, projectedPerContractedUsd: null, projectedPerSessionHourUsd: null },
+        tenantRates: { sharedBasis: null, perContractedUsd: null, perSessionHourUsd: null, projectedPerContractedUsd: null, projectedPerSessionHourUsd: null, aiMonthlyUsdPerToken: {} },
       })),
     });
     const out = await uc.execute();
@@ -120,7 +120,7 @@ describe('ListInfraCostTenantsUseCase — mês aberto', () => {
   it('Σ contratadas 0: compartilhado pela sessão-hora (mesma regra do fechamento), projetado na mesma base', async () => {
     const { uc } = useCase({
       summary: summary(calc({
-        tenantRates: { sharedBasis: 'session_hours', perContractedUsd: null, perSessionHourUsd: 0.5, projectedPerContractedUsd: null, projectedPerSessionHourUsd: 1.5 },
+        tenantRates: { sharedBasis: 'session_hours', perContractedUsd: null, perSessionHourUsd: 0.5, projectedPerContractedUsd: null, projectedPerSessionHourUsd: 1.5, aiMonthlyUsdPerToken: {} },
       })),
       reports: reports({ pageOpenMonth: vi.fn(async () => ({ rows: [openRow('t1', 0, 10)], aiUsage: [] })) }),
     });
