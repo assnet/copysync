@@ -181,6 +181,18 @@ describe('SummaryTab', () => {
   });
 });
 
+describe('SummaryTab — leitura lenta', () => {
+  it('503 INFRA_COST_READ_UNAVAILABLE: estado próprio "tente de novo", não o de atualização', async () => {
+    const spy = mockSummary(Object.assign(new Error('x'), { status: 503, code: 'INFRA_COST_READ_UNAVAILABLE', serviceUnavailable: true }));
+    renderTab();
+    expect(await screen.findByText(S.errors.readSlow)).toBeInTheDocument();
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockResolvedValue(summary());
+    await userEvent.click(screen.getByRole('button', { name: S.retry }));
+    expect(await screen.findByRole('table', { name: s.plans.aria })).toBeInTheDocument();
+  });
+});
+
 describe('AdminCostsPage', () => {
   it('aba Resumo em /admin/costs', async () => {
     mockSummary(summary());
@@ -222,7 +234,9 @@ describe('SummaryTab — revisão R1', () => {
     const region = await screen.findByRole('region', { name: s.warningsTitle });
     expect(within(region).getByText(/Banco · Disco \(GB\)/)).toBeInTheDocument();
     expect(within(region).getAllByRole('listitem')).toHaveLength(3);
-    await userEvent.click(within(region).getByRole('button', { name: s.warningsMore(2) }));
+    const more = within(region).getByRole('button', { name: s.warningsMore(2) });
+    expect(more).toHaveAttribute('aria-controls', region.querySelector('ul')?.id);
+    await userEvent.click(more);
     expect(within(region).getAllByRole('listitem')).toHaveLength(5);
     expect(screen.getAllByRole('region', { name: s.warningsTitle })).toHaveLength(1);
   });

@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { darken } from '@mui/material/styles';
 import { alpha, Box, Card, CardContent, Chip, Stack, TableContainer, Tooltip, Typography, type Theme } from '@mui/material';
 import type { LucideIcon } from 'lucide-react';
 import { AppIcon } from '@/components';
@@ -9,17 +10,27 @@ import type { InfraMoney } from '../types';
 
 const s = S.summary;
 
-type Tone = 'success' | 'error' | 'warning' | 'info';
+export type Tone = 'success' | 'error' | 'warning' | 'info';
 
-/** Cor de texto legível nos dois temas: tom `.dark` no claro, `.main` no escuro (sem hex fixo). */
-export const toneColor = (tone: Tone) => (t: Theme) => (t.palette.mode === 'light' ? t.palette[tone].dark : t.palette[tone].main);
+/**
+ * Quanto escurecer o `.main` no tema claro para o texto passar de 4,5:1 contra `background.paper`
+ * (o `.dark` do tema não basta: success 3,3:1, warning 3,2:1). Testado em `costParts.test.tsx`.
+ */
+export const LIGHT_TONE_DARKEN = 0.4;
+
+/** Cor de texto legível nos dois temas (≥ 4,5:1): `.main` escurecido no claro, `.main` no escuro. */
+export const toneColor = (tone: Tone) => (t: Theme) =>
+  (t.palette.mode === 'light' ? darken(t.palette[tone].main, LIGHT_TONE_DARKEN) : t.palette[tone].main);
+
+/** Chip contornado no tom (texto e borda ≥ 4,5:1 nos dois temas). */
+export const toneChipSx = (tone: Tone) => (t: Theme) => ({ color: toneColor(tone)(t), borderColor: toneColor(tone)(t) });
 
 /** Foco visível para elementos com `tabIndex` (chips, cabeçalhos com dica). */
 export const focusRing = { '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 } } as const;
 
-/** Texto só para leitor de tela. */
+/** Texto só para leitor de tela. `'1px'` em string: número 1 no `sx` do MUI vira 100% e cria rolagem lateral. */
 export const srOnly = {
-  position: 'absolute', width: 1, height: 1, p: 0, m: '-1px', overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
+  position: 'absolute', width: '1px', height: '1px', p: 0, m: '-1px', overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
 } as const;
 
 /** USD e BRL lado a lado (BRL some sem cotação). `null` = sem valor ("—"). `strong` = total em destaque. */
@@ -55,8 +66,7 @@ export function Money({
 }
 
 /** Selo com explicação (estimado, a confirmar, parcial, fora do rateio). */
-export function HintChip({ label, hint, color = 'default' }: { label: string; hint: string; color?: 'default' | 'warning' | 'info' }) {
-  const tone = color === 'default' ? null : toneColor(color);
+export function HintChip({ label, hint, color = 'default' }: { label: string; hint: string; color?: 'default' | 'warning' | 'info' | 'error' }) {
   return (
     <Tooltip title={hint} arrow enterTouchDelay={0} describeChild>
       <Chip
@@ -68,7 +78,7 @@ export function HintChip({ label, hint, color = 'default' }: { label: string; hi
         sx={[
           { height: 20, fontSize: 11, cursor: 'help' },
           focusRing,
-          tone ? (t: Theme) => ({ color: tone(t), borderColor: tone(t) }) : {},
+          color === 'default' ? {} : toneChipSx(color),
         ]}
       />
     </Tooltip>

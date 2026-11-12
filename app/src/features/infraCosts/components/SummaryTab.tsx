@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import {
   Alert, AlertTitle, Box, Button, CircularProgress, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableFooter,
@@ -359,6 +360,7 @@ const WARNINGS_COLLAPSED = 3;
 /** Avisos num único alerta com lista; acima de 3, recolhe o resto. */
 function Warnings({ warnings, items }: { warnings: InfraCostWarning[]; items: InfraCostItemView[] }) {
   const [expanded, setExpanded] = usePersistedState<boolean>('costs.warningsExpanded', false, { scope: 'tab' });
+  const listId = useId();
   // `fx_missing` já aparece na faixa da cotação.
   const list = warnings.filter((w) => w.code !== 'fx_missing');
   if (list.length === 0) return null;
@@ -374,19 +376,19 @@ function Warnings({ warnings, items }: { warnings: InfraCostWarning[]; items: In
       ) : undefined}
     >
       <AlertTitle>{s.warningsTitle}</AlertTitle>
-      <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+      <Box component="ul" id={listId} sx={{ m: 0, pl: 2.5 }}>
         {shown.map((w, i) => {
           const detail = warningDetail(w, items);
           return (
             <Box component="li" key={`${w.code}-${i}`} sx={{ '& + &': { mt: 0.5 } }}>
               {S.warnings[w.code]}
-              {detail && <Typography component="span" variant="body2" sx={{ display: 'block' }}>{detail}</Typography>}
+              {detail && <Typography component="span" variant="caption" color="text.secondary" sx={{ display: 'block' }}>{detail}</Typography>}
             </Box>
           );
         })}
       </Box>
       {hidden > 0 && (
-        <Button color="inherit" size="small" onClick={() => setExpanded(!expanded)} aria-expanded={expanded} sx={{ mt: 0.5, ml: -0.75 }}>
+        <Button color="inherit" size="small" onClick={() => setExpanded(!expanded)} aria-expanded={expanded} aria-controls={listId} sx={{ mt: 0.5, ml: -0.75 }}>
           {expanded ? s.warningsLess : s.warningsMore(hidden)}
         </Button>
       )}
@@ -435,6 +437,13 @@ export default function SummaryTab() {
   const { data } = q;
 
   if (q.unavailable && !data) return <ServiceUpdatingState onRetry={q.reload} />;
+  if (q.slow && !data && !q.loading) {
+    return (
+      <Alert severity="warning" action={<Button color="inherit" size="small" onClick={() => void q.reload()}>{S.retry}</Button>}>
+        {S.errors.readSlow}
+      </Alert>
+    );
+  }
   if (q.loading && !data) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>

@@ -23,8 +23,8 @@ Ninguém sabia quanto custa uma sessão, um cliente ou um plano. Nova página do
 
 #### Frontend (app/) — `infraCosts`, `navigation`, `workersAdmin`
 
-- **`AdminCostsPage.tsx`**, **`SummaryTab.tsx`**, **`useCostSummary.ts`** — cartões, serviços, workspace, por plano com margem mensal e anual (sempre pela base contratadas), avisos, USD e BRL.
-- **`PricesTab.tsx`**, **`PricesConfirmDialog.tsx`**, **`useCostSettings.ts`** — edição com diff, erro por campo, rascunho persistido, 409 recarrega; cotação automática com selo "Próxima versão".
+- **`AdminCostsPage.tsx`**, **`SummaryTab.tsx`**, **`useCostSummary.ts`** — cartões, serviços, workspace, por plano com margem mensal e anual (sempre pela base contratadas), avisos, USD e BRL; 503 `INFRA_COST_READ_UNAVAILABLE` com estado próprio "tente de novo" (sem auto-retry).
+- **`PricesTab.tsx`**, **`PricesConfirmDialog.tsx`**, **`useCostSettings.ts`** — edição com diff, erro por campo, rascunho persistido, 409 recarrega; cotação automática sem Switch, linha de status com chip "Em breve"; `key` só de dígitos recusada (também na API).
 - **`rules.ts`**, **`strings.ts`**, **`types.ts`**, **`adminCosts.service.ts`** — formatação USD/BRL, `planMargin` com `PLAN_CATALOG` (preço nunca vai à API).
 - **`navigation/model.ts`**, **`CapacityTab.tsx`**, **`supportChat/routes.ts`** — item "Custos", link "Ver custos", `/admin/costs/prices` em `SUPPORT_CHAT_HIDDEN_PATHS` (ação fixa no canto).
 

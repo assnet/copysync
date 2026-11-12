@@ -55,7 +55,8 @@ Plano completo (P1–P3): `.specs/features/infra-costs/{spec,design,tasks}.md`. 
 
 - A API devolve cada número em USD e BRL (`usd × rate`, 4 casas; o painel mostra 2, e 4 abaixo de 0,01).
 - **P1: só override manual** (`fx.override` = valor 1–20 com 4 casas e data). Sem override → só USD e aviso `fx_missing`.
-- A cotação automática (`fx.auto`) aparece na aba Preços desabilitada, com o selo "Próxima versão".
+- A cotação automática (`fx.auto`) **não tem Switch** na P1: a aba Preços mostra só uma linha de status com o chip
+  "Em breve". O `fx.auto` salvo fica como está (liga sozinho na P2).
 
 ## Previsto
 
@@ -72,7 +73,14 @@ Plano completo (P1–P3): `.specs/features/infra-costs/{spec,design,tasks}.md`. 
   é o job do `worker` (P2).
 - Id de recurso da Render **só em env** do `worker`; nunca na configuração, resposta, log, teste ou doc (use `srv-teste`).
 - Leitura lenta (`statement_timeout`) → **503 `INFRA_COST_READ_UNAVAILABLE`**, sem SQL, id ou erro do banco no corpo
-  ou no log; o painel mostra "tentar de novo". Não trocar por 500 nem por valor parcial.
+  ou no log. O painel tem estado próprio para esse código ("A leitura demorou mais que o normal. Tente de novo." e
+  botão "Tentar de novo"), distinto do "Estamos atualizando o sistema" do deploy, e **sem auto-retry**. Não trocar por
+  500 nem por valor parcial.
+- `key` de serviço **só de dígitos** (ex.: `"2"`) é proibida na API (400 com `field` `items[n].key`) e no painel
+  (`validateSettingsDraft`): o caminho `items[2]` seria lido como índice da linha.
+- `sessionsSampledAt` é o horário da `sessions_connected` usada nas não alocadas, nunca o da `sessions_capacity`.
+- Cor de tom (sucesso/aviso/erro) só via `toneColor`/`toneChipSx` de `components/costParts.tsx` (≥ 4,5:1 nos dois
+  temas, testado); `srOnly` com `'1px'` em string (número 1 no `sx` vira 100%).
 - Outro mês na P1 → 400 `INFRA_COST_MONTH_UNAVAILABLE`; não inventar mês sem dado.
 - Não ler `WORKER_MAX_*` nem guardar o teto: provider a cada chamada.
 - Textos só em `features/infraCosts/strings.ts`; rascunho da aba Preços em `usePersistedState` (escopo `tab`), limpo ao salvar.

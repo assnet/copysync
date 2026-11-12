@@ -3,6 +3,7 @@ import {
   Alert, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, Stack, Table, TableBody,
   TableCell, TableHead, TableRow, Tooltip, Typography, useMediaQuery, useTheme,
 } from '@mui/material';
+import { toneChipSx } from './costParts';
 import { changeLabel, changeValue, isConflictPath } from '../rules';
 import { infraCostsStrings as S } from '../strings';
 import type { InfraCostSettings, InfraCostSettingsChange } from '../types';
@@ -65,7 +66,7 @@ export function PricesConfirmDialog({ open, changes, before, after, conflicts = 
                       <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
                         <span>{changeLabel(c.path, before, next)}</span>
                         {c.kind !== 'changed' && (
-                          <Chip size="small" variant="outlined" color={c.kind === 'added' ? 'success' : 'error'} label={S.diff[c.kind]} />
+                          <Chip size="small" variant="outlined" label={S.diff[c.kind]} sx={toneChipSx(c.kind === 'added' ? 'success' : 'error')} />
                         )}
                         {conflicted(c.path) && (
                           <Tooltip title={r.conflictTip} describeChild>
@@ -80,10 +81,10 @@ export function PricesConfirmDialog({ open, changes, before, after, conflicts = 
                         )}
                       </Stack>
                     </TableCell>
-                    <TableCell align="right" sx={{ color: 'text.secondary', fontVariantNumeric: 'tabular-nums', wordBreak: 'break-word' }}>
+                    <TableCell align="right" sx={{ color: 'text.secondary', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                       {c.kind === 'added' ? S.noValue : changeValue(c.path, c.from)}
                     </TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', wordBreak: 'break-word' }}>
+                    <TableCell align="right" sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                       {c.kind === 'removed' ? S.noValue : changeValue(c.path, c.to)}
                     </TableCell>
                   </TableRow>

@@ -289,6 +289,20 @@ describe('PricesTab', () => {
     expect(readPersisted(COST_PRICES_DRAFT_KEY)).toBeUndefined();
   });
 
+  it('cotação manual: foco no campo ao informar e no botão ao remover; "Obrigatório" só depois de tocar', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(adminCostsService, 'getSettings').mockResolvedValue(view());
+    renderTab();
+    await user.click(await screen.findByRole('button', { name: p.fx.addOverride }));
+    const rate = box(p.fx.rate);
+    await waitFor(() => expect(rate).toHaveFocus());
+    expect(screen.queryByText(S.errors.required)).not.toBeInTheDocument();
+    await user.tab();
+    expect(await screen.findByText(S.errors.required)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: p.fx.removeOverride }));
+    await waitFor(() => expect(screen.getByRole('button', { name: p.fx.addOverride })).toHaveFocus());
+  });
+
   it('falha na leitura mostra erro com nova tentativa', async () => {
     vi.spyOn(adminCostsService, 'getSettings').mockRejectedValue(new Error('x'));
     renderTab();

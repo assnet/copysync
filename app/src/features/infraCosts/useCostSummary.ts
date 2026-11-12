@@ -14,6 +14,8 @@ export function useCostSummary(month: string | null) {
   const [error, setError] = useState<string | null>(null);
   /** API fora do ar (deploy); só limpa ao concluir a próxima leitura. */
   const [unavailable, setUnavailable] = useState(false);
+  /** Leitura lenta (503 `INFRA_COST_READ_UNAVAILABLE`): estado próprio "tente de novo", sem auto-retry. */
+  const [slow, setSlow] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -21,9 +23,12 @@ export function useCostSummary(month: string | null) {
     try {
       setData(await adminCostsService.getSummary(month));
       setUnavailable(false);
+      setSlow(false);
     } catch (err) {
+      const isSlow = (err as { code?: unknown } | null)?.code === 'INFRA_COST_READ_UNAVAILABLE';
       setError(infraCostsStrings.errors.loadFailed);
-      setUnavailable(isServiceUnavailable(err));
+      setSlow(isSlow);
+      setUnavailable(!isSlow && isServiceUnavailable(err));
     } finally {
       setLoading(false);
     }
@@ -33,5 +38,5 @@ export function useCostSummary(month: string | null) {
     void load();
   }, [load]);
 
-  return { data, loading, error, unavailable, reload: load };
+  return { data, loading, error, unavailable, slow, reload: load };
 }

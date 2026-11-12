@@ -108,6 +108,12 @@ describe('parseInfraCostSettings', () => {
     expect(fieldOf(withChange((d) => (d.items[0].key = 'a'.repeat(41))))).toBe('items[0].key');
   });
 
+  it('rejeita `key` só de dígitos (colide com o índice da linha); aceita dígito com letra', () => {
+    expect(fieldOf(withChange((d) => (d.items[0].key = '2')))).toBe('items[0].key');
+    expect(fieldOf(withChange((d) => (d.items[1].key = '123')))).toBe('items[1].key');
+    expect(() => parseInfraCostSettings(withChange((d) => (d.items[0].key = '2a')))).not.toThrow();
+  });
+
   it('rejeita `renderKey` inválida e repetida; aceita nula', () => {
     expect(fieldOf(withChange((d) => (d.items[0].renderKey = 'srv-teste')))).toBe('items[0].renderKey');
     expect(fieldOf(withChange((d) => (d.items[5].renderKey = 'worker')))).toBe('items[5].renderKey');

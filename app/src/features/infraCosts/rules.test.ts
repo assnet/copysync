@@ -144,6 +144,15 @@ describe('rascunho de preços', () => {
     expect(errors['renderPlanPrices[1].plan']).toBeDefined();
   });
 
+  it('chave só de dígitos é recusada (seria lida como índice); dígito com letra passa', () => {
+    const draft = sampleSettings() as InfraCostSettingsDraft;
+    draft.items[0].key = '2';
+    draft.items[1].key = '2a';
+    const errors = validateSettingsDraft(draft);
+    expect(errors['items[0].key']).toBe(S.errors.keyNumeric);
+    expect(errors['items[1].key']).toBeUndefined();
+  });
+
   it('renderKey repetida, quantidade fracionada e observação longa (regras da API)', () => {
     const draft = sampleSettings() as InfraCostSettingsDraft;
     draft.items[1].renderKey = 'api';

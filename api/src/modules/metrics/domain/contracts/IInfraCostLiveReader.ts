@@ -9,7 +9,7 @@ export interface InfraCostLiveReading {
   sessionsConnected: number | null;
   /** Última `sessions_capacity` do cluster na janela de 1 h. */
   sessionsCapacity: number | null;
-  /** Hora da amostra de sessões mais nova usada (entre as duas). */
+  /** Hora da `sessions_connected` usada (a das não alocadas); `null` sem ela, mesmo com capacidade. */
   sessionsSampledAt: Date | null;
   /**
    * Instâncias distintas do serviço worker (`<id>-<sufixo>`) nas amostras da Render dos últimos

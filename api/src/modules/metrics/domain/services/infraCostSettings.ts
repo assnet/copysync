@@ -126,6 +126,8 @@ export const INFRA_COST_LIMITS = {
 } as const;
 
 const KEY_PATTERN = /^[a-z0-9][a-z0-9_-]{0,39}$/;
+/** Chave só de dígitos é proibida: o caminho `items[2]` seria lido como índice no painel. */
+const NUMERIC_ONLY = /^\d+$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Valores iniciais (COST-02, decisões do dono). Conferir no painel da Render. */
@@ -309,6 +311,7 @@ function parseItem(raw: unknown, index: number): InfraCostItem {
   if (typeof obj.key !== 'string' || !KEY_PATTERN.test(obj.key)) {
     fail(`${f}.key`, 'must be a slug (a-z, 0-9, "_" or "-", up to 40 characters)');
   }
+  if (NUMERIC_ONLY.test(obj.key)) fail(`${f}.key`, 'must not be only digits');
   let storage: InfraCostStorage | null = null;
   if (obj.storage !== null) {
     const s = readObject(obj.storage, `${f}.storage`, STORAGE_FIELDS);

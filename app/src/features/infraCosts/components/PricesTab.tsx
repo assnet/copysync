@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Chip, CircularProgress, Grid, IconButton, InputAdornment,
-  MenuItem, Snackbar, Stack, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography,
+  MenuItem, Snackbar, Stack, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography, useMediaQuery, useTheme,
 } from '@mui/material';
 import { ChevronDown, Plus, Trash2 } from 'lucide-react';
 import { AppIcon, SectionCard, ServiceUpdatingState, ToggleOption } from '@/components';
@@ -20,6 +20,7 @@ import type {
 import { useCostSettings } from '../useCostSettings';
 import { HelpTip } from '@/features/opsMetrics/components/HelpTip';
 import { PricesConfirmDialog } from './PricesConfirmDialog';
+import { toneChipSx, toneColor } from './costParts';
 
 const p = S.prices;
 const f = p.items.fields;
@@ -47,6 +48,10 @@ const today = () => {
 };
 /** id do input de um caminho do rascunho (foco no erro do 400). */
 const fieldId = (path: string) => `cost-field-${path}`;
+const FX_RATE_PATH = 'fx.override.rate';
+const FX_ADD_OVERRIDE_ID = 'cost-fx-add-override';
+/** Barra fixa de salvar no celular: o Snackbar sobe acima dela (px). */
+const XS_SAVE_BAR_OFFSET = 112;
 const SECTION_IDS = { items: 'cost-section-items', renderPlanPrices: 'cost-section-render-plans', aiModelPrices: 'cost-section-ai-models' } as const;
 type ListName = keyof typeof SECTION_IDS;
 
@@ -75,6 +80,10 @@ export default function PricesTab() {
   );
   /** Foco pendente para depois do próximo render (linha removida, campo do 400). */
   const pendingFocus = useRef<(() => void) | null>(null);
+  const theme = useTheme();
+  const isXs = useMediaQuery(theme.breakpoints.down('sm'), { noSsr: true });
+  /** "Reais por US$ 1" vazio só acusa "Obrigatório" depois de tocado (ou com texto). */
+  const [fxRateTouched, setFxRateTouched] = useState(false);
   useEffect(() => {
     const run = pendingFocus.current;
     if (!run) return;
@@ -120,12 +129,14 @@ export default function PricesTab() {
       onChange?: (raw: string) => void;
     } = {},
   ) => {
-    const err = errors[path];
+    const lazy = path === FX_RATE_PATH && !fxRateTouched && asText(value).trim() === '';
+    const err = lazy ? undefined : errors[path];
     return (
       <TextField
         id={fieldId(path)}
         label={label}
         value={asText(value)}
+        onBlur={path === FX_RATE_PATH ? () => setFxRateTouched(true) : undefined}
         type={opts.type}
         onChange={(e) => {
           const raw = e.target.value;
@@ -182,7 +193,7 @@ export default function PricesTab() {
 
   const sectionErrors = (prefix: string) => {
     const n = countErrors(errors, prefix);
-    return n > 0 ? <Chip size="small" color="error" variant="outlined" label={p.errorsInSection(n)} /> : undefined;
+    return n > 0 ? <Chip size="small" variant="outlined" label={p.errorsInSection(n)} sx={toneChipSx('error')} /> : undefined;
   };
 
   /* ── Cotação ─────────────────────────────────────────────────────── */
@@ -208,11 +219,12 @@ export default function PricesTab() {
             value={fx.closingMethod}
             onChange={(_, v: InfraFxClosingMethod | null) => { if (v) c.change('fx.closingMethod', v); }}
             aria-labelledby="cost-fx-closing-label"
-            sx={{ flexWrap: 'wrap' }}
+            orientation={isXs ? 'vertical' : 'horizontal'}
+            fullWidth={isXs}
           >
             {CLOSING_METHODS.map((m) => <ToggleButton key={m} value={m} sx={{ px: 2 }}>{S.closingMethod[m]}</ToggleButton>)}
           </ToggleButtonGroup>
-          {errors['fx.closingMethod'] && <Typography variant="caption" color="error">{errors['fx.closingMethod']}</Typography>}
+          {errors['fx.closingMethod'] && <Typography variant="caption" sx={{ color: toneColor('error') }}>{errors['fx.closingMethod']}</Typography>}
         </Box>
 
         <Box>
@@ -229,7 +241,16 @@ export default function PricesTab() {
                 {field('fx.override.date', p.fx.date, fx.override.date, { type: 'date' })}
               </Grid>
               <Grid item xs={12} sm={3}>
-                <Button color="error" variant="outlined" fullWidth onClick={() => c.change('fx.override', null)} sx={{ minHeight: 40 }}>
+                <Button
+                  color="error"
+                  variant="outlined"
+                  fullWidth
+                  onClick={() => {
+                    c.change('fx.override', null);
+                    pendingFocus.current = () => document.getElementById(FX_ADD_OVERRIDE_ID)?.focus();
+                  }}
+                  sx={{ minHeight: 40 }}
+                >
                   {p.fx.removeOverride}
                 </Button>
               </Grid>
@@ -237,7 +258,16 @@ export default function PricesTab() {
           ) : (
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', sm: 'center' }}>
               <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>{p.fx.overrideEmpty}</Typography>
-              <Button variant="outlined" startIcon={<AppIcon icon={Plus} size="sm" />} onClick={() => c.change('fx.override', { rate: '', date: today() })}>
+              <Button
+                id={FX_ADD_OVERRIDE_ID}
+                variant="outlined"
+                startIcon={<AppIcon icon={Plus} size="sm" />}
+                onClick={() => {
+                  c.change('fx.override', { rate: '', date: today() });
+                  setFxRateTouched(false);
+                  pendingFocus.current = () => document.getElementById(fieldId(FX_RATE_PATH))?.focus();
+                }}
+              >
                 {p.fx.addOverride}
               </Button>
             </Stack>
@@ -310,7 +340,7 @@ export default function PricesTab() {
             </Typography>
             <Chip size="small" variant="outlined" label={S.billing[it.billing as InfraCostBilling] ?? it.billing} />
             {it.allocation === 'excluded' && <Chip size="small" variant="outlined" label={S.allocation.excluded} />}
-            {nErr > 0 && <Chip size="small" color="error" label={p.errorsInSection(nErr)} />}
+            {nErr > 0 && <Chip size="small" variant="outlined" label={p.errorsInSection(nErr)} sx={toneChipSx('error')} />}
           </Stack>
         </AccordionSummary>
         <AccordionDetails id={`cost-item-${i}-details`} sx={{ pt: 0 }}>
@@ -374,7 +404,7 @@ export default function PricesTab() {
       <Stack spacing={1.5}>
         {values.items.length === 0 && <Typography variant="body2" color="text.secondary">{p.items.empty}</Typography>}
         {values.items.map(itemCard)}
-        {errors.items && <Typography variant="caption" color="error">{errors.items}</Typography>}
+        {errors.items && <Typography variant="caption" sx={{ color: toneColor('error') }}>{errors.items}</Typography>}
         <Box>{addButton('items', p.items.add, addItem, values.items.length >= INFRA_COST_LIMITS.maxItems)}</Box>
       </Stack>
     </SectionCard>
@@ -415,7 +445,7 @@ export default function PricesTab() {
           ));
         })}
       </Box>
-      {errors.renderPlanPrices && <Typography variant="caption" color="error">{errors.renderPlanPrices}</Typography>}
+      {errors.renderPlanPrices && <Typography variant="caption" sx={{ color: toneColor('error') }}>{errors.renderPlanPrices}</Typography>}
       <Box sx={{ mt: 1 }}>
         {addButton(
           'renderPlanPrices',
@@ -452,7 +482,7 @@ export default function PricesTab() {
           ));
         })}
       </Box>
-      {errors.aiModelPrices && <Typography variant="caption" color="error">{errors.aiModelPrices}</Typography>}
+      {errors.aiModelPrices && <Typography variant="caption" sx={{ color: toneColor('error') }}>{errors.aiModelPrices}</Typography>}
       <Box sx={{ mt: 1 }}>
         {addButton(
           'aiModelPrices',
@@ -546,24 +576,24 @@ export default function PricesTab() {
 
       <Stack
         direction={{ xs: 'column-reverse', sm: 'row' }}
-        spacing={1.5}
+        spacing={{ xs: 1, sm: 1.5 }}
         alignItems={{ xs: 'stretch', sm: 'center' }}
         justifyContent="space-between"
         // Com rascunho, a barra fica presa no rodapé: salvar sem rolar até o fim.
         sx={c.dirty ? {
           position: 'sticky', bottom: 0, zIndex: 2, bgcolor: 'background.paper', borderTop: 1, borderColor: 'divider',
-          px: 2, py: 1.5, borderRadius: 1.5, boxShadow: 3,
+          px: { xs: 1.5, sm: 2 }, py: { xs: 1, sm: 1.5 }, borderRadius: 1.5, boxShadow: 3,
         } : undefined}
       >
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant={isXs ? 'caption' : 'body2'} color="text.secondary">
             {view.updatedAt ? p.lastSaved(formatDateTime(view.updatedAt)) : p.neverSaved}
           </Typography>
           {c.restored && <Chip size="small" label={p.draftRestored} variant="outlined" />}
-          {c.dirty && !c.restored && <Chip size="small" label={p.unsaved} variant="outlined" color="warning" />}
+          {c.dirty && !c.restored && <Chip size="small" label={p.unsaved} variant="outlined" sx={toneChipSx('warning')} />}
           {conflictCount > 0 && <Chip size="small" label={S.pricesReview.conflictPending(conflictCount)} color="warning" />}
         </Stack>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+        <Stack direction="row" spacing={1} sx={{ '& > *': { flex: { xs: 1, sm: 'initial' } } }}>
           {c.dirty && <Button onClick={discard} disabled={c.saving}>{p.actions.discard}</Button>}
           <Button variant="contained" onClick={() => setConfirmOpen(true)} disabled={!valid || changes.length === 0 || c.saving}>
             {p.actions.review}
@@ -582,7 +612,14 @@ export default function PricesTab() {
         onClose={() => setConfirmOpen(false)}
       />
 
-      <Snackbar open={Boolean(c.notice)} autoHideDuration={6000} onClose={c.clearNotice} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+      <Snackbar
+        open={Boolean(c.notice)}
+        autoHideDuration={6000}
+        onClose={c.clearNotice}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        // No celular, acima da barra fixa de salvar (senão cobre o "Revisar e salvar").
+        sx={c.dirty ? { bottom: { xs: XS_SAVE_BAR_OFFSET, sm: 24 } } : undefined}
+      >
         {c.notice ? <Alert severity={c.notice.severity} variant="filled" onClose={c.clearNotice}>{c.notice.text}</Alert> : <span />}
       </Snackbar>
     </Stack>

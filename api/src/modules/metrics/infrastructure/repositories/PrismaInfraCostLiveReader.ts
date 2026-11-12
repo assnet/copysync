@@ -67,12 +67,12 @@ export class PrismaInfraCostLiveReader implements IInfraCostLiveReader {
     ]);
     const connected = sessions.find((r) => r.metric === OPS_METRIC.sessionsConnected) ?? null;
     const capacity = sessions.find((r) => r.metric === OPS_METRIC.sessionsCapacity) ?? null;
-    const newest = Math.max(-Infinity, ...sessions.map((r) => r.at_s));
     const w = workers[0] ?? { suffixed: 0, bare: 0 };
     return {
       sessionsConnected: connected ? connected.value : null,
       sessionsCapacity: capacity ? capacity.value : null,
-      sessionsSampledAt: Number.isFinite(newest) ? new Date(newest * 1000) : null,
+      // Horário da linha de conectadas (a das não alocadas), não da mais nova entre as duas métricas.
+      sessionsSampledAt: connected ? new Date(connected.at_s * 1000) : null,
       workerInstances: w.suffixed > 0 ? w.suffixed : w.bare > 0 ? 1 : null,
     };
   }

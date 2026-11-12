@@ -82,6 +82,18 @@ describe('PrismaInfraCostLiveReader', () => {
     });
   });
 
+  it('sessionsSampledAt é o horário da sessions_connected, mesmo com sessions_capacity mais nova', async () => {
+    await samples.insertMany([cluster('sessions_connected', ago(30), 12), cluster('sessions_capacity', ago(2), 180)]);
+    const r = await reader.read(now);
+    expect([r.sessionsConnected, r.sessionsCapacity, r.sessionsSampledAt]).toEqual([12, 180, ago(30)]);
+  });
+
+  it('só sessions_capacity na janela → sessionsSampledAt null', async () => {
+    await samples.insertMany([cluster('sessions_capacity', ago(2), 180)]);
+    const r = await reader.read(now);
+    expect([r.sessionsConnected, r.sessionsCapacity, r.sessionsSampledAt]).toEqual([null, 180, null]);
+  });
+
   it('sessões só fora da janela (> 1 h) → null', async () => {
     await samples.insertMany([cluster('sessions_connected', ago(61), 10), cluster('sessions_capacity', ago(90), 20)]);
     const r = await reader.read(now);

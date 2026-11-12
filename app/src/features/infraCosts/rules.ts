@@ -229,6 +229,8 @@ export function parseSettingsDraft(
     const p = `items[${i}]`;
     const key = typeof it.key === 'string' ? it.key.trim() : '';
     if (!KEY_FORMAT.test(key)) errors[`${p}.key`] = e.keyFormat;
+    // Só dígitos colide com o índice da linha (`items[2]`) nos caminhos de erro e do diff.
+    else if (/^\d+$/.test(key)) errors[`${p}.key`] = e.keyNumeric;
     else unique(`${p}.key`, keys, key);
     return {
       key,
