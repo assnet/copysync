@@ -199,3 +199,18 @@ describe('deleteOlderThan', () => {
     expect(await repo.deleteOlderThan(new Date(Date.now() - 180 * DAY))).toBe(0);
   });
 });
+
+describe('latestByTrigger / latestSucceeded', () => {
+  it('mais recente por trigger (qualquer resultado) e último succeeded de qualquer trigger', async () => {
+    const t = (min: number) => new Date(Date.now() - min * 60_000);
+    expect(await repo.latestByTrigger('auto')).toBeNull();
+    expect(await repo.latestSucceeded()).toBeNull();
+    await prisma.workerScaleEvent.create({ data: { ...base, trigger: 'auto', actorUserId: null, at: t(30), outcome: 'succeeded', toReplicas: 2 } });
+    await prisma.workerScaleEvent.create({ data: { ...base, trigger: 'auto', actorUserId: null, at: t(10), outcome: 'rejected', error: 'SCALE_COOLDOWN_ACTIVE' } });
+    await prisma.workerScaleEvent.create({ data: { ...base, at: t(20), outcome: 'succeeded', toReplicas: 3 } });
+    await prisma.workerScaleEvent.create({ data: { ...base, at: t(1), outcome: 'failed', error: 'x' } });
+    expect(await repo.latestByTrigger('auto')).toMatchObject({ trigger: 'auto', outcome: 'rejected', error: 'SCALE_COOLDOWN_ACTIVE' });
+    expect(await repo.latestByTrigger('manual')).toMatchObject({ trigger: 'manual', outcome: 'failed' });
+    expect(await repo.latestSucceeded()).toMatchObject({ trigger: 'manual', toReplicas: 3 });
+  });
+});

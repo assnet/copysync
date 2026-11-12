@@ -22,7 +22,7 @@ import {
   type WorkerScaleEvent,
   type WorkerScaleTrigger,
 } from '../../domain/contracts/IWorkerScaleEventRepository';
-import type { IWorkerScaler } from '../../domain/contracts/IWorkerScaler';
+import type { IWorkerScaler, WorkerScalerState } from '../../domain/contracts/IWorkerScaler';
 import type { IWorkerScalingSettingsProvider } from '../../domain/contracts/IWorkerScalingSettingsProvider';
 import { canScaleDownTo } from '../../domain/services/capacityPlan';
 
@@ -31,7 +31,7 @@ export interface ScaleWorkersInput {
   replicas: number;
   /** Motivo (obrigatório no manual; `RequestWorkerScaleUseCase` mede 3–200 code points após o trim). */
   reason: string;
-  /** Idempotência: o mesmo id devolve o evento anterior sem chamar de novo. `null` no job. */
+  /** Idempotência: o mesmo id devolve o evento anterior sem chamar de novo. Job: `auto:<balde de 5 min>`. */
   requestId: string | null;
   trigger: WorkerScaleTrigger;
   /** Super admin que pediu; `null` = sistema (job). Auditoria só quando há ator. */
@@ -64,6 +64,25 @@ export interface ScaleWorkersDeps {
   now?: () => Date;
 }
 
+/**
+ * Opções do job automático. `knownState`: estado do escalador já lido no mesmo tick (não relê o
+ * provedor). `recordRejections: false`: recusa não grava evento (quem chama grava com o próprio
+ * silêncio de 1×/h); só lança. Padrão: lê o estado e grava a recusa (pedido manual).
+ */
+export interface ScaleWorkersOptions {
+  knownState?: WorkerScalerState;
+  recordRejections?: boolean;
+}
+
+/** Recusas lançadas por `execute`/`checkPreconditions` (antes de qualquer pedido ao provedor). */
+const rejectionErrors = new WeakSet<object>();
+
+/**
+ * `true` quando o erro é uma recusa da regra (nada foi pedido ao provedor e, com
+ * `recordRejections: false`, nada foi gravado). Falha do `scaleTo` (evento `failed`) dá `false`.
+ */
+export const isScaleRejection = (err: unknown): boolean => typeof err === 'object' && err !== null && rejectionErrors.has(err);
+
 /** Réplicas atuais desconhecidas (recusa antes de ler o escalador): `fromReplicas` gravado como 0. */
 const UNKNOWN_REPLICAS = 0;
 
@@ -93,22 +112,23 @@ export class ScaleWorkersUseCase {
   }
 
   /** Mesmas regras de `execute`, sem gravar nada e sem chamar `scaleTo` (job automático). */
-  async checkPreconditions(input: ScaleWorkersInput): Promise<{ fromReplicas: number }> {
-    const outcome = await this.evaluate(input);
-    if (outcome instanceof ScaleRejection) throw outcome.error;
+  async checkPreconditions(input: ScaleWorkersInput, options: ScaleWorkersOptions = {}): Promise<{ fromReplicas: number }> {
+    const outcome = await this.evaluate(input, options.knownState);
+    if (outcome instanceof ScaleRejection) throw this.rejectionError(outcome);
     return outcome;
   }
 
-  async execute(input: ScaleWorkersInput): Promise<ScaleWorkersResult> {
+  async execute(input: ScaleWorkersInput, options: ScaleWorkersOptions = {}): Promise<ScaleWorkersResult> {
+    const record = options.recordRejections ?? true;
     if (input.requestId) {
       const previous = await this.deps.events.findByRequestId(input.requestId);
       if (previous) return this.replay(previous, input);
     }
 
-    const outcome = await this.evaluate(input);
+    const outcome = await this.evaluate(input, options.knownState);
     if (outcome instanceof ScaleRejection) {
-      await this.reject(input, outcome);
-      throw outcome.error;
+      if (record) await this.reject(input, outcome);
+      throw this.rejectionError(outcome);
     }
 
     const at = this.now();
@@ -131,8 +151,8 @@ export class ScaleWorkersUseCase {
     if ('blocked' in recorded) {
       // Outro pedido passou entre a checagem antecipada e o lock (corrida entre `requestId` diferentes).
       const rejection = new ScaleRejection(new ScaleCooldownActiveError(recorded.blocked), outcome.fromReplicas);
-      await this.reject(input, rejection);
-      throw rejection.error;
+      if (record) await this.reject(input, rejection);
+      throw this.rejectionError(rejection);
     }
     const id = recorded.id;
     const event: WorkerScaleEvent = { id, at, ...base, outcome: 'requested', error: null, requestId: input.requestId };
@@ -140,7 +160,7 @@ export class ScaleWorkersUseCase {
     try {
       await this.deps.scaler.scaleTo(input.replicas);
     } catch (err) {
-      const error = shortError(err);
+      const error = scaleErrorCode(err);
       if (!(err instanceof AppError)) this.deps.log?.warn({ eventId: id, error }, 'worker scale request failed');
       await this.afterCall(id, 'failed', error, () => this.auditRequest(input, { ...event, outcome: 'failed', error }));
       if (!(err instanceof AppError)) throw new ScaleRequestFailedError();
@@ -166,6 +186,11 @@ export class ScaleWorkersUseCase {
       previous.actorUserId === input.actorUserId;
     if (!same) throw new ScaleRequestIdReusedError();
     return { event: previous, replayed: true };
+  }
+
+  private rejectionError(rejection: ScaleRejection): AppError {
+    rejectionErrors.add(rejection.error);
+    return rejection.error;
   }
 
   /** Recusa sem `requestId`: o mesmo pedido pode ser refeito depois (fim do intervalo etc.). */
@@ -196,7 +221,10 @@ export class ScaleWorkersUseCase {
     }
   }
 
-  private async evaluate(input: ScaleWorkersInput): Promise<ScaleRejection | { fromReplicas: number }> {
+  private async evaluate(
+    input: ScaleWorkersInput,
+    knownState?: WorkerScalerState,
+  ): Promise<ScaleRejection | { fromReplicas: number }> {
     const settings = this.deps.settings.current().value;
     const unknown = (error: AppError) => new ScaleRejection(error, UNKNOWN_REPLICAS);
 
@@ -206,7 +234,7 @@ export class ScaleWorkersUseCase {
       return unknown(new ScaleTargetOutOfRangeError(settings.minReplicas, settings.maxReplicas));
     }
 
-    const state = await this.deps.scaler.getState();
+    const state = knownState ?? (await this.deps.scaler.getState());
     if (state.status === 'not_configured') return unknown(new ScalerNotConfiguredError(state.missing));
     if (state.status === 'unavailable') {
       return unknown(
@@ -282,7 +310,7 @@ export class ScaleWorkersUseCase {
  * Código interno do erro (sem mensagem do provedor, chave nem id do serviço). Falha na leitura
  * antes do POST: `SCALER_UNAVAILABLE:read_<motivo>` (fora de `UNCERTAIN_SCALE_FAILURE_ERRORS`).
  */
-function shortError(err: unknown): string {
+export function scaleErrorCode(err: unknown): string {
   if (err instanceof ScalerUnavailableError && err.phase === 'read') return `${err.code}:read_${err.reason}`;
   if (err instanceof AppError) {
     const reason = typeof err.meta?.reason === 'string' ? `:${err.meta.reason}` : '';

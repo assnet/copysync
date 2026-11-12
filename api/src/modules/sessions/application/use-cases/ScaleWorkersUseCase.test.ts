@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { ScaleWorkersUseCase, type ScaleWorkersInput } from './ScaleWorkersUseCase';
+import { ScaleWorkersUseCase, isScaleRejection, scaleErrorCode, type ScaleWorkersInput } from './ScaleWorkersUseCase';
 import { makeAuditRepo } from './sessionTestFakes';
 import { workerScalingEnforcedCheck } from './GetWorkerScalingSettingsUseCase';
 import {
@@ -527,6 +527,47 @@ describe('ScaleWorkersUseCase.checkPreconditions', () => {
     await expect(ctx.useCase.checkPreconditions(input())).rejects.toMatchObject({ code: 'SCALE_COOLDOWN_ACTIVE' });
     expect(ctx.events.record).not.toHaveBeenCalled();
     expect(ctx.audit.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('ScaleWorkersUseCase — opções do job (knownState / recordRejections)', () => {
+  it('knownState: não relê o provedor na precondição nem no pedido', async () => {
+    const ctx = setup();
+    const known = ready(3);
+    await expect(ctx.useCase.checkPreconditions(input({ replicas: 4 }), { knownState: known })).resolves.toEqual({ fromReplicas: 3 });
+    const { event } = await ctx.useCase.execute(input({ replicas: 4 }), { knownState: known });
+    expect(ctx.scaler.getState).not.toHaveBeenCalled();
+    expect(event).toMatchObject({ fromReplicas: 3, toReplicas: 4, outcome: 'succeeded' });
+  });
+
+  it('recordRejections false: recusa lança marcada como recusa e não grava', async () => {
+    const ctx = setup({ last: NOW });
+    const err = await ctx.useCase.execute(input(), { recordRejections: false }).catch((e: unknown) => e);
+    expect(err).toMatchObject({ code: 'SCALE_COOLDOWN_ACTIVE' });
+    expect(isScaleRejection(err)).toBe(true);
+    expect(ctx.events.record).not.toHaveBeenCalled();
+  });
+
+  it('recordRejections false: corrida no lock (intervalo > 0) também não grava', async () => {
+    const ctx = setup({ settings: { scaleCooldownSeconds: 600 } });
+    ctx.events.recordRequestedIfIdle.mockResolvedValueOnce({ blocked: new Date(NOW.getTime() + 600_000) });
+    const err = await ctx.useCase.execute(input(), { recordRejections: false }).catch((e: unknown) => e);
+    expect(err).toMatchObject({ code: 'SCALE_COOLDOWN_ACTIVE' });
+    expect(isScaleRejection(err)).toBe(true);
+    expect(ctx.events.rows).toEqual([]);
+    expect(ctx.scaler.scaleTo).not.toHaveBeenCalled();
+  });
+
+  it('falha do scaleTo não é recusa (evento failed gravado)', async () => {
+    const ctx = setup();
+    ctx.scaler.scaleTo.mockRejectedValueOnce(new ScalerUnavailableError('auth', 'write'));
+    const err = await ctx.useCase.execute(input(), { recordRejections: false }).catch((e: unknown) => e);
+    expect(isScaleRejection(err)).toBe(false);
+    expect(ctx.events.rows[0]).toMatchObject({ outcome: 'failed' });
+  });
+
+  it('scaleErrorCode: leitura indisponível vira SCALER_UNAVAILABLE:read_<motivo>', () => {
+    expect(scaleErrorCode(new ScalerUnavailableError('upstream', 'read'))).toBe('SCALER_UNAVAILABLE:read_upstream');
   });
 });
 

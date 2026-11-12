@@ -34,4 +34,9 @@ export interface ISessionAdoptionRepository {
 export interface CountAwaitingOptions {
   /** Teto da consulta em ms (`SET LOCAL statement_timeout` numa transação). */
   statementTimeoutMs?: number;
+  /**
+   * Só pedidos feitos depois deste instante (`connectRequestedAt > requestedAfter`, comparado em UTC).
+   * O automático passa o início do último intervalo: quem pediu antes da subida aguarda o boot da réplica nova.
+   */
+  requestedAfter?: Date | null;
 }

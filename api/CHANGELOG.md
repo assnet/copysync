@@ -7,6 +7,46 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.85.0 · app 0.104.0] — 2026-11-11 — Subida automática dos workers
+
+Com o escalador pronto, subir réplica ainda dependia de alguém olhar o alerta e clicar. Com `scalerMode = auto`, o
+sistema pede +1 réplica quando a ocupação fica alta por tempo sustentado ou há sessão aguardando vaga, sem nunca reduzir.
+Spec: `.specs/features/worker-scaling/` (WSCALE-14..16, 19; fase P4). Doc: `docs/workers-escala.md` (Automático).
+**Migration Prisma**: não. **Breaking**: não. **Kill switch**: `scalerMode` ≠ `auto` (padrão) e
+`WORKER_SCALER_ENABLED=false` (sem ele toda decisão vira `rejected` `SCALER_NOT_CONFIGURED`, 1×/h).
+
+### Added
+
+#### API — `sessions`
+
+- **`infrastructure/jobs/WorkerAutoscalerJob.ts`** — tick de 60 s (`unref`) sob o lease `worker-autoscaler`; só age com `scalerMode = auto`. Gatilhos por `shouldScaleUp`: sessão aguardando além de `awaitingAlertSeconds` (contada ao vivo, `statement_timeout` 2 s) ou ocupação sustentada pelas amostras `sessions_*` do banco (reinício ou troca de dono não zera nem duplica). +1 réplica pelo `ScaleWorkersUseCase` (`checkPreconditions()` → `execute()`, `trigger = auto`), motivo fixo `auto: occupancy|awaiting`, `requestId` `auto:<balde de 5 min>`; nunca reduz. Recusa (`NO_OCCUPANCY_SAMPLES`, intervalo, teto, adoção, escalador) grava `rejected` no máximo 1×/h por código (lease `worker-autoscaler:rejected:<código>`). Limpeza de eventos com mais de 180 dias 1×/24 h (lease `worker-autoscaler:cleanup`).
+- **`app/processJobs.ts`**, **`app/server.ts`**, **`infrastructure/lease/sessionLeaseContainer.ts`** — job `workerAutoscaler` em `WORKER_JOBS` (papéis `worker`/`all`), montado no container e parado no shutdown.
+
+#### Painel (app/) — `workersAdmin`
+
+- **`components/ScaleTab.tsx`**, **`rules.ts`**, **`strings.ts`** — cartão "Escala automática" na aba Escala: modo (Ligada só com `auto`), ajuda do que dispara (nunca reduz, teto `maxReplicas`, intervalo mínimo, depende do coletor) e, com `auto`, a última decisão automática (`latestAutoEvent`: a mais recente entre `lastEvent` do estado e o histórico carregado; sem campo novo na API). Motivo traduzido (`scaleEventReasonLabel`) também no histórico; recusa com o código traduzido (`autoScaleErrorMessage`).
+
+### Changed
+
+#### Painel (app/) — `workersAdmin`
+
+- **`useWorkerSettings.ts`**, **`components/SettingsTab.tsx`**, **`strings.ts`** — a ajuda de modo, réplicas e tempos deixa de dizer "ainda sem efeito"; o chip "sem efeito por enquanto" do bloco de escala só aparece se `GET /admin/workers/scale` disser `not_configured` (leitura tolerante a falha: erro não mostra o chip).
+- **`sessions/application/use-cases/ScaleWorkersUseCase.ts`**, **`domain/contracts/IWorkerScaleEventRepository.ts`** — comentários: o job usa `requestId` `auto:<balde>`.
+
+#### Docs
+
+- **`docs/workers-escala.md`** (Automático, o que não fazer), **`docs/arquitetura-escala.md`** (§3.2 autoescala deixa de ser diferida; §3.3 dono do `workerAutoscaler`), **`docs/ops-metricas.md`**, **`docs/produto-roadmap.md`**, **`AGENTS.md`**.
+
+### Fixed (revisão da P4)
+
+- **`WorkerAutoscalerJob.ts`** — janela do "sustentado" recomeça depois de cada subida (amostras anteriores ao início do intervalo mínimo da última escalada são ignoradas); com a adoção desligada o job não consulta a Render e só registra `ADOPTION_DISABLED` 1×/h; intervalo ativo e teto checados antes de ler a Render; recusas do job sempre 1×/h por código.
+- **`workerAdmin.routes.ts`** — `GET /admin/workers/scale` devolve também `lastAutoEvent` (evento automático mais recente ou `null`).
+- **`workersAdmin/rules.ts`**, **`useWorkerScale.ts`**, **`components/ScaleTab.tsx`**, **`strings.ts`** (app) — cartão "Escala automática" lê o `lastAutoEvent` (API sem o campo cai no `lastEvent`): manual mais novo não tira o automático e histórico sem automático na 1ª página não esconde a decisão; `lastEvent.id` novo relê a 1ª página do histórico. Chip "Ligada" só com escalador pronto e adoção ligada (senão "Ligada, sem efeito até…"). Ajuda: ocupação exige o coletor, sessão aguardando não; intervalo mínimo vale também após falha incerta.
+- **`docs/workers-escala.md`**, **`docs/arquitetura-escala.md`**, **`AGENTS.md`** — mesma regra do coletor e o comportamento novo do job; requisitos WSCALE-01..17, 19.
+- **`WorkerAutoscalerJob.ts`**, **`PrismaSessionAdoptionRepository.ts`**, **`ISessionAdoptionRepository.ts`** — aguardando conta só pedido posterior ao início do último intervalo (`countAwaitingCapacity(…, { requestedAfter })`, comparado em UTC): sessão que pediu antes da subida aguarda o boot da réplica nova sem disparar outra. Já no teto pelo último `succeeded`, o job lê as réplicas ao vivo antes de recusar (1×/h; silenciado não lê): réplica mudada fora do painel não trava o automático.
+- **`WorkerAutoscalerJob.ts`** — no teto, a leitura ao vivo das réplicas usa lease próprio de 5 min (`worker-autoscaler:ceiling-check`, ≤ 12/h) separado da recusa (1×/h, sempre após a leitura): redução fora do painel é vista em ≤ 5 min, não em até 1 h.
+- **`workersAdmin/strings.ts`**, **`components/ScaleTab.tsx`** (app) — motivo `auto: adoption_disabled` traduzido; recusa 0/0 mostra só "—" sem seta.
+
 ## [0.84.0 · app 0.103.0] — 2026-11-11 — Escala dos workers por decisão do super admin
 
 Subir ou reduzir réplicas do worker exigia o painel da Render, sem regra de capacidade nem rastro. O super admin passa a

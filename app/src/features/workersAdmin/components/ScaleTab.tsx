@@ -4,15 +4,18 @@ import {
   TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography,
 } from '@mui/material';
 import type { LucideIcon } from 'lucide-react';
-import { ArrowDown, ArrowRight, ArrowUp, Gauge, Layers, Server, SlidersHorizontal, Target } from 'lucide-react';
+import { ArrowDown, ArrowRight, ArrowUp, Gauge, Layers, Server, SlidersHorizontal, Target, TrendingUp } from 'lucide-react';
 import { AppIcon, SectionCard } from '@/components';
 import { CooldownBar } from '@/components/CooldownBar';
 import { HelpTip } from '@/features/opsMetrics/components/HelpTip';
 import { formatDateTime } from '@/features/opsMetrics/rules';
 import { serverNow } from '@/services/serverClock';
-import { cooldownActive, defaultScaleTarget, formatScaleRemaining, scaleBlock, scaleStepAllowed, type ScaleBlock } from '../rules';
+import {
+  autoScaleErrorMessage, cooldownActive, defaultScaleTarget, formatScaleRemaining, latestAutoEvent, scaleBlock,
+  scaleEventReasonLabel, scaleStepAllowed, type ScaleBlock,
+} from '../rules';
 import { workersAdminStrings } from '../strings';
-import type { WorkerScaleEvent, WorkerScaleOutcome, WorkerScaleStateView } from '../types';
+import type { WorkerScaleEvent, WorkerScaleOutcome, WorkerScalerMode, WorkerScaleStateView } from '../types';
 import { useWorkerScale } from '../useWorkerScale';
 import { ScaleConfirmDialog } from './ScaleConfirmDialog';
 
@@ -131,9 +134,22 @@ function OutcomeChip({ event }: { event: WorkerScaleEvent }) {
   return event.error ? <Tooltip title={sc.history.errorHint(event.error)} arrow>{chip}</Tooltip> : chip;
 }
 
-/** Recusa antes de ler o escalador grava `fromReplicas = 0`: a origem é desconhecida, não zero. */
+/**
+ * Recusa antes de ler o escalador grava `fromReplicas = 0`: a origem é desconhecida, não zero.
+ * Sem alvo também (0/0, recusa do automático antes de decidir o alvo): só "—", sem seta.
+ */
 function ReplicaChange({ event: e }: { event: WorkerScaleEvent }) {
-  const unknownFrom = e.fromReplicas === 0 && e.outcome === 'rejected';
+  const rejected = e.outcome === 'rejected';
+  if (rejected && e.fromReplicas === 0 && e.toReplicas === 0) {
+    return (
+      <Tooltip title={sc.history.unknownFromHint} arrow>
+        <Box component="span" tabIndex={0} aria-label={sc.history.unknownReplicas} sx={{ color: 'text.secondary', cursor: 'help' }}>
+          {sc.history.unknownFrom}
+        </Box>
+      </Tooltip>
+    );
+  }
+  const unknownFrom = rejected && e.fromReplicas === 0 && e.toReplicas > 0;
   const label = unknownFrom ? sc.history.unknownChange(e.toReplicas) : sc.dialog.change(e.fromReplicas, e.toReplicas);
   return (
     <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }} aria-label={label}>
@@ -145,6 +161,75 @@ function ReplicaChange({ event: e }: { event: WorkerScaleEvent }) {
       <AppIcon icon={ArrowRight} size="inline" aria-hidden />
       <span>{e.toReplicas}</span>
     </Stack>
+  );
+}
+
+/**
+ * Modo automático (WSCALE-15): ligado ou não e a última decisão do job (`lastAutoEvent` do estado).
+ * "Ligada" só com o escalador pronto e a adoção ligada; senão o modo está gravado mas não age.
+ */
+function AutoScaleCard({ mode, scalerReady, enforced, last }: {
+  mode: WorkerScalerMode;
+  scalerReady: boolean;
+  enforced: boolean;
+  last: WorkerScaleEvent | null;
+}) {
+  const a = sc.auto;
+  const on = mode === 'auto';
+  const effective = on && scalerReady && enforced;
+  const chipLabel = !on ? a.status.off : !scalerReady ? a.status.onWaitingScaler : !enforced ? a.status.onWaitingAdoption : a.status.on;
+  const failedOrRejected = last && (last.outcome === 'rejected' || last.outcome === 'failed');
+  return (
+    <SectionCard
+      title={a.title}
+      action={(
+        <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', minWidth: 0, maxWidth: '100%' }}>
+          <Chip
+            size="small"
+            color={effective ? 'success' : on ? 'warning' : 'default'}
+            variant={effective ? 'filled' : 'outlined'}
+            label={chipLabel}
+            // Rótulo longo quebra linha em vez de empurrar a ajuda para fora do cartão.
+            sx={{ minWidth: 0, height: 'auto', py: 0.25, '& .MuiChip-label': { whiteSpace: 'normal' } }}
+          />
+          <Box sx={{ flexShrink: 0 }}><HelpTip label={a.helpLabel} text={a.help} /></Box>
+        </Stack>
+      )}
+      // Celular: chip e ajuda descem para baixo do título, como em "Escala de réplicas".
+      headerSx={{ flexDirection: { xs: 'column', sm: 'row' }, alignItems: { xs: 'flex-start', sm: 'center' }, gap: { xs: 1, sm: 2 } }}
+    >
+      <Stack spacing={1.5}>
+        <Typography variant="body2" color="text.secondary">{a.modeText[mode] ?? a.modeText.manual}</Typography>
+        {on && (
+          <Box aria-label={a.lastTitle} role="group">
+            <Typography variant="subtitle2" sx={{ mb: 0.75 }}>{a.lastTitle}</Typography>
+            {last ? (
+              <Stack spacing={0.75}>
+                <Stack direction="row" sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+                  <AppIcon icon={TrendingUp} size="inline" aria-hidden />
+                  <OutcomeChip event={last} />
+                  <Typography variant="body2">{scaleEventReasonLabel(last)}</Typography>
+                  {last.toReplicas > 0 && (
+                    <Typography variant="body2" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                      {last.fromReplicas > 0 ? a.change(last.fromReplicas, last.toReplicas) : sc.history.unknownChange(last.toReplicas)}
+                    </Typography>
+                  )}
+                  <Typography variant="body2" color="text.secondary">{a.at(formatDateTime(last.at))}</Typography>
+                </Stack>
+                {failedOrRejected && (
+                  <Typography variant="body2" color="text.secondary">{a.detail(autoScaleErrorMessage(last.error))}</Typography>
+                )}
+                {last.outcome === 'rejected' && (
+                  <Typography variant="caption" color="text.secondary">{a.repeatHint}</Typography>
+                )}
+              </Stack>
+            ) : (
+              <Typography variant="body2" color="text.secondary">{a.none}</Typography>
+            )}
+          </Box>
+        )}
+      </Stack>
+    </SectionCard>
   );
 }
 
@@ -179,7 +264,7 @@ function HistoryTable({ w }: { w: ReturnType<typeof useWorkerScale> }) {
                 <TableCell sx={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
                   <ReplicaChange event={e} />
                 </TableCell>
-                <TableCell sx={{ minWidth: 180, overflowWrap: 'anywhere' }}>{e.reason}</TableCell>
+                <TableCell sx={{ minWidth: 180, overflowWrap: 'anywhere' }}>{scaleEventReasonLabel(e)}</TableCell>
                 <TableCell><OutcomeChip event={e} /></TableCell>
                 <TableCell align="right" sx={{ whiteSpace: 'nowrap', color: 'text.secondary' }}>{formatDateTime(e.at)}</TableCell>
               </TableRow>
@@ -204,7 +289,7 @@ function HistoryTable({ w }: { w: ReturnType<typeof useWorkerScale> }) {
   );
 }
 
-/** Aba Escala (WSCALE-14): estado das réplicas, pedido manual com motivo, intervalo mínimo e histórico. */
+/** Aba Escala (WSCALE-14/15): estado das réplicas, modo automático, pedido manual com motivo, intervalo mínimo e histórico. */
 export default function ScaleTab() {
   const w = useWorkerScale();
   // Re-render ao zerar o intervalo mínimo (a barra avisa uma vez).
@@ -281,6 +366,13 @@ export default function ScaleTab() {
           </Grid>
         </Grid>
       </Box>
+
+      <AutoScaleCard
+        mode={scalerMode}
+        scalerReady={view.scaler.status === 'ready'}
+        enforced={view.enforced}
+        last={latestAutoEvent(view, w.events)}
+      />
 
       <SectionCard title={sc.actions.title}>
         <Stack spacing={2.5}>

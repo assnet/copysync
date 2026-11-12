@@ -35,6 +35,9 @@ import { ListWorkerScaleEventsUseCase } from '../../application/use-cases/ListWo
 import { WorkerScalerStateCache } from '../../application/services/WorkerScalerStateCache';
 import { PrismaWorkerScaleEventRepository } from '../repositories/PrismaWorkerScaleEventRepository';
 import { RENDER_SERVICE_ID_PATTERN, workerScaler } from '../scaler/workerScaler';
+import { PrismaJobLease } from '../../../../shared/infrastructure/jobs/PrismaJobLease';
+import { PrismaSessionAdoptionRepository } from '../repositories/PrismaSessionAdoptionRepository';
+import { WorkerAutoscalerJob } from '../jobs/WorkerAutoscalerJob';
 
 export interface SessionLeaseContainer {
   workerId: string;
@@ -272,6 +275,32 @@ export function requestWorkerScaleUseCase(): RequestWorkerScaleUseCase {
     });
   }
   return requestScaleUseCase;
+}
+
+/**
+ * Subida automática (WSCALE-15), parada: `server.ts` liga só em `worker`/`all`. Escalador ao vivo
+ * (sem o cache de 30 s da tela) e o mesmo `ScaleWorkersUseCase` do pedido manual, com `trigger = auto`.
+ */
+export function createWorkerAutoscalerJob(): WorkerAutoscalerJob {
+  const events = new PrismaWorkerScaleEventRepository(prisma);
+  const settings = workerScalingSettingsProvider();
+  return new WorkerAutoscalerJob({
+    lease: new PrismaJobLease(prisma),
+    settings,
+    samples: new PrismaOpsMetricsSampleRepository(prisma),
+    adoption: new PrismaSessionAdoptionRepository(),
+    scaler: workerScaler(),
+    scale: new ScaleWorkersUseCase({
+      events,
+      scaler: workerScaler(),
+      settings,
+      audit: new PrismaAuditLogRepository(),
+      isAdoptionEnabled: workerScalingEnforced(),
+      log: logger.child({ module: 'ScaleWorkersUseCase' }),
+    }),
+    events,
+    isAdoptionEnabled: workerScalingEnforced(),
+  });
 }
 
 /** Histórico de escala paginado (WSCALE-13). */

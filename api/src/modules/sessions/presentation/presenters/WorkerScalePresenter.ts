@@ -43,6 +43,7 @@ export function presentWorkerScaleState(v: WorkerScaleStateView) {
     settings: v.settings,
     cooldownUntil: v.cooldownUntil ? v.cooldownUntil.toISOString() : null,
     lastEvent: v.lastEvent ? presentWorkerScaleEvent(v.lastEvent) : null,
+    lastAutoEvent: v.lastAutoEvent ? presentWorkerScaleEvent(v.lastAutoEvent) : null,
     enforced: v.enforced,
   };
 }

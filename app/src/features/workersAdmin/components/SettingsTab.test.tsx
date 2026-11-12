@@ -8,7 +8,7 @@ import { adminWorkersService } from '@/services/adminWorkers.service';
 import { readPersisted } from '@/hooks/usePersistedState';
 import { workersAdminStrings as t } from '../strings';
 import { CAPACITY_TIMEOUT_MS, WORKER_SETTINGS_DRAFT_KEY } from '../useWorkerSettings';
-import type { WorkerScalingSettings, WorkerScalingSettingsView } from '../types';
+import type { WorkerScaleStateView, WorkerScalingSettings, WorkerScalingSettingsView } from '../types';
 import SettingsTab from './SettingsTab';
 
 const s = t.settings;
@@ -40,7 +40,16 @@ beforeEach(() => {
   sessionStorage.clear();
   // Padrão: rota de capacidade fora (sem sugestão) — a tela tolera e reforça toda mudança de teto.
   vi.spyOn(adminWorkersService, 'getCapacity').mockRejectedValue(new Error('offline'));
+  // Padrão: estado da escala fora — sem afirmar "sem efeito".
+  vi.spyOn(adminWorkersService, 'getScale').mockRejectedValue(new Error('offline'));
 });
+
+function mockScaler(scaler: WorkerScaleStateView['scaler']) {
+  vi.spyOn(adminWorkersService, 'getScale').mockResolvedValue({
+    scaler, settings: { scalerMode: 'auto', minReplicas: 1, maxReplicas: 3, scaleCooldownSeconds: 1800 },
+    cooldownUntil: null, lastEvent: null, enforced: true,
+  });
+}
 
 function mockSuggested(suggestedMaxSessions: number | null) {
   vi.spyOn(adminWorkersService, 'getCapacity').mockResolvedValue({
@@ -66,6 +75,31 @@ describe('SettingsTab', () => {
     expect(await screen.findByRole('textbox', { name: s.fields.maxSessionsPerWorker.label })).toHaveValue('40');
     expect(screen.getByText(s.notEnforced)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: s.actions.review })).toBeDisabled();
+  });
+
+  it('chip "sem efeito" só com o escalador not_configured', async () => {
+    vi.spyOn(adminWorkersService, 'getSettings').mockResolvedValue(view());
+    mockList();
+    mockScaler({ status: 'not_configured', missing: ['RENDER_API_KEY'] });
+    renderWithTheme(<SettingsTab />);
+    expect(await screen.findByText(s.groups.scaling.pending)).toBeInTheDocument();
+  });
+
+  it('escalador pronto ou leitura falhando: sem chip "sem efeito" e ajuda sem "ainda sem efeito"', async () => {
+    vi.spyOn(adminWorkersService, 'getSettings').mockResolvedValue(view());
+    mockList();
+    mockScaler({ status: 'ready', desiredReplicas: 1, runningReplicas: 1, hasDisk: false, autoscalingEnabled: false });
+    const { unmount } = renderWithTheme(<SettingsTab />);
+    await screen.findByRole('textbox', { name: s.fields.maxSessionsPerWorker.label });
+    await waitFor(() => expect(adminWorkersService.getScale).toHaveBeenCalled());
+    expect(screen.queryByText(s.groups.scaling.pending)).not.toBeInTheDocument();
+    unmount();
+    vi.mocked(adminWorkersService.getScale).mockRejectedValue(new Error('offline'));
+    renderWithTheme(<SettingsTab />);
+    await screen.findByRole('textbox', { name: s.fields.maxSessionsPerWorker.label });
+    expect(screen.queryByText(s.groups.scaling.pending)).not.toBeInTheDocument();
+    for (const f of Object.values(s.fields)) expect(f.help).not.toMatch(/ainda sem efeito/);
+    expect(s.replicas.help).not.toMatch(/ainda sem efeito/);
   });
 
   it('enforced: true não mostra a faixa', async () => {
@@ -245,12 +279,13 @@ describe('SettingsTab', () => {
     expect(screen.getByText(s.notEnforced)).toBeInTheDocument();
   });
 
-  it('bloco de escala avisa "sem efeito por enquanto"; erro das réplicas ligado ao slider', async () => {
+  it('escalador not_configured: bloco de escala avisa "sem efeito por enquanto"; erro das réplicas ligado ao slider', async () => {
     vi.spyOn(adminWorkersService, 'getSettings').mockResolvedValue(view({ settings: { ...SETTINGS, minReplicas: 5, maxReplicas: 4 } }));
     mockList();
+    mockScaler({ status: 'not_configured', missing: ['WORKER_SCALER_ENABLED'] });
     renderWithTheme(<SettingsTab />);
     await screen.findByRole('textbox', { name: s.fields.maxSessionsPerWorker.label });
-    expect(screen.getByText(s.groups.scaling.pending)).toBeInTheDocument();
+    expect(await screen.findByText(s.groups.scaling.pending)).toBeInTheDocument();
     const help = screen.getByText(s.errors.maxBelowMin);
     expect(help.id).toBeTruthy();
     for (const thumb of screen.getAllByRole('slider')) expect(thumb).toHaveAttribute('aria-describedby', help.id);

@@ -133,4 +133,25 @@ describe('shouldScaleUp', () => {
     });
     expect(r).toEqual({ scaleUp: true, reason: 'occupancy' });
   });
+
+  describe('ignoreBefore (início do último intervalo)', () => {
+    const all = [sample(1, 90), sample(6, 90), sample(11, 90)];
+    const withIgnore = (ignoreBefore: Date | null, awaiting = 0) =>
+      shouldScaleUp({ occupancySamples: all, awaitingOlderThanThreshold: awaiting, settings, now, ignoreBefore });
+
+    it('amostras de antes (ou do instante exato) da última subida não contam: a janela recomeça', () => {
+      expect(withIgnore(ago(8))).toEqual({ scaleUp: false, reason: null });
+      expect(withIgnore(ago(11))).toEqual({ scaleUp: false, reason: null }); // `at` = ignoreBefore descartada
+    });
+
+    it('subida antiga (antes da janela) não muda a decisão; null também não', () => {
+      expect(withIgnore(ago(30))).toEqual({ scaleUp: true, reason: 'occupancy' });
+      expect(withIgnore(null)).toEqual({ scaleUp: true, reason: 'occupancy' });
+    });
+
+    it('não vira no_samples e não afeta o aguardando', () => {
+      expect(withIgnore(ago(0))).toEqual({ scaleUp: false, reason: null });
+      expect(withIgnore(ago(0), 1)).toEqual({ scaleUp: true, reason: 'awaiting' });
+    });
+  });
 });

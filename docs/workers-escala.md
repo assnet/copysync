@@ -1,10 +1,10 @@
 # Gestão de escala dos workers
 
 Super admin ajusta o teto de sessões por worker e os limiares de alerta pelo painel, sem redeploy.
-Spec: [`.specs/features/worker-scaling/`](../.specs/features/worker-scaling/spec.md) (WSCALE-01..10, 17, 19). Arquitetura:
+Spec: [`.specs/features/worker-scaling/`](../.specs/features/worker-scaling/spec.md) (WSCALE-01..17, 19). Arquitetura:
 [`arquitetura-escala.md`](arquitetura-escala.md) §3.2. Configuração na P1 (api 0.82.0 · app 0.101.0); capacidade e
 alerta de ocupação sem adoção na P2 (api 0.83.0 · app 0.102.0); escala manual pelo super admin na P3 (api 0.84.0 ·
-app 0.103.0, desligada por env); subida automática (P4) ainda não existe.
+app 0.103.0, desligada por env); subida automática (P4: api 0.85.0 · app 0.104.0, `scalerMode = auto`).
 
 ## Onde fica
 
@@ -217,6 +217,54 @@ no header.
 - **T25 pendente (dono)**: smoke real num Private Service de teste na Render (subir 1→2, reduzir 2→1, `SIGTERM`,
   `maxShutdownDelaySeconds`). Obrigatório antes de ligar `WORKER_SCALER_ENABLED` em produção; resultado anotado aqui.
 
+## Automático (P4)
+
+`WorkerAutoscalerJob` (`sessions/infrastructure/jobs/WorkerAutoscalerJob.ts`, job `workerAutoscaler` em
+`app/processJobs.ts`, papéis `worker`/`all`; nunca no `http`). Tick de 60 s com `unref`, um dono por vez no cluster pelo
+lease `worker-autoscaler`. Lê `scalerMode` a cada tick: com `off` ou `manual` não faz nada além da limpeza.
+
+- **Gatilhos** (`shouldScaleUp`, `capacityPlan.ts`), nesta ordem: (1) sessão aguardando vaga há mais de
+  `awaitingAlertSeconds`, contada ao vivo no banco (`countAwaitingCapacity`, `statement_timeout` 2 s) → `awaiting`.
+  Só conta pedido feito **depois** do início do intervalo mínimo da última escalada (`requestedAfter =
+  lastCooldownStartAt`): quem pediu antes da subida aguarda o boot da réplica nova e não dispara outra;
+  (2) ocupação sustentada: todas as amostras `sessions_connected ÷ sessions_capacity` (fonte `sessions`, recurso
+  `cluster`) em `(agora − scaleUpSustainSeconds, agora]` acima de `alertOccupancyRatio`, com pelo menos
+  `ceil(scaleUpSustainSeconds ÷ 300)` amostras → `occupancy`. O estado do "sustentado" vem das amostras no banco: reinício
+  ou troca de dono do lease não zera nem duplica a contagem (WSCALE-16). A janela recomeça depois de cada subida:
+  amostras anteriores ao início do intervalo mínimo da última escalada são ignoradas (a ocupação alta que já motivou uma
+  subida não conta de novo para a próxima).
+- **Ordem do tick**: com a adoção desligada o job não consulta a Render e só registra `ADOPTION_DISABLED` (1×/h). Intervalo
+  mínimo ativo é checado antes de ler a Render. Teto: com o último `succeeded` abaixo de `maxReplicas` não há leitura
+  extra; já no teto, as réplicas podem ter mudado fora do painel, então o job lê o estado ao vivo (`getState`) no máximo
+  1× a cada 5 min (lease próprio `worker-autoscaler:ceiling-check`, não solto: ≤ 12 leituras/h; sem o lease, só pula o
+  tick). A recusa `SCALE_TARGET_OUT_OF_RANGE` sai só depois dessa leitura e segue 1×/h pelo lease da recusa. Réplicas
+  reais abaixo do teto: segue no mesmo tick com esse estado (uma leitura por tick); redução fora do painel é vista em ≤ 5 min.
+- **Ação**: sempre **+1** réplica sobre as desejadas do provedor, pelo mesmo `ScaleWorkersUseCase` do manual
+  (`trigger = auto`, ator nulo): `checkPreconditions()` antes, depois `execute()`. Valem as mesmas regras: modo, adoção,
+  faixa (`maxReplicas` é o teto), disco/autoescala nativa, intervalo mínimo (inclusive falha incerta) e evento
+  `requested` antes da chamada. **Nunca reduz**: descida é só manual (D4).
+- **Motivo fixo** `auto: occupancy` | `auto: awaiting` (sem número, para o replay estrito casar) e `requestId`
+  `auto:<balde de 5 min>`: dois donos no mesmo balde geram o mesmo id e o segundo vira "já feito" (sem chamada dupla).
+- **Recusas**: escalador fora (`SCALER_NOT_CONFIGURED`, `SCALER_UNAVAILABLE`, `SCALER_RATE_LIMITED`), pré-condição
+  recusada (`SCALE_COOLDOWN_ACTIVE`, `SCALE_TARGET_OUT_OF_RANGE` no teto, `ADOPTION_DISABLED`…) ou sem amostra recente
+  (`NO_OCCUPANCY_SAMPLES`, motivo `auto: no_samples`) gravam `rejected` com o código em `error`, **sempre no máximo 1 por código
+  por hora** no cluster, qualquer que seja a origem da recusa (lease não solto `worker-autoscaler:rejected:<código>`). O gatilho de ocupação exige o coletor
+  (`OPS_METRICS_SAMPLER_ENABLED`); o de sessão aguardando não (sem coletor, só ele dispara).
+- **Limpeza**: eventos com mais de 180 dias apagados no tick, em qualquer modo, no máximo 1×/24 h no cluster (lease
+  `worker-autoscaler:cleanup` com `until = agora + 24 h`, não solto).
+- **API**: `GET /admin/workers/scale` devolve também `lastAutoEvent` (mesmo formato do evento do histórico, ou `null`) =
+  evento automático mais recente, para o painel não depender da 1ª página do histórico.
+- **Painel** (aba Escala): cartão "Escala automática" com o modo ("Ligada" só com `auto`, escalador `ready` e `enforced`;
+  senão "Ligada, sem efeito até o escalador ficar pronto" ou "…até ligar a adoção"), ajuda do que dispara e, com `auto`,
+  a última decisão automática: o `lastAutoEvent` do `GET /scale` (relido a cada 20 s; API sem o campo cai no
+  `lastEvent`), junto do 1º `trigger: 'auto'` do histórico carregado, vence o mais recente (`latestAutoEvent`,
+  `rules.ts`). Evento manual mais novo não tira o automático do cartão. Quando o `lastEvent.id` muda, a tela relê a 1ª
+  página do histórico. Motivo traduzido
+  (`occupancy` = ocupação alta sustentada, `awaiting` = sessões aguardando vaga, `adoption_disabled` = adoção de sessões
+  desligada) também na tabela; recusa 0/0 (antes de ler o escalador) mostra só "—" sem seta; recusa com o código
+  traduzido (`autoScaleErrorMessage`). Aba Configuração: o chip "sem efeito por enquanto" do bloco de escala só aparece
+  se `GET /admin/workers/scale` disser `not_configured` (falha na leitura não mostra o chip).
+
 ## Alerta de ocupação sem adoção
 
 Com a adoção desligada (`all` ou `worker`) o `WorkerCapacityAlertJob` não roda; o coletor avalia `sessions_connected ÷
@@ -249,3 +297,12 @@ coletor não alerta ocupação (o `WorkerCapacityAlertJob` já cobre).
 - Ligar `WORKER_SCALER_ENABLED` em produção sem o T25, ou localmente (`api/.env` aponta para produção).
 - Escalar serviço com disco ou com a autoescala nativa da Render ligada.
 - Chamar a Render nas rotas de métricas/capacidade: só as rotas de escala chamam (cache 30 s, timeout 5 s).
+- Reduzir réplicas no automático ou subir mais de 1 por decisão.
+- Guardar em memória o início do "sustentado", o último pedido ou o silêncio das recusas: tudo vem do banco (amostras,
+  eventos, `JobLease`). Soltar os leases `worker-autoscaler:rejected:*`/`:ceiling-check`/`:cleanup` (perde o 1×/h, o 1×/5 min e o 1×/24 h).
+- Pôr número ou texto variável no motivo do automático (quebra o replay estrito do balde) ou chamar o escalador fora do
+  `ScaleWorkersUseCase` (pula intervalo, faixa e evento).
+- Registrar o `workerAutoscaler` no `http` ou ligar `scalerMode = auto` sem o T25 (sem o coletor, só o gatilho de
+  sessão aguardando age).
+- Consultar a Render no tick com a adoção desligada ou intervalo ativo; já no teto, mais de 1× a cada 5 min (lease `:ceiling-check`) ou gravar recusa sem leitura ao vivo no tick.
+- Contar como aguardando sessão que pediu conexão antes da última subida (dispara subida em cascata durante o boot).

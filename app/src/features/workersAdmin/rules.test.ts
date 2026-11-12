@@ -6,9 +6,10 @@ import {
   formatDraftValue, isDraftFieldChanged, parseDraftNumber, validateSettingsDraft, clientsThatFit, needsStrongCapConfirm,
   sortPlansByCatalog, cooldownActive, formatScaleRemaining, scaleBlock, scaleReasonError, scaleRequestErrorMessage, scaleTargetError,
   scaleEventErrorMessage, scaleStepAllowed, defaultScaleTarget, isUncertainScaleError, UNCERTAIN_SCALE_EVENT_ERRORS,
+  autoScaleErrorMessage, latestAutoEvent, scaleEventReasonLabel,
 } from './rules';
 import { workersAdminStrings } from './strings';
-import type { WorkerCapacityPlan, WorkerScalingSettings } from './types';
+import type { WorkerCapacityPlan, WorkerScaleEvent, WorkerScalingSettings } from './types';
 
 describe('occupancyPercent', () => {
   it('arredonda e limita a 0–100', () => {
@@ -327,5 +328,47 @@ describe('scaleStepAllowed / defaultScaleTarget', () => {
     expect(defaultScaleTarget(4, 1, 4)).toBe(3);
     expect(defaultScaleTarget(0, 2, 4)).toBe(2);
     expect(defaultScaleTarget(9, 2, 4)).toBe(4);
+  });
+});
+
+describe('modo automático (WSCALE-15)', () => {
+  const ev = (id: number, over: Partial<WorkerScaleEvent> = {}): WorkerScaleEvent => ({
+    id, at: '2026-11-10T12:00:00.000Z', trigger: 'manual', fromReplicas: 1, toReplicas: 2, reason: 'x', outcome: 'succeeded', error: null, ...over,
+  });
+  const a = workersAdminStrings.scale.auto;
+
+  it('scaleEventReasonLabel traduz só o automático', () => {
+    expect(scaleEventReasonLabel({ trigger: 'auto', reason: 'auto: occupancy' })).toBe(a.reasons['auto: occupancy']);
+    expect(scaleEventReasonLabel({ trigger: 'auto', reason: 'auto: awaiting' })).toBe(a.reasons['auto: awaiting']);
+    expect(scaleEventReasonLabel({ trigger: 'auto', reason: 'auto: adoption_disabled' })).toBe('adoção de sessões desligada');
+    expect(scaleEventReasonLabel({ trigger: 'auto', reason: 'auto: novo' })).toBe('auto: novo');
+    expect(scaleEventReasonLabel({ trigger: 'manual', reason: 'auto: occupancy' })).toBe('auto: occupancy');
+  });
+
+  it('autoScaleErrorMessage: código do job ou texto comum', () => {
+    expect(autoScaleErrorMessage('NO_OCCUPANCY_SAMPLES')).toBe(a.rejections.NO_OCCUPANCY_SAMPLES);
+    expect(autoScaleErrorMessage('SCALER_SERVICE_NOT_SCALABLE:disk')).toBe(a.rejections.SCALER_SERVICE_NOT_SCALABLE);
+    expect(autoScaleErrorMessage(null)).toBe(scaleEventErrorMessage(null));
+    expect(autoScaleErrorMessage('SCALE_REQUEST_FAILED')).toBe(scaleEventErrorMessage('SCALE_REQUEST_FAILED'));
+  });
+
+  it('latestAutoEvent: mais recente entre lastEvent e histórico; ignora manual', () => {
+    const old = ev(1, { trigger: 'auto', at: '2026-11-10T10:00:00.000Z' });
+    const newer = ev(2, { trigger: 'auto', at: '2026-11-10T11:00:00.000Z' });
+    const st = (lastEvent: WorkerScaleEvent | null) => ({ lastEvent });
+    expect(latestAutoEvent(null, [])).toBeNull();
+    expect(latestAutoEvent(st(ev(3, { at: '2026-11-10T13:00:00.000Z' })), [old])).toBe(old);
+    expect(latestAutoEvent(st(old), [newer])).toBe(newer);
+    const fresh = { ...newer, outcome: 'failed' as const };
+    expect(latestAutoEvent(st(fresh), [newer])).toBe(fresh);
+  });
+
+  it('latestAutoEvent: lastAutoEvent do estado tem precedência sobre lastEvent', () => {
+    const auto = ev(1, { trigger: 'auto', at: '2026-11-10T10:00:00.000Z' });
+    const manual = ev(2, { at: '2026-11-10T12:00:00.000Z' });
+    expect(latestAutoEvent({ lastEvent: manual, lastAutoEvent: auto }, [manual])).toBe(auto);
+    expect(latestAutoEvent({ lastEvent: manual, lastAutoEvent: null }, [])).toBeNull();
+    const autoInLast = ev(3, { trigger: 'auto', at: '2026-11-10T13:00:00.000Z' });
+    expect(latestAutoEvent({ lastEvent: autoInLast, lastAutoEvent: auto }, [])).toBe(auto);
   });
 });

@@ -127,6 +127,16 @@ export function useWorkerScale() {
     };
   }, [loadEvents, loadState]);
 
+  /** Evento novo no estado (job automático ou outro admin): relê a 1ª página do histórico. */
+  const lastEventId = view ? (view.lastEvent?.id ?? null) : undefined;
+  const seenLastEventId = useRef<number | null | undefined>(undefined);
+  useEffect(() => {
+    if (lastEventId === undefined) return;
+    const seen = seenLastEventId.current;
+    seenLastEventId.current = lastEventId;
+    if (seen !== undefined && seen !== lastEventId) void loadEvents(null);
+  }, [lastEventId, loadEvents]);
+
   const renewRequestId = useCallback(() => {
     setDraft((prev) => (prev ? { ...prev, requestId: newRequestId() } : prev));
   }, [setDraft]);

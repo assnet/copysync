@@ -46,3 +46,13 @@ Formato real das amostras da Render conferido em produção (leitura, 2026-11-11
 | 4–6 (falha incerta) | 0 🔴, 1 🟡 por rodada | T26e: timeout/5xx do POST conta no intervalo e o painel não afirma "nada foi alterado". T26f: falha da leitura prévia (`read_*`) não é incerta; `lastCooldownStartAt`; paridade da lista. T26g: 4xx do provedor = `rejected_by_provider`, não incerto; `phase` obrigatório. Contrato da rota com `rejected_by_provider` (ajuste do orquestrador). Convergiu. |
 
 T25 (smoke real num serviço de teste da Render) continua do dono e obrigatório antes de `WORKER_SCALER_ENABLED=true` em produção.
+
+## R4 — revisão da implementação da P4
+
+| Rodada | Achados | Resultado |
+| --- | --- | --- |
+| 1 (diff da fase, backend e painel/docs) | 1 🔴, 10 🟡, 4 🔵 | 🔴 corrigido (T28b): cartão "Escala automática" mostrava decisão velha — `lastAutoEvent` novo em `GET /admin/workers/scale`. 🟡 corrigidos (T28a/T28b): subida dupla por amostras anteriores à subida (`ignoreBefore`); adoção desligada sem Render; checagens locais antes de ler a Render (`knownState`); recusas do `execute` fora do 1×/h (`recordRejections:false`); testes de lease vivo e "nunca reduz"; integração do job; chip "Ligada" só com escalador pronto e adoção; regra do coletor nas ajudas/docs. |
+| 2 | 0 🔴, 4 🟡 | Corrigidos (T28c): aguardando só conta demanda posterior à última subida (`requestedAfter`); teto lido ao vivo antes de recusar; tradução `auto: adoption_disabled`; histórico 0/0 só "—". |
+| 3 | 0 🔴, 1 🟡 | Corrigido (T28d): leitura ao vivo no teto com lease próprio de 5 min (≤ 12/h), recusa 1×/h — redução fora do painel vista em ≤ 5 min. |
+| 4 | 0 🔴, 0 🟡, 1 🔵 | Só nit (quebra de linha em comentário). Convergiu. |
+| Smoke (local, sem Render) | 1 🔴 visual, 1 🟡, 1 🔵 | Funcional ok (off/manual sem evento; auto+adoção off → 1 `ADOPTION_DISABLED`; aguardando + escalador off → 1 `SCALER_NOT_CONFIGURED`; leases coerentes). 🔴 corrigido (T28e): chip cobria o título do cartão a 390 px; reconferido no navegador. Fora do escopo: contraste do `warning` outlined no tema claro (tema global, 20 telas). |
