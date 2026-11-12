@@ -37,6 +37,8 @@ export const SUBSCRIPTION_LIMIT_KEYS = [
   'capture_outside_window_enabled',
   'marketplace_shein_enabled',
   'mercado_livre_affiliate_tags',
+  'offer_hunter_enabled',
+  'offer_hunter_finds_per_day',
 ] as const;
 
 export type SubscriptionLimitKey = (typeof SUBSCRIPTION_LIMIT_KEYS)[number];
@@ -69,6 +71,8 @@ const FIXED_MIN_PLAN: Partial<Record<SubscriptionLimitKey, PlanSlug>> = {
   enrich_link_only_enabled: 'pro',
   capture_outside_window_enabled: 'max',
   marketplace_shein_enabled: 'max',
+  offer_hunter_enabled: 'max',
+  offer_hunter_finds_per_day: 'max',
   ai_rewrite_enabled: 'pro',
   marketplace_extension: 'lite',
   offer_generations_per_day: 'lite',
@@ -194,6 +198,14 @@ export const subscriptionStrings = {
     enrich_link_only_enabled: { label: 'Oferta montada a partir só do link', hint: PLAN_HINTS.enrichLinkOnly },
     capture_outside_window_enabled: { label: 'Captura fora do horário', hint: PLAN_HINTS.captureOutsideWindow },
     marketplace_shein_enabled: { label: 'Afiliado Shein', hint: PLAN_HINTS.sheinAffiliate },
+    offer_hunter_enabled: {
+      label: 'Caçador de Ofertas',
+      hint: 'Procura sozinho as ofertas da Shein com melhor comissão e chance de venda e envia as melhores para um grupo.',
+    },
+    offer_hunter_finds_per_day: {
+      label: 'Ofertas garimpadas',
+      hint: 'Ofertas escolhidas pelo Caçador de Ofertas por dia. O contador zera à meia-noite.',
+    },
     mercado_livre_affiliate_tags: {
       label: 'Etiquetas do Mercado Livre',
       hint: 'Etiquetas da sua conta de afiliado aceitas nos links, contando a principal.',

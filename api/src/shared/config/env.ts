@@ -380,6 +380,15 @@ const envSchema = z.object({
     (v) => (typeof v === 'string' ? v.trim() || undefined : v),
     z.string().optional(),
   ),
+  // ── Caçador de Ofertas (.specs/features/offer-hunter) ───────────────────
+  // Quem vê/usa as rotas: `super_admin` (prévia, padrão) ou `entitled` (todo tenant com o entitlement).
+  // Trocar para `entitled` abre ao público sem deploy de código.
+  OFFER_HUNTER_AUDIENCE: z.enum(['super_admin', 'entitled']).default('super_admin'),
+  // Job que roda as caçadas agendadas, só em worker/all. Desligado por padrão; liga só na Render.
+  OFFER_HUNTER_JOB_ENABLED: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
   // ── Custos da infraestrutura (.specs/features/infra-costs, COST-09) ─────
   // `api=srv-…,worker=srv-…,redis=red-…,postgres=dpg-…,static=srv-…`, só no `worker`. Parse em
   // `infraCostRenderResources.ts` (entrada inválida ignorada com warn sem o id). Nunca logado nem devolvido.

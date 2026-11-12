@@ -90,6 +90,12 @@ describe.each(['light', 'dark'] as const)('BroadcastGroupsTable (%s)', (mode) =>
     expect(await screen.findByText('Promoções Ação foi removido dos grupos de disparo.')).toBeInTheDocument();
   });
 
+  it('destino do caçador tem rótulo próprio (não cai no ramo do monitoramento)', () => {
+    setup(mode, data([item('h', { title: 'Garimpo', usedBy: ['hunter'] })]));
+    expect(screen.getByText('Caçador de Ofertas')).toBeInTheDocument();
+    expect(screen.queryByText(/^Monitoramento/)).toBeNull();
+  });
+
   it('cancelar não remove; erro mostra aviso', async () => {
     const onRemove = vi.fn(async () => { throw new Error('x'); });
     setup(mode, data(ITEMS), onRemove);

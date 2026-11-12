@@ -23,6 +23,7 @@ Conta, IA e Extensão. Assinatura é do tenant (um `planSlug`), por isso fica aq
 | | | Gestor de Links | `/link-rotation` | |
 | | | Página de Ofertas | `/storefront` | PRO |
 | | | Story de Oferta | `/offer-story` | MAX |
+| | | Caçador de Ofertas (só com `offerHunterVisible`) | `/offer-hunter` | |
 | | | Credenciais de afiliado | `/affiliates/credentials` | |
 | | | Planos | `/affiliates/plans` | |
 | CRM & Automação | `soon` | Chat (só super admin) | `/chat` | |
@@ -33,6 +34,9 @@ Conta, IA e Extensão. Assinatura é do tenant (um `planSlug`), por isso fica aq
 
 Produto `soon` sem filho visível fica desabilitado (sem acordeão, `aria-disabled`, selo "Em breve").
 Produto `soon` com filho visível para o usuário atual (CRM para super admin) abre normalmente.
+Caçador de Ofertas: visibilidade vem da API (`GET /offer-hunts/access` → `useOfferHunterAccess` →
+`buildNavigation({ offerHunterVisible })`, mesma consulta do guard `OfferHunterRoute`). Sem selo e sem
+`superAdminOnly`: abrir ao público é só trocar `OFFER_HUNTER_AUDIENCE` ([`cacador-de-ofertas.md`](cacador-de-ofertas.md)).
 
 ## Onde fica cada coisa
 

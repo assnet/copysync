@@ -134,8 +134,9 @@ export function usePersistedState<T>(
   const optsRef = useRef(opts);
   optsRef.current = opts;
   const initialRef = useRef(initial);
-  // clear() volta ao inicial sem regravar: o efeito pula a próxima escrita
-  const skipWriteRef = useRef(false);
+  // clear() volta ao inicial sem regravar: o efeito pula a escrita desse valor. Guarda o valor (não um
+  // booleano): se o estado já era o inicial o efeito não roda, e a próxima mudança tem de ser gravada.
+  const skipWriteRef = useRef<{ value: T } | null>(null);
 
   const [state, setState] = useState<T>(() => {
     const saved = readPersisted<T>(key, opts);
@@ -144,18 +145,18 @@ export function usePersistedState<T>(
   });
 
   useEffect(() => {
-    if (skipWriteRef.current) {
-      skipWriteRef.current = false;
-      return;
-    }
+    const skip = skipWriteRef.current;
+    skipWriteRef.current = null;
+    if (skip && Object.is(skip.value, state)) return;
     writePersisted(key, state, optsRef.current);
   }, [key, state]);
 
   const clear = useCallback(() => {
     clearPersisted(key, optsRef.current.scope ?? 'tab');
-    skipWriteRef.current = true;
     const init = initialRef.current;
-    setState(typeof init === 'function' ? (init as () => T)() : init);
+    const value = typeof init === 'function' ? (init as () => T)() : init;
+    skipWriteRef.current = { value };
+    setState(value);
   }, [key]);
 
   return [state, setState, clear];

@@ -8,6 +8,7 @@ const usage: SubscriptionUsage = {
   broadcastGroups: { whatsapp: 7, telegram: 4 },
   linkRotations: { whatsapp: 1, telegram: 0 },
   offerGenerationsToday: 12,
+  offerHunterFindsToday: 4,
   aiRequestsToday: null,
   mercadoLivreAffiliateTags: 2,
 };
@@ -30,12 +31,27 @@ describe('subscriptionLimits', () => {
     expect(m.mercado_livre_affiliate_tags).toMatchObject({ channel: null, kind: 'count' });
   });
 
+  it('achados do caçador: usado = contagem do dia', () => {
+    expect(byKey(buildSubscriptionLimits({ offer_hunter_finds_per_day: 10 }, usage)).offer_hunter_finds_per_day)
+      .toMatchObject({ used: 4, limit: 10 });
+  });
+
   it('etiquetas do ML: uso do contador; ausente/lixo vale 1 (nunca sem limite); valor do plano', () => {
     const empty = byKey(buildSubscriptionLimits({}, usage));
     expect(empty.mercado_livre_affiliate_tags).toMatchObject({ used: 2, limit: 1, enabled: true });
     expect(byKey(buildSubscriptionLimits({ mercado_livre_affiliate_tags: 'x' }, usage)).mercado_livre_affiliate_tags.limit).toBe(1);
     expect(byKey(buildSubscriptionLimits({ mercado_livre_affiliate_tags: 10 }, usage)).mercado_livre_affiliate_tags)
       .toMatchObject({ used: 2, limit: 10, enabled: true });
+  });
+
+  it('achados do caçador: ausente/lixo vale 0 (nunca sem limite); valor do plano; feature ausente = desligada', () => {
+    const empty = byKey(buildSubscriptionLimits({}, usage));
+    expect(empty.offer_hunter_finds_per_day).toMatchObject({ kind: 'daily', used: 4, limit: 0, enabled: false });
+    expect(empty.offer_hunter_enabled.enabled).toBe(false);
+    expect(byKey(buildSubscriptionLimits({ offer_hunter_finds_per_day: 'x' }, usage)).offer_hunter_finds_per_day.limit).toBe(0);
+    const max = byKey(buildSubscriptionLimits({ offer_hunter_finds_per_day: 10, offer_hunter_enabled: true }, usage));
+    expect(max.offer_hunter_finds_per_day).toMatchObject({ limit: 10, enabled: true });
+    expect(max.offer_hunter_enabled.enabled).toBe(true);
   });
 
   it('snapshot vazio: numérico ilimitado, feature desligada salvo mention_all/ai_rewrite', () => {

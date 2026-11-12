@@ -24,6 +24,7 @@ import {
 } from '../../../../shared/errors/internal/AffiliateCredentialErrors';
 import { PrismaPlanEntitlementPresetRepository } from '../../../tenants/infrastructure/repositories/PrismaPlanEntitlementPresetRepository';
 import { createAffiliateEntitlementReader } from '../../infrastructure/affiliateCredentialEntitlements';
+import type { MarketplaceRiskScope } from '../../domain/enums/MarketplaceRiskScope';
 import { AcceptMarketplaceRiskUseCase } from '../../application/use-cases/AcceptMarketplaceRiskUseCase';
 import { MarketplaceRiskPresenter } from '../presenters/MarketplaceRiskPresenter';
 import { acceptMarketplaceRiskBodySchema, acceptMarketplaceRiskResponse } from '../schemas/marketplaceRisk.schema';
@@ -230,7 +231,7 @@ export async function affiliateCredentialRoutes(app: FastifyInstance): Promise<v
     },
   );
 
-  app.post<ProviderParams & { Body: { noticeVersion: string; locale: string } }>(
+  app.post<ProviderParams & { Body: { noticeVersion: string; locale: string; scope?: MarketplaceRiskScope } }>(
     '/:provider/risk-acceptance',
     {
       preHandler,
@@ -250,6 +251,7 @@ export async function affiliateCredentialRoutes(app: FastifyInstance): Promise<v
         role,
         isSuperAdmin,
         provider: request.params.provider,
+        scope: request.body.scope,
         noticeVersion: request.body.noticeVersion,
         locale: request.body.locale,
       });

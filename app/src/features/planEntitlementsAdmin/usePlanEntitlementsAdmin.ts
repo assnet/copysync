@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { adminPlanEntitlementsService } from '@/services/adminPlanEntitlements.service';
 import { planEntitlementErrorMessage, planEntitlementsAdminStrings as s } from './strings';
-import type { AdminPlanEntitlementList, SetPlanEntitlementResult } from './types';
+import type { AdminPlanEntitlementList, EditablePlanEntitlementValue, SetPlanEntitlementResult } from './types';
 
 /** Lista chave × plano e troca um valor; o estado local só muda depois que a API confirma. */
 export function usePlanEntitlementsAdmin() {
@@ -25,7 +25,7 @@ export function usePlanEntitlementsAdmin() {
 
   useEffect(() => { void reload(); }, [reload]);
 
-  const set = useCallback(async (planSlug: string, key: string, value: boolean): Promise<SetPlanEntitlementResult | null> => {
+  const set = useCallback(async (planSlug: string, key: string, value: EditablePlanEntitlementValue): Promise<SetPlanEntitlementResult | null> => {
     setBusy(`${key}:${planSlug}`);
     setActionError(null);
     try {

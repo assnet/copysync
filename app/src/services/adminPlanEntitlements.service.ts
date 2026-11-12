@@ -1,6 +1,8 @@
 import { apiClient } from './apiClient';
 import type { ApiSuccess } from '@/types/api.types';
-import type { AdminPlanEntitlementList, SetPlanEntitlementResult } from '@/features/planEntitlementsAdmin/types';
+import type {
+  AdminPlanEntitlementList, EditablePlanEntitlementValue, SetPlanEntitlementResult,
+} from '@/features/planEntitlementsAdmin/types';
 
 const BASE = '/admin/plan-entitlements';
 
@@ -11,7 +13,7 @@ export const adminPlanEntitlementsService = {
     return res.data.data;
   },
 
-  async set(planSlug: string, key: string, value: boolean): Promise<SetPlanEntitlementResult> {
+  async set(planSlug: string, key: string, value: EditablePlanEntitlementValue): Promise<SetPlanEntitlementResult> {
     const res = await apiClient.put<ApiSuccess<SetPlanEntitlementResult>>(
       `${BASE}/${encodeURIComponent(planSlug)}/${encodeURIComponent(key)}`,
       { value },

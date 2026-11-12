@@ -247,14 +247,21 @@ export interface AffiliateCredentialListResponse {
   marketplaceAvailability?: Partial<Record<AffiliateProvider, MarketplaceAvailability>>;
 }
 
+/** Escopo do aviso: `AFFILIATE_LINK` (padrão da API quando ausente) ou `OFFER_HUNTER` (aviso próprio do caçador). */
+export type MarketplaceRiskScope = 'AFFILIATE_LINK' | 'OFFER_HUNTER';
+
 export interface AcceptMarketplaceRiskRequest {
   noticeVersion: string;
   locale: string;
+  /** Ausente = `AFFILIATE_LINK` (card Shein das credenciais). */
+  scope?: MarketplaceRiskScope;
 }
 
 export interface AcceptMarketplaceRiskResponse {
   acceptedAt: string;
   noticeVersion: string;
+  /** Ausente em API antiga. */
+  scope?: MarketplaceRiskScope;
 }
 
 export interface UpsertAffiliateCredentialRequest {
@@ -270,7 +277,7 @@ export type OfferStatus = 'DRAFT' | 'SENDING' | 'PAUSED' | 'SENT' | 'FAILED' | '
 export type OfferDispatchStatus = 'QUEUED' | 'SENDING' | 'SENT' | 'FAILED' | 'SKIPPED' | 'CANCELLED';
 
 /** Quem criou a oferta. */
-export type OfferOrigin = 'GENERATOR' | 'MONITORING';
+export type OfferOrigin = 'GENERATOR' | 'MONITORING' | 'HUNTER';
 
 /** Um envio na fila de envio, com resumo da oferta e do grupo destino. */
 export interface SendQueueItem {
@@ -816,8 +823,8 @@ export interface CapturedOffersResponse {
 
 // ── Grupos de disparo (catálogo do tenant) ──────────────────────────────────────
 
-/** Uso de um grupo de disparo: `generator` ou `monitor:<sessionId>` (monitoramento daquela sessão). */
-export type BroadcastGroupUse = 'generator' | `monitor:${string}`;
+/** Uso de um grupo de disparo: `generator`, `hunter` (destino do Caçador de Ofertas) ou `monitor:<sessionId>`. */
+export type BroadcastGroupUse = 'generator' | 'hunter' | `monitor:${string}`;
 
 /** Grupo de disparo distinto (sessão + grupo) do tenant, somando gerador e monitoramentos. Sem texto de mensagem. */
 export interface BroadcastGroupCatalogItem {

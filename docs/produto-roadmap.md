@@ -34,6 +34,7 @@ pelo do cliente, reescreve o texto com IA e reposta nos grupos dele, no horário
 | 14 | 👥 Menção a todos | Post em grupo de disparo menciona todos os participantes (menção estruturada; metadata do grupo em cache) | `campaigns/broadcast-mention-all` sobre `sendTextMessage.mentions` | ⏳ (envio com `mentions` ✅ existe) |
 | 15 | 🌐 Domínio personalizado | Site de ofertas e Gestor de Links servidos no domínio do cliente (CNAME + TLS automático) | `storefront/custom-domain` | ⏳ |
 | 16 | 🎧 Níveis de suporte | Suporte 24/7, prioritário ou exclusivo conforme o plano; só muda fila/SLA, nada no código além do entitlement | `tenants` (entitlement `support_tier`) | ⏳ |
+| 17 | 🎯 Caçador de Ofertas | Procura sozinho, no catálogo de comissão da Shein, as ofertas com melhor retorno (comissão × chance de venda), refina com ou sem IA e envia só as melhores para 1 grupo, de tempos em tempos | `campaigns/hunter` ([`cacador-de-ofertas.md`](cacador-de-ofertas.md)) | ✅ prévia só super admin (job desligado até o smoke); MAX |
 
 ## Produtos (menu)
 
@@ -42,7 +43,7 @@ Produto novo nasce aqui antes de entrar no menu. Números referem-se à tabela a
 
 | Produto | Status | Funcionalidades |
 |---|---|---|
-| Afiliados | disponível | 3, 4, 8, 9, 11, 12 |
+| Afiliados | disponível | 3, 4, 8, 9, 11, 12, 17 |
 | CRM & Automação | em breve | chat/atendimento, fluxos por blocos, assistentes de IA (`/chat` já existe, só super admin; ingestão por entitlement `chat_enabled`, ver `chat-ingestao-por-entitlement.md`) |
 | Gestor de Grupos | em breve | 5, 10, 14 |
 | Saver | em breve | a definir |
@@ -87,6 +88,7 @@ guarda o plano, não o preço.
 | Marketplaces (Shopee, Amazon, ML) | ✅ | ✅ | ✅ |
 | Etiquetas do Mercado Livre vinculadas (principal incluída) | 1 | 2 | 10 |
 | Marketplace Shein (sessão pela extensão, aviso de risco) | — | — | ✅ |
+| Caçador de Ofertas Shein (ofertas garimpadas por dia, 1 grupo de destino) | — | — | 10/dia (exclusivo) |
 | Gerador de ofertas | ✅ | ✅ | ✅ |
 | Envio "digitando…" antes da oferta | ✅ | ✅ | ✅ |
 | Monitorar numa sessão e disparar em outra do mesmo canal (sessão cruzada) | — | — | ✅ (exclusivo) |
@@ -142,7 +144,7 @@ Chaves de entitlement sugeridas (snake_case, estáveis):
 `telegram_monitored_groups`, `telegram_broadcast_groups`,
 `offer_generations_per_day` (`null` = ilimitado), `link_rotations`, `link_rotation_groups`,
 `telegram_link_rotations`, `telegram_link_rotation_groups`, `ai_rewrite_enabled`,
-`offer_story_enabled`, `marketplace_shein_enabled` (MAX; super admin libera por plano em `/admin/plan-entitlements`), `storefront_enabled`, `enrich_link_only_enabled` (PRO/MAX), `capture_outside_window_enabled` (MAX), `mention_all_enabled`, `custom_domain_enabled`,
+`offer_story_enabled`, `marketplace_shein_enabled` (MAX; super admin libera por plano em `/admin/plan-entitlements`), `offer_hunter_enabled` (MAX; editável no mesmo admin), `offer_hunter_finds_per_day` (MAX 10; ausente = 0; número editável no mesmo admin), `storefront_enabled`, `enrich_link_only_enabled` (PRO/MAX), `capture_outside_window_enabled` (MAX), `mention_all_enabled`, `custom_domain_enabled`,
 `support_tier` (`standard | priority | exclusive`).
 
 Billing: via API central, ver [`arquitetura-central-billing.md`](arquitetura-central-billing.md) (reaproveitar

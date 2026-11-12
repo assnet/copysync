@@ -3,7 +3,7 @@ import { buildNavigation, findActiveEntry, linkMatches } from './model';
 
 describe('buildNavigation', () => {
   it('ordena os produtos com Afiliados primeiro e cinco no total', () => {
-    const model = buildNavigation({ isSuperAdmin: false });
+    const model = buildNavigation({ isSuperAdmin: false, offerHunterVisible: false });
     expect(model.products.map((p) => p.key)).toEqual([
       'affiliates', 'crm-automation', 'group-manager', 'saver', 'chip-warmer', 'group-filler',
     ]);
@@ -15,13 +15,13 @@ describe('buildNavigation', () => {
   });
 
   it('Dashboard no topo; bloco inferior com planos, privacidade e configurações', () => {
-    const model = buildNavigation({ isSuperAdmin: false });
+    const model = buildNavigation({ isSuperAdmin: false, offerHunterVisible: false });
     expect(model.top.map((l) => l.path)).toEqual(['/dashboard']);
     expect(model.bottom.map((e) => e.key)).toEqual(['privacy', 'settings']);
   });
 
   it('usuário comum: CRM & Automação é "soon", sem Chat, e não vê Plataforma', () => {
-    const model = buildNavigation({ isSuperAdmin: false });
+    const model = buildNavigation({ isSuperAdmin: false, offerHunterVisible: false });
     const crm = model.products.find((p) => p.key === 'crm-automation')!;
     expect(crm.status).toBe('soon');
     expect(crm.children).toEqual([]);
@@ -29,7 +29,7 @@ describe('buildNavigation', () => {
   });
 
   it('super admin: CRM & Automação disponível com Chat e seção Plataforma', () => {
-    const model = buildNavigation({ isSuperAdmin: true });
+    const model = buildNavigation({ isSuperAdmin: true, offerHunterVisible: false });
     const crm = model.products.find((p) => p.key === 'crm-automation')!;
     expect(crm.status).toBe('available');
     expect(crm.children.map((c) => c.path)).toEqual(['/chat']);
@@ -37,7 +37,7 @@ describe('buildNavigation', () => {
   });
 
   it('nenhum rótulo leva nome de marca', () => {
-    const model = buildNavigation({ isSuperAdmin: true });
+    const model = buildNavigation({ isSuperAdmin: true, offerHunterVisible: false });
     const labels = [
       ...model.top.map((l) => l.label),
       ...model.products.flatMap((p) => [p.label, p.tagline, ...p.children.map((c) => c.label)]),
@@ -45,6 +45,28 @@ describe('buildNavigation', () => {
       ...model.bottom.map((e) => e.label),
     ];
     for (const label of labels) expect(label.toLowerCase()).not.toMatch(/copysync|waio/);
+  });
+
+  it('Caçador de Ofertas: some com offerHunterVisible false, mesmo para super admin', () => {
+    for (const isSuperAdmin of [false, true]) {
+      const model = buildNavigation({ isSuperAdmin, offerHunterVisible: false });
+      expect(model.products[0].children.some((c) => c.key === 'offer-hunter')).toBe(false);
+      expect(findActiveEntry(model, '/offer-hunter')).toBeUndefined();
+    }
+  });
+
+  it('Caçador de Ofertas: aparece em Afiliados com offerHunterVisible true, mesmo sem super admin', () => {
+    const model = buildNavigation({ isSuperAdmin: false, offerHunterVisible: true });
+    const children = model.products[0].children;
+    expect(children.map((c) => c.path)).toEqual([
+      '/offers', '/monitoring', '/broadcast-groups', '/link-rotation', '/storefront', '/offer-story', '/offer-hunter',
+      '/affiliates/credentials', '/affiliates/plans',
+    ]);
+    const hunter = children.find((c) => c.key === 'offer-hunter')!;
+    expect(hunter).toMatchObject({ label: 'Caçador de Ofertas' });
+    expect(hunter.badge).toBeUndefined();
+    expect(hunter.superAdminOnly).toBeUndefined();
+    expect(findActiveEntry(model, '/offer-hunter/h1')?.link.key).toBe('offer-hunter');
   });
 });
 
@@ -60,7 +82,7 @@ describe('linkMatches', () => {
 });
 
 describe('findActiveEntry', () => {
-  const model = buildNavigation({ isSuperAdmin: true });
+  const model = buildNavigation({ isSuperAdmin: true, offerHunterVisible: false });
 
   it('rota de filho devolve o link e o produto', () => {
     const entry = findActiveEntry(model, '/storefront');

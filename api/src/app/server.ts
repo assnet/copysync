@@ -57,6 +57,8 @@ import type { OpsMetricsSamplerJob } from '../modules/metrics/infrastructure/job
 import { createInfraCostSnapshotJob } from '../modules/metrics/infrastructure/infraCostsContainer';
 import type { InfraCostSnapshotJob } from '../modules/metrics/infrastructure/jobs/InfraCostSnapshotJob';
 import { startInfraCostSnapshotJob } from '../modules/metrics/infrastructure/infraCostSnapshotStart';
+import { createOfferHuntSchedulerJob, type OfferHuntSchedulerJob } from '../modules/campaigns/infrastructure/jobs/OfferHuntSchedulerJob';
+import { startOfferHunterSchedulerJob } from '../modules/campaigns/infrastructure/offerHunterSchedulerStart';
 import type { IMessagingEngine } from '../modules/messaging/domain/contracts/IMessagingEngine';
 import type { ISessionSocketControl } from '../modules/messaging/domain/contracts/ISessionSocketControl';
 import { currentRole, runsSessions, type ProcessRole } from '../shared/config/processRole';
@@ -502,6 +504,14 @@ async function start(): Promise<void> {
     logger.info({ render: snapshot.renderConfigured }, 'Infra cost snapshot job started');
   }
 
+  // ── Caçadas agendadas do Caçador de Ofertas (offer-hunter T11) ─────────────
+  // Só worker/all e com a flag; 1 dono por vez via lease, posse por caçada em CAS. Timer `unref` de 60 s.
+  const offerHunterScheduler: OfferHuntSchedulerJob | null = startOfferHunterSchedulerJob(
+    jobs.has('offerHunterScheduler') && env.OFFER_HUNTER_JOB_ENABLED,
+    createOfferHuntSchedulerJob,
+  );
+  if (offerHunterScheduler) logger.info('Offer hunter scheduler started');
+
   // ── Subida automática de workers (WSCALE-15) ───────────────────────────────
   // Só worker/all; 1 dono por vez via lease. Age só com `scalerMode = auto` (lido a cada tick).
   let workerAutoscaler: WorkerAutoscalerJob | null = null;
@@ -538,7 +548,8 @@ async function start(): Promise<void> {
     // WSCALE-15: a subida automática também (espera o tick em curso).
     // OWN-04: a varredura de tenant inativo também (espera a passada em curso).
     // COST-09: o snapshot de custos também (cancela a cotação em voo, solta o lease).
-    if (adoption || opsMetricsSampler || workerAutoscaler || inactiveTenantSweep || infraCostSnapshot) {
+    // T11: o caçador também (espera a caçada em curso; as não iniciadas são soltas sem mudar o horário).
+    if (adoption || opsMetricsSampler || workerAutoscaler || inactiveTenantSweep || infraCostSnapshot || offerHunterScheduler) {
       try {
         await Promise.all([
           adoption?.ticker.stop(),
@@ -547,6 +558,7 @@ async function start(): Promise<void> {
           workerAutoscaler?.stop(),
           inactiveTenantSweep?.stop(),
           infraCostSnapshot?.stop(),
+          offerHunterScheduler?.stop(),
         ]);
         if (adoption) logger.info('Session adoption stopped');
       } catch (err) {

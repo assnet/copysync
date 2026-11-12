@@ -88,7 +88,7 @@ export class ListAffiliateCredentialsUseCase {
   ): Promise<MarketplaceRiskNoticeState | null> {
     const version = currentRiskNoticeVersion(provider);
     if (version === null) return null;
-    const accepted = await this.riskAcceptances.findCurrent(input.tenantId, provider, version);
+    const accepted = await this.riskAcceptances.findCurrent(input.tenantId, provider, 'AFFILIATE_LINK', version);
     return {
       version,
       acceptedAt: accepted?.acceptedAt ?? null,

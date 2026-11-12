@@ -16,6 +16,14 @@ const set = () => (setUc ??= new SetPlanEntitlementUseCase(prismaPlanEntitlement
 
 const presetValue = { type: ['boolean', 'number', 'null'] } as const;
 
+/** Valor gravável: o tipo exato e a faixa de cada chave são validados no use case. */
+const editableValue = { type: ['boolean', 'integer'] } as const;
+
+const valueType = {
+  type: 'object',
+  properties: { kind: { type: 'string', enum: ['boolean', 'integer'] }, min: { type: 'integer' }, max: { type: 'integer' } },
+} as const;
+
 const listResponse = {
   type: 'object',
   properties: {
@@ -30,6 +38,7 @@ const listResponse = {
             type: 'object',
             properties: {
               key: { type: 'string' },
+              type: valueType,
               plans: { type: 'object', properties: Object.fromEntries(PLAN_SLUGS.map((p) => [p, presetValue])) },
             },
           },
@@ -49,7 +58,7 @@ const setBody = {
   type: 'object',
   required: ['value'],
   additionalProperties: false,
-  properties: { value: { type: 'boolean' } },
+  properties: { value: editableValue },
 } as const;
 
 const setResponse = {
@@ -61,7 +70,7 @@ const setResponse = {
       properties: {
         planSlug: { type: 'string' },
         key: { type: 'string' },
-        value: { type: 'boolean' },
+        value: editableValue,
         tenantsUpdated: { type: 'integer' },
       },
     },
@@ -75,17 +84,17 @@ const setResponse = {
 export async function planEntitlementAdminRoutes(app: FastifyInstance): Promise<void> {
   app.get('/', {
     preHandler,
-    schema: { tags, summary: 'Chaves editáveis × planos, com o valor atual do preset', response: { 200: listResponse } },
+    schema: { tags, summary: 'Chaves editáveis (tipo e faixa) × planos, com o valor atual do preset', response: { 200: listResponse } },
   }, async (_request, reply) => {
     const entitlements = await list().execute();
     return reply.status(200).send({ success: true, data: { plans: [...PLAN_SLUGS], entitlements } });
   });
 
-  app.put<{ Params: { planSlug: string; key: string }; Body: { value: boolean } }>('/:planSlug/:key', {
+  app.put<{ Params: { planSlug: string; key: string }; Body: { value: boolean | number } }>('/:planSlug/:key', {
     preHandler,
     schema: {
       tags,
-      summary: 'Liga/desliga a chave no plano: preset + tenants do plano na mesma transação, auditado',
+      summary: 'Altera a chave no plano (boolean ou inteiro na faixa): preset + tenants do plano na mesma transação, auditado',
       params: setParams,
       body: setBody,
       response: { 200: setResponse },

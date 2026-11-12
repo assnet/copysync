@@ -1,0 +1,277 @@
+/**
+ * Contrato de `/api/offer-hunts` (api/src/modules/campaigns/presentation: `offerHunt.schema.ts` e
+ * `OfferHuntPresenter.ts`). Envelope `{ success, data }` desembrulhado no service. Valores em centavos.
+ */
+
+export const OFFER_HUNT_STATUSES = ['ACTIVE', 'PAUSED'] as const;
+export type OfferHuntStatus = (typeof OFFER_HUNT_STATUSES)[number];
+
+/** `USER` = pausa manual; os demais o servidor aplica sozinho (alerta na tela). */
+export const OFFER_HUNT_PAUSE_REASONS = [
+  'USER', 'SOURCE_UNAVAILABLE', 'CREDENTIAL_REJECTED', 'RISK_NOT_ACCEPTED', 'PLAN_UNAVAILABLE',
+] as const;
+export type OfferHuntPauseReason = (typeof OFFER_HUNT_PAUSE_REASONS)[number];
+
+/** REVIEW = achados esperam aprovação; AUTO = vão direto ao grupo. */
+export const OFFER_HUNT_DELIVERY_MODES = ['REVIEW', 'AUTO'] as const;
+export type OfferHuntDeliveryMode = (typeof OFFER_HUNT_DELIVERY_MODES)[number];
+
+export const OFFER_HUNT_RUN_STATUSES = ['RUNNING', 'SUCCEEDED', 'FAILED', 'SKIPPED'] as const;
+export type OfferHuntRunStatus = (typeof OFFER_HUNT_RUN_STATUSES)[number];
+
+export const OFFER_HUNT_RUN_TRIGGERS = ['MANUAL', 'SCHEDULED'] as const;
+export type OfferHuntRunTrigger = (typeof OFFER_HUNT_RUN_TRIGGERS)[number];
+
+export const OFFER_HUNT_FIND_STATUSES = ['PENDING_REVIEW', 'APPROVED', 'DISMISSED', 'SENT', 'FAILED'] as const;
+export type OfferHuntFindStatus = (typeof OFFER_HUNT_FIND_STATUSES)[number];
+
+export const HUNT_SORTS = ['RECOMMENDED', 'TOP_RATED', 'NEWEST', 'PRICE_ASC', 'PRICE_DESC', 'BEST_SELLING'] as const;
+export type HuntSort = (typeof HUNT_SORTS)[number];
+
+export const HUNT_COMMISSION_BANDS = ['BELOW_5', 'FROM_5_TO_10', 'FROM_10_TO_15', 'ABOVE_15', 'ANY'] as const;
+export type HuntCommissionBand = (typeof HUNT_COMMISSION_BANDS)[number];
+
+/** Predefinições de 1 clique (só mudam filtros; pesos da pontuação são fixos no servidor). */
+export const HUNT_PRESETS = ['TOP_COMMISSION', 'BEST_SELLERS', 'BIGGEST_DISCOUNT', 'NEW_ARRIVALS', 'CUSTOM'] as const;
+export type HuntPreset = (typeof HUNT_PRESETS)[number];
+
+export const HUNT_SCORE_FACTOR_KEYS = [
+  'commission', 'sales', 'rating', 'reviews', 'rank', 'discount', 'priceBand', 'extraCommission', 'endingSoon',
+] as const;
+export type HuntScoreFactorKey = (typeof HUNT_SCORE_FACTOR_KEYS)[number];
+
+/** Estado da fonte de categorias em `/options` (falha da fonte nunca é erro HTTP). */
+export type HuntCategorySourceStatus = 'OK' | 'LOCKED' | 'NO_CREDENTIAL' | 'CREDENTIAL_REJECTED' | 'UNAVAILABLE';
+
+export interface HuntScoreFactor {
+  key: HuntScoreFactorKey;
+  points: number;
+  max: number;
+}
+
+/** Filtros locais (null = sem filtro). Preço/comissão em centavos; percentuais 0–100; nota 0–5. */
+export interface HuntFilters {
+  minPriceCents: number | null;
+  maxPriceCents: number | null;
+  minDiscountPct: number | null;
+  minCommissionPct: number | null;
+  minCommissionCents: number | null;
+  minRating: number | null;
+  minSales: number | null;
+  minReviews: number | null;
+  onlyWithExtra: boolean | null;
+  endsWithinDays: number | null;
+}
+
+export interface Hunt {
+  id: string;
+  name: string;
+  status: OfferHuntStatus;
+  pauseReason: OfferHuntPauseReason | null;
+  sort: HuntSort;
+  categoryId: string | null;
+  commissionBand: HuntCommissionBand | null;
+  keyword: string | null;
+  filters: HuntFilters;
+  aiEnabled: boolean;
+  topN: number;
+  repeatAfterDays: number;
+  deliveryMode: OfferHuntDeliveryMode;
+  intervalMinutes: number;
+  /** Minutos do dia (0–1440), fuso do servidor; padrão 0–1440 = dia todo. */
+  windowStartMinute: number;
+  windowEndMinute: number;
+  /** Bit 0 = domingo … bit 6 = sábado; 127 = todos. */
+  weekdaysMask: number;
+  /** ISO; comparar só com `serverNow()` (`services/serverClock.ts`). */
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  consecutiveFailures: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HuntRun {
+  id: string;
+  huntId: string | null;
+  trigger: OfferHuntRunTrigger;
+  status: OfferHuntRunStatus;
+  errorCode: string | null;
+  seenCount: number;
+  matchedCount: number;
+  chosenCount: number;
+  sentCount: number;
+  aiUsed: boolean;
+  aiFallback: boolean;
+  startedAt: string;
+  finishedAt: string | null;
+}
+
+export interface HuntFind {
+  id: string;
+  huntId: string | null;
+  runId: string | null;
+  status: OfferHuntFindStatus;
+  goodsId: string;
+  title: string;
+  /** Foto da fonte (https, *.ltwebstatic.com) gravada no achado; null = sem foto. */
+  imageUrl: string | null;
+  priceCents: number | null;
+  originalPriceCents: number | null;
+  discountPercent: number | null;
+  commissionPercent: number | null;
+  commissionCents: number | null;
+  returningCommissionPercent: number | null;
+  returningCommissionCents: number | null;
+  extraCommissionCents: number | null;
+  /** Faixa de vendas (ex.: 100 = "100+"), não o número exato. */
+  salesBucket: number | null;
+  reviewsBucket: number | null;
+  rating: number | null;
+  /** 0–100, soma dos `factors[].points`. */
+  score: number;
+  factors: HuntScoreFactor[];
+  aiReason: string | null;
+  /** Código do erro do envio quando `FAILED`. */
+  failureReason: string | null;
+  offerId: string | null;
+  createdAt: string;
+}
+
+/** Item do ranking de "Testar agora" (a imagem vem da fonte, não do storage: só exibição). */
+export interface HuntRankingItem {
+  goodsId: string;
+  title: string | null;
+  imageUrl: string | null;
+  priceCents: number | null;
+  score: number;
+  factors: HuntScoreFactor[];
+  aiReason: string | null;
+  chosen: boolean;
+}
+
+export interface HuntRunResult {
+  runId: string | null;
+  status: 'SUCCEEDED' | 'FAILED' | 'SKIPPED';
+  errorCode: string | null;
+  seenCount: number;
+  matchedCount: number;
+  chosenCount: number;
+  sentCount: number;
+  aiUsed: boolean;
+  aiFallback: boolean;
+  ranking: HuntRankingItem[];
+  finds: HuntFind[];
+  remainingToday: number;
+  pausedReason: OfferHuntPauseReason | null;
+}
+
+/** Página por cursor opaco: o front só devolve `nextCursor`, nunca `limit`/`offset`. */
+export interface HuntPage<T> {
+  items: T[];
+  nextCursor: string | null;
+}
+
+export interface HuntApproveResult {
+  find: HuntFind;
+  offerId: string;
+}
+
+/** Uso do dia: `limit` é o entitlement `offer_hunter_finds_per_day`; `runsMax` é a guarda técnica. */
+export interface HuntUsage {
+  used: number;
+  limit: number;
+  remaining: number;
+  runsToday: number;
+  runsMax: number;
+}
+
+export interface HuntCategory {
+  categoryId: string;
+  name: string;
+}
+
+export interface HuntPresetOption {
+  key: HuntPreset;
+  definition: {
+    source: { sort: HuntSort; commissionBand: HuntCommissionBand };
+    /** Só os filtros que a predefinição define. */
+    local: Partial<HuntFilters>;
+  };
+}
+
+export interface HuntLimits {
+  huntsMax: number;
+  topNMax: number;
+  topNDefault: number;
+  repeatAfterDaysMin: number;
+  repeatAfterDaysMax: number;
+  repeatAfterDaysDefault: number;
+  intervalMinutesMin: number;
+  intervalMinutesMax: number;
+  keywordMaxLength: number;
+  nameMaxLength: number;
+  endsWithinDaysMax: number;
+}
+
+/** Portões de uso (estados travados da tela, na ordem da execução). */
+export interface HuntGates {
+  plan: boolean;
+  hunterEntitlement: boolean;
+  credential: boolean;
+  riskAccepted: boolean;
+  aiAvailable: boolean;
+  destination: boolean;
+}
+
+export type HuntGateKey = keyof HuntGates;
+
+export interface HuntOptions {
+  categories: HuntCategory[];
+  sourceStatus: HuntCategorySourceStatus;
+  sorts: HuntSort[];
+  commissionBands: HuntCommissionBand[];
+  presets: HuntPresetOption[];
+  limits: HuntLimits;
+  gates: HuntGates;
+}
+
+/** Grupo de destino do caçador; `valid` = sessão e grupo definidos. */
+export interface HunterSettings {
+  sessionId: string | null;
+  conversationId: string | null;
+  valid: boolean;
+}
+
+export interface SaveHunterSettingsInput {
+  sessionId: string;
+  conversationId: string;
+}
+
+/** Corpo de criar (só `name` obrigatório; o resto cai no padrão do servidor). */
+export interface CreateHuntInput {
+  name: string;
+  sort?: HuntSort;
+  categoryId?: string | null;
+  commissionBand?: HuntCommissionBand | null;
+  keyword?: string | null;
+  filters?: Partial<HuntFilters>;
+  aiEnabled?: boolean;
+  topN?: number;
+  repeatAfterDays?: number;
+  deliveryMode?: OfferHuntDeliveryMode;
+  intervalMinutes?: number;
+  windowStartMinute?: number;
+  windowEndMinute?: number;
+  weekdaysMask?: number;
+}
+
+/** Corpo de editar: ao menos um campo. */
+export type UpdateHuntInput = Partial<CreateHuntInput>;
+
+/** Erro rejeitado pelo `apiClient` (interceptor expõe `status`, `code`, `meta`). */
+export interface OfferHunterApiError {
+  status?: number;
+  code?: string;
+  meta?: Record<string, unknown> | null;
+}

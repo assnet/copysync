@@ -28,7 +28,7 @@ const conversationSelect = {
 } as const;
 
 /**
- * União `offer_destinations` ⋃ `broadcast_groups` (docs da spec broadcast-schedule, BG-01/BG-04).
+ * União `offer_destinations` ⋃ `broadcast_groups` ⋃ `offer_hunter_settings` (docs da spec broadcast-schedule, BG-01/BG-04).
  * Sessão apagada (do grupo ou do monitoramento) não conta. Toda consulta filtra `tenantId`.
  */
 export class PrismaBroadcastGroupUsageReader implements IBroadcastGroupUsageReader, IBroadcastGroupRemover {
@@ -54,13 +54,14 @@ export class PrismaBroadcastGroupUsageReader implements IBroadcastGroupUsageRead
       });
     }
     const items = [...byGroup.values()];
-    for (const i of items) i.usedBy.sort((a, b) => (a === 'generator' ? -1 : b === 'generator' ? 1 : a.localeCompare(b)));
+    const rank = (u: string) => (u === 'generator' ? 0 : u === 'hunter' ? 1 : 2);
+    for (const i of items) i.usedBy.sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
     return items.sort((a, b) =>
       a.sessionName.localeCompare(b.sessionName) || (a.title ?? '').localeCompare(b.title ?? '') || a.groupJid.localeCompare(b.groupJid));
   }
 
   /**
-   * BG-05: apaga o grupo do gerador e de todos os monitoramentos do tenant, numa transação.
+   * BG-05: apaga o grupo do gerador, de todos os monitoramentos e do caçador do tenant, numa transação.
    * O grupo é a mesma chave do catálogo (sessão + JID), então conversa duplicada do mesmo grupo sai junto.
    * Conversa que não é grupo do tenant → `found: false` (404 no use case). Sessão apagada não impede a limpeza.
    */
@@ -76,12 +77,14 @@ export class PrismaBroadcastGroupUsageReader implements IBroadcastGroupUsageRead
         : { tenantId, id: conversationId };
       const gen = await tx.offerDestination.deleteMany({ where: { tenantId, conversation: sameGroup } });
       const mon = await tx.broadcastGroup.deleteMany({ where: { tenantId, conversation: sameGroup } });
-      return { found: true, removed: gen.count + mon.count };
+      // Caçador: a linha é do tenant (1 por tenant); só perde o grupo
+      const hunt = await tx.offerHunterSettings.updateMany({ where: { tenantId, conversation: sameGroup }, data: { conversationId: null } });
+      return { found: true, removed: gen.count + mon.count + hunt.count };
     });
   }
 
   private async load(tenantId: string, options: ListBroadcastGroupRowsOptions): Promise<LoadedRow[]> {
-    const [generator, monitor] = await Promise.all([
+    const [generator, monitor, hunter] = await Promise.all([
       options.exceptGenerator
         ? Promise.resolve([])
         : this.prisma.offerDestination.findMany({
@@ -106,6 +109,12 @@ export class PrismaBroadcastGroupUsageReader implements IBroadcastGroupUsageRead
           conversation: { select: conversationSelect },
         },
       }),
+      options.exceptHunter
+        ? Promise.resolve([])
+        : this.prisma.offerHunterSettings.findMany({
+            where: { tenantId, conversation: { ...liveGroupConversation(tenantId), isGroup: true, groupJid: { not: null } } },
+            select: { conversationId: true, conversation: { select: conversationSelect } },
+          }),
     ]);
 
     const out: LoadedRow[] = [];
@@ -123,6 +132,14 @@ export class PrismaBroadcastGroupUsageReader implements IBroadcastGroupUsageRead
       out.push({
         conversationId: b.conversationId, sessionId: b.sessionId, groupJid: b.groupJid, engine: c.session.engine,
         use: `monitor:${b.config.sessionId}`, sessionName: c.session.name, title: c.groupName, avatarUrl: c.groupAvatarUrl,
+      });
+    }
+    for (const h of hunter) {
+      const c = h.conversation;
+      if (!h.conversationId || !c?.session || !c.sessionId || !c.groupJid) continue;
+      out.push({
+        conversationId: h.conversationId, sessionId: c.sessionId, groupJid: c.groupJid, engine: c.session.engine,
+        use: 'hunter', sessionName: c.session.name, title: c.groupName, avatarUrl: c.groupAvatarUrl,
       });
     }
     return out;

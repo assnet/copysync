@@ -194,6 +194,10 @@ model Tenant {
   storefrontOffers           StorefrontOffer[]
   sessionHours               TenantSessionHour[]
   costMonths                 InfraCostMonthTenant[]
+  offerHunts                 OfferHunt[]
+  offerHuntRuns              OfferHuntRun[]
+  offerHuntFinds             OfferHuntFind[]
+  offerHunterSettings        OfferHunterSettings?
 
   @@index([slug])
   @@map("tenants")
@@ -384,6 +388,7 @@ model Session {
   offerGeneratorConfigSessions OfferGeneratorConfigSession[]
   groupMonitorConfigs          GroupMonitorConfig[]
   linkRotations                LinkRotation[]
+  offerHunterSettings          OfferHunterSettings[]
 
   @@index([tenantId])
   @@index([tenantId, status])
@@ -698,16 +703,17 @@ model ChatConversation {
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
-  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  session            Session?            @relation(fields: [sessionId], references: [id])
-  contact            ChatContact?        @relation(fields: [contactId], references: [id])
-  assignedUser       User?               @relation("AssignedConversations", fields: [assignedUserId], references: [id])
-  messages           ChatMessage[]
-  offerDispatches    OfferDispatch[]
-  offerDestinations  OfferDestination[]
-  monitoredGroups    MonitoredGroup[]
-  broadcastGroups    BroadcastGroup[]
-  linkRotationGroups LinkRotationGroup[]
+  tenant              Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  session             Session?              @relation(fields: [sessionId], references: [id])
+  contact             ChatContact?          @relation(fields: [contactId], references: [id])
+  assignedUser        User?                 @relation("AssignedConversations", fields: [assignedUserId], references: [id])
+  messages            ChatMessage[]
+  offerDispatches     OfferDispatch[]
+  offerDestinations   OfferDestination[]
+  monitoredGroups     MonitoredGroup[]
+  broadcastGroups     BroadcastGroup[]
+  linkRotationGroups  LinkRotationGroup[]
+  offerHunterSettings OfferHunterSettings[]
 
   @@index([tenantId, status])
   @@index([tenantId, lastMessageAt])
@@ -871,21 +877,29 @@ model AffiliateCredential {
   @@map("affiliate_credentials")
 }
 
-/// Aceite do aviso de risco de um marketplace (hoje só SHEIN), por tenant. Só inclusão:
+/// Escopo do aviso de risco: link de afiliado (aviso do marketplace) ou caçador de ofertas
+/// (busca, link e envio automáticos). Cada escopo tem texto e versão próprios.
+enum MarketplaceRiskScope {
+  AFFILIATE_LINK
+  OFFER_HUNTER
+}
+
+/// Aceite do aviso de risco de um marketplace (hoje só SHEIN), por tenant e escopo. Só inclusão:
 /// nunca atualizar nem apagar (registro de quem aceitou, quando, qual versão do texto e em que idioma).
 model MarketplaceRiskAcceptance {
-  id               String            @id @default(cuid())
+  id               String               @id @default(cuid())
   tenantId         String
   provider         AffiliateProvider
+  scope            MarketplaceRiskScope @default(AFFILIATE_LINK)
   noticeVersion    String
   acceptedByUserId String
   locale           String
-  acceptedAt       DateTime          @default(now())
+  acceptedAt       DateTime             @default(now())
 
   tenant     Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   acceptedBy User   @relation(fields: [acceptedByUserId], references: [id], onDelete: Restrict)
 
-  @@unique([tenantId, provider, noticeVersion])
+  @@unique([tenantId, provider, scope, noticeVersion])
   @@index([tenantId, provider])
   @@index([acceptedByUserId])
   @@map("marketplace_risk_acceptances")
@@ -901,6 +915,8 @@ model MarketplaceRiskAcceptance {
 enum OfferOrigin {
   GENERATOR
   MONITORING
+  /// Caçador de ofertas: não conta no `offer_generations_per_day` do gerador.
+  HUNTER
 }
 
 enum OfferStatus {
@@ -968,6 +984,7 @@ model Offer {
   createdBy     User?               @relation(fields: [createdById], references: [id], onDelete: SetNull)
   dispatches    OfferDispatch[]
   monitorConfig GroupMonitorConfig? @relation(fields: [monitorConfigId], references: [id], onDelete: SetNull)
+  huntFinds     OfferHuntFind[]
 
   @@index([tenantId, createdAt(sort: Desc)])
   // Varredura do worker: ofertas SENDING sem envio aberto
@@ -1179,6 +1196,202 @@ model OfferDestination {
 
   @@id([tenantId, conversationId])
   @@map("offer_destinations")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OFFER HUNTER — caçador de ofertas (Shein). Ver .specs/features/offer-hunter/design.md
+// ─────────────────────────────────────────────────────────────────────────────
+// Caçada salva → execuções → achados (só os escolhidos são gravados; o teto diário conta achados).
+// Excluir a caçada não apaga execuções nem achados (huntId vira null): o teto e a guarda do dia continuam valendo.
+
+enum OfferHuntStatus {
+  ACTIVE
+  PAUSED
+}
+
+enum OfferHuntPauseReason {
+  USER
+  SOURCE_UNAVAILABLE
+  CREDENTIAL_REJECTED
+  RISK_NOT_ACCEPTED
+  PLAN_UNAVAILABLE
+}
+
+/// REVIEW = achados esperam aprovação na tela; AUTO = enfileira direto no envio.
+enum OfferHuntDeliveryMode {
+  REVIEW
+  AUTO
+}
+
+/// SKIPPED = execução pulada antes de chamar a fonte (ex.: teto do dia atingido).
+enum OfferHuntRunStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+  SKIPPED
+}
+
+enum OfferHuntRunTrigger {
+  MANUAL
+  SCHEDULED
+}
+
+enum OfferHuntFindStatus {
+  PENDING_REVIEW
+  APPROVED
+  DISMISSED
+  SENT
+  FAILED
+}
+
+model OfferHunt {
+  id                   String                @id @default(cuid())
+  tenantId             String
+  name                 String
+  status               OfferHuntStatus       @default(ACTIVE)
+  /// Preenchido só com status PAUSED.
+  pauseReason          OfferHuntPauseReason?
+  // Filtros da fonte (enviados à Shein)
+  /// Código de ordenação da fonte (0 recomendado, 7, 9, 10, 11, 12): dica, a ordem final é a pontuação.
+  sort                 Int                   @default(0)
+  categoryId           String?
+  /// Faixa de comissão da fonte (`commRate`); null = sem filtro.
+  commissionBand       Int?
+  keyword              String?
+  // Filtros locais (aplicados por nós na resposta); null = sem filtro
+  minPriceCents        Int?
+  maxPriceCents        Int?
+  minDiscountPercent   Int?
+  minCommissionPercent Decimal?              @db.Decimal(5, 2)
+  minCommissionCents   Int?
+  minRating            Decimal?              @db.Decimal(3, 2)
+  minSalesBucket       Int?
+  minReviewsBucket     Int?
+  extraCommissionOnly  Boolean               @default(false)
+  endsWithinDays       Int?
+  // Seleção e entrega
+  aiEnabled            Boolean               @default(false)
+  topN                 Int                   @default(3)
+  repeatAfterDays      Int                   @default(7)
+  deliveryMode         OfferHuntDeliveryMode @default(REVIEW)
+  // Agenda (mesmo modelo do gerador: 0..1440, weekdaysMask bit 0 = domingo, fuso America/Sao_Paulo)
+  intervalMinutes      Int                   @default(60)
+  windowStartMinute    Int                   @default(0)
+  windowEndMinute      Int                   @default(1440)
+  weekdaysMask         Int                   @default(127)
+  nextRunAt            DateTime?
+  lastRunAt            DateTime?
+  consecutiveFailures  Int                   @default(0)
+  /// Posse do job: novo uuid a cada claim; resultado só grava com o token da posse.
+  claimToken           String?
+  claimedUntil         DateTime?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  tenant Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  runs   OfferHuntRun[]
+  finds  OfferHuntFind[]
+
+  // Varredura do job: caçadas ativas vencidas
+  @@index([status, nextRunAt])
+  @@index([tenantId, createdAt])
+  @@map("offer_hunts")
+}
+
+model OfferHuntRun {
+  id           String              @id @default(cuid())
+  tenantId     String
+  /// null = caçada excluída (a execução segue contando na guarda de 24/dia).
+  huntId       String?
+  trigger      OfferHuntRunTrigger
+  status       OfferHuntRunStatus  @default(RUNNING)
+  seenCount    Int                 @default(0)
+  matchedCount Int                 @default(0)
+  chosenCount  Int                 @default(0)
+  sentCount    Int                 @default(0)
+  aiUsed       Boolean             @default(false)
+  aiFallback   Boolean             @default(false)
+  errorCode    String?
+  startedAt    DateTime            @default(now())
+  finishedAt   DateTime?
+
+  tenant Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  hunt   OfferHunt?      @relation(fields: [huntId], references: [id], onDelete: SetNull)
+  finds  OfferHuntFind[]
+
+  // Guarda técnica de execuções por dia
+  @@index([tenantId, startedAt])
+  // Histórico da caçada
+  @@index([huntId, startedAt(sort: Desc)])
+  @@map("offer_hunt_runs")
+}
+
+model OfferHuntFind {
+  id                         String              @id @default(cuid())
+  tenantId                   String
+  /// null = caçada excluída (o achado segue contando no teto do dia).
+  huntId                     String?
+  runId                      String?
+  goodsId                    String
+  skcCode                    String?
+  activityId                 String?
+  // Retrato do item no momento da execução (só exibição)
+  title                      String              @db.Text
+  /// Foto da fonte (https, host *.ltwebstatic.com); null = sem foto.
+  imageUrl                   String?             @db.Text
+  priceCents                 Int?
+  originalPriceCents         Int?
+  discountPercent            Int?
+  commissionPercent          Decimal?            @db.Decimal(5, 2)
+  commissionCents            Int?
+  returningCommissionPercent Decimal?            @db.Decimal(5, 2)
+  returningCommissionCents   Int?
+  extraCommissionCents       Int?
+  salesBucket                Int?
+  reviewsBucket              Int?
+  rating                     Decimal?            @db.Decimal(3, 2)
+  /// Pontuação determinística 0–100.
+  score                      Int
+  /// Fatores da pontuação (só exibição na tela).
+  factors                    Json
+  aiReason                   String?             @db.Text
+  status                     OfferHuntFindStatus @default(PENDING_REVIEW)
+  /// Código interno do motivo de FAILED.
+  failureReason              String?
+  offerId                    String?
+  createdAt                  DateTime            @default(now())
+  updatedAt                  DateTime            @updatedAt
+
+  tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  hunt   OfferHunt?    @relation(fields: [huntId], references: [id], onDelete: SetNull)
+  run    OfferHuntRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+  offer  Offer?        @relation(fields: [offerId], references: [id], onDelete: SetNull)
+
+  // Regra de repetição (produto já escolhido pela caçada dentro da janela)
+  @@index([huntId, goodsId, createdAt])
+  // Teto diário por tenant
+  @@index([tenantId, createdAt])
+  @@index([tenantId, status])
+  @@index([runId])
+  @@index([offerId])
+  @@map("offer_hunt_finds")
+}
+
+/// Destino do caçador: 1 grupo por tenant (sessão + conversa). Sessão/conversa apagada vira null.
+model OfferHunterSettings {
+  tenantId       String   @id
+  sessionId      String?
+  conversationId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  session      Session?          @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  conversation ChatConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  @@index([sessionId])
+  @@index([conversationId])
+  @@map("offer_hunter_settings")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

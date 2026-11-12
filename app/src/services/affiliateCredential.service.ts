@@ -54,7 +54,10 @@ export const affiliateCredentialService = {
     return res.data.data;
   },
 
-  /** Aceite do aviso de risco vigente (só admin do tenant). 409 `MARKETPLACE_RISK_NOTICE_OUTDATED` = texto mudou. */
+  /**
+   * Aceite do aviso de risco vigente (só admin do tenant). 409 `MARKETPLACE_RISK_NOTICE_OUTDATED` = texto mudou.
+   * `scope: 'OFFER_HUNTER'` aceita o aviso do caçador (versão própria); sem `scope`, o aviso do link de afiliado.
+   */
   async acceptRisk(provider: AffiliateProvider, body: AcceptMarketplaceRiskRequest): Promise<AcceptMarketplaceRiskResponse> {
     const res = await apiClient.post<ApiSuccess<AcceptMarketplaceRiskResponse>>(`${BASE}/${provider}/risk-acceptance`, body);
     return res.data.data;

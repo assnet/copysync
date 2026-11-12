@@ -15,11 +15,14 @@ export function useSessionGroups(sessionIds: readonly string[], search: string) 
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  /** `"<sessões>|<busca>"` da última resposta aplicada em `items` (null = nada carregado). */
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const key = sessionIds.join(',');
 
   useEffect(() => {
     if (sessionIds.length === 0) {
       setItems([]);
+      setLoadedKey(null);
       return;
     }
     let cancelled = false;
@@ -41,6 +44,7 @@ export function useSessionGroups(sessionIds: readonly string[], search: string) 
       setItems(merged);
       setPartial(anyPartial);
       setFailed(anyFailed && merged.length === 0);
+      setLoadedKey(`${key}|${search}`);
       setLoading(false);
     }, search ? SEARCH_DEBOUNCE_MS : 0);
     return () => {
@@ -50,5 +54,5 @@ export function useSessionGroups(sessionIds: readonly string[], search: string) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, search, attempt]);
 
-  return { items, partial, loading, failed, retry: () => setAttempt((n) => n + 1) };
+  return { items, partial, loading, failed, loadedKey, retry: () => setAttempt((n) => n + 1) };
 }

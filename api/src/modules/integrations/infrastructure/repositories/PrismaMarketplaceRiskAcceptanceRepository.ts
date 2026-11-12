@@ -10,6 +10,7 @@ import type {
 } from '../../domain/contracts/IMarketplaceRiskAcceptanceRepository';
 import type { MarketplaceRiskAcceptance } from '../../domain/entities/MarketplaceRiskAcceptance';
 import type { AffiliateProvider } from '../../domain/enums/AffiliateProvider';
+import type { MarketplaceRiskScope } from '../../domain/enums/MarketplaceRiskScope';
 
 function toInfrastructureError(err: unknown): Error {
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
@@ -29,24 +30,25 @@ export class PrismaMarketplaceRiskAcceptanceRepository implements IMarketplaceRi
   async findCurrent(
     tenantId: string,
     provider: AffiliateProvider,
+    scope: MarketplaceRiskScope,
     noticeVersion: string,
   ): Promise<MarketplaceRiskAcceptance | null> {
     const raw = await this.db.marketplaceRiskAcceptance.findUnique({
-      where: { tenantId_provider_noticeVersion: { tenantId, provider, noticeVersion } },
+      where: { tenantId_provider_scope_noticeVersion: { tenantId, provider, scope, noticeVersion } },
     });
     return raw ? Mapper.toDomain(raw) : null;
   }
 
   async create(input: CreateMarketplaceRiskAcceptanceRecord): Promise<CreateMarketplaceRiskAcceptanceResult> {
     // Leitura antes: aceite repetido não passa pelo P2002 (que o Prisma loga como erro).
-    const found = await this.findCurrent(input.tenantId, input.provider, input.noticeVersion);
+    const found = await this.findCurrent(input.tenantId, input.provider, input.scope, input.noticeVersion);
     if (found) return { acceptance: found, created: false };
     try {
       // ON CONFLICT DO NOTHING: dentro de transação um P2002 abortaria o tx e a releitura falharia.
       const { count } = await this.db.marketplaceRiskAcceptance.createMany({ data: [{ ...input }], skipDuplicates: true });
-      const row = await this.findCurrent(input.tenantId, input.provider, input.noticeVersion);
+      const row = await this.findCurrent(input.tenantId, input.provider, input.scope, input.noticeVersion);
       if (!row) throw new InfrastructureError('MARKETPLACE_RISK_PERSISTENCE_FAILED', 'Acceptance not found after insert');
-      // count 0 = aceite simultâneo da mesma versão venceu: vale o primeiro.
+      // count 0 = aceite simultâneo do mesmo escopo e versão venceu: vale o primeiro.
       return { acceptance: row, created: count === 1 };
     } catch (err) {
       throw toInfrastructureError(err);

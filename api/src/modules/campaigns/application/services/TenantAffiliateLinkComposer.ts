@@ -1,4 +1,6 @@
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
+import type { MarketplaceRiskScope } from '../../../integrations/domain/enums/MarketplaceRiskScope';
+import { DEFAULT_MARKETPLACE_RISK_SCOPE } from '../../../integrations/domain/enums/MarketplaceRiskScope';
 import type { OfferAffiliateCredential } from '../../domain/contracts/IAffiliateCredentialResolver';
 import type { IMercadoLivreAffiliateClient } from '../../domain/contracts/IMercadoLivreAffiliateClient';
 import type { IProductPageReader } from '../../domain/contracts/IProductPageReader';
@@ -46,6 +48,11 @@ export interface ComposeTenantLinkInput {
   cred: OfferAffiliateCredential;
   /** Etiqueta do ML para o link; ausente = principal da credencial. */
   mlTag?: string;
+  /**
+   * Aviso de risco cobrado (ausente = `AFFILIATE_LINK`). O caçador passa `OFFER_HUNTER` e só o aceite
+   * dele é cobrado; gerador, vitrine, story e monitoramento não passam nada.
+   */
+  riskScope?: MarketplaceRiskScope;
 }
 
 export interface TenantAffiliateLinkComposerDeps {
@@ -117,7 +124,8 @@ export class TenantAffiliateLinkComposer {
         if (ref?.provider !== 'SHEIN') return { kind: 'unsupported' };
         const token = cred.session?.cookies?.AT;
         if (!token) return { kind: 'credential_missing', provider };
-        if (requiresRiskAcceptance(provider) && !(await this.deps.riskGate.isAccepted(tenantId, provider))) {
+        const scope = input.riskScope ?? DEFAULT_MARKETPLACE_RISK_SCOPE;
+        if (requiresRiskAcceptance(provider, scope) && !(await this.deps.riskGate.isAccepted(tenantId, provider, scope))) {
           return { kind: 'risk_not_accepted', provider };
         }
         const share = await this.deps.shein.getProductShare({ token, memberId: cred.publicIdentifier }, ref.goodsId);

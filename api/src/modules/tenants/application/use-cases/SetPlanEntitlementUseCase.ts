@@ -1,13 +1,14 @@
 import type { IAuditLogRepository } from '../../../../shared/audit/IAuditLogRepository';
 import { ValidationError } from '../../../../shared/errors/internal/ResourceErrors';
-import { isAdminEditableEntitlementKey } from '../../domain/adminEditableEntitlements';
+import { adminEntitlementTypeOf, isAdminEditableEntitlementKey, isValidAdminEntitlementValue } from '../../domain/adminEditableEntitlements';
 import type { IPlanEntitlementPresetRepository } from '../../domain/contracts/IPlanEntitlementPresetRepository';
 import { PLAN_SLUGS, type PlanSlug } from '../../domain/planPresets';
 
 export interface SetPlanEntitlementCommand {
   planSlug: string;
   key: string;
-  value: boolean;
+  /** Validado pelo tipo da chave (`adminEditableEntitlements.ts`): boolean ou inteiro na faixa. */
+  value: boolean | number;
   /** Super admin que alterou (AuditLog). */
   actorUserId: string;
 }
@@ -15,7 +16,7 @@ export interface SetPlanEntitlementCommand {
 export interface SetPlanEntitlementResult {
   planSlug: PlanSlug;
   key: string;
-  value: boolean;
+  value: boolean | number;
   tenantsUpdated: number;
 }
 
@@ -25,7 +26,7 @@ export type PlanEntitlementTransaction = <T>(
 ) => Promise<T>;
 
 /**
- * Super admin liga/desliga uma chave da allowlist num plano (SHEIN-15/16): grava o preset, propaga
+ * Super admin altera uma chave da allowlist num plano (SHEIN-15/16; inteiro na faixa para chave numérica): grava o preset, propaga
  * para todos os tenants do plano e audita (`PLAN_ENTITLEMENT_CHANGED`), tudo na mesma transação.
  * Não chama a central: eventos de billing seguintes leem o preset novo.
  */
@@ -36,6 +37,10 @@ export class SetPlanEntitlementUseCase {
     if (!isAdminEditableEntitlementKey(cmd.key)) throw new ValidationError('Entitlement key is not editable', { key: cmd.key });
     if (!(PLAN_SLUGS as readonly string[]).includes(cmd.planSlug)) {
       throw new ValidationError('Unknown plan', { planSlug: cmd.planSlug });
+    }
+    const type = adminEntitlementTypeOf(cmd.key);
+    if (!isValidAdminEntitlementValue(type, cmd.value)) {
+      throw new ValidationError('Invalid entitlement value', { key: cmd.key, type });
     }
     const planSlug = cmd.planSlug as PlanSlug;
     const { key, value } = cmd;

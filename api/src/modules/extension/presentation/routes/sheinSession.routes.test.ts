@@ -107,7 +107,7 @@ beforeEach(async () => {
     key === 'marketplace_shein_enabled' ? state.plan : true);
   vi.spyOn(PrismaMarketplaceRiskAcceptanceRepository.prototype, 'findCurrent').mockImplementation(async () =>
     state.accepted
-      ? { id: 'a1', tenantId: 't1', provider: 'SHEIN', noticeVersion: VERSION, acceptedByUserId: 'u1', locale: 'pt-BR', acceptedAt: new Date() }
+      ? { id: 'a1', tenantId: 't1', provider: 'SHEIN', scope: 'AFFILIATE_LINK', noticeVersion: VERSION, acceptedByUserId: 'u1', locale: 'pt-BR', acceptedAt: new Date() }
       : null);
   vi.spyOn(PrismaAffiliateCredentialRepository.prototype, 'findByTenantAndProvider').mockImplementation(async (_t, p) =>
     state.credentials.get(p) ?? null);

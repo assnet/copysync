@@ -6,11 +6,11 @@ const ALL: ProcessJob[] = [
   'offerDispatch', 'hubOutbox', 'extensionRetention', 'billingReconcile',
   'linkRotationSync', 'sessionBootstrap', 'sessionReconciler', 'leaseKeeper',
   'sessionAdoption', 'workerHeartbeat', 'capacityAlert', 'outboundTmpSweep',
-  'opsMetricsSampler', 'workerAutoscaler', 'inactiveTenantSweep', 'infraCostSnapshot',
+  'opsMetricsSampler', 'workerAutoscaler', 'inactiveTenantSweep', 'infraCostSnapshot', 'offerHunterScheduler',
 ];
 
 describe('jobsFor', () => {
-  it('all liga os 20 jobs', () => {
+  it('all liga os 21 jobs', () => {
     expect([...jobsFor('all')].sort()).toEqual([...ALL].sort());
   });
 
@@ -69,5 +69,11 @@ describe('jobsFor', () => {
     expect(jobsFor('worker').has('inactiveTenantSweep')).toBe(true);
     expect(jobsFor('all').has('inactiveTenantSweep')).toBe(true);
     expect(jobsFor('http').has('inactiveTenantSweep')).toBe(false);
+  });
+
+  it('caçadas agendadas só em worker/all, nunca no http (offer-hunter T11)', () => {
+    expect(jobsFor('worker').has('offerHunterScheduler')).toBe(true);
+    expect(jobsFor('all').has('offerHunterScheduler')).toBe(true);
+    expect(jobsFor('http').has('offerHunterScheduler')).toBe(false);
   });
 });

@@ -197,7 +197,7 @@ describe('BuildTenantAffiliateLinkUseCase — Shein', () => {
   it('com credencial e sem aceite: risk_not_accepted sem chamar a Shein', async () => {
     const s = setup(CREDS, { accepted: false });
     expect(await s.uc.execute('t1', HREF)).toEqual({ kind: 'risk_not_accepted', provider: 'SHEIN' });
-    expect(s.deps.riskGate.isAccepted).toHaveBeenCalledWith('t1', 'SHEIN');
+    expect(s.deps.riskGate.isAccepted).toHaveBeenCalledWith('t1', 'SHEIN', 'AFFILIATE_LINK');
     expect(s.deps.shein.getProductShare).not.toHaveBeenCalled();
   });
 

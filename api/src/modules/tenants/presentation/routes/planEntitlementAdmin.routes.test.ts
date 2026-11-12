@@ -54,7 +54,8 @@ describe('GET /admin/plan-entitlements', () => {
 
   it('super admin → 200 com planos e chaves', async () => {
     vi.spyOn(ListAdminPlanEntitlementsUseCase.prototype, 'execute').mockResolvedValue([
-      { key: 'marketplace_shein_enabled', plans: { COPYSYNC_LITE: null, COPYSYNC_PRO: false, COPYSYNC_MAX: true } },
+      { key: 'marketplace_shein_enabled', type: { kind: 'boolean' }, plans: { COPYSYNC_LITE: null, COPYSYNC_PRO: false, COPYSYNC_MAX: true } },
+      { key: 'offer_hunter_finds_per_day', type: { kind: 'integer', min: 0, max: 100 }, plans: { COPYSYNC_LITE: 0, COPYSYNC_PRO: 0, COPYSYNC_MAX: 10 } },
     ]);
     const res = await app.inject({ method: 'GET', url: URL });
     expect(res.statusCode).toBe(200);
@@ -62,7 +63,10 @@ describe('GET /admin/plan-entitlements', () => {
       success: true,
       data: {
         plans: ['COPYSYNC_LITE', 'COPYSYNC_PRO', 'COPYSYNC_MAX'],
-        entitlements: [{ key: 'marketplace_shein_enabled', plans: { COPYSYNC_LITE: null, COPYSYNC_PRO: false, COPYSYNC_MAX: true } }],
+        entitlements: [
+          { key: 'marketplace_shein_enabled', type: { kind: 'boolean' }, plans: { COPYSYNC_LITE: null, COPYSYNC_PRO: false, COPYSYNC_MAX: true } },
+          { key: 'offer_hunter_finds_per_day', type: { kind: 'integer', min: 0, max: 100 }, plans: { COPYSYNC_LITE: 0, COPYSYNC_PRO: 0, COPYSYNC_MAX: 10 } },
+        ],
       },
     });
   });
@@ -96,6 +100,31 @@ describe('PUT /admin/plan-entitlements/:planSlug/:key', () => {
     const res = await app.inject({ method: 'PUT', url: PUT_OK, payload: { value: 'yes' } });
     expect(res.statusCode).toBe(400);
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('chave numérica: fora da faixa ou boolean → 400 VALIDATION_ERROR (use case real)', async () => {
+    const url = `${URL}/COPYSYNC_PRO/offer_hunter_finds_per_day`;
+    for (const value of [101, -1, true]) {
+      const res = await app.inject({ method: 'PUT', url, payload: { value } });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error.code).toBe('VALIDATION_ERROR');
+    }
+  });
+
+  it('número em chave booleana → 400 VALIDATION_ERROR', async () => {
+    const res = await app.inject({ method: 'PUT', url: PUT_OK, payload: { value: 1 } });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('chave numérica ok → 200 com o inteiro', async () => {
+    const spy = vi.spyOn(SetPlanEntitlementUseCase.prototype, 'execute').mockResolvedValue({
+      planSlug: 'COPYSYNC_MAX', key: 'offer_hunter_finds_per_day', value: 20, tenantsUpdated: 2,
+    });
+    const res = await app.inject({ method: 'PUT', url: `${URL}/COPYSYNC_MAX/offer_hunter_finds_per_day`, payload: { value: 20 } });
+    expect(res.statusCode).toBe(200);
+    expect(spy).toHaveBeenCalledWith({ planSlug: 'COPYSYNC_MAX', key: 'offer_hunter_finds_per_day', value: 20, actorUserId: 'admin-1' });
+    expect(res.json().data).toEqual({ planSlug: 'COPYSYNC_MAX', key: 'offer_hunter_finds_per_day', value: 20, tenantsUpdated: 2 });
   });
 
   it('ok → 200 e chama o use case com o super admin como autor', async () => {

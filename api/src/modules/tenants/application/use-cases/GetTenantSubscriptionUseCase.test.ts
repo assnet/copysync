@@ -12,6 +12,7 @@ const USAGE: SubscriptionUsage = {
   broadcastGroups: ch(8, 0),
   linkRotations: ch(1, 0),
   offerGenerationsToday: 12,
+  offerHunterFindsToday: 4,
   aiRequestsToday: null,
   mercadoLivreAffiliateTags: 2,
 };

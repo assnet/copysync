@@ -1,4 +1,5 @@
 import { AFFILIATE_PROVIDERS } from '../../domain/enums/AffiliateProvider';
+import { MARKETPLACE_RISK_SCOPES } from '../../domain/enums/MarketplaceRiskScope';
 
 export const acceptMarketplaceRiskBodySchema = {
   type: 'object',
@@ -6,6 +7,8 @@ export const acceptMarketplaceRiskBodySchema = {
   properties: {
     noticeVersion: { type: 'string', minLength: 1, maxLength: 32 },
     locale: { type: 'string', pattern: '^[a-z]{2}(-[A-Z]{2})?$' },
+    /** Padrão `AFFILIATE_LINK`. */
+    scope: { type: 'string', enum: [...MARKETPLACE_RISK_SCOPES] },
   },
   additionalProperties: false,
 } as const;
@@ -15,6 +18,7 @@ const acceptanceResult = {
   properties: {
     acceptedAt: { type: 'string', format: 'date-time' },
     noticeVersion: { type: 'string' },
+    scope: { type: 'string', enum: [...MARKETPLACE_RISK_SCOPES] },
   },
 } as const;
 
@@ -39,6 +43,7 @@ export const marketplaceRiskAcceptanceListResponse = {
         type: 'object',
         properties: {
           provider: { type: 'string', enum: [...AFFILIATE_PROVIDERS] },
+          scope: { type: 'string', enum: [...MARKETPLACE_RISK_SCOPES] },
           noticeVersion: { type: 'string' },
           acceptedByUserId: { type: 'string' },
           locale: { type: 'string' },

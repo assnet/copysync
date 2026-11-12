@@ -53,6 +53,17 @@ describe('PLAN_PRESETS', () => {
       ['COPYSYNC_PRO', false],
       ['COPYSYNC_MAX', true],
     ]);
+    // Caçador de Ofertas só no MAX (10 achados/dia), com false/0 explícitos nos outros dois
+    expect(rows.filter((r) => r.key === K.OFFER_HUNTER_ENABLED).map((r) => [r.planSlug, r.value])).toEqual([
+      ['COPYSYNC_LITE', false],
+      ['COPYSYNC_PRO', false],
+      ['COPYSYNC_MAX', true],
+    ]);
+    expect(rows.filter((r) => r.key === K.OFFER_HUNTER_FINDS_PER_DAY).map((r) => [r.planSlug, r.value])).toEqual([
+      ['COPYSYNC_LITE', 0],
+      ['COPYSYNC_PRO', 0],
+      ['COPYSYNC_MAX', 10],
+    ]);
     expect(new Set(rows.map((r) => r.planSlug)).size).toBe(3);
   });
 

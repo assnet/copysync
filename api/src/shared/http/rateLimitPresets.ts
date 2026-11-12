@@ -51,6 +51,14 @@ export const rateLimitPresets = {
     max: 60,
     timeWindow: '1 hour',
   },
+  /**
+   * Caçador de Ofertas: "Testar agora"/execução manual (≤ 4 chamadas de listagem à Shein + IA). Por tenant
+   * por instância; a guarda de 24 execuções/dia (banco) é o teto real, isto só corta rajada de cliques.
+   */
+  offerHuntRun: {
+    max: 10,
+    timeWindow: '1 minute',
+  },
   /** Links de redirecionamento da plataforma (`/public/redirects/:slug`), por IP. */
   publicRedirect: {
     max: 60,

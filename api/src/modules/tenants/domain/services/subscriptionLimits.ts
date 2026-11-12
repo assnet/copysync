@@ -23,6 +23,8 @@ export interface SubscriptionUsage {
   linkRotations: Record<LimitChannel, number>;
   /** Ofertas geradas hoje (fuso de `startOfDayInZone`). */
   offerGenerationsToday: number;
+  /** Achados do caçador hoje (mesmo `startOfDayInZone` do teto do caçador). */
+  offerHunterFindsToday: number;
   /** Pedidos de IA do dia; `null` se não houver contador. */
   aiRequestsToday: number | null;
   /** Etiquetas do Mercado Livre em uso: principal + vinculadas dentro do limite do plano (0 sem credencial). */
@@ -54,6 +56,8 @@ export const SUBSCRIPTION_HIDDEN_KEYS: readonly EntitlementKey[] = [];
 /** Chaves numéricas em que ausente não é "sem limite": o limite passa pela função do recurso. */
 const LIMIT_OF: ReadonlyMap<EntitlementKey, (value: number | null) => number> = new Map([
   [ENTITLEMENT_KEYS.MERCADO_LIVRE_AFFILIATE_TAGS, identifierLimitOf],
+  /** Achados do caçador: ausente = 0 (bloqueado), nunca ilimitado. */
+  [ENTITLEMENT_KEYS.OFFER_HUNTER_FINDS_PER_DAY, (value) => value ?? 0],
 ]);
 
 const channelItems = (kind: ChannelLimitKind): SubscriptionLimitItemDef[] =>
@@ -70,6 +74,8 @@ export const SUBSCRIPTION_LIMIT_ITEMS: readonly SubscriptionLimitItemDef[] = [
   { key: ENTITLEMENT_KEYS.AI_REQUESTS_PER_DAY, channel: null, kind: 'daily' },
   /** Etiquetas do ML: principal incluída; ausente vale 1 (`affiliateIdentifierLimit.ts`), nunca "sem limite". */
   { key: ENTITLEMENT_KEYS.MERCADO_LIVRE_AFFILIATE_TAGS, channel: null, kind: 'count' },
+  /** Achados do caçador por dia: ausente = 0 (`LIMIT_OF`); sem contador de uso por ora (`used` null). */
+  { key: ENTITLEMENT_KEYS.OFFER_HUNTER_FINDS_PER_DAY, channel: null, kind: 'daily' },
   feature(ENTITLEMENT_KEYS.AI_REWRITE_ENABLED),
   feature(ENTITLEMENT_KEYS.MENTION_ALL_ENABLED),
   feature(ENTITLEMENT_KEYS.CROSS_SESSION_DISPATCH),
@@ -79,6 +85,7 @@ export const SUBSCRIPTION_LIMIT_ITEMS: readonly SubscriptionLimitItemDef[] = [
   feature(ENTITLEMENT_KEYS.ENRICH_LINK_ONLY_ENABLED),
   feature(ENTITLEMENT_KEYS.CAPTURE_OUTSIDE_WINDOW_ENABLED),
   feature(ENTITLEMENT_KEYS.MARKETPLACE_SHEIN_ENABLED),
+  feature(ENTITLEMENT_KEYS.OFFER_HUNTER_ENABLED),
 ];
 
 /** Mesma leitura do `PrismaEntitlementReader.getNumber`: número ou string numérica; resto = ausente. */
@@ -109,6 +116,7 @@ const KEY_TO_COUNT: ReadonlyMap<EntitlementKey, { kind: CountKind; channel: Limi
 function usedOf(def: SubscriptionLimitItemDef, usage: SubscriptionUsage): number | null {
   if (def.kind === 'feature') return null;
   if (def.key === ENTITLEMENT_KEYS.OFFER_GENERATIONS_PER_DAY) return usage.offerGenerationsToday;
+  if (def.key === ENTITLEMENT_KEYS.OFFER_HUNTER_FINDS_PER_DAY) return usage.offerHunterFindsToday;
   if (def.key === ENTITLEMENT_KEYS.AI_REQUESTS_PER_DAY) return usage.aiRequestsToday;
   if (def.key === ENTITLEMENT_KEYS.MERCADO_LIVRE_AFFILIATE_TAGS) return usage.mercadoLivreAffiliateTags;
   const c = KEY_TO_COUNT.get(def.key);

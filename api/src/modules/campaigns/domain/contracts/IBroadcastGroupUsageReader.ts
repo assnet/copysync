@@ -1,7 +1,7 @@
 import type { BroadcastGroupRow } from '../services/broadcastGroupUnion';
 
-/** Quem usa o grupo como destino: o gerador de ofertas ou o monitoramento da sessão `<sessionId>`. */
-export type BroadcastGroupUse = 'generator' | `monitor:${string}`;
+/** Quem usa o grupo como destino: o gerador, o monitoramento da sessão `<sessionId>` ou o caçador de ofertas. */
+export type BroadcastGroupUse = 'generator' | 'hunter' | `monitor:${string}`;
 
 /** Um uso de grupo de disparo, com a engine da sessão do grupo (canal do limite). */
 export interface BroadcastGroupUsageRow extends BroadcastGroupRow {
@@ -15,6 +15,8 @@ export interface ListBroadcastGroupRowsOptions {
   exceptGenerator?: boolean;
   /** Ignora os destinos do monitoramento desta sessão (o save dele soma os pedidos no lugar). */
   exceptMonitorSessionId?: string;
+  /** Ignora o destino do caçador (o save dele soma o pedido no lugar). */
+  exceptHunter?: boolean;
 }
 
 /** Item do catálogo (BG-04): um grupo distinto (sessão + JID) e todos os seus usos. Sem texto de mensagem. */
@@ -31,7 +33,7 @@ export interface BroadcastGroupCatalogItem {
 
 /**
  * Leitura da união dos grupos de disparo do tenant: destinos do gerador (`offer_destinations`) ⋃
- * destinos dos monitoramentos (`broadcast_groups`). Ignora sessão apagada; toda consulta filtra `tenantId`.
+ * destinos dos monitoramentos (`broadcast_groups`) ⋃ destino do caçador (`offer_hunter_settings`). Ignora sessão apagada; toda consulta filtra `tenantId`.
  */
 export interface IBroadcastGroupUsageReader {
   listRows(tenantId: string, options?: ListBroadcastGroupRowsOptions): Promise<BroadcastGroupUsageRow[]>;

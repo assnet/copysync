@@ -50,6 +50,16 @@ export const ENTITLEMENT_KEYS = {
    * Exceção à regra acima: ausente/`null` vale 1, nunca ilimitado (`services/affiliateIdentifierLimit.ts`).
    */
   MERCADO_LIVRE_AFFILIATE_TAGS: 'mercado_livre_affiliate_tags',
+  /**
+   * Caçador de Ofertas (busca automática no catálogo da Shein). Só `true` libera; ausente = bloqueado.
+   * Preset: só MAX; editável pelo super admin (`adminEditableEntitlements.ts`).
+   */
+  OFFER_HUNTER_ENABLED: 'offer_hunter_enabled',
+  /**
+   * Achados por dia do Caçador de Ofertas. LITE 0, PRO 0, MAX 10; editável pelo super admin (inteiro 0–100).
+   * Exceção à regra acima: ausente/`null` vale 0, nunca ilimitado (no caçador, sempre `?? 0`).
+   */
+  OFFER_HUNTER_FINDS_PER_DAY: 'offer_hunter_finds_per_day',
 } as const;
 
 export type EntitlementKey = (typeof ENTITLEMENT_KEYS)[keyof typeof ENTITLEMENT_KEYS];

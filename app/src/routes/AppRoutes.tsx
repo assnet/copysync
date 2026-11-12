@@ -37,6 +37,9 @@ import { OfferGeneratorPage } from '@/pages/offers/OfferGeneratorPage';
 import { MembersPage, MirroringPage } from '@/pages/modules';
 import { StorefrontPage } from '@/features/storefront/StorefrontPage';
 import { OfferStoryPage } from '@/features/offerStory/OfferStoryPage';
+import { OfferHunterRoute } from '@/features/offerHunter/components/OfferHunterRoute';
+import { OfferHunterPage } from '@/pages/OfferHunterPage';
+import { OfferHunterDetailPage } from '@/pages/OfferHunterDetailPage';
 import { MonitoringPage } from '@/pages/monitoring/MonitoringPage';
 import { LinkRotationPage } from '@/pages/link-rotation/LinkRotationPage';
 import { BroadcastGroupsPage } from '@/pages/broadcast-groups/BroadcastGroupsPage';
@@ -92,6 +95,11 @@ export function AppRoutes() {
           <Route path="/members" element={<MembersPage />} />
           <Route path="/storefront" element={<StorefrontPage />} />
           <Route path="/offer-story" element={<OfferStoryPage />} />
+          {/* Caçador de Ofertas: visibilidade pela API (`/offer-hunts/access`), não por papel fixo */}
+          <Route element={<OfferHunterRoute />}>
+            <Route path="/offer-hunter" element={<OfferHunterPage />} />
+            <Route path="/offer-hunter/:huntId" element={<OfferHunterDetailPage />} />
+          </Route>
           <Route path={AFFILIATE_CREDENTIALS_PATH} element={<AffiliateCredentialsPage />} />
           <Route path={AFFILIATE_PLANS_PATH} element={<PlansPage />} />
           {/* Caminho antigo: planos agora são por produto; mantém query (?feature=…) */}
