@@ -7,6 +7,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.90.1] — 2026-11-12 — Cotação na hora quando não há nenhuma
+
+### Fixed
+
+#### metrics
+
+- **`infraFxFetchState.ts` / `InfraCostSnapshotJob.ts`** — sem cotação salva (tabela vazia ou a última com mais de 4 dias), o job busca a cotação na hora, em qualquer horário, e grava o `referenceDate` da fonte. Antes só buscava após 16h30 UTC e o painel ficava sem cotação logo após ligar o job. Lease, `fx.auto` e limite de tentativas iguais; a busca das 16h30 segue normal.
+
 ## [0.90.0] — 2026-11-12 — Custos por cliente e histórico (P3)
 
 Custo de IA da plataforma por cliente, fechamento mensal congelado pelo job e rotas por cliente e de histórico. Rotas
