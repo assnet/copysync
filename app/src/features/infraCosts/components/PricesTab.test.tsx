@@ -35,16 +35,16 @@ beforeEach(() => sessionStorage.clear());
 afterEach(() => vi.restoreAllMocks());
 
 describe('PricesTab', () => {
-  it.each(['light', 'dark'] as const)('mostra seções, cotação automática desabilitada com aviso da próxima versão (%s)', async (mode) => {
+  it.each(['light', 'dark'] as const)('mostra seções e a cotação automática como status "Em breve", sem Switch (%s)', async (mode) => {
     vi.spyOn(adminCostsService, 'getSettings').mockResolvedValue(view());
     renderTab(mode);
     expect(await screen.findByText(p.fx.title)).toBeInTheDocument();
     for (const title of [p.items.title, p.renderPlans.title, p.aiModels.title, p.workspace.title]) {
       expect(screen.getByText(title)).toBeInTheDocument();
     }
-    const auto = screen.getByRole('checkbox', { name: new RegExp(p.fx.auto.replace(/[()]/g, '\\$&')) });
-    expect(auto).toBeDisabled();
-    expect(screen.getByText(p.fx.autoHint)).toBeInTheDocument();
+    expect(screen.getByText(S.pricesReview.autoStatus)).toBeInTheDocument();
+    expect(screen.getByText(S.pricesReview.autoSoon)).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
     // Sem alteração: nada a revisar.
     expect(screen.getByRole('button', { name: p.actions.review })).toBeDisabled();
   });
@@ -64,9 +64,9 @@ describe('PricesTab', () => {
 
     await user.click(screen.getByRole('button', { name: p.actions.review }));
     const dialog = await screen.findByRole('dialog');
-    const rate = within(dialog).getByText(`${p.fx.override} · ${p.fx.rate}`).closest('tr') as HTMLElement;
+    const rate = within(dialog).getByText(`${p.fx.title} · ${p.fx.override} · ${p.fx.rate}`).closest('tr') as HTMLElement;
     expect(rate.textContent).toContain('5,4321');
-    expect(within(dialog).getByText(`${p.fx.override} · ${p.fx.date}`)).toBeInTheDocument();
+    expect(within(dialog).getByText(`${p.fx.title} · ${p.fx.override} · ${p.fx.date}`)).toBeInTheDocument();
     await user.click(within(dialog).getByRole('button', { name: p.confirm.save }));
 
     await waitFor(() => expect(update).toHaveBeenCalledWith({ settings: saved, expectedUpdatedAt: '2026-11-01T10:00:00.000Z' }));
@@ -74,7 +74,7 @@ describe('PricesTab', () => {
     expect(readPersisted(COST_PRICES_DRAFT_KEY)).toBeUndefined();
   });
 
-  it('remover override volta ao estado sem cotação manual e entra no diff', async () => {
+  it('remover cotação manual volta ao estado sem cotação manual e entra no diff', async () => {
     const user = userEvent.setup();
     const withOverride: InfraCostSettings = { ...sampleSettings(), fx: { ...sampleSettings().fx, override: { rate: 5.1, date: '2026-11-05' } } };
     vi.spyOn(adminCostsService, 'getSettings').mockResolvedValue(view({ settings: withOverride }));
@@ -83,7 +83,7 @@ describe('PricesTab', () => {
     expect(screen.getByText(p.fx.overrideEmpty)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: p.actions.review }));
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText(`${p.fx.override} · ${p.fx.rate}`).closest('tr')?.textContent).toContain('5,1');
+    expect(within(dialog).getByText(`${p.fx.title} · ${p.fx.override} · ${p.fx.rate}`).closest('tr')?.textContent).toContain('5,1');
   });
 
   it('rascunho restaurado do sessionStorage aparece no campo, com selo, e pode ser descartado', async () => {
@@ -91,7 +91,7 @@ describe('PricesTab', () => {
     const values = sampleSettings();
     values.workspace.planLabel = 'Pro';
     saveDraft({ base: '2026-11-01T10:00:00.000Z', values });
-    sessionStorage.setItem(`ui.${COST_PRICES_OPEN_ITEMS_KEY}`, JSON.stringify({ v: 0, d: [0] }));
+    sessionStorage.setItem(`ui.${COST_PRICES_OPEN_ITEMS_KEY}`, JSON.stringify({ v: 1, d: ['api'] }));
     vi.spyOn(adminCostsService, 'getSettings').mockResolvedValue(view());
     renderTab();
     expect(await screen.findByText(p.draftRestored)).toBeInTheDocument();
@@ -101,6 +101,8 @@ describe('PricesTab', () => {
     await user.click(screen.getByRole('button', { name: p.actions.discard }));
     expect(box(p.workspace.planLabel)).toHaveValue('Hobby');
     expect(readPersisted(COST_PRICES_DRAFT_KEY)).toBeUndefined();
+    // Descartar também fecha os itens abertos.
+    expect(readPersisted(COST_PRICES_OPEN_ITEMS_KEY, { version: 1 })).toBeUndefined();
   });
 
   it('campo inválido marca o erro, conta na seção e bloqueia a revisão', async () => {
@@ -132,7 +134,7 @@ describe('PricesTab', () => {
     expect(screen.queryByRole('textbox', { name: p.items.fields.label })).not.toBeInTheDocument();
   });
 
-  it('400: marca o campo de meta.field e avisa', async () => {
+  it('400: marca o campo de meta.field, mostra o rótulo legível e foca o campo', async () => {
     const user = userEvent.setup();
     vi.spyOn(adminCostsService, 'getSettings').mockResolvedValue(view());
     vi.spyOn(adminCostsService, 'updateSettings').mockRejectedValue(
@@ -145,42 +147,146 @@ describe('PricesTab', () => {
     await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: p.confirm.save }));
     expect(await screen.findByText(S.errors.invalid)).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByText(S.errors.rejectedFields(`${p.workspace.title} · ${p.workspace.planLabel}`))).toBeInTheDocument();
     expect(screen.getByText(S.errors.fieldRejected)).toBeInTheDocument();
     expect(box(p.workspace.planLabel)).toHaveAttribute('aria-invalid', 'true');
+    await waitFor(() => expect(box(p.workspace.planLabel)).toHaveFocus());
     // Editar o campo tira o erro da API.
     await user.type(box(p.workspace.planLabel), 'x');
     expect(screen.queryByText(S.errors.fieldRejected)).not.toBeInTheDocument();
   });
 
-  it('409: recarrega o salvo, mantém o rascunho (rebaseado) e avisa', async () => {
+  it('400 em serviço fechado: abre o accordion e foca o campo; alerta com o nome do serviço', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(adminCostsService, 'getSettings').mockResolvedValue(view());
+    vi.spyOn(adminCostsService, 'updateSettings').mockRejectedValue(
+      Object.assign(new Error('x'), { status: 400, code: 'INVALID_INFRA_COST_SETTINGS', field: 'items[2].monthlyUsd' }),
+    );
+    renderTab();
+    await screen.findByText(p.workspace.title);
+    await setText(user, p.workspace.planLabel, 'Pro');
+    expect(screen.queryByRole('textbox', { name: p.items.fields.monthlyUsd })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: p.actions.review }));
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: p.confirm.save }));
+    expect(await screen.findByText(S.errors.rejectedFields(`E-mail · ${p.items.fields.monthlyUsd}`))).toBeInTheDocument();
+    await waitFor(() => expect(box(p.items.fields.monthlyUsd)).toHaveFocus());
+    expect(readPersisted(COST_PRICES_OPEN_ITEMS_KEY, { version: 1 })).toEqual(['email']);
+  });
+
+  it('número pt-BR: input mostra vírgula e ponto de milhar é recusado', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(adminCostsService, 'getSettings').mockResolvedValue(view());
+    renderTab();
+    await screen.findByText(p.workspace.title);
+    expect(box(p.workspace.bandwidthUsdPerGb)).toHaveValue('0,15');
+    await setText(user, p.workspace.includedBuildMinutes, '1.000');
+    expect(screen.getByText(S.pricesReview.thousandsDot)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: p.actions.review })).toBeDisabled();
+  });
+
+  it('remover linha leva o foco à seguinte; a última leva ao "Adicionar"', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(adminCostsService, 'getSettings').mockResolvedValue(view());
+    renderTab();
+    await screen.findByText(p.renderPlans.title);
+    await user.click(screen.getByRole('button', { name: p.actions.removeAria('0.5c-512mb') }));
+    await waitFor(() => expect(document.activeElement?.closest('[data-cost-row]')?.getAttribute('data-cost-row')).toBe('renderPlanPrices-0'));
+    expect(screen.queryByRole('button', { name: p.actions.removeAria('0.5c-512mb') })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: p.actions.removeAria('gpt-x') }));
+    await waitFor(() => expect(screen.getByRole('button', { name: p.aiModels.add })).toHaveFocus());
+  });
+
+  it('remover serviço aberto foca o resumo do próximo e o aberto segue pela key', async () => {
+    const user = userEvent.setup();
+    sessionStorage.setItem(`ui.${COST_PRICES_OPEN_ITEMS_KEY}`, JSON.stringify({ v: 1, d: ['api', 'email'] }));
+    vi.spyOn(adminCostsService, 'getSettings').mockResolvedValue(view());
+    renderTab();
+    await screen.findByText(p.items.title);
+    await user.click(screen.getByRole('button', { name: p.actions.removeAria('API') }));
+    // O resumo do Worker herdou o índice 0 e recebe o foco; E-mail continua aberto (key, não índice).
+    await waitFor(() => expect(document.activeElement?.id).toBe('cost-item-0-summary'));
+    expect(box(p.items.fields.label)).toHaveValue('E-mail');
+    expect(readPersisted(COST_PRICES_OPEN_ITEMS_KEY, { version: 1 })).toEqual(['email']);
+  });
+
+  const conflictError = () => Object.assign(new Error('x'), { status: 409, code: 'INFRA_COST_SETTINGS_CONFLICT' });
+  const reviewDialog = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(screen.getByRole('button', { name: p.actions.review }));
+    return screen.findByRole('dialog');
+  };
+
+  it('409: merge de 3 vias mantém o que o outro admin salvou (E-mail 23→30) e aplica o meu por cima', async () => {
     const user = userEvent.setup();
     const newer = sampleSettings();
+    newer.items[2].monthlyUsd = 30;
     newer.workspace.includedBandwidthGb = 100;
     const get = vi.spyOn(adminCostsService, 'getSettings')
       .mockResolvedValueOnce(view())
       .mockResolvedValueOnce(view({ settings: newer, updatedAt: '2026-11-03T10:00:00.000Z' }));
     const update = vi.spyOn(adminCostsService, 'updateSettings')
-      .mockRejectedValueOnce(Object.assign(new Error('x'), { status: 409, code: 'INFRA_COST_SETTINGS_CONFLICT' }))
+      .mockRejectedValueOnce(conflictError())
       .mockResolvedValueOnce(view({ updatedAt: '2026-11-04T10:00:00.000Z' }));
     renderTab();
     await screen.findByText(p.workspace.title);
     await setText(user, p.workspace.planLabel, 'Pro');
-    await user.click(screen.getByRole('button', { name: p.actions.review }));
-    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: p.confirm.save }));
+    await user.click(within(await reviewDialog(user)).getByRole('button', { name: p.confirm.save }));
 
-    expect(await screen.findByText(S.errors.conflict)).toBeInTheDocument();
+    expect(await screen.findByText(S.pricesReview.conflictMerged)).toBeInTheDocument();
     expect(get).toHaveBeenCalledTimes(2);
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(box(p.workspace.planLabel)).toHaveValue('Pro');
-    const draft = readPersisted<CostPricesDraftState>(COST_PRICES_DRAFT_KEY);
-    expect(draft?.base).toBe('2026-11-03T10:00:00.000Z');
+    expect(box(p.workspace.includedBandwidthGb)).toHaveValue('100');
+    expect(readPersisted<CostPricesDraftState>(COST_PRICES_DRAFT_KEY)?.base).toBe('2026-11-03T10:00:00.000Z');
 
-    // O diff novo é contra o salvo mais recente (banda 100 → 5 aparece) e o PUT usa o updatedAt novo.
-    await user.click(screen.getByRole('button', { name: p.actions.review }));
-    const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText(`${p.workspace.title} · ${p.workspace.includedBandwidthGb}`)).toBeInTheDocument();
+    // O diff novo é contra o salvo mais recente: só o meu campo; nada do outro admin é revertido.
+    const dialog = await reviewDialog(user);
+    expect(within(dialog).getByText(`${p.workspace.title} · ${p.workspace.planLabel}`)).toBeInTheDocument();
+    expect(within(dialog).getAllByRole('row')).toHaveLength(2);
+    expect(within(dialog).queryByText(S.pricesReview.conflictChip)).not.toBeInTheDocument();
     await user.click(within(dialog).getByRole('button', { name: p.confirm.save }));
-    await waitFor(() => expect(update).toHaveBeenLastCalledWith(expect.objectContaining({ expectedUpdatedAt: '2026-11-03T10:00:00.000Z' })));
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(2));
+    const body = update.mock.calls[1][0];
+    expect(body.expectedUpdatedAt).toBe('2026-11-03T10:00:00.000Z');
+    expect(body.settings.items.find((i) => i.key === 'email')?.monthlyUsd).toBe(30);
+    expect(body.settings.workspace).toMatchObject({ planLabel: 'Pro', includedBandwidthGb: 100 });
+  });
+
+  it('409 com o mesmo campo mudado dos dois lados: marca conflito e exige revisão antes de salvar', async () => {
+    const user = userEvent.setup();
+    const newer = sampleSettings();
+    newer.items[2].monthlyUsd = 30;
+    sessionStorage.setItem(`ui.${COST_PRICES_OPEN_ITEMS_KEY}`, JSON.stringify({ v: 1, d: ['email'] }));
+    vi.spyOn(adminCostsService, 'getSettings')
+      .mockResolvedValueOnce(view())
+      .mockResolvedValueOnce(view({ settings: newer, updatedAt: '2026-11-03T10:00:00.000Z' }));
+    const update = vi.spyOn(adminCostsService, 'updateSettings')
+      .mockRejectedValueOnce(conflictError())
+      .mockResolvedValueOnce(view({ updatedAt: '2026-11-04T10:00:00.000Z' }));
+    renderTab();
+    await screen.findByText(p.workspace.title);
+    await setText(user, p.items.fields.monthlyUsd, '40,5');
+    await user.click(within(await reviewDialog(user)).getByRole('button', { name: p.confirm.save }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    // Fica o meu valor, com vírgula; a barra avisa o conflito pendente.
+    expect(box(p.items.fields.monthlyUsd)).toHaveValue('40,5');
+    expect(screen.getByText(S.pricesReview.conflictPending(1))).toBeInTheDocument();
+    expect(readPersisted<CostPricesDraftState>(COST_PRICES_DRAFT_KEY)?.conflicts).toEqual(['items[email].monthlyUsd']);
+
+    const dialog = await reviewDialog(user);
+    const row = within(dialog).getByText(`E-mail · ${p.items.fields.monthlyUsd}`).closest('tr') as HTMLElement;
+    expect(within(row).getByText(S.pricesReview.conflictChip)).toBeInTheDocument();
+    // Antes = o que o outro admin salvou, com moeda.
+    expect(row.textContent?.replace(/\s/g, ' ')).toContain('US$ 30,00');
+    expect(row.textContent?.replace(/\s/g, ' ')).toContain('US$ 40,50');
+    const save = within(dialog).getByRole('button', { name: p.confirm.save });
+    expect(save).toBeDisabled();
+    await user.click(within(dialog).getByRole('checkbox', { name: S.pricesReview.conflictAck }));
+    expect(save).toBeEnabled();
+    await user.click(save);
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(2));
+    expect(update.mock.calls[1][0].settings.items.find((i) => i.key === 'email')?.monthlyUsd).toBe(40.5);
+    expect(readPersisted(COST_PRICES_DRAFT_KEY)).toBeUndefined();
   });
 
   it('falha na leitura mostra erro com nova tentativa', async () => {

@@ -125,13 +125,30 @@ const AI_KINDS: readonly AiProviderKind[] = ['ANTHROPIC', 'OPENAI', 'GEMINI', 'X
 const KEY_FORMAT = /^[a-z0-9][a-z0-9_-]{0,39}$/;
 const DATE_FORMAT = /^\d{4}-\d{2}-\d{2}$/;
 const DRAFT_NUMBER = /^\d+([.,]\d+)?$/;
+/** "1.000", "12.500.000": ponto de milhar, ambíguo com decimal — recusado (decimal é vírgula). */
+const THOUSANDS_DOT = /^\d{1,3}(\.\d{3})+$/;
 
-/** Número do rascunho: dígitos com no máximo um `.` ou `,` (sem sinal, hexa, expoente). Vazio/inválido → `null`. */
+/** Texto com ponto de milhar (`1.000`): o rascunho recusa em vez de adivinhar. */
+export function hasThousandsDot(value: number | string | null | undefined): boolean {
+  return typeof value === 'string' && THOUSANDS_DOT.test(value.trim());
+}
+
+/**
+ * Número do rascunho: dígitos com no máximo um `,` decimal (ou `.` que não seja milhar); sem sinal,
+ * hexa, expoente. Ponto de milhar (`1.000`), vazio ou inválido → `null`.
+ */
 export function parseDraftNumber(value: number | string | null | undefined): number | null {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
   if (typeof value !== 'string') return null;
   const text = value.trim();
+  if (THOUSANDS_DOT.test(text)) return null;
   return DRAFT_NUMBER.test(text) ? Number(text.replace(',', '.')) : null;
+}
+
+/** Número do rascunho como o input mostra: vírgula decimal, sem milhar (`0.25` → `0,25`). */
+export function draftNumberText(value: number | string | null | undefined): string {
+  if (value === null || value === undefined) return '';
+  return typeof value === 'number' ? String(value).replace('.', ',') : value;
 }
 
 interface NumRule { min: number; max: number; integer?: boolean; decimals?: number; nullable?: boolean }
@@ -156,6 +173,7 @@ export function parseSettingsDraft(
       if (!rule.nullable) errors[path] = e.required;
       return null;
     }
+    if (hasThousandsDot(raw)) { errors[path] = S.pricesReview.thousandsDot; return null; }
     const n = parseDraftNumber(raw);
     if (n === null) { errors[path] = e.number; return null; }
     if (rule.integer && !Number.isInteger(n)) { errors[path] = e.integer; return null; }
@@ -395,6 +413,143 @@ export function diffSettings(before: InfraCostSettings, after: InfraCostSettings
   return changes;
 }
 
+/* ── Valores legíveis do diff e índices do formulário (aba Preços) ──── */
+
+const PR = S.prices;
+type CostList = 'items' | 'renderPlanPrices' | 'aiModelPrices';
+
+/** Rótulo de uma linha do diff: linha removida só existe no salvo, então o nome sai de `before`. */
+export function changeLabel(path: string, before: InfraCostSettings, after: InfraCostSettings): string {
+  const key = path.match(/^items\[([^\]]+)\]/)?.[1];
+  const removed = key !== undefined && !after.items.some((i) => i.key === key);
+  return fieldLabel(path, removed ? before : after);
+}
+
+/** Campos em US$: o diff mostra com moeda ("US$ 25,00 → US$ 30,50"). */
+const USD_FIELDS = new Set(['monthlyUsd', 'usdPerGb', 'inputPerMTokUsd', 'outputPerMTokUsd', 'bandwidthUsdPerGb', 'buildUsdPer1000Min']);
+
+/** US$ com 2 a 4 casas: o diff não pode esconder a diferença por arredondamento (0,155 × 0,16). */
+function formatUsdExact(value: number): string {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(value);
+}
+
+/** Valor exibido no diff: opções pelo rótulo, preço com US$, número em pt-BR, vazio = "—". */
+export function changeValue(path: string, value: InfraCostSettingsChange['from']): string {
+  if (value === null || value === '') return S.noValue;
+  if (typeof value === 'boolean') return value ? PR.yes : PR.no;
+  const field = path.split('.').pop() ?? '';
+  if (typeof value === 'number') {
+    return USD_FIELDS.has(field) ? formatUsdExact(value) : value.toLocaleString('pt-BR', { maximumFractionDigits: 4 });
+  }
+  if (field === 'kind') return aiProviderName(value as AiProviderKind);
+  const maps: Record<string, Record<string, string>> = {
+    category: S.category, billing: S.billing, renderKey: S.renderKey, allocation: S.allocation,
+    closingMethod: S.closingMethod, resourceType: S.resourceType,
+  };
+  return maps[field]?.[value] ?? value;
+}
+
+/* ── Erros e índices do formulário ──────────────────────────────────── */
+
+/** Erros sob um prefixo (`items[0]` conta `items[0].label`; `items` conta todas as linhas). */
+export function countErrors(errors: Record<string, string>, prefix: string): number {
+  return Object.keys(errors).filter((k) => k === prefix || k.startsWith(`${prefix}.`) || k.startsWith(`${prefix}[`)).length;
+}
+
+/** `items[3].storage.gb` → `{ list: 'items', index: 3 }`; fora de lista ou sem índice → `null`. */
+export function listEntryOfPath(path: string): { list: CostList; index: number } | null {
+  const m = path.match(/^(items|renderPlanPrices|aiModelPrices)\[(\d+)\]/);
+  return m ? { list: m[1] as CostList, index: Number(m[2]) } : null;
+}
+
+/** Depois de remover a linha `index`, o índice que recebe o foco: a seguinte (que herda o índice); última linha → `null`. */
+export function nextIndexAfterRemoval(lengthBefore: number, index: number): number | null {
+  return index < lengthBefore - 1 ? index : null;
+}
+
+/**
+ * Itens abertos guardam a `key` (o índice muda ao remover). Trocar a `key` no formulário leva o
+ * estado de aberto junto; a antiga só fica se outra linha ainda a usa (duas linhas novas sem `key`).
+ */
+export function renameOpenKey(open: readonly string[], from: string, to: string, keysAfter: readonly string[]): string[] {
+  if (!open.includes(from) || from === to) return [...open];
+  const keepOld = keysAfter.includes(from);
+  const next = keepOld ? [...open] : open.filter((k) => k !== from);
+  return next.includes(to) ? next : [...next, to];
+}
+
+/* ── Conflito de edição (409): merge de 3 vias ──────────────────────── */
+
+type Plain = Record<string, unknown>;
+const isPlain = (v: unknown): v is Plain => v !== null && typeof v === 'object' && !Array.isArray(v);
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
+function mergeValue(path: string, base: unknown, mine: unknown, theirs: unknown, conflicts: string[]): unknown {
+  if (same(mine, theirs)) return mine;
+  if (base !== undefined && same(base, mine)) return theirs;
+  if (base !== undefined && same(base, theirs)) return mine;
+  if (isPlain(mine) && isPlain(theirs) && (base === undefined || isPlain(base))) {
+    const out: Plain = {};
+    for (const k of new Set([...Object.keys(mine), ...Object.keys(theirs)])) {
+      out[k] = mergeValue(`${path}.${k}`, (base as Plain | undefined)?.[k], mine[k], theirs[k], conflicts);
+    }
+    return out;
+  }
+  conflicts.push(path);
+  return mine;
+}
+
+function mergeList<T>(name: CostList, idOf: (row: T) => string, base: T[], mine: T[], theirs: T[], conflicts: string[]): T[] {
+  const b = new Map(base.map((r) => [idOf(r), r]));
+  const m = new Map(mine.map((r) => [idOf(r), r]));
+  const t = new Map(theirs.map((r) => [idOf(r), r]));
+  const out: T[] = [];
+  for (const row of mine) {
+    const id = idOf(row);
+    const path = `${name}[${id}]`;
+    if (t.has(id)) out.push(mergeValue(path, b.get(id), row, t.get(id), conflicts) as T);
+    else if (!b.has(id)) out.push(row); // incluída por mim
+    else if (!same(b.get(id), row)) { conflicts.push(path); out.push(row); } // removida por ele, alterada por mim
+    // removida por ele e intocada por mim: sai
+  }
+  for (const row of theirs) {
+    const id = idOf(row);
+    if (m.has(id)) continue;
+    if (!b.has(id)) out.push(row); // incluída por ele
+    else if (!same(b.get(id), row)) conflicts.push(`${name}[${id}]`); // removida por mim, alterada por ele: fica removida
+  }
+  return out;
+}
+
+export interface InfraCostSettingsMerge {
+  settings: InfraCostSettings;
+  /** Caminhos no formato do diff (`items[email].monthlyUsd`) mudados dos dois lados; fica o valor de `mine`. */
+  conflicts: string[];
+}
+
+/**
+ * Merge de 3 vias no 409: sobre o salvo novo (`theirs`) entram só os caminhos que mudaram entre a base
+ * do rascunho e o rascunho (`mine`). Linhas casam pela identidade (`key`; tipo+plano; provedor+modelo),
+ * nunca pelo índice. Caminho mudado dos dois lados com valores diferentes = conflito.
+ */
+export function mergeSettings(base: InfraCostSettings, mine: InfraCostSettings, theirs: InfraCostSettings): InfraCostSettingsMerge {
+  const [b, m, t] = [base, mine, theirs].map(toSettingsPayload);
+  const conflicts: string[] = [];
+  const settings: InfraCostSettings = {
+    fx: mergeValue('fx', b.fx, m.fx, t.fx, conflicts) as InfraCostSettings['fx'],
+    items: mergeList('items', (i) => i.key, b.items, m.items, t.items, conflicts),
+    renderPlanPrices: mergeList('renderPlanPrices', (r) => `${r.resourceType}:${r.plan}`, b.renderPlanPrices, m.renderPlanPrices, t.renderPlanPrices, conflicts),
+    aiModelPrices: mergeList('aiModelPrices', (x) => `${x.kind}:${x.model}`, b.aiModelPrices, m.aiModelPrices, t.aiModelPrices, conflicts),
+    workspace: mergeValue('workspace', b.workspace, m.workspace, t.workspace, conflicts) as InfraCostSettings['workspace'],
+  };
+  return { settings, conflicts };
+}
+
+/** A linha do diff toca um caminho em conflito (o próprio, um campo dentro dele ou a linha que o contém). */
+export function isConflictPath(path: string, conflicts: readonly string[]): boolean {
+  return conflicts.some((c) => path === c || path.startsWith(`${c}.`) || c.startsWith(`${path}.`));
+}
+
 /** Configuração → rascunho (números continuam números; o input converte ao editar). */
 export function settingsToDraft(s: InfraCostSettings): InfraCostSettingsDraft {
   return toSettingsPayload(s);
@@ -428,7 +583,7 @@ const ROW_FIELD_NAMES: Record<string, string> = {
 };
 
 const FX_FIELD_NAMES: Record<string, string> = {
-  auto: pf.fx.auto,
+  auto: S.pricesReview.autoField,
   closingMethod: pf.fx.closingMethod,
   override: pf.fx.override,
   'override.rate': `${pf.fx.override} · ${pf.fx.rate}`,

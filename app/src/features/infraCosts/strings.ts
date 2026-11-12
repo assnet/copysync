@@ -239,16 +239,13 @@ export const infraCostsStrings = {
     fx: {
       title: 'Cotação do dólar',
       subtitle: 'Converte os custos de dólar para real.',
-      auto: 'Buscar a cotação automaticamente (PTAX)',
-      autoHint: 'Disponível a partir da próxima versão. Até lá, informe a cotação manual.',
-      autoBadge: 'Próxima versão',
       closingMethod: 'Cotação do mês fechado',
       closingMethodHint: 'Qual cotação vale quando o mês fecha.',
       override: 'Cotação manual',
       overrideHint: 'Vale sobre qualquer fonte até ser removida.',
       overrideEmpty: 'Sem cotação manual.',
       addOverride: 'Informar cotação manual',
-      removeOverride: 'Remover override',
+      removeOverride: 'Remover cotação manual',
       rate: 'Reais por US$ 1',
       rateRange: 'De 1 a 20, até 4 casas',
       date: 'Data da cotação',
@@ -259,7 +256,6 @@ export const infraCostsStrings = {
       empty: 'Nenhum serviço cadastrado.',
       add: 'Adicionar serviço',
       newLabel: 'Novo serviço',
-      expandAria: (name: string) => `Detalhes de ${name}`,
       perMonth: (value: string) => `${value}/mês`,
       fields: {
         label: 'Nome',
@@ -333,6 +329,22 @@ export const infraCostsStrings = {
   },
 
   diff: { changed: 'Alterado', added: 'Incluído', removed: 'Removido', empty: 'Nenhuma alteração.' },
+
+  /** Revisão da aba Preços: conflito de edição, número pt-BR, status da cotação automática. */
+  pricesReview: {
+    thousandsDot: 'Use vírgula para decimal, sem ponto de milhar',
+    autoStatus: 'Busca automática no Banco Central: chega na próxima versão',
+    autoSoon: 'Em breve',
+    autoField: 'Busca automática',
+    conflictChip: 'Conflito',
+    conflictTip: 'Outro admin também mudou este campo. Fica o seu valor; confira antes de salvar.',
+    conflictIntro: (n: number) => (n === 1
+      ? 'Um campo foi alterado por você e por outro admin. Fica o seu valor: confira a linha marcada.'
+      : `${n} campos foram alterados por você e por outro admin. Fica o seu valor: confira as linhas marcadas.`),
+    conflictAck: 'Revisei os conflitos',
+    conflictMerged: 'Outro admin salvou antes. As alterações dele foram mantidas e as suas aplicadas por cima: revise antes de salvar de novo.',
+    conflictPending: (n: number) => (n === 1 ? '1 conflito para revisar' : `${n} conflitos para revisar`),
+  },
 
   errors: {
     required: 'Obrigatório',

@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Chip, CircularProgress, Grid, IconButton, InputAdornment,
   MenuItem, Snackbar, Stack, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography,
@@ -8,7 +8,11 @@ import { AppIcon, SectionCard, ServiceUpdatingState, ToggleOption } from '@/comp
 import { aiProviderName } from '@/features/ai/aiProviders';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import type { AiProviderKind } from '@/types/api.types';
-import { INFRA_COST_LIMITS, diffSettings, draftToSettings, formatUsd, parseDraftNumber, validateSettingsDraft } from '../rules';
+import { formatDateTime } from '@/features/opsMetrics/rules';
+import {
+  INFRA_COST_LIMITS, countErrors, diffSettings, draftNumberText, draftToSettings, fieldLabel, formatUsd, isConflictPath,
+  listEntryOfPath, nextIndexAfterRemoval, parseDraftNumber, renameOpenKey, validateSettingsDraft,
+} from '../rules';
 import { infraCostsStrings as S } from '../strings';
 import type {
   InfraCostBilling, InfraCostCategory, InfraCostSettingsDraft, InfraFxClosingMethod, InfraRenderKey, InfraRenderResourceType,
@@ -27,14 +31,33 @@ const RESOURCE_TYPES = Object.keys(S.resourceType) as InfraRenderResourceType[];
 const CLOSING_METHODS = Object.keys(S.closingMethod) as InfraFxClosingMethod[];
 const AI_KINDS: AiProviderKind[] = ['ANTHROPIC', 'OPENAI', 'GEMINI', 'XAI', 'DEEPSEEK', 'GROQ', 'MISTRAL', 'OPENROUTER', 'OPENAI_COMPATIBLE'];
 
-/** Itens abertos na aba (índice), por aba do navegador. */
+/** Itens abertos na aba (`key` do serviço, não o índice), por aba do navegador. */
 export const COST_PRICES_OPEN_ITEMS_KEY = 'costs.prices.openItems';
+/** v1: guarda `key` (v0 guardava índice e é descartado). */
+const OPEN_ITEMS_VERSION = 1;
 
 type Draft = InfraCostSettingsDraft;
 type DraftItem = Draft['items'][number];
 
-const asText = (v: number | string | null | undefined) => (v === null || v === undefined ? '' : String(v));
-const today = () => new Date().toISOString().slice(0, 10);
+const asText = draftNumberText;
+/** Data local (`YYYY-MM-DD`): `toISOString` daria o dia seguinte à noite no Brasil. */
+const today = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+/** id do input de um caminho do rascunho (foco no erro do 400). */
+const fieldId = (path: string) => `cost-field-${path}`;
+const SECTION_IDS = { items: 'cost-section-items', renderPlanPrices: 'cost-section-render-plans', aiModelPrices: 'cost-section-ai-models' } as const;
+type ListName = keyof typeof SECTION_IDS;
+
+/** Primeiro controle focável dentro do elemento (input, select do MUI ou botão). */
+const FOCUSABLE = 'input:not([type="hidden"]):not([aria-hidden="true"]):not([tabindex="-1"]), [role="combobox"], [role="button"][tabindex="0"], button:not([disabled])';
+function focusFirstIn(el: HTMLElement | null): boolean {
+  const target = el?.matches(FOCUSABLE) ? el : el?.querySelector<HTMLElement>(FOCUSABLE);
+  if (!target) return false;
+  target.focus();
+  return true;
+}
 
 function newItem(): DraftItem {
   return {
@@ -43,23 +66,31 @@ function newItem(): DraftItem {
   };
 }
 
-function countErrors(errors: Record<string, string>, prefix: string): number {
-  return Object.keys(errors).filter((k) => k === prefix || k.startsWith(`${prefix}.`) || k.startsWith(`${prefix}[`)).length;
-}
-
 /** Aba Preços (COST-08): edição da configuração, rascunho persistido, confirmação com diff. */
 export default function PricesTab() {
   const c = useCostSettings();
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [openItems, setOpenItems] = usePersistedState<number[]>(COST_PRICES_OPEN_ITEMS_KEY, [], { scope: 'tab' });
+  const [openItems, setOpenItems, clearOpenItems] = usePersistedState<string[]>(
+    COST_PRICES_OPEN_ITEMS_KEY, [], { scope: 'tab', version: OPEN_ITEMS_VERSION },
+  );
+  /** Foco pendente para depois do próximo render (linha removida, campo do 400). */
+  const pendingFocus = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    const run = pendingFocus.current;
+    if (!run) return;
+    pendingFocus.current = null;
+    run();
+  });
 
   const errors = useMemo(
     () => (c.values ? { ...validateSettingsDraft(c.values), ...c.serverErrors } : {}),
     [c.values, c.serverErrors],
   );
   const valid = Object.keys(errors).length === 0;
-  const next = c.values && valid ? draftToSettings(c.values) : null;
+  const parsed = useMemo(() => (c.values ? draftToSettings(c.values) : null), [c.values]);
+  const next = valid ? parsed : null;
   const changes = next && c.view ? diffSettings(c.view.settings, next) : [];
+  const conflictCount = changes.filter((ch) => isConflictPath(ch.path, c.conflicts)).length;
 
   if (c.loadUnavailable && !c.view) return <ServiceUpdatingState onRetry={() => void c.reload()} />;
   if (c.loading && !c.view) {
@@ -84,17 +115,22 @@ export default function PricesTab() {
     path: string,
     label: string,
     value: number | string | null | undefined,
-    opts: { hint?: string; numeric?: 'decimal' | 'numeric'; nullable?: boolean; prefix?: string; type?: string; help?: string } = {},
+    opts: {
+      hint?: string; numeric?: 'decimal' | 'numeric'; nullable?: boolean; prefix?: string; type?: string; help?: string;
+      onChange?: (raw: string) => void;
+    } = {},
   ) => {
     const err = errors[path];
     return (
       <TextField
+        id={fieldId(path)}
         label={label}
         value={asText(value)}
         type={opts.type}
         onChange={(e) => {
           const raw = e.target.value;
-          c.change(path, opts.nullable && raw.trim() === '' ? null : raw);
+          if (opts.onChange) opts.onChange(raw);
+          else c.change(path, opts.nullable && raw.trim() === '' ? null : raw);
         }}
         error={Boolean(err)}
         helperText={err ?? opts.hint}
@@ -115,6 +151,7 @@ export default function PricesTab() {
     return (
       <TextField
         select
+        id={fieldId(path)}
         label={label}
         value={value ?? ''}
         onChange={(e) => c.change(path, e.target.value === '' ? null : e.target.value)}
@@ -137,8 +174,8 @@ export default function PricesTab() {
     </Tooltip>
   );
 
-  const addButton = (label: string, onClick: () => void, disabled: boolean) => (
-    <Button startIcon={<AppIcon icon={Plus} size="sm" />} onClick={onClick} disabled={disabled} size="small">
+  const addButton = (list: ListName, label: string, onClick: () => void, disabled: boolean) => (
+    <Button id={`${SECTION_IDS[list]}-add`} startIcon={<AppIcon icon={Plus} size="sm" />} onClick={onClick} disabled={disabled} size="small">
       {label}
     </Button>
   );
@@ -153,14 +190,11 @@ export default function PricesTab() {
   const fxCard = (
     <SectionCard title={p.fx.title} subtitle={p.fx.subtitle} action={sectionErrors('fx')}>
       <Stack spacing={2.5}>
-        <ToggleOption
-          checked={fx.auto}
-          onChange={() => undefined}
-          disabled
-          title={p.fx.auto}
-          description={p.fx.autoHint}
-          badge={<Chip size="small" variant="outlined" label={p.fx.autoBadge} />}
-        />
+        {/* P1: sem Switch. `fx.auto` salvo fica como está (liga sozinho na P2). */}
+        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+          <Typography variant="body2" color="text.secondary">{S.pricesReview.autoStatus}</Typography>
+          <Chip size="small" variant="outlined" label={S.pricesReview.autoSoon} />
+        </Stack>
 
         <Box>
           <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 1 }}>
@@ -214,16 +248,35 @@ export default function PricesTab() {
   );
 
   /* ── Serviços ────────────────────────────────────────────────────── */
-  const toggleItem = (i: number, open: boolean) =>
-    setOpenItems((prev) => (open ? [...new Set([...prev, i])] : prev.filter((x) => x !== i)));
+  const itemKeys = values.items.map((it) => asText(it.key));
+  const toggleItem = (key: string, open: boolean) =>
+    setOpenItems((prev) => (open ? [...new Set([...prev, key])] : prev.filter((x) => x !== key)));
   const addItem = () => {
-    const index = values.items.length;
     c.replace((d) => ({ ...d, items: [...d.items, newItem()] }));
-    setOpenItems((prev) => [...prev, index]);
+    setOpenItems((prev) => (prev.includes('') ? prev : [...prev, '']));
+  };
+  /** Foco depois de remover: a linha seguinte, senão "Adicionar", senão a seção. */
+  const focusAfterRemoval = (list: ListName, lengthBefore: number, i: number, rowSelector: (index: number) => string) => {
+    const nextIndex = nextIndexAfterRemoval(lengthBefore, i);
+    pendingFocus.current = () => {
+      const section = document.getElementById(SECTION_IDS[list]);
+      if (nextIndex !== null && focusFirstIn(document.querySelector<HTMLElement>(rowSelector(nextIndex)))) return;
+      const add = document.getElementById(`${SECTION_IDS[list]}-add`) as HTMLButtonElement | null;
+      if (add && !add.disabled) { add.focus(); return; }
+      section?.focus();
+    };
   };
   const removeItem = (i: number) => {
+    const key = itemKeys[i];
+    focusAfterRemoval('items', values.items.length, i, (x) => `#cost-item-${x}-summary`);
     c.replace((d) => ({ ...d, items: d.items.filter((_, x) => x !== i) }));
-    setOpenItems((prev) => prev.filter((x) => x !== i).map((x) => (x > i ? x - 1 : x)));
+    if (!itemKeys.some((k, x) => x !== i && k === key)) setOpenItems((prev) => prev.filter((x) => x !== key));
+  };
+  /** Trocar a `key` leva o estado de aberto junto. */
+  const changeItemKey = (i: number, raw: string) => {
+    const from = itemKeys[i];
+    c.change(`items[${i}].key`, raw);
+    setOpenItems((prev) => renameOpenKey(prev, from, raw, itemKeys.map((k, x) => (x === i ? raw : k))));
   };
 
   const itemCard = (it: DraftItem, i: number) => {
@@ -232,13 +285,14 @@ export default function PricesTab() {
     const price = parseDraftNumber(it.monthlyUsd);
     const nErr = countErrors(errors, base);
     const summaryId = `cost-item-${i}-summary`;
+    const key = itemKeys[i];
     return (
       <Accordion
         key={i}
         disableGutters
         variant="outlined"
-        expanded={openItems.includes(i)}
-        onChange={(_, open) => toggleItem(i, open)}
+        expanded={openItems.includes(key)}
+        onChange={(_, open) => toggleItem(key, open)}
         // Fechado não monta os campos: 40 serviços abertos de uma vez pesariam no celular.
         slotProps={{ transition: { unmountOnExit: true } }}
         sx={{ '&:before': { display: 'none' }, borderRadius: 1.5, overflow: 'hidden' }}
@@ -247,7 +301,6 @@ export default function PricesTab() {
           expandIcon={<AppIcon icon={ChevronDown} size="sm" />}
           id={summaryId}
           aria-controls={`cost-item-${i}-details`}
-          aria-label={p.items.expandAria(name)}
           sx={{ '& .MuiAccordionSummary-content': { minWidth: 0, my: 1.25 } }}
         >
           <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ minWidth: 0, flex: 1 }}>
@@ -263,7 +316,7 @@ export default function PricesTab() {
         <AccordionDetails id={`cost-item-${i}-details`} sx={{ pt: 0 }}>
           <Grid container spacing={2}>
             <Grid item xs={12} sm={6}>{field(`${base}.label`, f.label, it.label)}</Grid>
-            <Grid item xs={12} sm={6}>{field(`${base}.key`, f.key, it.key, { help: f.keyHint })}</Grid>
+            <Grid item xs={12} sm={6}>{field(`${base}.key`, f.key, it.key, { help: f.keyHint, onChange: (raw) => changeItemKey(i, raw) })}</Grid>
             <Grid item xs={12} sm={6}>{select(`${base}.category`, f.category, it.category as InfraCostCategory, CATEGORIES, (v) => S.category[v])}</Grid>
             <Grid item xs={12} sm={6}>{select(`${base}.billing`, f.billing, it.billing as InfraCostBilling, BILLINGS, (v) => S.billing[v])}</Grid>
             <Grid item xs={12} sm={6}>
@@ -322,15 +375,16 @@ export default function PricesTab() {
         {values.items.length === 0 && <Typography variant="body2" color="text.secondary">{p.items.empty}</Typography>}
         {values.items.map(itemCard)}
         {errors.items && <Typography variant="caption" color="error">{errors.items}</Typography>}
-        <Box>{addButton(p.items.add, addItem, values.items.length >= INFRA_COST_LIMITS.maxItems)}</Box>
+        <Box>{addButton('items', p.items.add, addItem, values.items.length >= INFRA_COST_LIMITS.maxItems)}</Box>
       </Stack>
     </SectionCard>
   );
 
   /* ── Linhas de tabela editável (planos e modelos) ────────────────── */
-  const rowFrame = (key: string | number, children: ReactNode) => (
+  const rowFrame = (list: ListName, key: number, children: ReactNode) => (
     <Box
       key={key}
+      data-cost-row={`${list}-${key}`}
       sx={{ py: 1.5, borderBottom: 1, borderColor: 'divider', '&:last-of-type': { borderBottom: 0 } }}
     >
       {children}
@@ -344,7 +398,7 @@ export default function PricesTab() {
         {values.renderPlanPrices.map((r, i) => {
           const base = `renderPlanPrices[${i}]`;
           const name = asText(r.plan) || p.renderPlans.plan;
-          return rowFrame(i, (
+          return rowFrame('renderPlanPrices', i, (
             <Grid container spacing={1.5} alignItems="flex-start">
               <Grid item xs={12} sm={3}>
                 {select(`${base}.resourceType`, p.renderPlans.resourceType, r.resourceType as InfraRenderResourceType, RESOURCE_TYPES, (v) => S.resourceType[v])}
@@ -352,7 +406,10 @@ export default function PricesTab() {
               <Grid item xs={12} sm={5}>{field(`${base}.plan`, p.renderPlans.plan, r.plan, { help: p.renderPlans.planHint })}</Grid>
               <Grid item xs={9} sm={3}>{field(`${base}.monthlyUsd`, p.renderPlans.monthlyUsd, r.monthlyUsd, { numeric: 'decimal', prefix: 'US$' })}</Grid>
               <Grid item xs={3} sm={1} sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-                {removeButton(name, () => c.replace((d) => ({ ...d, renderPlanPrices: d.renderPlanPrices.filter((_, x) => x !== i) })))}
+                {removeButton(name, () => {
+                  focusAfterRemoval('renderPlanPrices', values.renderPlanPrices.length, i, (x) => `[data-cost-row="renderPlanPrices-${x}"]`);
+                  c.replace((d) => ({ ...d, renderPlanPrices: d.renderPlanPrices.filter((_, x) => x !== i) }));
+                })}
               </Grid>
             </Grid>
           ));
@@ -361,6 +418,7 @@ export default function PricesTab() {
       {errors.renderPlanPrices && <Typography variant="caption" color="error">{errors.renderPlanPrices}</Typography>}
       <Box sx={{ mt: 1 }}>
         {addButton(
+          'renderPlanPrices',
           p.renderPlans.add,
           () => c.replace((d) => ({ ...d, renderPlanPrices: [...d.renderPlanPrices, { resourceType: 'service', plan: '', monthlyUsd: '' }] })),
           values.renderPlanPrices.length >= INFRA_COST_LIMITS.maxRenderPlanPrices,
@@ -376,16 +434,19 @@ export default function PricesTab() {
         {values.aiModelPrices.map((m, i) => {
           const base = `aiModelPrices[${i}]`;
           const name = asText(m.model) || p.aiModels.model;
-          return rowFrame(i, (
+          return rowFrame('aiModelPrices', i, (
             <Grid container spacing={1.5} alignItems="flex-start">
               <Grid item xs={12} sm={3}>
                 {select(`${base}.kind`, p.aiModels.kind, m.kind as AiProviderKind, AI_KINDS, (v) => aiProviderName(v))}
               </Grid>
               <Grid item xs={12} sm={3}>{field(`${base}.model`, p.aiModels.model, m.model)}</Grid>
-              <Grid item xs={6} sm={2.5}>{field(`${base}.inputPerMTokUsd`, p.aiModels.input, m.inputPerMTokUsd, { numeric: 'decimal' })}</Grid>
-              <Grid item xs={6} sm={2.5}>{field(`${base}.outputPerMTokUsd`, p.aiModels.output, m.outputPerMTokUsd, { numeric: 'decimal' })}</Grid>
-              <Grid item xs={12} sm={1} sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-                {removeButton(name, () => c.replace((d) => ({ ...d, aiModelPrices: d.aiModelPrices.filter((_, x) => x !== i) })))}
+              <Grid item xs={5} sm={2.5}>{field(`${base}.inputPerMTokUsd`, p.aiModels.input, m.inputPerMTokUsd, { numeric: 'decimal', prefix: 'US$' })}</Grid>
+              <Grid item xs={5} sm={2.5}>{field(`${base}.outputPerMTokUsd`, p.aiModels.output, m.outputPerMTokUsd, { numeric: 'decimal', prefix: 'US$' })}</Grid>
+              <Grid item xs={2} sm={1} sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                {removeButton(name, () => {
+                  focusAfterRemoval('aiModelPrices', values.aiModelPrices.length, i, (x) => `[data-cost-row="aiModelPrices-${x}"]`);
+                  c.replace((d) => ({ ...d, aiModelPrices: d.aiModelPrices.filter((_, x) => x !== i) }));
+                })}
               </Grid>
             </Grid>
           ));
@@ -394,6 +455,7 @@ export default function PricesTab() {
       {errors.aiModelPrices && <Typography variant="caption" color="error">{errors.aiModelPrices}</Typography>}
       <Box sx={{ mt: 1 }}>
         {addButton(
+          'aiModelPrices',
           p.aiModels.add,
           () => c.replace((d) => ({
             ...d, aiModelPrices: [...d.aiModelPrices, { kind: 'OPENAI', model: '', inputPerMTokUsd: '', outputPerMTokUsd: '' }],
@@ -432,23 +494,54 @@ export default function PricesTab() {
     </SectionCard>
   );
 
+  /** Seção focável (destino do foco quando a lista fica sem linha e sem "Adicionar"). */
+  const sectionAnchor = (list: ListName, title: string, card: ReactNode) => (
+    <Box id={SECTION_IDS[list]} tabIndex={-1} role="region" aria-label={title} sx={{ outline: 'none' }}>{card}</Box>
+  );
+
   const rejected = Object.keys(c.serverErrors);
+  const labelSource = parsed ?? view.settings;
+  /** Leva ao campo recusado: abre o serviço, rola até ele e foca. */
+  const focusField = (path: string) => {
+    const entry = listEntryOfPath(path);
+    if (entry?.list === 'items') {
+      const key = itemKeys[entry.index];
+      if (key !== undefined) setOpenItems((prev) => (prev.includes(key) ? prev : [...prev, key]));
+    }
+    pendingFocus.current = () => {
+      // O accordion monta os campos ao abrir: espera o quadro seguinte.
+      requestAnimationFrame(() => {
+        const el = document.getElementById(fieldId(path));
+        if (!el) return;
+        el.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+        el.focus();
+      });
+    };
+  };
   const onConfirm = async () => {
     if (!next) return;
-    // Fecha em qualquer desfecho: 400 marca o campo, 409 recarrega mantendo o rascunho; o resultado vai no Snackbar.
-    await c.save(next);
+    // Fecha em qualquer desfecho: 400 marca o campo, 409 faz o merge mantendo o rascunho; o resultado vai no Snackbar.
+    const result = await c.save(next);
     setConfirmOpen(false);
+    if (result.status === 'saved') clearOpenItems();
+    if (result.status === 'invalid' && result.field) focusField(result.field);
+  };
+  const discard = () => {
+    c.discard();
+    clearOpenItems();
   };
 
   return (
     <Stack spacing={2}>
       {view.origin === 'default' && <Alert severity="info">{S.origin.default}</Alert>}
-      {rejected.length > 0 && <Alert severity="error">{S.errors.rejectedFields(rejected.join(', '))}</Alert>}
+      {rejected.length > 0 && (
+        <Alert severity="error">{S.errors.rejectedFields(rejected.map((path) => fieldLabel(path, labelSource)).join(', '))}</Alert>
+      )}
 
       {fxCard}
-      {itemsCard}
-      {renderPlansCard}
-      {aiModelsCard}
+      {sectionAnchor('items', p.items.title, itemsCard)}
+      {sectionAnchor('renderPlanPrices', p.renderPlans.title, renderPlansCard)}
+      {sectionAnchor('aiModelPrices', p.aiModels.title, aiModelsCard)}
       {workspaceCard}
 
       <Stack
@@ -456,16 +549,22 @@ export default function PricesTab() {
         spacing={1.5}
         alignItems={{ xs: 'stretch', sm: 'center' }}
         justifyContent="space-between"
+        // Com rascunho, a barra fica presa no rodapé: salvar sem rolar até o fim.
+        sx={c.dirty ? {
+          position: 'sticky', bottom: 0, zIndex: 2, bgcolor: 'background.paper', borderTop: 1, borderColor: 'divider',
+          px: 2, py: 1.5, borderRadius: 1.5, boxShadow: 3,
+        } : undefined}
       >
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
           <Typography variant="body2" color="text.secondary">
-            {view.updatedAt ? p.lastSaved(new Date(view.updatedAt).toLocaleString('pt-BR')) : p.neverSaved}
+            {view.updatedAt ? p.lastSaved(formatDateTime(view.updatedAt)) : p.neverSaved}
           </Typography>
           {c.restored && <Chip size="small" label={p.draftRestored} variant="outlined" />}
           {c.dirty && !c.restored && <Chip size="small" label={p.unsaved} variant="outlined" color="warning" />}
+          {conflictCount > 0 && <Chip size="small" label={S.pricesReview.conflictPending(conflictCount)} color="warning" />}
         </Stack>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-          {c.dirty && <Button onClick={c.discard} disabled={c.saving}>{p.actions.discard}</Button>}
+          {c.dirty && <Button onClick={discard} disabled={c.saving}>{p.actions.discard}</Button>}
           <Button variant="contained" onClick={() => setConfirmOpen(true)} disabled={!valid || changes.length === 0 || c.saving}>
             {p.actions.review}
           </Button>
@@ -477,6 +576,7 @@ export default function PricesTab() {
         changes={changes}
         before={view.settings}
         after={next}
+        conflicts={c.conflicts}
         saving={c.saving}
         onConfirm={() => void onConfirm()}
         onClose={() => setConfirmOpen(false)}

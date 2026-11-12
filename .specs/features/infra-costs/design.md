@@ -160,7 +160,7 @@ Contagem por hora (job): sessões com `leaseUntil` vivo e status `CONNECTED` agr
 | Cenário | Tratamento | Efeito para o admin |
 | --- | --- | --- |
 | Configuração inválida | 400 `INVALID_INFRA_COST_SETTINGS` com `field` | Erro no campo |
-| Outro admin salvou antes | 409 `INFRA_COST_SETTINGS_CONFLICT` | Recarrega e descarta o rascunho |
+| Outro admin salvou antes | 409 `INFRA_COST_SETTINGS_CONFLICT` | Recarrega e faz merge de 3 vias (`mergeSettings`, base = `baseSettings` do rascunho, linhas por identidade): o do outro admin fica, o meu entra por cima; mesmo caminho dos dois lados = conflito marcado no diff, salvar só após "Revisei os conflitos" |
 | Cadastro diverge do lido (plano, instâncias, disco) | Aviso `config_drift` com `resourceKey` e campo; custo usa o lido quando há preço | Cartão "cadastro diferente da Render" |
 | Tamanho (GB) nulo | Aviso `storage_to_confirm`; soma só a computação | Selo "a confirmar" no item |
 | Plano lido sem preço | Aviso `plan_without_price` com `resourceKey` e `plan`; item com custo `null` | Cartão de aviso com atalho para Preços |

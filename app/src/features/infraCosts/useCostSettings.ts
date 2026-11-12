@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { isServiceUnavailable } from '@/services/apiClient';
 import { adminCostsService } from '@/services/adminCosts.service';
-import { settingsToDraft } from './rules';
+import { diffSettings, mergeSettings, settingsToDraft } from './rules';
 import { infraCostsStrings } from './strings';
 import type { InfraCostSettings, InfraCostSettingsDraft, InfraCostSettingsView } from './types';
 
@@ -14,7 +14,21 @@ export const COST_PRICES_DRAFT_KEY = 'costs.prices.draft';
 export interface CostPricesDraftState {
   base: string | null;
   values: InfraCostSettingsDraft;
+  /**
+   * Configuração salva sobre a qual o rascunho começou: ancestral do merge de 3 vias no 409 (sem ela,
+   * o 409 reverteria o que o outro admin salvou). Rascunho antigo sem o campo usa o salvo da tela.
+   */
+  baseSettings?: InfraCostSettings;
+  /** Caminhos (formato do diff) mudados por mim e pelo outro admin; a confirmação exige revisão. */
+  conflicts?: string[];
 }
+
+/** Desfecho do `save`; `field` = `meta.field` do 400. */
+export type CostSettingsSaveResult =
+  | { status: 'saved' }
+  | { status: 'conflict' }
+  | { status: 'invalid'; field: string | null }
+  | { status: 'failed' };
 
 export interface CostSettingsNotice { severity: 'success' | 'warning' | 'error'; text: string }
 
@@ -49,8 +63,9 @@ export function setDraftPath<T>(root: T, path: string, value: unknown): T {
 
 /**
  * Configuração de preços (COST-08): leitura, rascunho persistido na aba (`costs.prices.draft`) e
- * gravação com `expectedUpdatedAt`. 400 marca o campo de `meta.field`; 409 recarrega o salvo,
- * **mantém** o rascunho (rebaseado no `updatedAt` novo) e avisa.
+ * gravação com `expectedUpdatedAt`. 400 marca o campo de `meta.field`; 409 recarrega o salvo e faz o
+ * merge de 3 vias (`mergeSettings`): o que o outro admin salvou fica, as minhas alterações entram por
+ * cima, e o caminho mudado dos dois lados vira conflito a revisar na confirmação.
  */
 export function useCostSettings() {
   const [view, setView] = useState<InfraCostSettingsView | null>(null);
@@ -92,7 +107,7 @@ export function useCostSettings() {
     if (!view) return;
     setDraft((prev) => ({
       // `prev.base` pode ser `null` (rascunho de antes de existir linha): mantém, para o PUT dar 409.
-      base: prev ? prev.base : view.updatedAt,
+      ...(prev ?? { base: view.updatedAt, baseSettings: view.settings }),
       values: setDraftPath(prev?.values ?? settingsToDraft(view.settings), path, value),
     }));
     // Sai o erro do próprio caminho e o de quem o contém (`items[0]`, `items`) ou é contido por ele.
@@ -110,7 +125,7 @@ export function useCostSettings() {
   const replace = useCallback((mutate: (values: InfraCostSettingsDraft) => InfraCostSettingsDraft) => {
     if (!view) return;
     setDraft((prev) => ({
-      base: prev ? prev.base : view.updatedAt,
+      ...(prev ?? { base: view.updatedAt, baseSettings: view.settings }),
       values: mutate(prev?.values ?? settingsToDraft(view.settings)),
     }));
     setServerErrors({});
@@ -121,9 +136,8 @@ export function useCostSettings() {
     setServerErrors({});
   }, [clearDraft]);
 
-  /** `true` quando gravou. */
-  const save = useCallback(async (settings: InfraCostSettings): Promise<boolean> => {
-    if (!view) return false;
+  const save = useCallback(async (settings: InfraCostSettings): Promise<CostSettingsSaveResult> => {
+    if (!view) return { status: 'failed' };
     setSaving(true);
     try {
       const saved = await adminCostsService.updateSettings({
@@ -134,22 +148,39 @@ export function useCostSettings() {
       clearDraft();
       setServerErrors({});
       setNotice({ severity: 'success', text: S.prices.saved });
-      return true;
+      return { status: 'saved' };
     } catch (err) {
       const e = err as { status?: number; code?: string; field?: unknown };
       if (e.status === 409 || e.code === 'INFRA_COST_SETTINGS_CONFLICT') {
         setServerErrors({});
+        const ancestor = draft?.baseSettings ?? view.settings;
         const fresh = await fetchView();
-        // Mantém o que foi digitado, agora sobre o salvo mais novo: o próximo diff já mostra a diferença real.
-        if (fresh) setDraft((prev) => ({ base: fresh.updatedAt, values: prev?.values ?? settingsToDraft(settings) }));
-        setNotice({ severity: 'warning', text: S.errors.conflict });
-      } else if (e.status === 400 || e.code === 'INVALID_INFRA_COST_SETTINGS') {
-        if (typeof e.field === 'string' && e.field) setServerErrors({ [e.field]: S.errors.fieldRejected });
-        setNotice({ severity: 'error', text: S.errors.invalid });
-      } else {
-        setNotice({ severity: 'error', text: S.errors.saveFailed });
+        if (fresh) {
+          // Só o que eu mudei desde a base entra sobre o salvo novo; o resto do outro admin fica.
+          const merged = mergeSettings(ancestor, settings, fresh.settings);
+          if (diffSettings(fresh.settings, merged.settings).length === 0) clearDraft();
+          else {
+            setDraft({
+              base: fresh.updatedAt,
+              baseSettings: fresh.settings,
+              values: settingsToDraft(merged.settings),
+              conflicts: merged.conflicts,
+            });
+          }
+          setNotice({ severity: 'warning', text: S.pricesReview.conflictMerged });
+        } else {
+          setNotice({ severity: 'warning', text: S.errors.conflict });
+        }
+        return { status: 'conflict' };
       }
-      return false;
+      if (e.status === 400 || e.code === 'INVALID_INFRA_COST_SETTINGS') {
+        const field = typeof e.field === 'string' && e.field ? e.field : null;
+        if (field) setServerErrors({ [field]: S.errors.fieldRejected });
+        setNotice({ severity: 'error', text: S.errors.invalid });
+        return { status: 'invalid', field };
+      }
+      setNotice({ severity: 'error', text: S.errors.saveFailed });
+      return { status: 'failed' };
     } finally {
       setSaving(false);
     }
@@ -158,6 +189,7 @@ export function useCostSettings() {
   return {
     view, values, loading, loadError, loadUnavailable, saving, serverErrors, notice,
     dirty: draft !== null, restored: restored && draft !== null,
+    conflicts: draft?.conflicts ?? [],
     change, replace, discard, save,
     reload: fetchView,
     clearNotice: () => setNotice(null),

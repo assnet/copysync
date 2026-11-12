@@ -2,6 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { PLAN_CATALOG } from '@/features/plans/catalog';
 import {
   catalogPlanName,
+  changeLabel,
+  changeValue,
+  countErrors,
+  draftNumberText,
+  hasThousandsDot,
+  isConflictPath,
+  listEntryOfPath,
+  mergeSettings,
+  nextIndexAfterRemoval,
+  parseDraftNumber,
+  renameOpenKey,
   catalogSlugOf,
   dayLabel,
   diffSettings,
@@ -18,6 +29,7 @@ import {
   toSettingsPayload,
   validateSettingsDraft,
 } from './rules';
+import { infraCostsStrings as S } from './strings';
 import { sampleSettings } from './testFixtures';
 import type { InfraCostSettingsDraft } from './types';
 
@@ -269,5 +281,98 @@ describe('resumo: datas, base e avisos', () => {
     expect(warningDetail({ code: 'plan_without_price', resourceKey: 'redis', plan: 'x' }, items)).toBe('serviço Redis, plano x');
     expect(warningDetail({ code: 'unlimited_contracted', count: 2 }, items)).toBe('2 ocorrências');
     expect(warningDetail({ code: 'sessions_sample_stale' }, items)).toBeNull();
+  });
+});
+
+describe('revisão da aba Preços', () => {
+  it('número pt-BR: vírgula decimal, ponto de milhar recusado, input com vírgula', () => {
+    expect(parseDraftNumber('30,5')).toBe(30.5);
+    expect(parseDraftNumber('0.25')).toBe(0.25);
+    expect(parseDraftNumber('1.000')).toBeNull();
+    expect(hasThousandsDot('12.500.000')).toBe(true);
+    expect(hasThousandsDot('1.5')).toBe(false);
+    expect(draftNumberText(0.25)).toBe('0,25');
+    expect(draftNumberText('3.')).toBe('3.');
+    expect(draftNumberText(null)).toBe('');
+    const draft = sampleSettings() as InfraCostSettingsDraft;
+    draft.workspace.includedBuildMinutes = '1.000';
+    expect(validateSettingsDraft(draft)['workspace.includedBuildMinutes']).toBe(S.pricesReview.thousandsDot);
+  });
+
+  it('changeLabel usa o salvo para linha removida; changeValue mostra moeda e opções', () => {
+    const before = sampleSettings();
+    const after = { ...sampleSettings(), items: sampleSettings().items.slice(0, 2) };
+    expect(changeLabel('items[email]', before, after)).toBe(`${S.prices.items.title} · E-mail`);
+    expect(changeLabel('items[api].monthlyUsd', before, after)).toBe(`API · ${S.prices.items.fields.monthlyUsd}`);
+    expect(norm(changeValue('items[api].monthlyUsd', 30.5))).toBe('US$ 30,50');
+    expect(norm(changeValue('aiModelPrices[OPENAI:gpt-x].inputPerMTokUsd', 0.155))).toBe('US$ 0,155');
+    expect(changeValue('workspace.cycleStartDay', 5)).toBe('5');
+    expect(changeValue('items[api].billing', 'fixed')).toBe(S.billing.fixed);
+    expect(changeValue('fx.auto', true)).toBe(S.prices.yes);
+    expect(changeValue('items[api].note', null)).toBe(S.noValue);
+  });
+
+  it('countErrors, listEntryOfPath, nextIndexAfterRemoval e renameOpenKey', () => {
+    const errors = { 'items[0].label': 'x', 'items[0].storage.gb': 'x', 'items[1].key': 'x', items: 'x', 'workspace.planLabel': 'x' };
+    expect(countErrors(errors, 'items[0]')).toBe(2);
+    expect(countErrors(errors, 'items')).toBe(4);
+    expect(listEntryOfPath('items[3].storage.gb')).toEqual({ list: 'items', index: 3 });
+    expect(listEntryOfPath('workspace.planLabel')).toBeNull();
+    expect(nextIndexAfterRemoval(3, 0)).toBe(0);
+    expect(nextIndexAfterRemoval(3, 2)).toBeNull();
+    expect(renameOpenKey(['api', ''], '', 'backup', ['api', 'backup'])).toEqual(['api', 'backup']);
+    expect(renameOpenKey(['', 'api'], '', 'b', ['api', 'b', ''])).toEqual(['', 'api', 'b']);
+    expect(renameOpenKey(['api'], 'worker', 'w', ['api', 'w'])).toEqual(['api']);
+  });
+});
+
+describe('mergeSettings (409)', () => {
+  it('aplica só o que mudou no rascunho sobre o salvo novo, por identidade de linha', () => {
+    const base = sampleSettings();
+    const theirs = sampleSettings();
+    theirs.items[2].monthlyUsd = 30;
+    theirs.items.reverse(); // reordenar não pode trocar valores entre linhas
+    theirs.renderPlanPrices.push({ resourceType: 'key_value', plan: 'starter', monthlyUsd: 10 });
+    const mine = sampleSettings();
+    mine.items[0].quantity = 2;
+    mine.workspace.planLabel = 'Pro';
+    mine.aiModelPrices = [];
+    const { settings, conflicts } = mergeSettings(base, mine, theirs);
+    expect(conflicts).toEqual([]);
+    expect(settings.items.find((i) => i.key === 'email')?.monthlyUsd).toBe(30);
+    expect(settings.items.find((i) => i.key === 'api')?.quantity).toBe(2);
+    expect(settings.workspace.planLabel).toBe('Pro');
+    expect(settings.renderPlanPrices.map((r) => r.plan)).toContain('starter');
+    expect(settings.aiModelPrices).toEqual([]);
+  });
+
+  it('mesmo caminho dos dois lados com valores diferentes = conflito, fica o meu', () => {
+    const base = sampleSettings();
+    const theirs = sampleSettings();
+    theirs.items[2].monthlyUsd = 30;
+    theirs.fx.override = { rate: 5, date: '2026-11-01' };
+    const mine = sampleSettings();
+    mine.items[2].monthlyUsd = 40;
+    mine.fx.override = { rate: 5.2, date: '2026-11-01' };
+    const { settings, conflicts } = mergeSettings(base, mine, theirs);
+    expect(conflicts).toEqual(['fx.override', 'items[email].monthlyUsd']);
+    expect(isConflictPath('fx.override.rate', conflicts)).toBe(true);
+    expect(settings.items[2].monthlyUsd).toBe(40);
+    expect(settings.fx.override).toEqual({ rate: 5.2, date: '2026-11-01' });
+    expect(isConflictPath('items[email].monthlyUsd', conflicts)).toBe(true);
+    expect(isConflictPath('items[api].monthlyUsd', conflicts)).toBe(false);
+  });
+
+  it('remoção de um lado com alteração do outro = conflito; remoção sem alteração sai', () => {
+    const base = sampleSettings();
+    const theirs = sampleSettings();
+    theirs.items = theirs.items.filter((i) => i.key !== 'worker');
+    theirs.items[1].monthlyUsd = 30; // email
+    const mine = sampleSettings();
+    mine.items = mine.items.filter((i) => i.key !== 'email');
+    const { settings, conflicts } = mergeSettings(base, mine, theirs);
+    expect(conflicts).toEqual(['items[email]']);
+    expect(settings.items.map((i) => i.key)).toEqual(['api']);
+    expect(isConflictPath('items[email]', conflicts)).toBe(true);
   });
 });
