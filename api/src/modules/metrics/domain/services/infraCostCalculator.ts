@@ -1,6 +1,7 @@
 /**
  * Conta dos custos da infraestrutura (COST-02a/04/05/06a/06b). Função pura: sem env, I/O nem relógio.
- * P1 = `basis: 'snapshot'`: o mês inteiro com as quantidades de agora. Precisão cheia nas somas;
+ * P1 = `basis: 'snapshot'`: o mês inteiro com as quantidades de agora. P2 = `basis: 'hours'` (com `hourly`):
+ * Σ por hora cheia do mês (COST-11) e rateio por contratadas médias e sessão-hora (COST-12). Precisão cheia nas somas;
  * só a saída é arredondada a 4 casas (USD e BRL). Divisão por zero → `null`.
  * Ver `.specs/features/infra-costs/design.md` §5.
  */
@@ -9,6 +10,7 @@ import { PLAN_PRESETS, PLAN_SLUGS, type PlanSlug } from '../../../tenants/domain
 import type { WorkerCapacityPlanRow } from '../../../sessions/domain/contracts/IWorkerCapacityReader';
 import { OCCUPANCY_SAMPLE_MAX_AGE_MS } from '../../../sessions/domain/services/capacityPlan';
 import type { ResolvedFxRate } from './fxRate';
+import { infraResourceDriftFields } from './infraResourceDrift';
 import type {
   InfraCostAllocation,
   InfraCostBilling,
@@ -31,13 +33,30 @@ export interface InfraResourceReading {
   suspended: boolean;
 }
 
-/** Leitura de uma hora cheia (P2, `infra_resource_hours`). A T14 implementa `basis: 'hours'`. */
+/** Leitura de uma hora cheia (P2, `infra_resource_hours`). */
 export interface InfraResourceHourReading extends InfraResourceReading {
   hour: Date;
 }
 
+/** Um tenant no mês (`tenant_session_hours`): plano do último dia, sessão-hora e contratadas médias. */
+export interface InfraTenantMonthUsage {
+  tenantId: string;
+  planSlug: string | null;
+  connectedHours: number;
+  /** Média horária das contratadas efetivas (Σ `contractedSessions` ÷ Σ `contractedSamples`). */
+  contractedAvg: number;
+}
+
+/** Entradas da conta por hora (P2): `IInfraCostUsageReader.readMonth`. */
 export interface InfraCostHourlyInput {
+  /** Início (incl.) e fim (excl.) do mês em UTC; horas do mês = (fim − início) ÷ 1 h. */
+  monthStart: Date;
+  monthEnd: Date;
   resourceHours: readonly InfraResourceHourReading[];
+  /** Σ `infra_usage_daily` do mês; `null` = sem medição. */
+  bandwidthGb: number | null;
+  buildMinutes: number | null;
+  tenants: readonly InfraTenantMonthUsage[];
 }
 
 export interface InfraCostCalculationInput {
@@ -57,7 +76,7 @@ export interface InfraCostCalculationInput {
   scaling: { maxSessionsPerWorker: number; alertOccupancyRatio: number };
   /** Leitura atual de cada recurso da Render (vazia na P1). */
   resources?: readonly InfraResourceReading[];
-  /** Entradas por hora (vazias na P1; a T14 só preenche). */
+  /** Entradas por hora (P2): presente = `basis: 'hours'`. */
   hourly?: InfraCostHourlyInput;
 }
 
@@ -71,7 +90,7 @@ export interface InfraMoney {
   brl: number | null;
 }
 
-/** `measured_hours` é da P2 (T14). */
+/** `measured_hours` = alguma hora do mês lida (P2). */
 export type InfraQuantitySource = 'manual' | 'measured_now' | 'measured_hours';
 
 export interface InfraNeighborPlan {
@@ -143,12 +162,16 @@ export type InfraCostWarning =
   | { code: 'storage_to_confirm'; key: string }
   | { code: 'plan_without_price'; resourceKey: InfraRenderKey; plan: string }
   | { code: 'unlimited_contracted'; count: number }
+  /** Horas do mês sem leitura do recurso: usam a quantidade manual. */
+  | { code: 'missing_hours'; resourceKey: InfraRenderKey; count: number }
+  /** Cadastro diferente do lido (plano pelo preço, instâncias, disco). */
+  | { code: 'config_drift'; resourceKey: InfraRenderKey; field: 'plan' | 'instances' | 'diskGb' }
   | { code: 'fx_missing' }
   /** Amostra de sessões com mais de 10 min: não alocadas sem número (dois relógios não se comparam). */
   | { code: 'sessions_sample_stale' };
 
 export interface InfraCostCalculation {
-  basis: 'snapshot';
+  basis: 'snapshot' | 'hours';
   fx: ResolvedFxRate | null;
   /** Hora da amostra de sessões usada (`null` = sem amostra). */
   sessionsSampledAt: Date | null;
@@ -162,7 +185,7 @@ export interface InfraCostCalculation {
     variable: InfraMoney;
     /** Base do rateio: itens `shared` (exceto IA) + excedente do workspace. */
     shared: InfraMoney;
-    /** P2+; `null` na foto. */
+    /** P2: realizado + última hora × horas restantes + excedente projetado; `null` na foto. */
     projected: InfraMoney | null;
   };
   items: InfraCostItemResult[];
@@ -170,8 +193,21 @@ export interface InfraCostCalculation {
   perSession: {
     contracted: { sessions: number; perSession: InfraMoney | null; unlimitedTenants: number };
     /** Não alocadas = conectadas do cluster fora dos tenants `ACTIVE`: referência, fora do rateio. */
-    connected: { sessions: number; perSession: InfraMoney | null; unallocatedSessions: number | null; unallocatedCost: InfraMoney | null };
+    /**
+     * Foto: `sessions` = conectadas agora. Horas: média de conectadas no período, `perSession` = sessão-mês
+     * (sessão-hora × 730), mais `sessionHours` e `perSessionHour`.
+     */
+    connected: {
+      sessions: number;
+      perSession: InfraMoney | null;
+      unallocatedSessions: number | null;
+      unallocatedCost: InfraMoney | null;
+      sessionHours?: number;
+      perSessionHour?: InfraMoney | null;
+    };
   };
+  /** Horas: compartilhado × (1 − sessão-hora ÷ capacidade instalada-hora); `null` na foto ou sem leitura do worker. */
+  idleCapacity: InfraMoney | null;
   /** Preço da instância do worker ÷ (teto × ratio de alerta). */
   marginalPerSession: InfraMoney | null;
   plans: InfraCostPlanResult[];
@@ -222,6 +258,8 @@ interface ItemCalc {
   storageUsd: number | null;
   /** Preço mensal de uma instância (marginal). */
   unitUsd: number | null;
+  /** Horas: realizado + última hora × horas restantes; `null` = sem preço ou foto. */
+  projectedUsd: number | null;
 }
 
 function priceOf(settings: InfraCostSettings, type: InfraRenderResourceType, plan: string): number | null {
@@ -295,6 +333,7 @@ function calculateItem(
     computeUsd,
     storageUsd,
     unitUsd,
+    projectedUsd: null,
     result: {
       key: item.key,
       label: item.label,
@@ -338,63 +377,322 @@ function planShare(sessions: number, perSessionUsd: number | null, tenants: numb
   };
 }
 
-/** Custos do mês (P1: foto do momento). */
+const HOUR_MS = 3_600_000;
+/** Horas médias de um mês (sessão-hora → sessão-mês, COST-12). */
+export const INFRA_SESSION_MONTH_HOURS = 730;
+
+/** Plano esperado pelo cadastro: o plano de mesmo tipo com o preço do item (o rótulo é só texto). */
+function expectedPlan(settings: InfraCostSettings, item: InfraCostItem, type: InfraRenderResourceType, readPlan: string | null): string | null {
+  const same = settings.renderPlanPrices.filter((p) => p.resourceType === type && p.monthlyUsd === item.monthlyUsd).map((p) => p.plan);
+  if (readPlan !== null && same.includes(readPlan)) return readPlan;
+  return same[0] ?? null;
+}
+
+/**
+ * `config_drift`: plano (pelo preço do cadastro), instâncias (só `per_instance`, fora o worker, que escala
+ * sozinho) e disco. Plano lido sem preço já sai como `plan_without_price`, não como divergência.
+ */
+function pushDrift(
+  item: InfraCostItem,
+  reading: InfraResourceReading | undefined,
+  settings: InfraCostSettings,
+  warnings: InfraCostWarning[],
+): void {
+  if (!item.renderKey || !reading) return;
+  const type = RESOURCE_TYPE_OF[item.renderKey];
+  const readPriced = type && reading.plan !== null && priceOf(settings, type, reading.plan) !== null;
+  const fields = infraResourceDriftFields(
+    { plan: readPriced ? reading.plan : null, instances: reading.instances, diskGb: reading.diskGb },
+    {
+      plan: type ? expectedPlan(settings, item, type, reading.plan) : null,
+      instances: item.billing === 'per_instance' && item.renderKey !== 'worker' ? item.quantity : null,
+      diskGb: item.storage?.gb ?? null,
+    },
+  );
+  for (const field of fields) warnings.push({ code: 'config_drift', resourceKey: item.renderKey, field });
+}
+
+interface HoursContext {
+  hoursInMonth: number;
+  /** Horas cheias já terminadas no mês (as que deveriam ter leitura). */
+  elapsed: number;
+  /** Leitura por recurso e índice da hora no mês. */
+  byKey: Map<InfraRenderKey, Map<number, InfraResourceHourReading>>;
+}
+
+function hoursContext(input: InfraCostCalculationInput, hourly: InfraCostHourlyInput): HoursContext {
+  const start = hourly.monthStart.getTime();
+  const hoursInMonth = Math.max(1, Math.round((hourly.monthEnd.getTime() - start) / HOUR_MS));
+  const elapsed = Math.min(hoursInMonth, Math.max(0, Math.floor((input.now.getTime() - start) / HOUR_MS)));
+  const byKey = new Map<InfraRenderKey, Map<number, InfraResourceHourReading>>();
+  for (const r of hourly.resourceHours) {
+    const idx = Math.floor((r.hour.getTime() - start) / HOUR_MS);
+    if (idx < 0 || idx >= elapsed) continue;
+    if (!byKey.has(r.renderKey)) byKey.set(r.renderKey, new Map());
+    byKey.get(r.renderKey)!.set(idx, r);
+  }
+  return { hoursInMonth, elapsed, byKey };
+}
+
+/** Item por hora (COST-11): hora lida = preço do plano lido × instâncias; hora sem leitura = manual. */
+function calculateItemHours(
+  item: InfraCostItem,
+  input: InfraCostCalculationInput,
+  ctx: HoursContext,
+  warnings: InfraCostWarning[],
+): ItemCalc {
+  const { settings, fx } = input;
+  const H = ctx.hoursInMonth;
+  const type = item.renderKey ? RESOURCE_TYPE_OF[item.renderKey] : null;
+  const readings = item.renderKey ? ctx.byKey.get(item.renderKey) : undefined;
+  const unpricedPlans = new Set<string>();
+  let missing = 0;
+  let computeUsd = 0;
+  let storageUsd = 0;
+  let storageToConfirm = false;
+  let last: InfraResourceHourReading | undefined;
+
+  const slot = (r: InfraResourceHourReading | undefined) => {
+    let unit: number | null = item.monthlyUsd;
+    if (r?.plan && type) {
+      unit = priceOf(settings, type, r.plan);
+      if (unit === null) unpricedPlans.add(r.plan);
+    }
+    const qty = item.billing === 'per_instance' && r && r.instances !== null ? r.instances : item.quantity;
+    let compute: number | null;
+    if (unit === null) compute = null;
+    else if (r?.suspended) compute = 0;
+    else if (item.billing === 'usage') compute = unit / H;
+    else compute = (unit * qty) / H;
+    let storage = 0;
+    if (item.storage) {
+      const gb = r?.diskGb ?? item.storage.gb;
+      if (gb === null || item.storage.usdPerGb === null) storageToConfirm = true;
+      else storage = (gb * item.storage.usdPerGb) / H;
+    }
+    return { unit, qty, compute, storage };
+  };
+
+  for (let i = 0; i < ctx.elapsed; i++) {
+    const r = readings?.get(i);
+    if (item.renderKey && !r) missing++;
+    if (r) last = r;
+    const s = slot(r);
+    computeUsd += s.compute ?? 0;
+    storageUsd += s.storage;
+  }
+  const lastSlot = slot(ctx.elapsed > 0 ? readings?.get(ctx.elapsed - 1) : undefined);
+
+  const compute: number | null = unpricedPlans.size > 0 ? null : computeUsd;
+  for (const plan of unpricedPlans) warnings.push({ code: 'plan_without_price', resourceKey: item.renderKey!, plan });
+  if (storageToConfirm) warnings.push({ code: 'storage_to_confirm', key: item.key });
+  if (item.renderKey && missing > 0) warnings.push({ code: 'missing_hours', resourceKey: item.renderKey, count: missing });
+  pushDrift(item, last, settings, warnings);
+
+  const remaining = H - ctx.elapsed;
+  const projectedUsd =
+    compute === null || lastSlot.compute === null ? null : compute + storageUsd + (lastSlot.compute + lastSlot.storage) * remaining;
+  const storage = item.storage && !storageToConfirm ? storageUsd : null;
+  const totalUsd = compute === null ? null : compute + (storage ?? 0);
+  const unitUsd = lastSlot.unit;
+  const measured = readings !== undefined && readings.size > 0;
+  const quantitySource: InfraQuantitySource = measured ? 'measured_hours' : 'manual';
+
+  return {
+    computeUsd: compute,
+    storageUsd: storage,
+    unitUsd,
+    projectedUsd,
+    result: {
+      key: item.key,
+      label: item.label,
+      category: item.category,
+      billing: item.billing,
+      renderKey: item.renderKey,
+      planLabel: item.planLabel,
+      plan: last?.plan ?? null,
+      quantity: lastSlot.qty,
+      quantitySource,
+      allocation: item.allocation,
+      compute: maybeMoney(compute, fx),
+      storage: maybeMoney(storage, fx),
+      storageToConfirm,
+      cost: maybeMoney(totalUsd, fx),
+      estimated: !measured || missing > 0,
+      neighbors: type && unitUsd !== null ? neighborsOf(settings, type, unitUsd, fx) : null,
+    },
+  };
+}
+
+/** Excedente do workspace com consumo medido (manual vence); projeção pela média diária do período. */
+function workspaceUsageHours(
+  included: number,
+  manual: number | null,
+  measured: number | null,
+  usdPerUnit: number,
+  ctx: HoursContext,
+  fx: ResolvedFxRate | null,
+): { view: InfraWorkspaceUsageResult; costUsd: number; projectedUsd: number } {
+  const consumed = manual ?? measured;
+  const source = manual !== null ? 'manual' : measured !== null ? 'measured' : null;
+  const overage = consumed === null ? 0 : Math.max(0, consumed - included);
+  const costUsd = overage * usdPerUnit;
+  const projectedConsumed =
+    source === 'measured' && consumed !== null && ctx.elapsed > 0 ? (consumed / ctx.elapsed) * ctx.hoursInMonth : consumed;
+  const projectedUsd = projectedConsumed === null ? 0 : Math.max(0, projectedConsumed - included) * usdPerUnit;
+  return { view: { included, consumed, source, overage, cost: money(costUsd, fx) }, costUsd, projectedUsd };
+}
+
+/** Parte de um tenant no compartilhado nas duas bases (COST-12). */
+export interface InfraTenantShare {
+  tenantId: string;
+  planSlug: string | null;
+  contractedAvg: number;
+  connectedHours: number;
+  /** Base contratadas: contratadas médias × custo por contratada. */
+  contractedShareUsd: number | null;
+  /** Sessão-hora: horas conectadas × custo por sessão-hora. */
+  sessionHourShareUsd: number | null;
+}
+
+/** Rateio por tenant do compartilhado (as duas bases); por plano = soma dos tenants. */
+export function allocateInfraTenantShares(sharedUsd: number, tenants: readonly InfraTenantMonthUsage[]) {
+  const contractedTotal = tenants.reduce((s, t) => s + t.contractedAvg, 0);
+  const sessionHours = tenants.reduce((s, t) => s + t.connectedHours, 0);
+  const perContracted = div(sharedUsd, contractedTotal);
+  const perSessionHour = div(sharedUsd, sessionHours);
+  const shares: InfraTenantShare[] = tenants.map((t) => ({
+    tenantId: t.tenantId,
+    planSlug: t.planSlug,
+    contractedAvg: t.contractedAvg,
+    connectedHours: t.connectedHours,
+    contractedShareUsd: perContracted === null ? null : t.contractedAvg * perContracted,
+    sessionHourShareUsd: perSessionHour === null ? null : t.connectedHours * perSessionHour,
+  }));
+  return { contractedTotal, sessionHours, perContracted, perSessionHour, shares };
+}
+
+/** Custos do mês: foto do momento (P1) ou Σ por hora com `hourly` (P2). */
 export function calculateInfraCosts(input: InfraCostCalculationInput): InfraCostCalculation {
   const { settings, fx } = input;
   const warnings: InfraCostWarning[] = [];
-  const calcs = settings.items.map((item) => calculateItem(item, input, warnings));
+  const hourly = input.hourly;
+  const ctx = hourly ? hoursContext(input, hourly) : null;
+  const calcs = settings.items.map((item) => {
+    if (ctx) return calculateItemHours(item, input, ctx, warnings);
+    pushDrift(item, item.renderKey ? input.resources?.find((r) => r.renderKey === item.renderKey) : undefined, settings, warnings);
+    return calculateItem(item, input, warnings);
+  });
 
   const ws = settings.workspace;
-  const bandwidth = workspaceUsage(ws.includedBandwidthGb, ws.manualBandwidthGb, ws.bandwidthUsdPerGb, fx);
-  const build = workspaceUsage(ws.includedBuildMinutes, ws.manualBuildMinutes, ws.buildUsdPer1000Min / 1000, fx);
+  const bwPrice = ws.bandwidthUsdPerGb;
+  const buildPrice = ws.buildUsdPer1000Min / 1000;
+  const bandwidth = ctx
+    ? workspaceUsageHours(ws.includedBandwidthGb, ws.manualBandwidthGb, hourly!.bandwidthGb, bwPrice, ctx, fx)
+    : { ...workspaceUsage(ws.includedBandwidthGb, ws.manualBandwidthGb, bwPrice, fx), projectedUsd: 0 };
+  const build = ctx
+    ? workspaceUsageHours(ws.includedBuildMinutes, ws.manualBuildMinutes, hourly!.buildMinutes, buildPrice, ctx, fx)
+    : { ...workspaceUsage(ws.includedBuildMinutes, ws.manualBuildMinutes, buildPrice, fx), projectedUsd: 0 };
   const workspaceUsd = bandwidth.costUsd + build.costUsd;
 
   let totalUsd = workspaceUsd;
   let fixedUsd = 0;
   let variableUsd = workspaceUsd;
   let sharedUsd = workspaceUsd;
-  for (const { result, computeUsd, storageUsd } of calcs) {
+  let projectedUsd = bandwidth.projectedUsd + build.projectedUsd;
+  for (const { result, computeUsd, storageUsd, projectedUsd: itemProjected } of calcs) {
     if (computeUsd === null) continue;
     const itemUsd = computeUsd + (storageUsd ?? 0);
     totalUsd += itemUsd;
+    projectedUsd += itemProjected ?? 0;
     fixedUsd += storageUsd ?? 0;
     if (result.billing === 'fixed') fixedUsd += computeUsd;
     else variableUsd += computeUsd;
     if (result.allocation === 'shared' && result.category !== 'ai') sharedUsd += itemUsd;
   }
 
-  // Rateio (COST-05).
+  // Rateio: foto pela capacidade de agora (COST-05); horas pelo mês de `tenant_session_hours` (COST-12).
   const rows = input.capacityByPlan;
-  const contractedTotal = rows.reduce((s, r) => s + effectiveContractedSessions(r), 0);
-  const connectedTotal = rows.reduce((s, r) => s + sumChannels(r.connected), 0);
   const unlimited = rows.reduce((s, r) => s + sumChannels(r.unlimitedTenants), 0);
   if (unlimited > 0) warnings.push({ code: 'unlimited_contracted', count: unlimited });
-  const perContracted = div(sharedUsd, contractedTotal);
-  const perConnected = div(sharedUsd, connectedTotal);
 
-  const plans: InfraCostPlanResult[] = rows.map((row) => {
-    const contractedSessions = effectiveContractedSessions(row);
-    const connectedSessions = sumChannels(row.connected);
-    const contracted = planShare(contractedSessions, perContracted, row.tenants, fx);
-    const connected = planShare(connectedSessions, perConnected, row.tenants, fx);
-    return {
-      planSlug: row.planSlug,
-      tenants: row.tenants,
-      contractedSessions,
-      connectedSessions,
-      share: contracted.share,
-      costPerTenant: contracted.perTenant,
-      connectedShare: connected.share,
-      connectedCostPerTenant: connected.perTenant,
-    };
-  });
+  let contractedTotal: number;
+  let connectedTotal: number;
+  let perContracted: number | null;
+  /** Custo de uma sessão conectada no mês (foto: ÷ conectadas; horas: sessão-hora × 730). */
+  let perConnected: number | null;
+  let plans: InfraCostPlanResult[];
+  let hoursView: { sessionHours: number; perSessionHour: InfraMoney | null } | null = null;
+  let idleUsd: number | null = null;
+
+  if (ctx && hourly) {
+    const alloc = allocateInfraTenantShares(sharedUsd, hourly.tenants);
+    contractedTotal = alloc.contractedTotal;
+    perContracted = alloc.perContracted;
+    perConnected = alloc.perSessionHour === null ? null : alloc.perSessionHour * INFRA_SESSION_MONTH_HOURS;
+    const avgConnected = (hours: number) => (ctx.elapsed > 0 ? hours / ctx.elapsed : 0);
+    connectedTotal = avgConnected(alloc.sessionHours);
+    hoursView = { sessionHours: alloc.sessionHours, perSessionHour: maybeMoney(alloc.perSessionHour, fx) };
+
+    const byPlan = new Map<string | null, InfraTenantShare[]>();
+    for (const t of alloc.shares) byPlan.set(t.planSlug, [...(byPlan.get(t.planSlug) ?? []), t]);
+    const order = (slug: string | null) => (slug === null ? Infinity : (PLAN_SLUGS as readonly string[]).indexOf(slug) >>> 0);
+    plans = [...byPlan.entries()]
+      .sort(([a], [b]) => order(a) - order(b) || String(a).localeCompare(String(b)))
+      .map(([planSlug, list]) => {
+        const sum = (f: (t: InfraTenantShare) => number | null) =>
+          list.some((t) => f(t) === null) ? null : list.reduce((s, t) => s + (f(t) ?? 0), 0);
+        const share = sum((t) => t.contractedShareUsd);
+        const connectedShare = sum((t) => t.sessionHourShareUsd);
+        return {
+          planSlug,
+          tenants: list.length,
+          contractedSessions: round4(list.reduce((s, t) => s + t.contractedAvg, 0)),
+          connectedSessions: round4(avgConnected(list.reduce((s, t) => s + t.connectedHours, 0))),
+          share: maybeMoney(share, fx),
+          costPerTenant: maybeMoney(share === null ? null : div(share, list.length), fx),
+          connectedShare: maybeMoney(connectedShare, fx),
+          connectedCostPerTenant: maybeMoney(connectedShare === null ? null : div(connectedShare, list.length), fx),
+        };
+      });
+
+    // Ociosidade: só com leitura do worker (capacidade instalada = instâncias × teto, por hora lida).
+    const workerHours = ctx.byKey.get('worker');
+    const capacityHours = workerHours
+      ? [...workerHours.values()].reduce((s, r) => s + (r.instances ?? 0) * input.scaling.maxSessionsPerWorker, 0)
+      : 0;
+    if (capacityHours > 0) idleUsd = sharedUsd * (1 - Math.min(1, alloc.sessionHours / capacityHours));
+  } else {
+    contractedTotal = rows.reduce((s, r) => s + effectiveContractedSessions(r), 0);
+    connectedTotal = rows.reduce((s, r) => s + sumChannels(r.connected), 0);
+    perContracted = div(sharedUsd, contractedTotal);
+    const perNow = div(sharedUsd, connectedTotal);
+    perConnected = perNow;
+    plans = rows.map((row) => {
+      const contractedSessions = effectiveContractedSessions(row);
+      const connectedSessions = sumChannels(row.connected);
+      const contracted = planShare(contractedSessions, perContracted, row.tenants, fx);
+      const connected = planShare(connectedSessions, perNow, row.tenants, fx);
+      return {
+        planSlug: row.planSlug,
+        tenants: row.tenants,
+        contractedSessions,
+        connectedSessions,
+        share: contracted.share,
+        costPerTenant: contracted.perTenant,
+        connectedShare: connected.share,
+        connectedCostPerTenant: connected.perTenant,
+      };
+    });
+  }
 
   // Σ conectadas vem do lease agora; o cluster, da amostra: só compara com amostra recente.
+  const connectedNow = rows.reduce((s, r) => s + sumChannels(r.connected), 0);
   const sampledAt = input.live.sessionsSampledAt;
   const sampleStale = sampledAt !== null && input.now.getTime() - sampledAt.getTime() > OCCUPANCY_SAMPLE_MAX_AGE_MS;
   if (sampleStale) warnings.push({ code: 'sessions_sample_stale' });
   const clusterConnected = sampleStale || sampledAt === null ? null : input.live.sessionsConnected;
-  const unallocatedSessions = clusterConnected === null ? null : Math.max(0, clusterConnected - connectedTotal);
+  const unallocatedSessions = clusterConnected === null ? null : Math.max(0, clusterConnected - connectedNow);
   const unallocatedUsd = unallocatedSessions === null || perConnected === null ? null : unallocatedSessions * perConnected;
 
   const worker = calcs.find((c) => c.result.renderKey === 'worker');
@@ -404,7 +702,7 @@ export function calculateInfraCosts(input: InfraCostCalculationInput): InfraCost
   if (!fx) warnings.push({ code: 'fx_missing' });
 
   return {
-    basis: 'snapshot',
+    basis: ctx ? 'hours' : 'snapshot',
     fx,
     sessionsSampledAt: input.live.sessionsSampledAt,
     totalIsPartial: calcs.some((c) => c.computeUsd === null),
@@ -413,20 +711,22 @@ export function calculateInfraCosts(input: InfraCostCalculationInput): InfraCost
       fixed: money(fixedUsd, fx),
       variable: money(variableUsd, fx),
       shared: money(sharedUsd, fx),
-      projected: null,
+      projected: ctx ? money(projectedUsd, fx) : null,
     },
     items: calcs.map((c) => c.result),
     workspace: { planLabel: ws.planLabel, bandwidth: bandwidth.view, build: build.view, total: money(workspaceUsd, fx) },
     perSession: {
-      contracted: { sessions: contractedTotal, perSession: maybeMoney(perContracted, fx), unlimitedTenants: unlimited },
+      contracted: { sessions: round4(contractedTotal), perSession: maybeMoney(perContracted, fx), unlimitedTenants: unlimited },
       connected: {
-        sessions: connectedTotal,
+        sessions: round4(connectedTotal),
         perSession: maybeMoney(perConnected, fx),
         unallocatedSessions,
         unallocatedCost: maybeMoney(unallocatedUsd, fx),
+        ...(hoursView ?? {}),
       },
     },
     marginalPerSession: maybeMoney(marginalUsd, fx),
+    idleCapacity: maybeMoney(idleUsd, fx),
     plans,
     warnings,
   };

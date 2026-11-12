@@ -62,18 +62,8 @@ export function bandwidthUnitToGb(unit: unknown): number | null {
   return bytes === undefined ? null : bytes / 1e9;
 }
 
-/** Campos lidos que diferem do cadastro (`config_drift`). `null`/`undefined` em qualquer lado não compara. */
-export function infraResourceDriftFields(
-  reading: Pick<InfraResourcePlanReading, 'plan' | 'instances' | 'diskGb'>,
-  expected: { plan?: string | null; instances?: number | null; diskGb?: number | null },
-): ('plan' | 'instances' | 'diskGb')[] {
-  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
-  const out: ('plan' | 'instances' | 'diskGb')[] = [];
-  if (reading.plan != null && expected.plan != null && norm(reading.plan) !== norm(expected.plan)) out.push('plan');
-  if (reading.instances != null && expected.instances != null && reading.instances !== expected.instances) out.push('instances');
-  if (reading.diskGb != null && expected.diskGb != null && reading.diskGb !== expected.diskGb) out.push('diskGb');
-  return out;
-}
+/** Mantido aqui por compatibilidade; a regra é do domínio (usada pelo calculador). */
+export { infraResourceDriftFields } from '../../domain/services/infraResourceDrift';
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
