@@ -138,14 +138,19 @@ describe('workspace medido (COST-11)', () => {
     expect(calc(s, {}).workspace.bandwidth).toMatchObject({ consumed: 7, overage: 2 });
   });
 
-  it('horas sem banda lida → bandwidth_missing_hours (folga de 2 h no mês em curso); manual não avisa', () => {
+  it('horas sem banda lida → bandwidth_missing_hours (lida até F-2h no mês em curso); manual não avisa', () => {
     const s = workerOnly();
     s.items = [];
     expect(calc(s, { bandwidthGb: 7, bandwidthHours: 700 }).warnings).toContainEqual({ code: 'bandwidth_missing_hours', count: 18 });
-    // Mês em curso: 10 h decorridas → 8 horas de banda esperadas
+    // Mês em curso às 10:05: job leu 00..08 → 9 horas de banda esperadas
     const mid = { now: new Date(NOV.getTime() + 10 * H + 5 * 60_000) };
-    expect(calc(s, { bandwidthGb: 1, bandwidthHours: 8 }, mid).warnings.map((w) => w.code)).not.toContain('bandwidth_missing_hours');
-    expect(calc(s, { bandwidthGb: 1, bandwidthHours: 5 }, mid).warnings).toContainEqual({ code: 'bandwidth_missing_hours', count: 3 });
+    expect(calc(s, { bandwidthGb: 1, bandwidthHours: 9 }, mid).warnings.map((w) => w.code)).not.toContain('bandwidth_missing_hours');
+    expect(calc(s, { bandwidthGb: 1, bandwidthHours: 8 }, mid).warnings).toContainEqual({ code: 'bandwidth_missing_hours', count: 1 });
+    expect(calc(s, { bandwidthGb: 1, bandwidthHours: 5 }, mid).warnings).toContainEqual({ code: 'bandwidth_missing_hours', count: 4 });
+    // 10:02: tick da hora ainda pode não ter rodado → 8 esperadas, sem aviso falso
+    const early = { now: new Date(NOV.getTime() + 10 * H + 2 * 60_000) };
+    expect(calc(s, { bandwidthGb: 1, bandwidthHours: 8 }, early).warnings.map((w) => w.code)).not.toContain('bandwidth_missing_hours');
+    expect(calc(s, { bandwidthGb: 1, bandwidthHours: 7 }, early).warnings).toContainEqual({ code: 'bandwidth_missing_hours', count: 1 });
     expect(calc(s, { bandwidthGb: 1 }, mid).warnings.map((w) => w.code)).not.toContain('bandwidth_missing_hours');
     s.workspace.manualBandwidthGb = 6;
     expect(calc(s, { bandwidthGb: 1, bandwidthHours: 0 }).warnings.map((w) => w.code)).not.toContain('bandwidth_missing_hours');

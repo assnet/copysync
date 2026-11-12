@@ -50,6 +50,8 @@ CREATE TABLE "infra_usage_daily" (
     "value" DOUBLE PRECISION NOT NULL,
     "source" TEXT NOT NULL,
     "lastHour" TIMESTAMP(3),
+    -- Horas somadas na linha de banda do dia (aviso bandwidth_missing_hours); build regrava o dia e fica com 0
+    "hours" INTEGER NOT NULL DEFAULT 0,
     "readAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "infra_usage_daily_pkey" PRIMARY KEY ("day", "metric", "resourceKey"),

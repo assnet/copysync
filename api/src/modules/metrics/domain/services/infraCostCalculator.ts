@@ -544,13 +544,19 @@ function calculateItemHours(
   };
 }
 
+/** Atraso do tick do job: até 5 min depois da virada a hora `F - 2h` ainda pode não ter sido lida. */
+const BANDWIDTH_TICK_GRACE_MS = 5 * 60_000;
+
 /**
- * Horas de banda que já deveriam estar gravadas: a banda da hora `i` sai no snapshot da hora `i + 1`, que
- * fecha em `i + 2` (folga de 1 h para o tick de 5 min). Mês passado = todas.
+ * Horas de banda que já deveriam estar gravadas. O job lê até `floorHour(now) - 2h` inclusive (às 10:05 lê
+ * 00..08 = 9 horas = decorridas - 1); nos primeiros 5 min da hora o tick pode não ter rodado (decorridas - 2).
+ * Mês passado = todas.
  */
 function expectedBandwidthHours(now: Date, hourly: InfraCostHourlyInput, ctx: HoursContext): number {
-  const raw = Math.floor((now.getTime() - hourly.monthStart.getTime()) / HOUR_MS);
-  return Math.min(ctx.hoursInMonth, Math.max(0, raw - 2));
+  const sinceStart = now.getTime() - hourly.monthStart.getTime();
+  const raw = Math.floor(sinceStart / HOUR_MS);
+  const lag = sinceStart - raw * HOUR_MS < BANDWIDTH_TICK_GRACE_MS ? 2 : 1;
+  return Math.min(ctx.hoursInMonth, Math.max(0, raw - lag));
 }
 
 /** Excedente do workspace com consumo medido (manual vence); projeção pela média diária do período. */

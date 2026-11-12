@@ -98,7 +98,8 @@ Memória só para não repetir `warn`; todo estado que importa está no banco.
   só tenants `ACTIVE` (sessão de tenant fora disso conta como ociosa) e horas sem leitura do worker ficam de fora,
   com o aviso `idle_partial` (contagem).
 - **Banda medida**: `bandwidth_missing_hours` (contagem) quando o mês tem menos horas com banda que o esperado
-  (todas as horas no mês passado; até 2 h atrás no corrente, pela defasagem da banda + tick). Sem aviso com banda
+  (todas as horas no mês passado; no corrente, as horas até `hora cheia atual - 2h` inclusive, ou seja decorridas - 1,
+  e decorridas - 2 nos primeiros 5 min da hora, antes do tick do job). Sem aviso com banda
   manual. Consumido e excedente saem com 4 casas, como o dinheiro.
 - **Contratadas** no modo horas = média diária de `contractedSessions` de `tenant_session_hours`, mesma regra de
   ilimitado.
@@ -157,7 +158,7 @@ Memória só para não repetir `warn`; todo estado que importa está no banco.
 
 ### Como ligar com segurança
 
-1. Deploy da versão com as migrations `create_infra_cost_snapshots` e `add_infra_usage_daily_hours` (aplicadas no boot, §5.1 de
+1. Deploy da versão com a migration `create_infra_cost_snapshots` (aplicada no boot, §5.1 de
    `docs/arquitetura-escala.md`).
 2. Só no serviço `worker` (nunca no `http`): `INFRA_COST_RENDER_RESOURCES` com os ids reais (copiados do painel da
    Render; nunca em doc, chat, log ou git) e depois `INFRA_COST_SNAPSHOT_ENABLED=true`.
