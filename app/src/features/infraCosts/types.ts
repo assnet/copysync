@@ -279,7 +279,12 @@ export type InfraCostWarningCode =
   /** Σ contratadas 0: compartilhado rateado pela sessão-hora (mês aberto e fechado). */
   | 'shared_by_session_hours'
   /** Sem contratadas nem sessão-hora: compartilhado fora dos clientes (`usd`). */
-  | 'shared_unallocated';
+  | 'shared_unallocated'
+  /** Mês fechado à força no fim do prazo: medições que faltaram (`metrics`). */
+  | 'usage_incomplete';
+
+/** Medição de uso que pode faltar no fechamento (`usage_incomplete`). */
+export type InfraCostUsageMetric = 'bandwidth' | 'build';
 
 export interface InfraCostWarning {
   code: InfraCostWarningCode;
@@ -293,6 +298,8 @@ export interface InfraCostWarning {
   count?: number;
   /** `shared_unallocated`: valor fora dos clientes (USD). */
   usd?: number;
+  /** `usage_incomplete`: medições que faltaram no fechamento. */
+  metrics?: InfraCostUsageMetric[];
 }
 
 /** Resposta de `GET /admin/costs/summary?month=YYYY-MM`. */

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { Alert, Box, Button, CircularProgress, Paper, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography } from '@mui/material';
 import { Hourglass, Lock } from 'lucide-react';
 import { AppIcon, SectionCard, ServiceUpdatingState } from '@/components';
@@ -87,9 +88,9 @@ function TenantRow({ row, status, showMargin }: { row: InfraCostTenantView; stat
       <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.planSlug ? planName(row.planSlug) : S.summary.plans.noPlan}</TableCell>
       <TableCell align="right" sx={numCell}>{num(row.contractedSessions, 2)}</TableCell>
       <TableCell align="right" sx={numCell}>{num(row.sessionHours)}</TableCell>
-      <TableCell align="right"><Money value={row.shared} /></TableCell>
-      <TableCell align="right"><Money value={row.ai} /></TableCell>
-      <TableCell align="right"><Money value={row.total} strong /></TableCell>
+      <TableCell align="right"><Money layout="table" value={row.shared} /></TableCell>
+      <TableCell align="right"><Money layout="table" value={row.ai} /></TableCell>
+      <TableCell align="right"><Money layout="table" value={row.total} strong /></TableCell>
       {showMargin && <MarginCell row={row} status={status} />}
     </TableRow>
   );
@@ -115,7 +116,10 @@ function TenantsTable({ q }: { q: ReturnType<typeof useCostTenants> }) {
               {showMargin && (
                 <TableCell align="right">
                   <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
-                    <span>{col.margin}</span>
+                    {/* Fechado: custo congelado, preço do plano não (é texto do catálogo) — o rótulo diz qual preço. */}
+                    {meta.status === 'closed'
+                      ? <HeaderHint label={t.marginCurrentPrice} hint={t.marginCurrentPriceHint} />
+                      : <span>{col.margin}</span>}
                     {projected && <HintChip label={t.marginProjected} hint={t.marginProjectedHint} color="info" />}
                   </Stack>
                 </TableCell>
@@ -161,6 +165,18 @@ function TenantsTable({ q }: { q: ReturnType<typeof useCostTenants> }) {
   );
 }
 
+/**
+ * Aviso do cursor inválido: aparece depois de a lista recarregar do início. Recebe o foco ao montar (o botão
+ * "Carregar mais" que estava focado sumiu com a recarga), com `tabIndex={-1}` para não entrar no Tab.
+ */
+function CursorResetNotice() {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.focus();
+  }, []);
+  return <Alert ref={ref} severity="info" role="status" tabIndex={-1} sx={{ '&:focus': { outline: 'none' }, '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 } }}>{t.cursorReset}</Alert>;
+}
+
 /** Aba Por cliente (COST-14): lista paginada no servidor, nome sob a flag `costs.tenantName`. */
 export default function TenantsTab() {
   const [filters, setFilters] = usePersistedState<CostFilters>('costs.filters', DEFAULT_COST_FILTERS, { scope: 'tab' });
@@ -202,7 +218,7 @@ export default function TenantsTab() {
     body = (
       <>
         <StatusBand page={meta} />
-        {q.cursorReset && <Alert severity="info" role="status">{t.cursorReset}</Alert>}
+        {q.cursorReset && <CursorResetNotice />}
         <SectionCard title={t.title} subtitle={t.subtitle(monthLabel(meta.month))} noPadding={!empty}>
           {empty ? <Typography variant="body2" color="text.secondary">{emptyText}</Typography> : <TenantsTable q={q} />}
         </SectionCard>

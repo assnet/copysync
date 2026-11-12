@@ -72,6 +72,10 @@ describe('TenantsTab', () => {
     expect(screen.getByText(t.orderClosed, { exact: false })).toBeInTheDocument();
     expect(screen.getByRole('note')).toHaveTextContent(/US\$ 6,00/);
     expect(within(table).queryByText(t.marginProjected)).not.toBeInTheDocument();
+    // Custo congelado, preço do plano atual: o cabeçalho diz qual preço a margem usa.
+    expect(within(table).getByText(t.marginCurrentPrice)).toBeInTheDocument();
+    expect(within(table).queryByText(t.columns.margin)).not.toBeInTheDocument();
+    expect(t.statusClosed).toContain('custos congelados');
   });
 
   it('flag costs.tenantName borra o nome, registrada no diálogo', async () => {
@@ -109,6 +113,8 @@ describe('TenantsTab', () => {
     await userEvent.click(screen.getByRole('button', { name: t.loadMore }));
     expect(await screen.findByText('Loja Gama')).toBeInTheDocument();
     expect(screen.getByText(t.cursorReset)).toBeInTheDocument();
+    // O botão focado sumiu com a recarga: o foco vai para o aviso.
+    expect(screen.getByText(t.cursorReset).closest('[role="status"]')).toHaveFocus();
     expect(screen.queryByText('Loja Alfa')).not.toBeInTheDocument();
     expect(spy).toHaveBeenLastCalledWith({ month: null, plan: null });
   });

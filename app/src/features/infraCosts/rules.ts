@@ -62,6 +62,21 @@ export const formatUsd = (value: number | null | undefined) => formatMoney(value
 /** R$ com 2 casas; 4 casas quando |valor| < 0,01. `null` (sem cotação) → "—". */
 export const formatBrl = (value: number | null | undefined) => formatMoney(value, 'BRL');
 
+const usdCompact = (digits: number) => new Intl.NumberFormat('pt-BR', {
+  style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: digits,
+});
+const USD_COMPACT_UNIT = usdCompact(0);
+const USD_COMPACT_THOUSANDS = usdCompact(1);
+
+/**
+ * Eixo do gráfico: US$ curto, sem centavos ("US$ 80", "US$ 1,2 mil", "US$ 1,5 mi"), para caber nos ~72 px do eixo Y.
+ * A casa decimal só aparece a partir de mil (é o "1,2" de "1,2 mil", não centavo).
+ */
+export function formatUsdCompact(value: number): string {
+  if (!Number.isFinite(value)) return S.noValue;
+  return (Math.abs(value) < 1000 ? USD_COMPACT_UNIT : USD_COMPACT_THOUSANDS).format(value);
+}
+
 /** Percentual com 1 casa ("12,3%"). */
 export function formatPercent(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return S.noValue;
@@ -748,6 +763,7 @@ export function warningDetail(w: InfraCostWarning, items: readonly LabeledItem[]
       : name ? d.resource(name) : field ? d.field(ROW_FIELD_NAMES[field] ?? field) : null,
     w.plan ? d.plan(w.plan) : null,
     w.model ? d.model(w.model) : null,
+    w.metrics?.length ? w.metrics.map((m) => d.metrics[m] ?? m).join('/') : null,
     typeof w.count === 'number' ? (HOURS_WARNINGS.has(w.code) ? d.hours(w.count) : d.count(w.count)) : null,
   ].filter(Boolean);
   return parts.length ? parts.join(', ') : null;

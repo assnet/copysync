@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useId } from 'react';
 import { Alert, Box, Button, CircularProgress, Skeleton, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography } from '@mui/material';
 import { SectionCard, ServiceUpdatingState } from '@/components';
 import { planName } from '@/features/planEntitlementsAdmin/strings';
@@ -15,14 +15,14 @@ const HistoryChart = lazy(() => import('./HistoryChart'));
 const h = S.history;
 const rateText = (rate: number) => `R$ ${rate.toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`;
 
-function HistoryTable({ months }: { months: InfraCostHistoryMonthView[] }) {
+function HistoryTable({ months, id }: { months: InfraCostHistoryMonthView[]; id: string }) {
   const keys = historyPlanKeys(months);
   // Σ planos + não rateado + fora do rateio = total. "Não rateado" só aparece quando algum mês tem valor.
   const showUnallocated = months.some((m) => (m.unallocated?.usd ?? 0) !== 0);
   const col = h.columns;
   return (
     <StickyFirstColumn>
-      <Table size="small" aria-label={h.tableAria}>
+      <Table size="small" aria-label={h.tableAria} id={id}>
         <TableHead>
           <TableRow>
             <TableCell>{col.month}</TableCell>
@@ -43,10 +43,10 @@ function HistoryTable({ months }: { months: InfraCostHistoryMonthView[] }) {
                   {m.totalIsPartial && <HintChip label={h.partial} hint={h.partialHint} color="warning" />}
                 </Stack>
               </TableCell>
-              {keys.map((k) => <TableCell key={k ?? '__none'} align="right"><Money value={historyPlanTotal(m, k)} /></TableCell>)}
-              {showUnallocated && <TableCell align="right"><Money value={m.unallocated ?? null} /></TableCell>}
-              <TableCell align="right"><Money value={m.excluded ?? null} /></TableCell>
-              <TableCell align="right"><Money value={m.total} strong /></TableCell>
+              {keys.map((k) => <TableCell key={k ?? '__none'} align="right"><Money layout="table" value={historyPlanTotal(m, k)} /></TableCell>)}
+              {showUnallocated && <TableCell align="right"><Money layout="table" value={m.unallocated ?? null} /></TableCell>}
+              <TableCell align="right"><Money layout="table" value={m.excluded ?? null} /></TableCell>
+              <TableCell align="right"><Money layout="table" value={m.total} strong /></TableCell>
               <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                 {m.fx ? (
                   <>
@@ -70,6 +70,7 @@ function HistoryTable({ months }: { months: InfraCostHistoryMonthView[] }) {
 /** Aba Histórico (COST-15): meses fechados, barras por plano e a tabela com os mesmos números. */
 export default function HistoryTab() {
   const q = useCostHistory();
+  const tableId = useId();
   if (q.unavailable && !q.data) return <ServiceUpdatingState onRetry={q.reload} />;
   if (q.loading && !q.data) {
     return (
@@ -97,11 +98,11 @@ export default function HistoryTab() {
     <Stack spacing={2}>
       <SectionCard title={h.chartTitle} subtitle={h.chartSubtitle}>
         <Suspense fallback={<Skeleton variant="rounded" height={240} role="status" aria-label={h.chartLoading} />}>
-          <HistoryChart months={months} />
+          <HistoryChart months={months} tableId={tableId} />
         </Suspense>
       </SectionCard>
       <SectionCard title={h.title} subtitle={h.subtitle} noPadding>
-        <HistoryTable months={months} />
+        <HistoryTable months={months} id={tableId} />
       </SectionCard>
     </Stack>
   );

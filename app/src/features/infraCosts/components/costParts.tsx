@@ -41,10 +41,14 @@ export const srOnly = {
   position: 'absolute', width: '1px', height: '1px', p: 0, m: '-1px', overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
 } as const;
 
-/** USD e BRL lado a lado (BRL some sem cotação). `null` = sem valor ("—"). `strong` = total em destaque. */
+/**
+ * USD e BRL (BRL some sem cotação). `null` = sem valor ("—"). `strong` = total em destaque.
+ * `layout`: `inline` (cartões) põe lado a lado e quebra se faltar espaço; `table` empilha sempre, BRL embaixo,
+ * alinhado à direita, para as colunas de uma tabela ficarem alinhadas linha a linha.
+ */
 export function Money({
-  value, size = 'body', signed = false, strong = false,
-}: { value: InfraMoney | null; size?: 'body' | 'large'; signed?: boolean; strong?: boolean }) {
+  value, size = 'body', signed = false, strong = false, layout = 'inline',
+}: { value: InfraMoney | null; size?: 'body' | 'large'; signed?: boolean; strong?: boolean; layout?: 'inline' | 'table' }) {
   if (!value) {
     return <Typography component="span" variant="body2" color="text.secondary">{S.noValue}</Typography>;
   }
@@ -55,7 +59,10 @@ export function Money({
   return (
     <Box
       component="span"
-      sx={{ display: 'inline-flex', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 1, rowGap: 0, fontVariantNumeric: 'tabular-nums' }}
+      data-layout={layout}
+      sx={layout === 'table'
+        ? { display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', fontVariantNumeric: 'tabular-nums' }
+        : { display: 'inline-flex', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 1, rowGap: 0, fontVariantNumeric: 'tabular-nums' }}
     >
       <Typography
         component="span"

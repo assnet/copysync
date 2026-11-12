@@ -85,12 +85,15 @@ export const infraCostsStrings = {
     idle_partial: 'Horas sem leitura do worker: capacidade ociosa calculada só nas horas lidas',
     shared_by_session_hours: 'Sem sessões contratadas no mês: compartilhado dividido pelas horas conectadas',
     shared_unallocated: 'Sem sessões contratadas nem conectadas: compartilhado fora dos clientes',
+    usage_incomplete: 'Uso incompleto no fechamento',
   } satisfies Record<InfraCostWarningCode, string>,
 
   /** Aba Resumo (COST-07). */
   summary: {
     loading: 'Carregando o resumo de custos',
     monthOf: (label: string) => `Mês de ${label}`,
+    closed: 'fechado: valores congelados',
+    closedHint: 'Mês fechado: valores gravados no fechamento, com os preços e a cotação daquele momento. Editar um preço hoje não muda este mês.',
     basisSnapshot: 'Foto de agora projetada para o mês inteiro',
     basisHours: 'Soma das horas do mês',
     basisHint: 'Na foto do momento, as quantidades de agora valem para o mês inteiro. Mudou o número de servidores, o total muda junto.',
@@ -214,6 +217,8 @@ export const infraCostsStrings = {
       model: (model: string) => `modelo ${model}`,
       kind: (kind: string) => `provedor ${kind}`,
       count: (n: number) => `${n.toLocaleString('pt-BR')} ocorrências`,
+      /** `usage_incomplete`: "banda/build". */
+      metrics: { bandwidth: 'banda', build: 'build' },
       hours: (n: number) => (n === 1 ? '1 hora sem leitura' : `${n.toLocaleString('pt-BR')} horas sem leitura`),
     },
     goToPrices: 'Abrir Preços',
@@ -393,8 +398,8 @@ export const infraCostsStrings = {
     outside: (excluded: string, unallocated: string) =>
       `O total do mês também tem ${excluded} de itens fora do rateio e ${unallocated} de compartilhado não rateado. Somados aos clientes, fecham o total.`,
     aria: 'Custo por cliente',
-    statusClosed: 'Mês fechado: valores congelados',
-    statusClosedHint: 'Gravados no fechamento do mês com os preços e a cotação daquele momento. Editar um preço hoje não muda estes números.',
+    statusClosed: 'Mês fechado: custos congelados',
+    statusClosedHint: 'Custos gravados no fechamento do mês com os preços da infraestrutura e a cotação daquele momento. Editar um preço hoje não muda estes custos. A margem não é congelada: usa o preço atual do plano.',
     statusOpen: 'Mês em andamento: estimativa',
     statusOpenHint: 'Calculados agora com os preços atuais e as horas lidas até aqui. Os números mudam até o fechamento do mês.',
     fx: (rate: string, date: string, source: string) => `Cotação ${rate} de ${date}, ${source}`,
@@ -410,6 +415,8 @@ export const infraCostsStrings = {
     orderClosed: 'Do maior para o menor custo total do mês.',
     cursorReset: 'A lista mudou desde a última página. Ela foi recarregada do início.',
     marginProjected: 'projetada',
+    marginCurrentPrice: 'Margem pelo preço atual do plano',
+    marginCurrentPriceHint: 'O custo do cliente está congelado no fechamento, mas o preço do plano não: ele é texto do catálogo de planos, sem histórico. A margem deste mês fechado usa o preço de hoje e muda se o preço do plano mudar.',
     marginProjectedHint: 'Mês em andamento: a margem usa o compartilhado projetado para o mês cheio, mais a IA usada até agora.',
     marginNote: 'Margem mensal = preço de vitrine do plano − custo do cliente. Sem gateway, impostos e IA da chave do próprio cliente.',
     columns: {
@@ -417,7 +424,8 @@ export const infraCostsStrings = {
       plan: 'Plano',
       sessions: 'Sessões contratadas',
       sessionsHint: 'Média de sessões contratadas no mês: é a base do rateio do compartilhado.',
-      sessionHours: 'Sessão-hora',
+      // U+2011 (hífen sem quebra): o cabeçalho estreito não parte "Sessão-" / "hora".
+      sessionHours: 'Sessão\u2011hora',
       sessionHoursHint: 'Horas de sessão conectada somadas no mês.',
       shared: 'Compartilhado',
       sharedHint: 'Parte do custo da infraestrutura pela base do mês (indicada acima da lista).',

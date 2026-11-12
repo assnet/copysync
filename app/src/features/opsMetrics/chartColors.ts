@@ -1,4 +1,5 @@
 import type { PaletteMode } from '@mui/material';
+import { grey } from '@mui/material/colors';
 
 /**
  * Cores categóricas dos gráficos, por modo do tema. Validadas (CVD e contraste) contra o
@@ -22,6 +23,12 @@ const INSTANCE_COLORS: Record<PaletteMode, readonly [string, string, string]> = 
   dark: ['#199e70', '#9b7af0', '#e06aa8'],
 };
 
+/**
+ * Neutro do "Outros" (séries fora das 3 categóricas): o `palette.grey` do tema (não sobrescrito em `theme.ts`),
+ * 600 no claro e 500 no escuro, os dois acima de 3:1 contra o `background.paper` do modo. Nunca uma 4ª cor.
+ */
+const OTHER_COLOR: Record<PaletteMode, string> = { light: grey[600], dark: grey[500] };
+
 /** Opacidade da banda mín–máx. */
 export const BAND_OPACITY: Record<PaletteMode, number> = { light: 0.14, dark: 0.2 };
 
@@ -41,5 +48,7 @@ export function chartColors(mode: PaletteMode) {
     ordered: [c1, c2, c3] as const,
     /** Ordem para séries por instância do worker (até 3), sem as cores da API e do Postgres. */
     instances: INSTANCE_COLORS[mode],
+    /** Neutro para "Outros"/"sem categoria". */
+    other: OTHER_COLOR[mode],
   };
 }

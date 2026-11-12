@@ -31,6 +31,8 @@ export function useCostTenants(month: string | null, plan: PlanSlug | 'all') {
   const load = useCallback(async (keepNotice = false) => {
     const id = ++request.current;
     if (!keepNotice) setCursorReset(false);
+    // "Carregar mais" de um filtro antigo é descartado (id mudou): o botão não pode ficar travado.
+    setLoadingMore(false);
     setLoading(true);
     setError(null);
     setMoreError(null);
@@ -78,14 +80,14 @@ export function useCostTenants(month: string | null, plan: PlanSlug | 'all') {
     } catch (err) {
       if (id !== request.current) return;
       if ((err as { code?: unknown } | null)?.code === 'INFRA_COST_CURSOR_INVALID') {
-        setLoadingMore(false);
         setCursorReset(true);
         void load(true);
         return;
       }
       setMoreError(infraCostsStrings.errors.loadFailed);
     } finally {
-      if (id === request.current) setLoadingMore(false);
+      // Sem condição: resposta de filtro antigo também solta o botão (o `load()` novo não espera por ela).
+      setLoadingMore(false);
     }
   }, [month, plan, nextCursor, loadingMore, load]);
 

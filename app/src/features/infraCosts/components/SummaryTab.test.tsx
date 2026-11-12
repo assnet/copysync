@@ -94,6 +94,19 @@ describe('SummaryTab', () => {
     expect(screen.queryByText(s.cards.projected.label)).not.toBeInTheDocument();
   });
 
+  it('mês fechado: selo de valores congelados só com closed: true', async () => {
+    mockSummary(summary({ month: '2026-10', closed: true }));
+    renderTab();
+    expect(await screen.findByText(s.closed)).toBeInTheDocument();
+  });
+
+  it('mês aberto ou API anterior: sem selo de fechado', async () => {
+    mockSummary(summary());
+    renderTab();
+    await screen.findByText(s.monthOf(monthLabel('2026-11')));
+    expect(screen.queryByText(s.closed)).not.toBeInTheDocument();
+  });
+
   it('margem por plano pelo catálogo, mensal e anual', async () => {
     mockSummary(summary());
     renderTab();

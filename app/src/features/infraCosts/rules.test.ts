@@ -28,6 +28,7 @@ import {
   formatBrl,
   formatPercent,
   formatUsd,
+  formatUsdCompact,
   planMargin,
   settingsToDraft,
   toSettingsPayload,
@@ -58,6 +59,15 @@ describe('formatação de valores', () => {
   it('sem cotação (BRL nulo) mostra traço', () => {
     expect(formatBrl(null)).toBe('—');
     expect(formatUsd(undefined)).toBe('—');
+  });
+
+  it('eixo do gráfico: US$ compacto sem centavos', () => {
+    expect(norm(formatUsdCompact(0))).toBe('US$ 0');
+    expect(norm(formatUsdCompact(80.55))).toBe('US$ 81');
+    expect(norm(formatUsdCompact(1234))).toBe('US$ 1,2 mil');
+    expect(norm(formatUsdCompact(12500))).toBe('US$ 12,5 mil');
+    expect(norm(formatUsdCompact(1_500_000))).toBe('US$ 1,5 mi');
+    expect(formatUsdCompact(Number.NaN)).toBe('—');
   });
 
   it('percentual com 1 casa', () => {
@@ -304,6 +314,8 @@ describe('resumo: datas, base e avisos', () => {
     expect(warningDetail({ code: 'plan_without_price', resourceKey: 'redis', plan: 'x' }, items)).toBe('serviço Redis, plano x');
     expect(warningDetail({ code: 'unlimited_contracted', count: 2 }, items)).toBe('2 ocorrências');
     expect(warningDetail({ code: 'sessions_sample_stale' }, items)).toBeNull();
+    expect(`${S.warnings.usage_incomplete}: ${warningDetail({ code: 'usage_incomplete', metrics: ['bandwidth', 'build'] }, items)}`)
+      .toBe('Uso incompleto no fechamento: banda/build');
   });
 
   it('avisos da P2: campo do config_drift pelo nome do cadastro, horas sem leitura e atalho para Preços', () => {

@@ -40,7 +40,10 @@ function FxBand({ fx, summary }: { fx: InfraFxView | null; summary: InfraCostSum
       sx={{ p: 2, borderLeft: 4, borderLeftColor: fx?.stale ? 'warning.main' : 'primary.main', display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}
     >
       <Box sx={{ flex: '1 1 260px', minWidth: 0 }}>
-        <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{s.monthOf(monthLabel(summary.month))}</Typography>
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{s.monthOf(monthLabel(summary.month))}</Typography>
+          {summary.closed === true && <HintChip label={s.closed} hint={s.closedHint} color="success" />}
+        </Stack>
         <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
           <Typography variant="body2" color="text.secondary">{basis}</Typography>
           <HelpTip label={basis} text={summary.basis === 'snapshot' ? s.basisHint : s.basisHoursHint} />
@@ -146,9 +149,9 @@ function PlansSection({ summary, filters }: { summary: InfraCostSummary; filters
                     <TableCell sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{row.planSlug ? planName(row.planSlug) : p.noPlan}</TableCell>
                     <TableCell align="right" sx={numCell}>{num(row.tenants)}</TableCell>
                     <TableCell align="right" sx={numCell}>{num(v.sessions)}</TableCell>
-                    <TableCell align="right"><Money value={v.share} /></TableCell>
+                    <TableCell align="right"><Money layout="table" value={v.share} /></TableCell>
                     <TableCell align="right">
-                      <Money value={v.perTenant} />
+                      <Money layout="table" value={v.perTenant} />
                       {/* Mês em andamento: a margem usa o projetado; mostrado aqui para os números baterem. */}
                       {showMargin && projected && v.marginCost && (
                         <Tooltip title={p.projectedPerTenantHint} arrow enterTouchDelay={0} describeChild>
@@ -213,7 +216,7 @@ function NeighborCell({ n }: { n: InfraNeighborPlan | null | undefined }) {
   return (
     <TableCell align="right">
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontFamily: 'inherit' }}>{n.plan}</Typography>
-      <Money value={n.diff} signed />
+      <Money layout="table" value={n.diff} signed />
     </TableCell>
   );
 }
@@ -241,7 +244,7 @@ function ServiceRow({ item }: { item: InfraCostItemView }) {
       </TableCell>
       <TableCell align="right">
         {item.cost ? (
-          <Money value={item.cost} />
+          <Money layout="table" value={item.cost} />
         ) : (
           <Tooltip title={sv.noPrice} arrow enterTouchDelay={0} describeChild>
             <Box
@@ -313,7 +316,7 @@ function WorkspaceRow({ label, usage, unit }: { label: string; usage: InfraWorks
         )}
       </TableCell>
       <TableCell align="right" sx={numCell}>{unit(num(usage.overage, 2))}</TableCell>
-      <TableCell align="right"><Money value={usage.cost} /></TableCell>
+      <TableCell align="right"><Money layout="table" value={usage.cost} /></TableCell>
     </TableRow>
   );
 }
@@ -343,7 +346,7 @@ function WorkspaceSection({ summary }: { summary: InfraCostSummary }) {
               {/* Rótulo numa célula só: a primeira coluna é fixa e não pode cobrir o valor ao rolar. */}
               <TableCell sx={{ fontWeight: 700, color: 'text.primary', whiteSpace: 'nowrap' }}>{w.total}</TableCell>
               <TableCell colSpan={3} />
-              <TableCell align="right"><Money value={ws.total} strong /></TableCell>
+              <TableCell align="right"><Money layout="table" value={ws.total} strong /></TableCell>
             </TableRow>
           </TableFooter>
         </Table>

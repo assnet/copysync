@@ -252,6 +252,15 @@ describe('chartColors.instances', () => {
   });
 });
 
+describe('chartColors.other', () => {
+  it('neutro do tema, fora das categóricas, por modo', async () => {
+    const { chartColors } = await import('./chartColors');
+    expect(chartColors('light').other).toBe('#757575');
+    expect(chartColors('dark').other).toBe('#9e9e9e');
+    for (const mode of ['light', 'dark'] as const) expect(chartColors(mode).ordered).not.toContain(chartColors(mode).other);
+  });
+});
+
 describe('instâncias do worker: visto, cores e data completa', () => {
   const base: OpsWorkerInstance = { instance: 'a1', resource: 'srv-wk-a1', cpuPct: 1, memoryPct: 2, sampledAt: '2026-11-12T12:00:00.000Z', heartbeat: null };
   const hb = { workerId: 'w', sessions: 1, pendingLogins: 0, maxSessions: 4, rssMb: 1, seenAt: '2026-11-12T12:01:00.000Z' };

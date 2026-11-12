@@ -155,6 +155,10 @@ Memória só para não repetir `warn`; todo estado que importa está no banco.
   mês corrente pelo `projectedShared` + IA realizada (marcada projetada), mês passado aberto pelo realizado, fechado
   pelo `total` congelado (`tenantMarginCost` em `rules.ts`). Tenant sem `planSlug` ou plano fora
   do `PLAN_CATALOG` fica sem margem.
+- **Mês fechado: margem pelo preço atual do plano.** O custo é congelado no fechamento; o preço do plano não (é texto
+  do catálogo de vitrine, sem histórico: ver [`planos.md`](planos.md)). Por isso a coluna se chama "Margem pelo preço
+  atual do plano", com Tooltip explicando, e a faixa do mês diz "custos congelados" (nunca "valores"/"preços daquele
+  momento" para a margem). Não gravar preço de plano no fechamento nem na API para "congelar" a margem.
 - Sem cotação, a margem não aparece. A API nunca recebe nem devolve preço de plano.
 
 ## Cotação USD→BRL
