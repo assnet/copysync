@@ -19,6 +19,11 @@ export function toPanelPlanSlug(slug: string): PlanSlug | null {
   return Object.prototype.hasOwnProperty.call(DOMAIN_TO_PANEL, slug) ? DOMAIN_TO_PANEL[slug] : null;
 }
 
+/** Id curto do painel (`lite`) → slug do domínio (`COPYSYNC_LITE`), para filtros enviados à API. */
+export function toDomainPlanSlug(slug: PlanSlug): string | null {
+  return Object.keys(DOMAIN_TO_PANEL).find((k) => k !== slug && DOMAIN_TO_PANEL[k] === slug) ?? null;
+}
+
 /** Lista da API → ids curtos, sem desconhecidos nem repetidos. */
 export function toPanelPlanSlugs(slugs: readonly string[]): PlanSlug[] {
   const out: PlanSlug[] = [];

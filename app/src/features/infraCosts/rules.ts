@@ -3,7 +3,7 @@
  * validação/diff do rascunho de preços (COST-01/08) e payload do `PUT` só com campos conhecidos.
  */
 import { PLAN_CATALOG, type PlanCatalogItem, type PlanSlug } from '@/features/plans/catalog';
-import { toPanelPlanSlug } from '@/features/plans/planSlug';
+import { toDomainPlanSlug, toPanelPlanSlug } from '@/features/plans/planSlug';
 import type { AiProviderKind } from '@/types/api.types';
 import { aiProviderName } from '@/features/ai/aiProviders';
 import { planEntitlementsAdminStrings, planName } from '@/features/planEntitlementsAdmin/strings';
@@ -24,6 +24,9 @@ import type {
   InfraCostSummary,
   InfraCostWarning,
   InfraCostWarningCode,
+  InfraCostHistoryMonthView,
+  InfraCostTenantView,
+  InfraCostTenantsPage,
   InfraMoney,
   InfraFxClosingMethod,
   InfraRenderKey,
@@ -757,4 +760,50 @@ const HOURS_WARNINGS: ReadonlySet<string> = new Set(['missing_hours', 'idle_part
 export function catalogPlanName(slug: PlanSlug): string {
   const domain = Object.keys(planEntitlementsAdminStrings.planName).find((k) => toPanelPlanSlug(k) === slug);
   return domain ? planName(domain) : PLAN_CATALOG.find((p) => p.slug === slug)?.name ?? slug;
+}
+
+/* ── Por cliente e histórico (COST-14/15) ───────────────────────────── */
+
+/** Filtro de plano do painel → query da API (`COPYSYNC_LITE`); `'all'` → `null` (sem filtro). */
+export function tenantPlanQuery(plan: PlanSlug | 'all'): string | null {
+  return plan === 'all' ? null : toDomainPlanSlug(plan);
+}
+
+/**
+ * Custo do cliente (R$) que entra na margem. Mês fechado: o total congelado. Mês aberto: compartilhado projetado
+ * para o mês cheio (o realizado sem projeção) + IA realizada. Sem cotação → `null`.
+ */
+export function tenantMarginCost(
+  row: Pick<InfraCostTenantView, 'shared' | 'projectedShared' | 'ai' | 'total'>,
+  status: InfraCostTenantsPage['status'],
+): { brl: number; projected: boolean } | null {
+  if (status === 'closed') return row.total?.brl == null ? null : { brl: row.total.brl, projected: false };
+  const base = row.projectedShared ?? row.shared;
+  if (base?.brl == null || row.ai.brl === null) return null;
+  return { brl: base.brl + row.ai.brl, projected: row.projectedShared !== null };
+}
+
+/** Ordem dos planos no histórico: a do catálogo, depois slugs desconhecidos e, por último, "sem plano" (`null`). */
+export function historyPlanKeys(months: readonly InfraCostHistoryMonthView[]): (string | null)[] {
+  const present = new Set(months.flatMap((m) => m.plans.map((p) => p.planSlug)));
+  const catalog = PLAN_CATALOG.map((p) => toDomainPlanSlug(p.slug)).filter((k): k is string => k !== null);
+  const known = catalog.filter((k) => present.has(k));
+  const other = [...present].filter((k): k is string => k !== null && !catalog.includes(k)).sort();
+  return [...known, ...other, ...(present.has(null) ? [null] : [])];
+}
+
+/** Total do plano no mês; plano ausente no mês → `null`. */
+export function historyPlanTotal(month: InfraCostHistoryMonthView, planSlug: string | null): InfraMoney | null {
+  return month.plans.find((p) => p.planSlug === planSlug)?.total ?? null;
+}
+
+/** Meses do mais antigo ao mais novo (eixo do gráfico). */
+export function historyChronological(months: readonly InfraCostHistoryMonthView[]): InfraCostHistoryMonthView[] {
+  return [...months].sort((a, b) => a.month.localeCompare(b.month));
+}
+
+/** `YYYY-MM` → "nov. 2026" (eixo do gráfico). */
+export function shortMonthLabel(month: string): string {
+  const d = new Date(`${month}-01T12:00:00Z`);
+  return Number.isNaN(d.getTime()) ? month : d.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric', timeZone: 'UTC' });
 }

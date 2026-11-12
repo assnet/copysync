@@ -41,4 +41,18 @@ describe('adminCostsService', () => {
     http.put.mockRejectedValueOnce(new Error('409'));
     await expect(adminCostsService.updateSettings({ settings: sampleSettings(), expectedUpdatedAt: null })).rejects.toThrow('409');
   });
+
+  it('por cliente: só mês, plano e cursor; nunca limit/offset', async () => {
+    http.get.mockResolvedValue({ data: { data: { tenants: [] } } });
+    await adminCostsService.getTenants({ month: '2026-10', plan: 'COPYSYNC_PRO', cursor: 'abc' });
+    expect(http.get).toHaveBeenLastCalledWith('/admin/costs/tenants', { params: { month: '2026-10', plan: 'COPYSYNC_PRO', cursor: 'abc' } });
+    await adminCostsService.getTenants();
+    expect(http.get).toHaveBeenLastCalledWith('/admin/costs/tenants', { params: undefined });
+  });
+
+  it('histórico', async () => {
+    http.get.mockResolvedValue({ data: { data: { months: [] } } });
+    await adminCostsService.getHistory();
+    expect(http.get).toHaveBeenLastCalledWith('/admin/costs/history');
+  });
 });

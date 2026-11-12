@@ -112,6 +112,13 @@ export const PRIVACY_SCREENS = [
       { id: 'subscription.tenantName', label: 'Nome da conta' },
     ],
   },
+  {
+    id: 'costs',
+    label: 'Custos da infraestrutura',
+    flags: [
+      { id: 'costs.tenantName', label: 'Nome do cliente' },
+    ],
+  },
 ] as const;
 
 export type PrivacyScreenId = (typeof PRIVACY_SCREENS)[number]['id'];

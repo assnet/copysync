@@ -1,28 +1,27 @@
 import { useId } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import {
-  Alert, AlertTitle, Box, Button, CircularProgress, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableFooter,
-  TableHead, TableRow, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography,
+  Alert, AlertTitle, Box, Button, CircularProgress, Paper, Stack, Table, TableBody, TableCell, TableFooter,
+  TableHead, TableRow, Tooltip, Typography,
 } from '@mui/material';
 import { CircleDashed, Gauge, Receipt, TrendingUp, Users } from 'lucide-react';
 import { SectionCard, ServiceUpdatingState } from '@/components';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { serverNow } from '@/services/serverClock';
-import { PLAN_CATALOG, type PlanSlug } from '@/features/plans/catalog';
 import { planName } from '@/features/planEntitlementsAdmin/strings';
 import { formatDateTime } from '@/features/opsMetrics/rules';
 import { HelpTip } from '@/features/opsMetrics/components/HelpTip';
 import { COSTS_PRICES_PATH } from '../paths';
 import {
-  catalogPlanName, costMonthOptions, dayLabel, DEFAULT_COST_FILTERS, formatBrl, formatPercent, formatUsd, isPriceWarning, isProjectedMonth,
+  dayLabel, DEFAULT_COST_FILTERS, formatBrl, formatPercent, formatUsd, isPriceWarning, isProjectedMonth,
   monthLabel, perSessionByBasis, planMargin, planRowsByBasis, warningDetail,
 } from '../rules';
 import { infraCostsStrings as S } from '../strings';
 import type {
-  CostFilters, InfraCostItemView, InfraCostSplitBasis, InfraCostSummary, InfraCostWarning, InfraFxView,
+  CostFilters, InfraCostItemView, InfraCostSummary, InfraCostWarning, InfraFxView,
   InfraNeighborPlan, InfraWorkspaceUsageView,
 } from '../types';
 import { useCostSummary } from '../useCostSummary';
+import { CostFiltersBar } from './CostFiltersBar';
 import {
   CostTile, EstimatedChip, focusRing, HeaderHint, HintChip, Money, srOnly, StickyFirstColumn, toneColor, type CostTileProps,
 } from './costParts';
@@ -78,57 +77,6 @@ function FxBand({ fx, summary }: { fx: InfraFxView | null; summary: InfraCostSum
   );
 }
 
-
-/* ── Filtros ───────────────────────────────────────────────────────── */
-
-const CURRENT_MONTH = 'current';
-
-function Filters({ filters, onChange }: { filters: CostFilters; onChange: (f: CostFilters) => void }) {
-  const f = s.filters;
-  // Relógio do servidor (header `X-Server-Time`): o mês corrente é o da API, não o do navegador.
-  const [current, ...past] = costMonthOptions(serverNow());
-  const months = filters.month && filters.month !== current && !past.includes(filters.month) ? [...past, filters.month] : past;
-  return (
-    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ alignItems: { sm: 'center' }, flexWrap: 'wrap', rowGap: 2 }} role="group" aria-label={f.aria}>
-      <TextField
-        select
-        size="small"
-        label={f.month}
-        value={filters.month && filters.month !== current ? filters.month : CURRENT_MONTH}
-        onChange={(e) => onChange({ ...filters, month: e.target.value === CURRENT_MONTH ? null : e.target.value })}
-        sx={{ minWidth: 200 }}
-      >
-        <MenuItem value={CURRENT_MONTH}>{f.currentMonth(monthLabel(current))}</MenuItem>
-        {months.map((m) => <MenuItem key={m} value={m}>{monthLabel(m)}</MenuItem>)}
-      </TextField>
-      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-        <ToggleButtonGroup
-          exclusive
-          color="primary"
-          size="small"
-          value={filters.basis}
-          aria-label={f.basis}
-          onChange={(_, v: InfraCostSplitBasis | null) => v && onChange({ ...filters, basis: v })}
-        >
-          <ToggleButton value="contracted">{f.contracted}</ToggleButton>
-          <ToggleButton value="connected">{f.connected}</ToggleButton>
-        </ToggleButtonGroup>
-        <HelpTip label={f.basis} text={f.basisHint} />
-      </Stack>
-      <TextField
-        select
-        size="small"
-        label={f.plan}
-        value={filters.plan}
-        onChange={(e) => onChange({ ...filters, plan: e.target.value as PlanSlug | 'all' })}
-        sx={{ minWidth: 200 }}
-      >
-        <MenuItem value="all">{f.allPlans}</MenuItem>
-        {PLAN_CATALOG.map((p) => <MenuItem key={p.slug} value={p.slug}>{catalogPlanName(p.slug)}</MenuItem>)}
-      </TextField>
-    </Stack>
-  );
-}
 
 /* ── Por plano ─────────────────────────────────────────────────────── */
 
@@ -501,7 +449,7 @@ export default function SummaryTab() {
   const q = useCostSummary(filters.month);
   const { data } = q;
 
-  const filtersBar = <Filters filters={filters} onChange={setFilters} />;
+  const filtersBar = <CostFiltersBar filters={filters} onChange={setFilters} aria={s.filters.aria} />;
 
   if (q.monthUnavailable && !q.loading) {
     return (

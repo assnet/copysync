@@ -2,7 +2,9 @@ import { apiClient } from './apiClient';
 import type { ApiSuccess } from '@/types/api.types';
 import { toSettingsPayload } from '@/features/infraCosts/rules';
 import type {
+  InfraCostHistory,
   InfraCostSettingsView,
+  InfraCostTenantsPage,
   InfraCostSummary,
   UpdateInfraCostSettingsInput,
 } from '@/features/infraCosts/types';
@@ -32,6 +34,27 @@ export const adminCostsService = {
     const res = await apiClient.get<ApiSuccess<InfraCostSummary>>('/admin/costs/summary', {
       params: month ? { month } : undefined,
     });
+    return res.data.data;
+  },
+
+  /**
+   * Por cliente (COST-14). `plan` = slug do domínio (`COPYSYNC_LITE`…). Paginação só pelo `cursor` opaco que a
+   * página anterior devolveu: tamanho da página é decisão do servidor (nunca limit/offset).
+   */
+  async getTenants(query: { month?: string | null; plan?: string | null; cursor?: string | null } = {}): Promise<InfraCostTenantsPage> {
+    const params: Record<string, string> = {};
+    if (query.month) params.month = query.month;
+    if (query.plan) params.plan = query.plan;
+    if (query.cursor) params.cursor = query.cursor;
+    const res = await apiClient.get<ApiSuccess<InfraCostTenantsPage>>('/admin/costs/tenants', {
+      params: Object.keys(params).length ? params : undefined,
+    });
+    return res.data.data;
+  },
+
+  /** Histórico (COST-15): meses fechados dos 12 anteriores ao corrente. */
+  async getHistory(): Promise<InfraCostHistory> {
+    const res = await apiClient.get<ApiSuccess<InfraCostHistory>>('/admin/costs/history');
     return res.data.data;
   },
 };
