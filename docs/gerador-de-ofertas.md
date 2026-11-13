@@ -27,6 +27,8 @@ tenant; só grupos dessa sessão; total **por canal** (canal do grupo = engine d
 envio são os grupos da configuração **no momento do envio**. O limite de grupos conta a **união** com os
 monitoramentos (sessão + JID distintos; `usage` do GET idem); o envio só checa os próprios alvos.
 
+**Grupos de sessão fora do envio** (assistente): sessão apagada é soft delete, então as linhas de `offer_generator_config_sessions`/`offer_destinations` ficam até o próximo salvar; `find`/`listGroups` do `PrismaOfferGeneratorConfigRepository` as ignoram (`session.deletedAt: null`), logo `GET /config` e o envio só veem sessões vivas (todas apagadas = `sessionIds` vazio → `OFFER_CONFIG_MISSING` no envio). Não apagar essas linhas na leitura. O `PUT` recusa tudo com 404 `NOT_FOUND` se algum `conversationIds` não for de `sessionIds`. Por isso o `OfferConfigWizard` só conta, mostra e envia grupos das sessões conectadas escolhidas (`selected` filtrado por `chosen`; o rascunho guarda os demais, que voltam se a sessão voltar). 404 ao salvar mostra `wizard.saveNotFound`. Não enviar `draft.selected` direto.
+
 **Horário** (api 0.61.0, passo "Horário" do assistente): `windowStartMinute`/`windowEndMinute`/`weekdays`
 no PUT (ausente = mantém; padrão 0–1440, todos os dias). Sem `scheduledAt`, o disparo e a retomada encaixam
 os envios na janela (`fitSlots`) e o claim não reivindica fora dela; `scheduledAt` explícito ignora a janela.

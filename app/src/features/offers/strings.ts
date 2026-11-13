@@ -47,6 +47,7 @@ export const offerStrings = {
     save: 'Salvar configuração',
     saving: 'Salvando…',
     saved: 'Configuração salva. Agora é só gerar sua oferta.',
+    saveNotFound: 'Uma sessão ou um grupo escolhido não existe mais. Volte aos passos Sessão e Grupos, confira a seleção e salve de novo.',
     session: {
       title: 'Escolha as sessões',
       subtitle: 'As contas de WhatsApp ou Telegram que vão enviar. A ordem em que você marca é a ordem de envio.',
