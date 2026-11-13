@@ -2,10 +2,12 @@ import type { IOfferHuntFindRepository } from '../../../domain/contracts/hunter/
 import type { IOfferHuntRunRepository } from '../../../domain/contracts/hunter/IOfferHuntRunRepository';
 import type { IOfferHunterSettingsRepository } from '../../../domain/contracts/hunter/IOfferHunterSettingsRepository';
 import type { IOfferGeneratorConfigRepository } from '../../../domain/contracts/IOfferGeneratorConfigRepository';
+import type { IHuntProviderRegistry } from '../../../domain/contracts/hunter/IHuntProviderAdapter';
 import type { OfferHuntFind } from '../../../domain/hunter/OfferHunt';
 import { DEFAULT_OFFER_IMAGE_MODE } from '../../../domain/enums/OfferImageMode';
 import { OfferHuntDestinationRequiredError, OfferHuntResendPendingError } from '../../../../../shared/errors/internal/OfferHuntErrors';
 import { AppError } from '../../../../../shared/errors/AppError';
+import { OfferInvalidInputError } from '../../../../../shared/errors/internal/OfferErrors';
 import { logger } from '../../../../../shared/logger/logger';
 import type { EnqueueOfferUseCase } from '../../use-cases/EnqueueOfferUseCase';
 import type { ResolveAffiliateProductUseCase } from '../../use-cases/ResolveAffiliateProductUseCase';
@@ -13,8 +15,6 @@ import type { ResolveProductDataUseCase } from '../../use-cases/ResolveProductDa
 import type { OfferTextComposer } from '../OfferTextComposer';
 import { DEFAULT_INTERVAL } from '../../use-cases/OfferGeneratorConfigUseCases';
 
-/** URL do produto usada para pedir o link do tenant (nunca é buscada: a página cai em desafio). */
-export const huntProductUrl = (goodsId: string) => `https://br.shein.com/product-p-${goodsId}.html`;
 /** Idempotência do Enqueue: queda entre enfileirar e gravar `offerId` não reenvia. */
 export const huntSourceKey = (findId: string) => `hunt:${findId}`;
 /**
@@ -43,6 +43,8 @@ export interface HuntFindDeliveryDeps {
   enqueue: Pick<EnqueueOfferUseCase, 'execute'>;
   /** Intervalo do gerador (mesmo espaçamento da fila). */
   configs: Pick<IOfferGeneratorConfigRepository, 'find'>;
+  /** URL do produto pela marca do achado (nunca é buscada pelo caçador; só vai ao Resolve). */
+  providers: Pick<IHuntProviderRegistry, 'get'>;
   now?: () => Date;
 }
 
@@ -104,7 +106,9 @@ export class HuntFindDelivery {
   private async enqueue(
     tenantId: string, find: OfferHuntFind, destination: HuntDestination, sourceKey: string, image: { stored: string | null },
   ): Promise<string | null> {
-    const resolved = await this.deps.affiliateProducts.execute(tenantId, huntProductUrl(find.goodsId), { riskScope: 'OFFER_HUNTER' });
+    const productUrl = this.deps.providers.get(find.provider).productUrl(find.productId);
+    if (!productUrl) throw new OfferInvalidInputError('Invalid product id', 'productId');
+    const resolved = await this.deps.affiliateProducts.execute(tenantId, productUrl, { riskScope: 'OFFER_HUNTER' });
     const p = resolved.product;
     const title = p.title ?? find.title;
     const composed = await this.deps.texts.compose({

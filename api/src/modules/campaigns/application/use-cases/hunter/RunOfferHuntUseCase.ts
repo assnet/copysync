@@ -1,7 +1,8 @@
 import type { IOfferHuntRepository } from '../../../domain/contracts/hunter/IOfferHuntRepository';
 import type { IOfferHuntRunRepository } from '../../../domain/contracts/hunter/IOfferHuntRunRepository';
 import type { IOfferHuntFindRepository, NewOfferHuntFind } from '../../../domain/contracts/hunter/IOfferHuntFindRepository';
-import type { ISheinCatalogClient, SheinCatalogPage, SheinSession } from '../../../domain/contracts/ISheinCatalogClient';
+import type { IHuntProviderAdapter, IHuntProviderRegistry } from '../../../domain/contracts/hunter/IHuntProviderAdapter';
+import type { HuntSourceOptions, HuntSourceSession } from '../../../domain/hunter/HuntProvider';
 import type { IAffiliateCredentialGateway } from '../../../domain/contracts/IAffiliateCredentialGateway';
 import type { IEntitlementReader } from '../../../domain/contracts/IEntitlementReader';
 import type { IMarketplaceRiskGate } from '../../../domain/contracts/IMarketplaceRiskGate';
@@ -31,8 +32,8 @@ import {
 } from '../../../../../shared/errors/internal/OfferHuntErrors';
 import { logger } from '../../../../../shared/logger/logger';
 import type { HuntDestination, HuntFindDelivery } from '../../services/hunter/HuntFindDelivery';
+import { HUNT_PROVIDER_PLAN_KEY } from '../../services/hunter/huntProviderGates';
 
-const PROVIDER = 'SHEIN' as const;
 /** Fonte indisponível N execuções seguidas → pausa `SOURCE_UNAVAILABLE` (HUNT-13). */
 export const HUNT_SOURCE_FAILURES_BEFORE_PAUSE = 3;
 /** Pausa entre páginas (ms): sorteada em [min, max]. */
@@ -75,8 +76,9 @@ export interface RunOfferHuntOutput {
 export interface RunOfferHuntDeps {
   hunts: Pick<IOfferHuntRepository, 'findById' | 'pause' | 'recordSuccess' | 'recordSourceFailure'>;
   runs: Pick<IOfferHuntRunRepository, 'startWithinDailyLimit' | 'createSkipped' | 'finish'>;
-  finds: Pick<IOfferHuntFindRepository, 'insertWithinDailyLimit' | 'countCreatedSince' | 'recentGoodsIds' | 'transition'>;
-  catalog: ISheinCatalogClient;
+  finds: Pick<IOfferHuntFindRepository, 'insertWithinDailyLimit' | 'countCreatedSince' | 'recentProductIds' | 'transition'>;
+  /** Adaptador da marca da caçada (sessão, catálogo, URL, fotos). */
+  providers: IHuntProviderRegistry;
   /** Mesmo caminho do monitoramento: estado da credencial e marcação de recusa (com auditoria). */
   credentials: Pick<IAffiliateCredentialGateway, 'resolveState' | 'markRejected'>;
   entitlements: IEntitlementReader;
@@ -99,11 +101,12 @@ class GateRefusal {
 }
 
 /**
- * Uma execução da caçada (HUNT-10/12/16). Portões na ordem, todos antes de qualquer chamada à fonte:
- * plano Shein → caçador → credencial com `AT` → aceite `OFFER_HUNTER` → saldo do teto > 0 → (AUTO: destino)
- * → guarda de execuções/dia. Recusado: MANUAL lança o erro; SCHEDULED grava a execução SKIPPED.
- * Depois: ≤ 3 páginas, filtros locais, pontuação, sem repetidos, IA opcional, `min(topN, saldo)` gravados
- * atomicamente; AUTO entrega pela `HuntFindDelivery`. O `AT` só vai ao cliente do catálogo.
+ * Uma execução da caçada (HUNT-10/12/16, MM-05), da marca da caçada. Portões na ordem, todos antes de qualquer
+ * chamada à fonte: plano da marca (Shein) → caçador → credencial com sessão da marca → aceite `OFFER_HUNTER` da
+ * marca → saldo do teto > 0 (somado entre marcas) → (AUTO: destino) → guarda de execuções/dia. Recusado: MANUAL
+ * lança o erro; SCHEDULED grava a execução SKIPPED. Depois: ≤ 3 páginas, filtros locais, pontuação, sem
+ * repetidos (marca + produto), IA opcional, `min(topN, saldo)` gravados atomicamente; AUTO entrega pela
+ * `HuntFindDelivery`. A sessão só vai à fonte da marca.
  */
 export class RunOfferHuntUseCase {
   private readonly sleep: (ms: number) => Promise<void>;
@@ -119,19 +122,21 @@ export class RunOfferHuntUseCase {
     const hunt = await this.deps.hunts.findById(tenantId, huntId);
     if (!hunt) throw new OfferHuntNotFoundError();
     const since = startOfDayInZone(now);
-    const base = { tenantId, huntId, trigger, startedAt: now };
+    const provider = hunt.provider;
+    const adapter = this.deps.providers.get(provider);
+    const base = { tenantId, huntId, provider, trigger, startedAt: now };
     // Job com posse velha de caçada pausada depois do claim: não roda
     if (trigger === 'SCHEDULED' && hunt.status === 'PAUSED') {
       const run = await this.deps.runs.createSkipped({ ...base, errorCode: 'OFFER_HUNT_PAUSED' });
       return emptyOutput(run.id, 'SKIPPED', 'OFFER_HUNT_PAUSED', null);
     }
 
-    let session: SheinSession;
+    let session: HuntSourceSession;
     let limit: number;
     let balance: number;
     let destination: HuntDestination | null = null;
     try {
-      ({ session, limit, balance } = await this.checkGates(tenantId, since));
+      ({ session, limit, balance } = await this.checkGates(tenantId, adapter, since));
       if (hunt.deliveryMode === 'AUTO') destination = await this.deps.delivery.requireDestination(tenantId);
     } catch (err) {
       const refusal = err instanceof GateRefusal ? err : err instanceof AppError ? new GateRefusal(err) : null;
@@ -148,7 +153,7 @@ export class RunOfferHuntUseCase {
     };
     let ranking: HuntRankingItem[] | null = null;
     try {
-      const items = await this.fetchCandidates(hunt, session);
+      const items = await this.fetchCandidates(hunt, adapter, session);
       counters.seenCount = items.length;
       // Toda chave que barrou conta (o painel explica "0 no filtro"); passa/não passa = matchHuntFilters
       const rejectedBy: HuntRejectionCounts = {};
@@ -160,10 +165,10 @@ export class RunOfferHuntUseCase {
       });
       counters.matchedCount = matched.length;
       const repeatSince = new Date(now.getTime() - hunt.repeatAfterDays * DAY_MS);
-      const recent = await this.deps.finds.recentGoodsIds(tenantId, hunt.id, repeatSince);
+      const recent = await this.deps.finds.recentProductIds(tenantId, hunt.id, provider, repeatSince);
       const fresh: Scored[] = matched
         .filter((c) => {
-          if (!recent.has(c.goodsId)) return true;
+          if (!recent.has(c.productId)) return true;
           countHuntRejections(rejectedBy, ['repeated']);
           return false;
         })
@@ -197,8 +202,8 @@ export class RunOfferHuntUseCase {
         }
       }
 
-      const chosenIds = new Set(inserted.map((f) => f.goodsId));
-      ranking = ordered.map((s) => toRankingItem(s, chosenIds.has(s.candidate.goodsId)));
+      const chosenIds = new Set(inserted.map((f) => f.productId));
+      ranking = ordered.map((s) => toRankingItem(s, chosenIds.has(s.candidate.productId)));
       await this.deps.runs.finish(tenantId, run.id, { ...counters, ranking, status: 'SUCCEEDED', errorCode: null, finishedAt: now });
       await this.deps.hunts.recordSuccess(tenantId, hunt.id, now);
       return {
@@ -213,21 +218,25 @@ export class RunOfferHuntUseCase {
     }
   }
 
-  private async checkGates(tenantId: string, since: Date): Promise<{ session: SheinSession; limit: number; balance: number }> {
+  private async checkGates(
+    tenantId: string, adapter: IHuntProviderAdapter, since: Date,
+  ): Promise<{ session: HuntSourceSession; limit: number; balance: number }> {
     const { entitlements } = this.deps;
-    if ((await entitlements.getBoolean(tenantId, ENTITLEMENT_KEYS.MARKETPLACE_SHEIN_ENABLED)) !== true) {
-      throw new GateRefusal(new PlanFeatureUnavailableError(ENTITLEMENT_KEYS.MARKETPLACE_SHEIN_ENABLED), 'PLAN_UNAVAILABLE');
+    const provider = adapter.provider;
+    const planKey = HUNT_PROVIDER_PLAN_KEY[provider];
+    if (planKey && (await entitlements.getBoolean(tenantId, planKey)) !== true) {
+      throw new GateRefusal(new PlanFeatureUnavailableError(planKey), 'PLAN_UNAVAILABLE');
     }
     if ((await entitlements.getBoolean(tenantId, ENTITLEMENT_KEYS.OFFER_HUNTER_ENABLED)) !== true) {
       throw new GateRefusal(new PlanFeatureUnavailableError(ENTITLEMENT_KEYS.OFFER_HUNTER_ENABLED), 'PLAN_UNAVAILABLE');
     }
-    const state = await this.deps.credentials.resolveState(tenantId, PROVIDER);
-    if (state.state === 'rejected') throw new GateRefusal(new AffiliateCredentialRejectedError(PROVIDER), 'CREDENTIAL_REJECTED');
-    const token = state.state === 'ok' ? state.cred.session?.cookies?.AT : undefined;
-    if (state.state !== 'ok' || !token) throw new GateRefusal(new AffiliateCredentialRequiredError(PROVIDER));
-    if (!(await this.deps.riskGate.isAccepted(tenantId, PROVIDER, 'OFFER_HUNTER'))) {
+    const state = await this.deps.credentials.resolveState(tenantId, provider);
+    if (state.state === 'rejected') throw new GateRefusal(new AffiliateCredentialRejectedError(provider), 'CREDENTIAL_REJECTED');
+    const session = state.state === 'ok' ? adapter.sessionFrom(state.cred) : null;
+    if (!session) throw new GateRefusal(new AffiliateCredentialRequiredError(provider));
+    if (!(await this.deps.riskGate.isAccepted(tenantId, provider, 'OFFER_HUNTER'))) {
       throw new GateRefusal(
-        new MarketplaceRiskNotAcceptedError(PROVIDER, currentRiskNoticeVersion(PROVIDER, 'OFFER_HUNTER') ?? '', 'OFFER_HUNTER'),
+        new MarketplaceRiskNotAcceptedError(provider, currentRiskNoticeVersion(provider, 'OFFER_HUNTER') ?? '', 'OFFER_HUNTER'),
         'RISK_NOT_ACCEPTED',
       );
     }
@@ -236,30 +245,30 @@ export class RunOfferHuntUseCase {
     const used = await this.deps.finds.countCreatedSince(tenantId, since);
     const balance = Math.max(0, limit - used);
     if (balance <= 0) throw new GateRefusal(new OfferHuntDailyLimitError(limit));
-    return { session: { token, memberId: state.cred.publicIdentifier }, limit, balance };
+    return { session, limit, balance };
   }
 
   /**
-   * ≤ 1 categorias + ≤ 3 páginas; para em `hasNextPage = false`; sem item repetido. A faixa da fonte
-   * (`categoryRate`/`commRate`) filtra a comissão de RECOMPRA, não a de 1ª compra: o caçador nunca a usa
-   * (sempre "sem faixa"), nem em caçada antiga com `commissionBand` gravada. Comissão é filtro local.
+   * ≤ 1 categorias + ≤ 3 páginas; para em `hasNextPage = false`; sem item repetido. A categoria vai à fonte como
+   * a entrada listada por ela ("Todas" = `categoryId` null; o adaptador leva o que precisar, ex. `did` Shein).
+   * Shein: a faixa da fonte (`categoryRate`/`commRate`) filtra a comissão de RECOMPRA e nunca é usada; comissão
+   * é filtro local. Ordenação: Shein = `hunt.sort`; demais = `sourceOptions.sort` (ou a padrão da marca).
    */
-  private async fetchCandidates(hunt: OfferHunt, session: SheinSession): Promise<HuntCandidate[]> {
-    const { catalog } = this.deps;
+  private async fetchCandidates(hunt: OfferHunt, adapter: IHuntProviderAdapter, session: HuntSourceSession): Promise<HuntCandidate[]> {
+    const { catalog, capabilities } = adapter;
     const categories = await catalog.listCategories(session);
     const match = hunt.categoryId ? categories.find((c) => c.categoryId === hunt.categoryId) : categories.find((c) => c.categoryId === null);
-    // Categoria sumiu da fonte (ou lista sem "All"): mesma régua de fonte indisponível
-    if (!match) throw new AffiliateApiUnavailableError(PROVIDER);
-    const category = match.categoryId ? { categoryId: match.categoryId, name: match.name } : null;
-    const did = match.did;
+    // Categoria sumiu da fonte (ou lista sem "Todas"): mesma régua de fonte indisponível
+    if (!match) throw new AffiliateApiUnavailableError(adapter.provider);
+    const options: HuntSourceOptions = adapter.provider === 'SHEIN'
+      ? { sort: hunt.sort }
+      : { ...hunt.sourceOptions, sort: hunt.sourceOptions?.sort ?? capabilities.defaultSort };
     const seen = new Map<string, HuntCandidate>();
     for (let page = 1; page <= HUNTER_LIMITS.pagesPerRunMax; page++) {
       if (page > 1) await this.sleep(HUNT_PAGE_PAUSE_MS.min + Math.floor(this.rand() * (HUNT_PAGE_PAUSE_MS.max - HUNT_PAGE_PAUSE_MS.min + 1)));
-      const query = { page, did, category, sort: hunt.sort };
-      const res: SheinCatalogPage = hunt.keyword
-        ? await catalog.search(session, { ...query, keyword: hunt.keyword })
-        : await catalog.list(session, query);
-      for (const item of res.items) if (!seen.has(item.goodsId)) seen.set(item.goodsId, item);
+      const res = await catalog.fetchPage(session, { page, category: match, keyword: hunt.keyword, options });
+      // Item de outra marca (adaptador com defeito) não entra
+      for (const item of res.items) if (item.provider === adapter.provider && !seen.has(item.productId)) seen.set(item.productId, item);
       if (!res.hasNextPage) break;
     }
     return [...seen.values()];
@@ -278,15 +287,15 @@ export class RunOfferHuntUseCase {
       return top;
     }
     counters.aiUsed = true;
-    const byId = new Map(top.map((s) => [s.candidate.goodsId, s]));
+    const byId = new Map(top.map((s) => [s.candidate.productId, s]));
     const first: Scored[] = [];
     for (const p of picks) {
-      const s = byId.get(p.goodsId);
+      const s = byId.get(p.productId);
       if (!s || first.includes(s)) continue;
       first.push({ ...s, aiReason: p.reason });
     }
-    const taken = new Set(first.map((s) => s.candidate.goodsId));
-    return [...first, ...top.filter((s) => !taken.has(s.candidate.goodsId))];
+    const taken = new Set(first.map((s) => s.candidate.productId));
+    return [...first, ...top.filter((s) => !taken.has(s.candidate.productId))];
   }
 
   /** Portão recusado: MANUAL lança; SCHEDULED grava SKIPPED (e pausa quando o motivo exige). */
@@ -294,7 +303,9 @@ export class RunOfferHuntUseCase {
     if (input.trigger === 'MANUAL') throw refusal.error;
     const { tenantId, huntId, trigger, now } = input;
     if (refusal.pause) await this.deps.hunts.pause(tenantId, hunt.id, refusal.pause);
-    const run = await this.deps.runs.createSkipped({ tenantId, huntId, trigger, startedAt: now, errorCode: refusal.error.code });
+    const run = await this.deps.runs.createSkipped({
+      tenantId, huntId, provider: hunt.provider, trigger, startedAt: now, errorCode: refusal.error.code,
+    });
     logger.info({ tenantId, huntId, code: refusal.error.code }, 'offer hunt run skipped');
     return emptyOutput(run.id, 'SKIPPED', refusal.error.code, refusal.pause);
   }
@@ -309,7 +320,7 @@ export class RunOfferHuntUseCase {
     let paused: OfferHuntPauseReason | null = null;
     let thrown: unknown = err;
     if (err instanceof AffiliateCredentialRejectedError) {
-      await this.deps.credentials.markRejected(tenantId, PROVIDER, err.code);
+      await this.deps.credentials.markRejected(tenantId, hunt.provider, err.code);
       await this.deps.hunts.pause(tenantId, hunt.id, 'CREDENTIAL_REJECTED');
       paused = 'CREDENTIAL_REJECTED';
     } else if (err instanceof AffiliateApiUnavailableError || err instanceof AffiliateApiRateLimitedError) {
@@ -335,10 +346,10 @@ function emptyOutput(runId: string, status: 'FAILED' | 'SKIPPED', errorCode: str
 function toRankingItem(s: Scored, chosen: boolean): HuntRankingItem {
   const c = s.candidate;
   return {
-    goodsId: c.goodsId, title: c.title, imageUrl: c.imageUrl, priceCents: c.priceCents, discountPercent: c.discountPct,
+    provider: c.provider, productId: c.productId, title: c.title, imageUrl: c.imageUrl, priceCents: c.priceCents, discountPercent: c.discountPct,
     commissionPercent: c.commissionNewPct, commissionCents: c.commissionNewCents,
     returningCommissionPercent: c.commissionReturningPct, returningCommissionCents: c.commissionReturningCents,
-    extraCommissionCents: c.extraCommissionCents, salesBucket: c.sales, reviewsBucket: c.reviews, rating: c.rating,
+    extraCommissionCents: c.extraCommissionCents, commissionEstimated: c.commissionEstimated, salesBucket: c.sales, reviewsBucket: c.reviews, rating: c.rating,
     score: s.score.score, factors: s.score.factors, aiReason: s.aiReason, chosen,
   };
 }
@@ -349,7 +360,9 @@ function toNewFind(s: Scored, hunt: OfferHunt, runId: string): NewOfferHuntFind 
     huntId: hunt.id,
     runId,
     status: hunt.deliveryMode === 'AUTO' ? 'APPROVED' : 'PENDING_REVIEW',
-    goodsId: c.goodsId,
+    provider: c.provider,
+    productId: c.productId,
+    goodsId: c.provider === 'SHEIN' ? c.productId : null,
     skcCode: c.skc,
     activityId: c.activityId,
     title: c.title ?? '',
@@ -362,6 +375,7 @@ function toNewFind(s: Scored, hunt: OfferHunt, runId: string): NewOfferHuntFind 
     returningCommissionPercent: c.commissionReturningPct,
     returningCommissionCents: c.commissionReturningCents,
     extraCommissionCents: c.extraCommissionCents,
+    commissionEstimated: c.commissionEstimated,
     salesBucket: c.sales,
     reviewsBucket: c.reviews,
     rating: c.rating,

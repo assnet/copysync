@@ -1,5 +1,5 @@
 // Prompt e leitura da resposta da IA no ranking do Caçador de Ofertas (HUNT-06). Puro: sem IA, sem log.
-// A IA só vê ids curtos (c1..cN); goodsId, link, token e dados do tenant nunca entram no prompt.
+// A IA só vê ids curtos (c1..cN); id do produto, link, token e dados do tenant nunca entram no prompt.
 import type { HuntCandidate, HuntScore } from '../../hunter/HuntCandidate';
 import { HUNTER_LIMITS } from './hunterLimits';
 
@@ -16,7 +16,7 @@ export interface HuntRankingPromptItem {
 export interface HuntRankingPrompt {
   system: string;
   prompt: string;
-  /** id curto → goodsId, na ordem enviada. */
+  /** id curto → productId, na ordem enviada. */
   idMap: Map<string, string>;
   /** Quantidade a pedir: min(topN, enviados). */
   pick: number;
@@ -68,7 +68,7 @@ export function buildHuntRankingPrompt(items: HuntRankingPromptItem[], topN: num
   const idMap = new Map<string, string>();
   const lines = selected.map(({ candidate: c, score }, i) => {
     const id = `c${i + 1}`;
-    idMap.set(id, c.goodsId);
+    idMap.set(id, c.productId);
     return [
       id,
       sanitizeHuntTitle(c.title),
@@ -131,21 +131,21 @@ export function parseHuntRankingOutput(
   text: string,
   idMap: Map<string, string>,
   pick: number,
-): Array<{ goodsId: string; reason: string }> | null {
+): Array<{ productId: string; reason: string }> | null {
   const arr = extractFirstJsonArray(text ?? '');
   if (!arr || arr.length < 1 || arr.length > pick) return null;
   const seen = new Set<string>();
-  const out: Array<{ goodsId: string; reason: string }> = [];
+  const out: Array<{ productId: string; reason: string }> = [];
   for (const item of arr) {
     if (!item || typeof item !== 'object') return null;
     const { id, reason } = item as { id?: unknown; reason?: unknown };
     if (typeof id !== 'string' || typeof reason !== 'string') return null;
-    const goodsId = idMap.get(id);
-    if (!goodsId || seen.has(id)) return null;
+    const productId = idMap.get(id);
+    if (!productId || seen.has(id)) return null;
     const clean = sanitizeHuntReason(reason);
     if (!clean) return null;
     seen.add(id);
-    out.push({ goodsId, reason: clean });
+    out.push({ productId, reason: clean });
   }
   return out;
 }

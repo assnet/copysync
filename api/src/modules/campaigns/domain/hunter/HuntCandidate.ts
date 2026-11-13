@@ -1,12 +1,22 @@
-// Tipos do Caçador de Ofertas (Shein). Puro: sem dependência de infra. Spec: `.specs/features/offer-hunter/`.
+// Tipos do Caçador de Ofertas (multimarca). Puro: sem dependência de infra.
+// Specs: `.specs/features/offer-hunter/` e `.specs/features/offer-hunter-multi/` (design §3b).
+import type { HuntProvider } from './HuntProvider';
 
-/** Candidato normalizado vindo do catálogo de comissão. Dinheiro sempre em centavos inteiros. */
+/**
+ * Candidato normalizado vindo do catálogo de comissão de uma marca (mapeador por marca). Dinheiro sempre em
+ * centavos inteiros. Comissão: `commissionNew*` = primária (Shein 1ª compra; ML percentual do hub, já com o
+ * extra); `commissionReturning*` = secundária (só Shein; sem secundária = 0 e `hasSecondaryCommission` false).
+ */
 export interface HuntCandidate {
-  goodsId: string; // só dígitos (4–12); item sem id válido é descartado pelo cliente
+  provider: HuntProvider;
+  /** Id do produto na marca (`HuntCapabilities.productIdPattern`): Shein = goodsId (dígitos 4–12); ML = `MLB\d+`. */
+  productId: string;
+  /** Só Shein (`skcCode`); outras marcas = null. */
   skc: string | null;
+  /** Só Shein; outras marcas = null. */
   activityId: string | null;
   title: string | null;
-  imageUrl: string | null; // https e host *.ltwebstatic.com; fora disso null
+  imageUrl: string | null; // https e host da marca (`imageHosts`); fora disso null
   priceCents: number | null;
   retailPriceCents: number | null; // null quando ≤ preço
   discountPct: number; // 0–100 inteiro
@@ -14,7 +24,14 @@ export interface HuntCandidate {
   commissionNewCents: number;
   commissionReturningPct: number; // cliente que retorna, 0–100
   commissionReturningCents: number;
+  /** Extra em R$ (Shein: valor da fonte; ML: R$ do extra quando conhecido, senão 0). */
   extraCommissionCents: number;
+  /** Tem comissão secundária (recompra): Shein true; ML false (valor esperado = 100% da primária). */
+  hasSecondaryCommission: boolean;
+  /** Item com comissão extra/"ganhos extras" (Shein: `extraCommissionCents > 0`; ML: chip "GANHOS EXTRAS"). */
+  extraFlag: boolean;
+  /** Comissão estimada (tabela por categoria) em vez de lida da fonte. Shein false. */
+  commissionEstimated: boolean;
   sales: number; // piso da faixa ("300+" → 300)
   reviews: number; // piso da faixa
   rating: number | null; // 0–5

@@ -3,6 +3,11 @@ import type { IOfferHuntRepository, OfferHuntPatch } from '../../../domain/contr
 import type { IOfferHuntRunRepository, FinishOfferHuntRunInput, StartOfferHuntRunInput } from '../../../domain/contracts/hunter/IOfferHuntRunRepository';
 import type { IOfferHuntFindRepository, NewOfferHuntFind, OfferHuntFindTransition, ResendClaim, ResendClaimOptions } from '../../../domain/contracts/hunter/IOfferHuntFindRepository';
 import type { IOfferHunterSettingsRepository } from '../../../domain/contracts/hunter/IOfferHunterSettingsRepository';
+import type { IHuntProviderRegistry } from '../../../domain/contracts/hunter/IHuntProviderAdapter';
+import { HuntProviderRegistry } from '../../../infrastructure/hunter/HuntProviderRegistry';
+import { SheinHuntProviderAdapter } from '../../../infrastructure/hunter/providers/SheinHuntProviderAdapter';
+import { createMercadoLivreHuntAdapter } from '../../../infrastructure/hunter/providers/mercadoLivreHuntAdapter';
+import type { HuntProvider, HuntSourceCategory, HuntSourcePage, IHuntCatalogSource } from '../../../domain/hunter/HuntProvider';
 import type { ISheinCatalogClient, SheinCatalogPage, SheinCatalogQuery, SheinCatalogSearchQuery, SheinSession } from '../../../domain/contracts/ISheinCatalogClient';
 import type { AffiliateCredentialState } from '../../../domain/contracts/IAffiliateCredentialGateway';
 import type { HuntRankingInput, HuntRankingPick, IHuntCandidateRanker } from '../../hunter/contracts/IHuntCandidateRanker';
@@ -26,9 +31,9 @@ export const MAX_ENTITLEMENTS = {
 
 export function makeHunt(patch: Partial<OfferHunt> = {}): OfferHunt {
   return {
-    id: HUNT, tenantId: TENANT, name: 'Maior comissão', status: 'ACTIVE', pauseReason: null,
-    sort: 'RECOMMENDED', categoryId: null, commissionBand: null, keyword: null, filters: {},
-    aiEnabled: false, topN: 3, repeatAfterDays: 7, deliveryMode: 'REVIEW',
+    id: HUNT, tenantId: TENANT, provider: 'SHEIN', name: 'Maior comissão', status: 'ACTIVE', pauseReason: null,
+    sort: 'RECOMMENDED', categoryId: null, commissionBand: null, keyword: null, sourceOptions: null, filters: {},
+    aiEnabled: false, aiConfigured: false, aiIntent: null, topN: 3, repeatAfterDays: 7, deliveryMode: 'REVIEW',
     intervalMinutes: 60, windowStartMinute: 0, windowEndMinute: 1440, weekdaysMask: 127,
     nextRunAt: null, lastRunAt: null, consecutiveFailures: 0, createdAt: NOW, updatedAt: NOW, ...patch,
   };
@@ -68,7 +73,7 @@ export class InMemoryRuns implements Pick<IOfferHuntRunRepository, 'startWithinD
   private seq = 0;
   private make(input: StartOfferHuntRunInput, patch: Partial<OfferHuntRun>): OfferHuntRun {
     const run: OfferHuntRun = {
-      id: `run-${++this.seq}`, tenantId: input.tenantId, huntId: input.huntId, trigger: input.trigger, status: 'RUNNING',
+      id: `run-${++this.seq}`, tenantId: input.tenantId, provider: input.provider, huntId: input.huntId, trigger: input.trigger, status: 'RUNNING',
       seenCount: 0, matchedCount: 0, chosenCount: 0, sentCount: 0, aiUsed: false, aiFallback: false, rejectedBy: null, ranking: null,
       errorCode: null, startedAt: input.startedAt, finishedAt: null, ...patch,
     };
@@ -96,7 +101,7 @@ export class InMemoryRuns implements Pick<IOfferHuntRunRepository, 'startWithinD
 }
 
 export class InMemoryFinds implements Pick<
-  IOfferHuntFindRepository, 'insertWithinDailyLimit' | 'countCreatedSince' | 'recentGoodsIds' | 'findById' | 'transition' | 'reclaimStaleApproved'
+  IOfferHuntFindRepository, 'insertWithinDailyLimit' | 'countCreatedSince' | 'recentProductIds' | 'findById' | 'transition' | 'reclaimStaleApproved'
   | 'claimResend' | 'releaseResend' | 'recordResend' | 'countResendsInDay'
 > {
   /** Relógio do `updatedAt` gravado (o Prisma usa o do servidor). */
@@ -107,11 +112,13 @@ export class InMemoryFinds implements Pick<
     const room = Math.max(0, quota.limit - (await this.countCreatedSince(tenantId, quota.since)));
     const taken = new Set<string>();
     if (quota.repeatSince) {
-      for (const f of this.items) if (f.tenantId === tenantId && f.huntId && f.createdAt >= quota.repeatSince) taken.add(`${f.huntId}:${f.goodsId}`);
+      for (const f of this.items) {
+        if (f.tenantId === tenantId && f.huntId && f.createdAt >= quota.repeatSince) taken.add(`${f.huntId}:${f.provider}:${f.productId}`);
+      }
     }
     const fresh = finds.filter((f) => {
       if (!quota.repeatSince || !f.huntId) return true;
-      const key = `${f.huntId}:${f.goodsId}`;
+      const key = `${f.huntId}:${f.provider}:${f.productId}`;
       if (taken.has(key)) return false;
       taken.add(key);
       return true;
@@ -126,8 +133,10 @@ export class InMemoryFinds implements Pick<
   async countCreatedSince(tenantId: string, since: Date) {
     return this.items.filter((f) => f.tenantId === tenantId && f.createdAt >= since).length;
   }
-  async recentGoodsIds(tenantId: string, huntId: string, since: Date) {
-    return new Set(this.items.filter((f) => f.tenantId === tenantId && f.huntId === huntId && f.createdAt >= since).map((f) => f.goodsId));
+  async recentProductIds(tenantId: string, huntId: string, provider: HuntProvider, since: Date) {
+    return new Set(this.items
+      .filter((f) => f.tenantId === tenantId && f.huntId === huntId && f.provider === provider && f.createdAt >= since)
+      .map((f) => f.productId));
   }
   async findById(tenantId: string, id: string) { return this.items.find((f) => f.id === id && f.tenantId === tenantId) ?? null; }
   async reclaimStaleApproved(tenantId: string, id: string, before: Date) {
@@ -172,14 +181,20 @@ export class InMemoryFinds implements Pick<
   /** Achado já gravado (ex.: dias atrás). */
   seed(patch: Partial<OfferHuntFind>): OfferHuntFind {
     const c = huntCandidate();
+    // Testes antigos semeiam por goodsId (Shein): vira o productId
+    const productId = patch.productId ?? patch.goodsId ?? c.productId;
+    const provider = patch.provider ?? 'SHEIN';
     const row: OfferHuntFind = {
-      id: `find-${++this.seq}`, tenantId: TENANT, huntId: HUNT, runId: null, goodsId: c.goodsId, skcCode: null, activityId: null,
+      id: `find-${++this.seq}`, tenantId: TENANT, huntId: HUNT, runId: null, provider, productId,
+      goodsId: provider === 'SHEIN' ? productId : null, commissionEstimated: false, skcCode: null, activityId: null,
       title: c.title!, imageUrl: c.imageUrl, priceCents: c.priceCents, originalPriceCents: c.retailPriceCents, discountPercent: c.discountPct,
       commissionPercent: c.commissionNewPct, commissionCents: c.commissionNewCents, returningCommissionPercent: null,
       returningCommissionCents: null, extraCommissionCents: 0, salesBucket: c.sales, reviewsBucket: c.reviews, rating: c.rating,
       score: 50, factors: [], aiReason: null, status: 'PENDING_REVIEW', failureReason: null, offerId: null,
       resendCount: 0, lastResentAt: null, resendInFlightUntil: null, delivery: null, createdAt: NOW, updatedAt: NOW, ...patch,
     };
+    row.productId = productId;
+    row.goodsId = provider === 'SHEIN' ? productId : null;
     this.items.push(row);
     return row;
   }
@@ -231,4 +246,27 @@ export class FakeRanker implements IHuntCandidateRanker {
   inputs: HuntRankingInput[] = [];
   constructor(public result: HuntRankingPick[] | null = null) {}
   async rank(input: HuntRankingInput) { this.inputs.push(input); return this.result; }
+}
+
+/** Fonte genérica de teste (marca não Shein) com páginas pré-montadas; registra toda chamada. */
+export class FakeHuntCatalogSource implements IHuntCatalogSource {
+  calls: { method: string; query?: unknown }[] = [];
+  pages: HuntSourcePage[] = [];
+  error: Error | null = null;
+  categories: HuntSourceCategory[] = [{ categoryId: null, name: 'Todas' }, { categoryId: 'MLB1430', name: 'Roupas' }];
+  constructor(readonly provider: HuntProvider) {}
+  async listCategories() { this.calls.push({ method: 'listCategories' }); if (this.error) throw this.error; return this.categories; }
+  async fetchPage(_s: unknown, query: { page: number }) {
+    this.calls.push({ method: 'fetchPage', query });
+    if (this.error) throw this.error;
+    return this.pages[query.page - 1] ?? { items: [], hasNextPage: false };
+  }
+}
+
+/** Registry de teste: Shein real sobre o `FakeCatalog`; ML com fonte fake (ou a padrão do adaptador, sem rede nos testes). */
+export function testProviders(shein: Pick<ISheinCatalogClient, 'listCategories' | 'list' | 'search'>, ml?: IHuntCatalogSource): IHuntProviderRegistry {
+  return new HuntProviderRegistry([
+    new SheinHuntProviderAdapter(shein),
+    createMercadoLivreHuntAdapter(ml ?? new FakeHuntCatalogSource('MERCADO_LIVRE')),
+  ]);
 }

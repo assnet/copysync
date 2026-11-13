@@ -1,8 +1,11 @@
+import type { HuntProvider } from '../../hunter/HuntProvider';
 import type { OfferHuntRankingItem, OfferHuntRun, OfferHuntRunSummary, OfferHuntRunCounters, OfferHuntRunTrigger } from '../../hunter/OfferHunt';
 
 export interface StartOfferHuntRunInput {
   tenantId: string;
   huntId: string;
+  /** Marca da caçada no momento da execução. */
+  provider: HuntProvider;
   trigger: OfferHuntRunTrigger;
   startedAt: Date;
 }

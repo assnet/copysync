@@ -3,17 +3,21 @@ import type { RunOfferHuntOutput, HuntRankingItem } from '../../application/use-
 import type { OfferHuntPage } from '../../application/use-cases/hunter/OfferHuntHistoryUseCases';
 import type { ApproveHuntFindOutput } from '../../application/use-cases/hunter/HuntFindDecisionUseCases';
 
+import type { HuntProvider } from '../../domain/hunter/HuntProvider';
+import { huntCapabilities, isHuntImageHost } from '../../domain/services/hunter/huntCapabilities';
+
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
 
-const IMAGE_HOST = 'ltwebstatic.com';
-/** Foto do achado só sai se for https em *.ltwebstatic.com, sem credencial/porta; qualquer outra origem = null. */
-export function safeFindImageUrl(v: string | null): string | null {
+/**
+ * Foto do achado só sai se for https num host da marca (`imageHosts`: Shein *.ltwebstatic.com, ML *.mlstatic.com),
+ * sem credencial/porta; qualquer outra origem = null. Marca ausente = Shein (legado).
+ */
+export function safeFindImageUrl(v: string | null, provider: HuntProvider = 'SHEIN'): string | null {
   if (!v) return null;
   try {
     const u = new URL(v);
-    const host = u.hostname.toLowerCase();
     if (u.protocol !== 'https:' || u.username || u.password || u.port) return null;
-    return host === IMAGE_HOST || host.endsWith(`.${IMAGE_HOST}`) ? u.toString() : null;
+    return isHuntImageHost(huntCapabilities(provider), u.hostname) ? u.toString() : null;
   } catch {
     return null;
   }
@@ -27,6 +31,7 @@ export const OfferHuntPresenter = {
   hunt(h: OfferHunt) {
     return {
       id: h.id,
+      provider: h.provider,
       name: h.name,
       status: h.status,
       pauseReason: h.pauseReason,
@@ -34,6 +39,9 @@ export const OfferHuntPresenter = {
       categoryId: h.categoryId,
       commissionBand: h.commissionBand,
       keyword: h.keyword,
+      sourceOptions: h.sourceOptions
+        ? { sort: h.sourceOptions.sort ?? null, extraEarningsOnly: h.sourceOptions.extraEarningsOnly ?? null, bestSellersOnly: h.sourceOptions.bestSellersOnly ?? null }
+        : null,
       filters: {
         minPriceCents: h.filters.minPriceCents ?? null,
         maxPriceCents: h.filters.maxPriceCents ?? null,
@@ -48,6 +56,8 @@ export const OfferHuntPresenter = {
         endsWithinDays: h.filters.endsWithinDays ?? null,
       },
       aiEnabled: h.aiEnabled,
+      aiConfigured: h.aiConfigured,
+      aiIntent: h.aiIntent,
       topN: h.topN,
       repeatAfterDays: h.repeatAfterDays,
       deliveryMode: h.deliveryMode,
@@ -74,6 +84,7 @@ export const OfferHuntPresenter = {
   runSummary(r: OfferHuntRunSummary) {
     return {
       id: r.id,
+      provider: r.provider,
       huntId: r.huntId,
       trigger: r.trigger,
       status: r.status,
@@ -97,9 +108,12 @@ export const OfferHuntPresenter = {
       huntId: f.huntId,
       runId: f.runId,
       status: f.status,
-      goodsId: f.goodsId,
+      provider: f.provider,
+      productId: f.productId,
+      goodsId: f.provider === 'SHEIN' ? f.productId : null,
+      commissionEstimated: f.commissionEstimated,
       title: f.title,
-      imageUrl: safeFindImageUrl(f.imageUrl),
+      imageUrl: safeFindImageUrl(f.imageUrl, f.provider),
       priceCents: f.priceCents,
       originalPriceCents: f.originalPriceCents,
       discountPercent: f.discountPercent,
@@ -130,9 +144,12 @@ export const OfferHuntPresenter = {
 
   rankingItem(i: HuntRankingItem) {
     return {
-      goodsId: i.goodsId,
+      provider: i.provider,
+      productId: i.productId,
+      goodsId: i.provider === 'SHEIN' ? i.productId : null,
+      commissionEstimated: i.commissionEstimated,
       title: i.title,
-      imageUrl: safeFindImageUrl(i.imageUrl),
+      imageUrl: safeFindImageUrl(i.imageUrl, i.provider),
       priceCents: i.priceCents,
       discountPercent: i.discountPercent,
       commissionPercent: i.commissionPercent,

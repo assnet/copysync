@@ -5,14 +5,15 @@ import {
 } from '@mui/material';
 import { RotateCw, TriangleAlert, X } from 'lucide-react';
 import { AppIcon } from '@/components';
-import { offerHunterStrings } from '../strings';
+import { offerHunterStrings, type HunterRiskProvider } from '../strings';
 import { useHunterRiskAcceptance } from '../hooks';
 
-const t = offerHunterStrings.riskNotice;
 const g = offerHunterStrings.gatesPanel;
 
 export interface HunterRiskNoticeDialogProps {
   open: boolean;
+  /** Marca do aviso: título, texto e versão próprios; o aceite vale só para ela. */
+  provider: HunterRiskProvider;
   /** Papel ADMIN no tenant ativo ou super admin (a API aceita os dois no escopo `OFFER_HUNTER`). */
   canAccept: boolean;
   /** Super admin: aceite registrado com o id dele; texto avisa que vale para a conta inteira. */
@@ -28,16 +29,17 @@ export interface HunterRiskNoticeDialogProps {
  * Aviso de risco próprio do caçador (escopo `OFFER_HUNTER`). A caixa "Li e assumo o risco" nasce
  * desmarcada a cada abertura e NÃO usa `usePersistedState`: o aceite exige um clique novo após reload.
  */
-export function HunterRiskNoticeDialog({ open, canAccept, isSuperAdmin, onClose, onAccepted, onStale }: HunterRiskNoticeDialogProps) {
+export function HunterRiskNoticeDialog({ open, provider, canAccept, isSuperAdmin, onClose, onAccepted, onStale }: HunterRiskNoticeDialogProps) {
+  const t = offerHunterStrings.riskNotice[provider];
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
-  const { accept, accepting, errorCode, stale } = useHunterRiskAcceptance();
+  const { accept, accepting, errorCode, stale } = useHunterRiskAcceptance(provider);
   const [checked, setChecked] = useState(false);
   const allowed = canAccept;
 
   useEffect(() => {
     if (open) setChecked(false);
-  }, [open]);
+  }, [open, provider]);
 
   useEffect(() => {
     if (stale) onStale?.();

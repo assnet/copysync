@@ -17,7 +17,7 @@ export interface AcceptMarketplaceRiskInput {
   role: string;
   isSuperAdmin: boolean;
   provider: AffiliateProvider;
-  /** Padrão `AFFILIATE_LINK`. `OFFER_HUNTER` só existe para SHEIN. */
+  /** Padrão `AFFILIATE_LINK`. `OFFER_HUNTER` existe para as marcas em `OFFER_HUNTER_RISK_NOTICE_VERSION` (SHEIN, MERCADO_LIVRE). */
   scope?: MarketplaceRiskScope;
   noticeVersion: string;
   locale: string;

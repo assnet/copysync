@@ -19,7 +19,10 @@ export class PrismaOfferHuntRunRepository implements IOfferHuntRunRepository {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`offer_hunt_runs:${input.tenantId}`}::text))`;
       if ((await tx.offerHuntRun.count({ where: countsTowardGuard(input.tenantId, quota.since) })) >= quota.limit) return null;
       return tx.offerHuntRun.create({
-        data: { tenantId: input.tenantId, huntId: input.huntId, trigger: input.trigger, startedAt: input.startedAt, status: 'RUNNING' },
+        data: {
+          tenantId: input.tenantId, huntId: input.huntId, provider: input.provider, trigger: input.trigger, startedAt: input.startedAt,
+          status: 'RUNNING',
+        },
       });
     });
     return raw ? Mapper.runToDomain(raw) : null;
@@ -28,7 +31,7 @@ export class PrismaOfferHuntRunRepository implements IOfferHuntRunRepository {
   async createSkipped(input: StartOfferHuntRunInput & { errorCode: string }): Promise<OfferHuntRun> {
     const raw = await this.prisma.offerHuntRun.create({
       data: {
-        tenantId: input.tenantId, huntId: input.huntId, trigger: input.trigger, status: 'SKIPPED',
+        tenantId: input.tenantId, huntId: input.huntId, provider: input.provider, trigger: input.trigger, status: 'SKIPPED',
         errorCode: input.errorCode, startedAt: input.startedAt, finishedAt: input.startedAt,
       },
     });
@@ -80,6 +83,6 @@ export class PrismaOfferHuntRunRepository implements IOfferHuntRunRepository {
 
 /** Todas as colunas menos `ranking`. */
 const RUN_SUMMARY_SELECT = {
-  id: true, tenantId: true, huntId: true, trigger: true, status: true, seenCount: true, matchedCount: true, chosenCount: true,
+  id: true, tenantId: true, huntId: true, provider: true, trigger: true, status: true, seenCount: true, matchedCount: true, chosenCount: true,
   sentCount: true, aiUsed: true, aiFallback: true, rejectedBy: true, errorCode: true, startedAt: true, finishedAt: true,
 } satisfies Prisma.OfferHuntRunSelect;

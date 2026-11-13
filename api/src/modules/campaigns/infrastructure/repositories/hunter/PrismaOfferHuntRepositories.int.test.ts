@@ -24,21 +24,23 @@ const SINCE = new Date('2026-01-01T00:00:00.000Z');
 const tenants: string[] = [];
 
 const def = (tenantId: string, patch: Partial<CreateOfferHuntInput> = {}): CreateOfferHuntInput => ({
-  tenantId, name: 'Maior comissão', sort: 'BEST_SELLING', categoryId: '4436', commissionBand: 'ABOVE_15', keyword: null,
-  filters: { minCommissionPct: 15.5, minRating: 4.2, onlyWithExtra: true }, aiEnabled: false, topN: 3, repeatAfterDays: 7,
+  tenantId, provider: 'SHEIN', name: 'Maior comissão', sort: 'BEST_SELLING', categoryId: '4436', commissionBand: 'ABOVE_15', keyword: null,
+  sourceOptions: null, filters: { minCommissionPct: 15.5, minRating: 4.2, onlyWithExtra: true }, aiEnabled: false,
+  aiConfigured: false, aiIntent: null, topN: 3, repeatAfterDays: 7,
   deliveryMode: 'REVIEW', intervalMinutes: 60, windowStartMinute: 0, windowEndMinute: 1440, weekdaysMask: 127,
   nextRunAt: new Date('2026-11-12T10:00:00.000Z'), ...patch,
 });
 
 const RANK_ITEM = {
-  goodsId: '123456', title: 'Vestido', imageUrl: 'https://img.ltwebstatic.com/a.jpg', priceCents: 5990, discountPercent: 40,
+  provider: 'SHEIN' as const, productId: '123456', commissionEstimated: false, title: 'Vestido', imageUrl: 'https://img.ltwebstatic.com/a.jpg', priceCents: 5990, discountPercent: 40,
   commissionPercent: 15.5, commissionCents: 928, returningCommissionPercent: 4.9, returningCommissionCents: 293,
   extraCommissionCents: 0, salesBucket: 1000, reviewsBucket: 500, rating: 4.8, score: 81.5,
   factors: [{ key: 'commission' as const, points: 30, max: 40 }], aiReason: null, chosen: true,
 };
 
-const find = (goodsId: string, huntId: string | null): NewOfferHuntFind => ({
-  huntId, runId: null, status: 'PENDING_REVIEW', goodsId, skcCode: null, activityId: null, title: 'Item', imageUrl: 'https://img.ltwebstatic.com/i.jpg', priceCents: 1000,
+const find = (productId: string, huntId: string | null, provider: 'SHEIN' | 'MERCADO_LIVRE' = 'SHEIN'): NewOfferHuntFind => ({
+  huntId, runId: null, status: 'PENDING_REVIEW', provider, productId, goodsId: provider === 'SHEIN' ? productId : null,
+  commissionEstimated: false, skcCode: null, activityId: null, title: 'Item', imageUrl: 'https://img.ltwebstatic.com/i.jpg', priceCents: 1000,
   originalPriceCents: null, discountPercent: 10, commissionPercent: 15.25, commissionCents: 150, returningCommissionPercent: null,
   returningCommissionCents: null, extraCommissionCents: 0, salesBucket: 100, reviewsBucket: 10, rating: 4.5, score: 61.7,
   factors: [{ key: 'commission', points: 20.5, max: 40 }], aiReason: null,
@@ -179,12 +181,13 @@ describe('PrismaOfferHuntFindRepository — teto diário atômico', () => {
   it('repetição por caçada e janela; exclusão da caçada mantém achados e execuções (huntId null)', async () => {
     const t = await tenant('repeat');
     const h = (await hunts.createWithinLimit(def(t), 5))!;
-    const run = (await runs.startWithinDailyLimit({ tenantId: t, huntId: h.id, trigger: 'MANUAL', startedAt: new Date() }, { since: SINCE, limit: 24 }))!;
+    const run = (await runs.startWithinDailyLimit({ tenantId: t, huntId: h.id, provider: 'SHEIN', trigger: 'MANUAL', startedAt: new Date() }, { since: SINCE, limit: 24 }))!;
     const [f1] = await finds.insertWithinDailyLimit(t, [{ ...find('55501', h.id), runId: run.id }, find('55502', h.id), find('55503', null)], { since: SINCE, limit: 10 });
     await prisma.offerHuntFind.update({ where: { id: f1!.id }, data: { createdAt: new Date('2025-12-01T00:00:00.000Z') } });
-    expect([...(await finds.recentGoodsIds(t, h.id, SINCE))]).toEqual(['55502']);
-    expect((await finds.recentGoodsIds(t, h.id, new Date('2025-11-01T00:00:00.000Z'))).size).toBe(2);
-    expect(await finds.recentGoodsIds('other-tenant', h.id, SINCE)).toEqual(new Set());
+    expect([...(await finds.recentProductIds(t, h.id, 'SHEIN', SINCE))]).toEqual(['55502']);
+    expect((await finds.recentProductIds(t, h.id, 'SHEIN', new Date('2025-11-01T00:00:00.000Z'))).size).toBe(2);
+    expect(await finds.recentProductIds('other-tenant', h.id, 'SHEIN', SINCE)).toEqual(new Set());
+    expect(await finds.recentProductIds(t, h.id, 'MERCADO_LIVRE', SINCE)).toEqual(new Set());
 
     expect(await finds.transition(t, f1!.id, ['APPROVED'], 'SENT')).toBe(false);
     expect(await finds.transition(t, f1!.id, ['PENDING_REVIEW'], 'DISMISSED', { failureReason: null })).toBe(true);
@@ -263,11 +266,53 @@ describe('PrismaOfferHuntFindRepository — envio real e reenvio', () => {
   });
 });
 
+describe('Caçador multimarca — persistência', () => {
+  it('repetição por marca + produto (mesmo id em outra marca não conta); linha antiga só com goodsId conta; ML sem goodsId', async () => {
+    const t = await tenant('multi');
+    const h = (await hunts.createWithinLimit(def(t, {
+      provider: 'MERCADO_LIVRE', sort: 'RECOMMENDED', categoryId: null, commissionBand: null,
+      sourceOptions: { sort: 'lowest_price', extraEarningsOnly: true }, filters: {}, aiConfigured: true, aiIntent: 'moda barata',
+    }), 5))!;
+    expect(h).toMatchObject({ provider: 'MERCADO_LIVRE', sourceOptions: { sort: 'lowest_price', extraEarningsOnly: true }, aiConfigured: true, aiIntent: 'moda barata' });
+    const q = { since: SINCE, limit: 10, repeatSince: SINCE };
+    const ml = await finds.insertWithinDailyLimit(t, [{ ...find('MLB12345', h.id, 'MERCADO_LIVRE'), commissionEstimated: true }], q);
+    expect(ml[0]).toMatchObject({ provider: 'MERCADO_LIVRE', productId: 'MLB12345', goodsId: null, commissionEstimated: true });
+    // Mesmo productId, outra marca: não é repetição
+    expect(await finds.insertWithinDailyLimit(t, [find('MLB12345', h.id, 'SHEIN')], q)).toHaveLength(1);
+    // Mesma marca + produto: repetido (também em corrida entre dois clientes)
+    const [a, b] = await Promise.all([
+      finds.insertWithinDailyLimit(t, [find('MLB777', h.id, 'MERCADO_LIVRE')], q),
+      findsB.insertWithinDailyLimit(t, [find('MLB777', h.id, 'MERCADO_LIVRE')], q),
+    ]);
+    expect(a.length + b.length).toBe(1);
+    expect(await finds.insertWithinDailyLimit(t, [find('MLB12345', h.id, 'MERCADO_LIVRE')], q)).toHaveLength(0);
+    // Linha do código anterior (deploy em voo): só goodsId, productId nulo
+    await prisma.offerHuntFind.create({ data: {
+      tenantId: t, huntId: h.id, goodsId: '99001', title: 'x', score: 1, factors: [], status: 'PENDING_REVIEW',
+    } });
+    expect(await finds.recentProductIds(t, h.id, 'SHEIN', SINCE)).toEqual(new Set(['MLB12345', '99001']));
+    expect(await finds.insertWithinDailyLimit(t, [find('99001', h.id, 'SHEIN')], q)).toHaveLength(0);
+    const legacy = (await finds.listByHunt(t, h.id, { limit: 1 }))[0]!;
+    expect(legacy).toMatchObject({ provider: 'SHEIN', productId: '99001', goodsId: '99001' });
+
+    const run = (await runs.startWithinDailyLimit({ tenantId: t, huntId: h.id, provider: 'MERCADO_LIVRE', trigger: 'MANUAL', startedAt: new Date() }, { since: SINCE, limit: 24 }))!;
+    const item = { ...RANK_ITEM, provider: 'MERCADO_LIVRE' as const, productId: 'MLB12345', commissionEstimated: true };
+    await runs.finish(t, run.id, { seenCount: 1, matchedCount: 1, chosenCount: 1, sentCount: 0, aiUsed: false, aiFallback: false,
+      rejectedBy: {}, ranking: [item], status: 'SUCCEEDED', errorCode: null, finishedAt: new Date() });
+    const got = (await runs.findById(t, h.id, run.id))!;
+    expect(got.provider).toBe('MERCADO_LIVRE');
+    expect(got.ranking).toEqual([item]);
+    // JSON gravado pelo código anterior (só goodsId, sem provider) segue legível como Shein
+    await prisma.offerHuntRun.update({ where: { id: run.id }, data: { provider: 'SHEIN', ranking: [{ goodsId: '123', score: 5, factors: [] }] } });
+    expect((await runs.findById(t, h.id, run.id))!.ranking).toMatchObject([{ provider: 'SHEIN', productId: '123', commissionEstimated: false }]);
+  });
+});
+
 describe('PrismaOfferHuntRunRepository — guarda de execuções/dia', () => {
   it('SKIPPED não conta; 2 aberturas simultâneas com 1 vaga → 1 passa; fecha só RUNNING', async () => {
     const t = await tenant('runs');
     const h = (await hunts.createWithinLimit(def(t), 5))!;
-    const base = { tenantId: t, huntId: h.id, trigger: 'SCHEDULED' as const, startedAt: new Date() };
+    const base = { tenantId: t, huntId: h.id, provider: 'SHEIN' as const, trigger: 'SCHEDULED' as const, startedAt: new Date() };
     await runs.createSkipped({ ...base, errorCode: 'OFFER_HUNT_DAILY_LIMIT' });
     const first = (await runs.startWithinDailyLimit(base, { since: SINCE, limit: 2 }))!;
     const runsB = new PrismaOfferHuntRunRepository(other);

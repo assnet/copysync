@@ -140,8 +140,10 @@ export function mapSheinCatalogItem(raw: unknown): HuntCandidate | null {
   const rating = num(raw.commentRankAverage);
   const rank = num(raw.rank);
   const title = str(raw.goodsName);
+  const extraCommissionCents = cents(raw.extraCommission) ?? 0;
   return {
-    goodsId,
+    provider: 'SHEIN',
+    productId: goodsId,
     skc: str(raw.skcCode),
     activityId: str(raw.activityId),
     title: title ? title.replace(/\s+/g, ' ') : null,
@@ -153,7 +155,10 @@ export function mapSheinCatalogItem(raw: unknown): HuntCandidate | null {
     commissionNewCents: cents(raw.commission) ?? 0,
     commissionReturningPct: pct(raw.percentPlatformCommissionOfOld),
     commissionReturningCents: cents(raw.commissionOfOld) ?? 0,
-    extraCommissionCents: cents(raw.extraCommission) ?? 0,
+    extraCommissionCents,
+    hasSecondaryCommission: true,
+    extraFlag: extraCommissionCents > 0,
+    commissionEstimated: false,
     sales: parseSalesBucket(raw.spuSales),
     reviews: parseSalesBucket(raw.commentNum),
     rating: rating !== null && rating >= 0 && rating <= 5 ? rating : null,

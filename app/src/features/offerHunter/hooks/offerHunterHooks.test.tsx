@@ -160,12 +160,24 @@ describe('portões e aceite', () => {
 
   it('aceite envia scope OFFER_HUNTER com a versão do caçador; 409 vira stale', async () => {
     risk.acceptRisk.mockResolvedValueOnce({ acceptedAt: 'x', noticeVersion: '2026-11-12', scope: 'OFFER_HUNTER' });
-    const { result } = renderHook(() => useHunterRiskAcceptance());
+    const { result } = renderHook(() => useHunterRiskAcceptance('SHEIN'));
     await act(async () => { await result.current.accept(); });
     expect(risk.acceptRisk).toHaveBeenCalledWith('SHEIN', { noticeVersion: '2026-11-12', locale: 'pt-BR', scope: 'OFFER_HUNTER' });
 
     risk.acceptRisk.mockRejectedValueOnce({ code: 'MARKETPLACE_RISK_NOTICE_OUTDATED' });
     await act(async () => { await result.current.accept(); });
     expect(result.current.stale).toBe(true);
+  });
+
+  it('aceite por marca: MERCADO_LIVRE envia a própria versão; trocar a marca troca o envio', async () => {
+    risk.acceptRisk.mockResolvedValue({ acceptedAt: 'x', noticeVersion: '2026-11-13', scope: 'OFFER_HUNTER' });
+    const { result, rerender } = renderHook(({ p }: { p: 'SHEIN' | 'MERCADO_LIVRE' }) => useHunterRiskAcceptance(p), {
+      initialProps: { p: 'MERCADO_LIVRE' },
+    });
+    await act(async () => { await result.current.accept(); });
+    expect(risk.acceptRisk).toHaveBeenLastCalledWith('MERCADO_LIVRE', { noticeVersion: '2026-11-13', locale: 'pt-BR', scope: 'OFFER_HUNTER' });
+    rerender({ p: 'SHEIN' });
+    await act(async () => { await result.current.accept(); });
+    expect(risk.acceptRisk).toHaveBeenLastCalledWith('SHEIN', { noticeVersion: '2026-11-12', locale: 'pt-BR', scope: 'OFFER_HUNTER' });
   });
 });

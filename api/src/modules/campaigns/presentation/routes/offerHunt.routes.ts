@@ -7,9 +7,10 @@ import { hunterContainer } from '../../infrastructure/hunterContainer';
 import type { OfferHuntDefinitionInput } from '../../application/use-cases/hunter/OfferHuntCrudUseCases';
 import { offerHunterAudienceHook, isOfferHunterVisible } from '../hooks/offerHunterAudienceHook';
 import { OfferHuntPresenter as P } from '../presenters/OfferHuntPresenter';
+import type { HuntProvider } from '../../domain/hunter/HuntProvider';
 import {
   accessResponse, approveFindResponse, createHuntBodySchema, findIdParamSchema, findResponse, findsPageResponse,
-  huntIdParamSchema, huntListResponse, huntResponse, optionsResponse, pageQuerySchema, runResultResponse,
+  huntIdParamSchema, huntListResponse, huntResponse, optionsQuerySchema, optionsResponse, pageQuerySchema, providersResponse, runResultResponse,
   runIdParamSchema, runResponse, runsPageResponse, settingsBodySchema, settingsResponse, updateHuntBodySchema, usageResponse,
 } from '../schemas/offerHunt.schema';
 
@@ -46,10 +47,24 @@ export async function offerHuntRoutes(app: FastifyInstance): Promise<void> {
   );
 
   app.get(
-    '/options',
-    { preHandler, schema: { tags, summary: 'Categorias, ordenações, faixas, predefinições e portões', response: { 200: optionsResponse } } },
+    '/options/providers',
+    { preHandler, schema: { tags, summary: 'Portões do caçador por marca (sem chamar a fonte)', response: { 200: providersResponse } } },
     async (request, reply) => {
-      httpResponse.ok(reply, await c.getOfferHunterOptions().execute(request.tenantContext.tenantId));
+      httpResponse.ok(reply, await c.getOfferHunterProviders().execute(request.tenantContext.tenantId));
+    },
+  );
+
+  app.get<{ Querystring: { provider?: HuntProvider } }>(
+    '/options',
+    {
+      preHandler,
+      schema: {
+        tags, summary: 'Capacidades, categorias, ordenações, predefinições e portões da marca', querystring: optionsQuerySchema,
+        response: { 200: optionsResponse },
+      },
+    },
+    async (request, reply) => {
+      httpResponse.ok(reply, await c.getOfferHunterOptions().execute(request.tenantContext.tenantId, request.query.provider ?? 'SHEIN'));
     },
   );
 

@@ -10,8 +10,40 @@ import type {
 } from './types';
 import { formatDecimal, formatInteger, formatRating } from './format';
 
-/** Espelho de `OFFER_HUNTER_RISK_NOTICE_VERSION.SHEIN` (api/.../marketplaceRiskNotice.ts). Mudou o texto → sobe nos dois. */
-export const OFFER_HUNTER_RISK_NOTICE_VERSION = '2026-11-12';
+/**
+ * Espelho de `OFFER_HUNTER_RISK_NOTICE_VERSION` (api/.../marketplaceRiskNotice.ts), uma versão por marca.
+ * Mudou o texto de uma marca → sobe a versão dela nos dois lados.
+ */
+export const OFFER_HUNTER_RISK_NOTICE_VERSION = {
+  SHEIN: '2026-11-12',
+  MERCADO_LIVRE: '2026-11-13',
+} as const;
+
+/** Marca com aviso de risco do caçador. Marca sem aviso não caça (a API é fail-closed nesse escopo). */
+export type HunterRiskProvider = keyof typeof OFFER_HUNTER_RISK_NOTICE_VERSION;
+
+/** Partes do aviso que não mudam por marca (fora do hash). */
+const RISK_NOTICE_COMMON = {
+  /** Idioma em que o texto é exibido (gravado com o aceite). */
+  locale: 'pt-BR',
+  scope: 'OFFER_HUNTER' as const,
+  bannerTitle: 'Automação por sua conta e risco',
+  readFull: 'Ler aviso completo',
+  readFullTooltip: 'Abre o texto completo do aviso de risco do caçador',
+  checkbox: 'Li o aviso e assumo o risco do uso automatizado',
+  confirm: 'Aceitar e continuar',
+  confirming: 'Registrando aceite…',
+  cancel: 'Cancelar',
+  close: 'Fechar',
+  accepted: 'Aviso de risco aceito.',
+  acceptedAt: (date: string, byMe: boolean) => `Aceito em ${date}${byMe ? ' por você' : ''}`,
+  adminOnly: 'Só um administrador desta conta pode aceitar o aviso.',
+  staleTitle: 'O aviso foi atualizado',
+  staleText: 'O texto do aviso foi atualizado. Recarregue a página para ler a versão atual antes de aceitar.',
+  reloadPage: 'Recarregar página',
+  reloadPageTooltip: 'Recarrega o painel com o texto atual do aviso',
+  acceptFailed: 'Não foi possível registrar o aceite. Tente de novo.',
+};
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 
@@ -530,45 +562,54 @@ export const offerHunterStrings = {
     FORBIDDEN: 'Você não tem permissão para fazer isso.',
   } as Record<string, string>,
 
-  /** Aviso de risco próprio do caçador (escopo `OFFER_HUNTER`). Texto travado por hash em `strings.test.ts`. */
+  /**
+   * Aviso de risco próprio do caçador (escopo `OFFER_HUNTER`), um por marca com aceite separado (D2).
+   * `dialogTitle` + `paragraphs` de cada marca travados por hash em `strings.test.ts`.
+   */
   riskNotice: {
-    version: OFFER_HUNTER_RISK_NOTICE_VERSION,
-    /** Idioma em que o texto é exibido (gravado com o aceite). */
-    locale: 'pt-BR',
-    scope: 'OFFER_HUNTER' as const,
-    bannerTitle: 'Automação por sua conta e risco',
-    bannerSummary:
-      'O caçador busca, gera links e envia ofertas da SHEIN de forma automática. Os termos da SHEIN proíbem isso '
-      + 'e ela pode encerrar a sua conta e reter comissões.',
-    readFull: 'Ler aviso completo',
-    readFullTooltip: 'Abre o texto completo do aviso de risco do caçador',
-    dialogTitle: 'Aviso de risco: Caçador de Ofertas na SHEIN',
-    /** Texto completo. Travado por hash junto da `version`. */
-    paragraphs: [
-      'O Caçador de Ofertas faz, de forma automática e recorrente, buscas no catálogo do Programa de Afiliados da SHEIN, '
-        + 'nos dias e horários que você definir.',
-      'Para cada oferta escolhida, o link de afiliado é gerado automaticamente pela sessão da sua conta de afiliado da SHEIN, '
-        + 'e a oferta pode ser enviada automaticamente ao grupo de destino, sem revisão, quando o modo de entrega for "Enviar direto".',
-      'Os termos da SHEIN proíbem esse tipo de uso. A cláusula 3.3.2 dos Termos do Programa de Afiliados proíbe o uso de '
-        + '"sistema, bot ou outro dispositivo ou artifício". O Anexo 3, item 6, proíbe o uso de "robôs ou outras ferramentas '
-        + 'de consulta automatizadas" e o acesso por "meio automatizado ou scraping".',
-      'Por causa desse uso, a SHEIN pode encerrar a sua conta de afiliado e reter as suas comissões, inclusive as já geradas.',
-      'O uso do caçador é por sua conta e risco, como titular da conta de afiliado.',
-      'A plataforma não se responsabiliza por bloqueio, suspensão ou encerramento da conta, nem por perda de comissões.',
-    ] as readonly string[],
-    checkbox: 'Li o aviso e assumo o risco do uso automatizado',
-    confirm: 'Aceitar e continuar',
-    confirming: 'Registrando aceite…',
-    cancel: 'Cancelar',
-    close: 'Fechar',
-    accepted: 'Aviso de risco aceito.',
-    acceptedAt: (date: string, byMe: boolean) => `Aceito em ${date}${byMe ? ' por você' : ''}`,
-    adminOnly: 'Só um administrador desta conta pode aceitar o aviso.',
-    staleTitle: 'O aviso foi atualizado',
-    staleText: 'O texto do aviso foi atualizado. Recarregue a página para ler a versão atual antes de aceitar.',
-    reloadPage: 'Recarregar página',
-    reloadPageTooltip: 'Recarrega o painel com o texto atual do aviso',
-    acceptFailed: 'Não foi possível registrar o aceite. Tente de novo.',
+    SHEIN: {
+      ...RISK_NOTICE_COMMON,
+      version: OFFER_HUNTER_RISK_NOTICE_VERSION.SHEIN,
+      bannerSummary:
+        'O caçador busca, gera links e envia ofertas da SHEIN de forma automática. Os termos da SHEIN proíbem isso '
+        + 'e ela pode encerrar a sua conta e reter comissões.',
+      dialogTitle: 'Aviso de risco: Caçador de Ofertas na SHEIN',
+      /** Texto completo. Travado por hash junto da `version`. */
+      paragraphs: [
+        'O Caçador de Ofertas faz, de forma automática e recorrente, buscas no catálogo do Programa de Afiliados da SHEIN, '
+          + 'nos dias e horários que você definir.',
+        'Para cada oferta escolhida, o link de afiliado é gerado automaticamente pela sessão da sua conta de afiliado da SHEIN, '
+          + 'e a oferta pode ser enviada automaticamente ao grupo de destino, sem revisão, quando o modo de entrega for "Enviar direto".',
+        'Os termos da SHEIN proíbem esse tipo de uso. A cláusula 3.3.2 dos Termos do Programa de Afiliados proíbe o uso de '
+          + '"sistema, bot ou outro dispositivo ou artifício". O Anexo 3, item 6, proíbe o uso de "robôs ou outras ferramentas '
+          + 'de consulta automatizadas" e o acesso por "meio automatizado ou scraping".',
+        'Por causa desse uso, a SHEIN pode encerrar a sua conta de afiliado e reter as suas comissões, inclusive as já geradas.',
+        'O uso do caçador é por sua conta e risco, como titular da conta de afiliado.',
+        'A plataforma não se responsabiliza por bloqueio, suspensão ou encerramento da conta, nem por perda de comissões.',
+      ] as readonly string[],
+    },
+    MERCADO_LIVRE: {
+      ...RISK_NOTICE_COMMON,
+      version: OFFER_HUNTER_RISK_NOTICE_VERSION.MERCADO_LIVRE,
+      bannerSummary:
+        'O caçador busca, gera links e envia ofertas do Mercado Livre de forma automática. Os termos do Mercado Livre '
+        + 'proíbem isso e ele pode suspender a sua conta e reter comissões.',
+      dialogTitle: 'Aviso de risco: Caçador de Ofertas no Mercado Livre',
+      /** Texto completo. Travado por hash junto da `version`. */
+      paragraphs: [
+        'O Caçador de Ofertas faz, de forma automática e recorrente, buscas no painel do Programa de Afiliados do '
+          + 'Mercado Livre, nos dias e horários que você definir.',
+        'Para cada oferta escolhida, o link de afiliado é gerado automaticamente pela sessão da sua conta de afiliado do '
+          + 'Mercado Livre, e a oferta pode ser enviada automaticamente ao grupo de destino, sem revisão, quando o modo de '
+          + 'entrega for "Enviar direto".',
+        'Os Termos e Condições do Programa de Afiliados do Mercado Livre proíbem esse tipo de uso: não permitem o uso de '
+          + 'software, bots ou outros meios automatizados para acessar o programa, gerar links ou divulgar ofertas.',
+        'Por causa desse uso, o Mercado Livre pode suspender ou encerrar a sua conta de afiliado e reter as suas comissões, '
+          + 'inclusive as já geradas.',
+        'O uso do caçador é por sua conta e risco, como titular da conta de afiliado.',
+        'A plataforma não se responsabiliza por bloqueio, suspensão ou encerramento da conta, nem por perda de comissões.',
+      ] as readonly string[],
+    },
   },
 
   /** Tela inicial (T13): textos que não cabem em `list`/`destination`/`usage`. */

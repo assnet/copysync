@@ -6,8 +6,8 @@ import { HUNT_RANKING_AI_PURPOSE } from '../../../domain/services/hunter/huntRan
 import type { RankableHuntCandidate } from '../../hunter/contracts/IHuntCandidateRanker';
 import { AiHuntCandidateRanker } from './AiHuntCandidateRanker';
 
-const item = (goodsId: string, score: number, title = `Produto ${goodsId}`): RankableHuntCandidate => ({
-  candidate: huntCandidate({ goodsId, title }),
+const item = (productId: string, score: number, title = `Produto ${productId}`): RankableHuntCandidate => ({
+  candidate: huntCandidate({ productId, title }),
   score: { score, factors: [] },
 });
 const three = [item('1001', 50), item('1002', 70), item('1003', 60)]; // ordem enviada: c1=1002, c2=1003, c3=1001
@@ -23,11 +23,11 @@ function setup(text: string | Error) {
 const run = (r: AiHuntCandidateRanker, candidates = three, topN = 2) => r.rank({ tenantId: 't1', candidates, topN });
 
 describe('AiHuntCandidateRanker', () => {
-  it('saída válida mapeia c-ids para goodsId na ordem da IA, 1 chamada com purpose/tokens', async () => {
+  it('saída válida mapeia c-ids para productId na ordem da IA, 1 chamada com purpose/tokens', async () => {
     const { ranker, generate } = setup('[{"id":"c3","reason":"Comissão alta"},{"id":"c1","reason":"Muito vendido"}]');
     expect(await run(ranker)).toEqual([
-      { goodsId: '1001', reason: 'Comissão alta' },
-      { goodsId: '1002', reason: 'Muito vendido' },
+      { productId: '1001', reason: 'Comissão alta' },
+      { productId: '1002', reason: 'Muito vendido' },
     ]);
     expect(generate).toHaveBeenCalledTimes(1);
     expect(generate.mock.calls[0][0]).toMatchObject({ tenantId: 't1', purpose: HUNT_RANKING_AI_PURPOSE, maxOutputTokens: 600 });
@@ -38,7 +38,7 @@ describe('AiHuntCandidateRanker', () => {
     const { ranker } = setup('```json\n[{"id":"c2","reason":' + JSON.stringify(long) + '}]\n```');
     const out = await run(ranker);
     expect(out).toHaveLength(1);
-    expect(out![0].goodsId).toBe('1003');
+    expect(out![0].productId).toBe('1003');
     expect(out![0].reason.length).toBeLessThanOrEqual(140);
     expect(out![0].reason).not.toMatch(/https?:|\*/);
   });
@@ -83,7 +83,7 @@ describe('AiHuntCandidateRanker', () => {
     expect(prompt.match(/<\/produtos>/g)).toHaveLength(1);
   });
 
-  it('prompt não contém goodsId, link, token nem memberId', async () => {
+  it('prompt não contém productId, link, token nem memberId', async () => {
     const c = item('533885353', 50, 'Blusa https://onelink.shein.com/abc?token=xyz&memberId=9');
     const { ranker, generate } = setup('[{"id":"c1","reason":"ok"}]');
     await run(ranker, [c], 1);
@@ -97,7 +97,7 @@ describe('AiHuntCandidateRanker', () => {
     const many = Array.from({ length: 20 }, (_, i) => item(String(2000 + i), i)); // notas 0..19
     const { ranker, generate } = setup('[{"id":"c1","reason":"ok"}]');
     const out = await run(ranker, many, 1);
-    expect(out).toEqual([{ goodsId: '2019', reason: 'ok' }]);
+    expect(out).toEqual([{ productId: '2019', reason: 'ok' }]);
     const prompt: string = generate.mock.calls[0][0].prompt;
     const rows = prompt.split('<produtos>\n')[1].split('\n</produtos>')[0].split('\n');
     expect(rows).toHaveLength(15);

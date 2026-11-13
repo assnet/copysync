@@ -5,7 +5,7 @@ import { EnqueueOfferUseCase } from '../EnqueueOfferUseCase';
 import { FakeEntitlementReader, InMemoryOfferDispatchRepository, InMemoryOfferGeneratorConfigRepository, InMemoryOfferRepository } from '../offerTestFakes';
 import {
   AT_TOKEN, FakeCatalog, FakeCredentials, FakeRanker, FakeRiskGate, HUNT, InMemoryFinds, InMemoryHunts, InMemoryRuns,
-  InMemorySettings, MAX_ENTITLEMENTS, NOW, TENANT, makeHunt,
+  InMemorySettings, MAX_ENTITLEMENTS, NOW, TENANT, makeHunt, testProviders, FakeHuntCatalogSource,
 } from './hunterTestFakes';
 import { huntCandidate } from '../../../domain/services/hunter/huntTestFixtures';
 import type { OfferHunt } from '../../../domain/hunter/OfferHunt';
@@ -21,6 +21,7 @@ function setup(opts: { hunt?: Partial<OfferHunt>; ent?: Record<string, unknown>;
   const finds = new InMemoryFinds();
   const settings = new InMemorySettings();
   const catalog = new FakeCatalog();
+  const mlCatalog = new FakeHuntCatalogSource('MERCADO_LIVRE');
   const credentials = new FakeCredentials();
   const riskGate = new FakeRiskGate();
   const entitlements = new FakeEntitlementReader({ ...MAX_ENTITLEMENTS, ...opts.ent });
@@ -45,18 +46,19 @@ function setup(opts: { hunt?: Partial<OfferHunt>; ent?: Record<string, unknown>;
     images: { storeImage: async () => null, discardImage: async () => {} },
     enqueue: new EnqueueOfferUseCase({ offers, dispatches, rand: () => 0 }),
     configs: new InMemoryOfferGeneratorConfigRepository(),
+    providers: testProviders(catalog, mlCatalog),
     now: () => NOW,
   });
   const sleeps: number[] = [];
   const uc = new RunOfferHuntUseCase({
-    hunts, runs, finds, catalog, credentials, entitlements, riskGate, ranker, delivery,
+    hunts, runs, finds, providers: testProviders(catalog, mlCatalog), credentials, entitlements, riskGate, ranker, delivery,
     sleep: async (ms) => { sleeps.push(ms); }, rand: () => 0.5,
   });
   const run = (patch: Partial<RunOfferHuntInput> = {}) => uc.execute({ tenantId: TENANT, huntId: HUNT, trigger: 'MANUAL', now: NOW, ...patch });
-  return { uc, run, hunts, runs, finds, settings, catalog, credentials, riskGate, entitlements, ranker, offers, sleeps, resolveCalls };
+  return { uc, run, hunts, runs, finds, settings, catalog, mlCatalog, credentials, riskGate, entitlements, ranker, offers, sleeps, resolveCalls };
 }
 
-const items = (...ids: string[]) => ids.map((goodsId, i) => huntCandidate({ goodsId, commissionNewCents: 1000 - i * 100 }));
+const items = (...ids: string[]) => ids.map((productId, i) => huntCandidate({ productId, commissionNewCents: 1000 - i * 100 }));
 
 describe('RunOfferHuntUseCase — portões (HUNT-12)', () => {
   const gates: [string, (s: ReturnType<typeof setup>) => void, string, string | null][] = [
@@ -120,9 +122,9 @@ describe('RunOfferHuntUseCase — portões (HUNT-12)', () => {
 
   it('guarda de 24 execuções/dia → OFFER_HUNT_RUN_THROTTLED sem chamar a Shein; SKIPPED não conta', async () => {
     const s = setup();
-    for (let i = 0; i < 24; i++) await s.runs.createSkipped({ tenantId: TENANT, huntId: HUNT, trigger: 'SCHEDULED', startedAt: NOW, errorCode: 'X' });
+    for (let i = 0; i < 24; i++) await s.runs.createSkipped({ tenantId: TENANT, huntId: HUNT, trigger: 'SCHEDULED', startedAt: NOW, errorCode: 'X', provider: 'SHEIN' as const });
     await s.run();
-    for (let i = 0; i < 23; i++) await s.runs.startWithinDailyLimit({ tenantId: TENANT, huntId: HUNT, trigger: 'MANUAL', startedAt: NOW }, { since: NOW, limit: 99 });
+    for (let i = 0; i < 23; i++) await s.runs.startWithinDailyLimit({ tenantId: TENANT, huntId: HUNT, trigger: 'MANUAL', startedAt: NOW, provider: 'SHEIN' as const }, { since: NOW, limit: 99 });
     const calls = s.catalog.calls.length;
     await expect(s.run()).rejects.toMatchObject({ code: 'OFFER_HUNT_RUN_THROTTLED', statusCode: 429 });
     expect(s.catalog.calls).toHaveLength(calls);
@@ -212,10 +214,10 @@ describe('RunOfferHuntUseCase — busca, seleção e gravação', () => {
     s.finds.seed({ goodsId: '1001', createdAt: new Date(NOW.getTime() - 86_400_000) });
     s.catalog.pages = [{
       items: [
-        huntCandidate({ goodsId: '1001', sales: 1000, reviews: 2000 }),
-        huntCandidate({ goodsId: '1002', sales: 1000, reviews: 2000 }),
-        huntCandidate({ goodsId: '1003', sales: 100, reviews: 2000, rating: null }),
-        huntCandidate({ goodsId: '1004', sales: 100, reviews: 10 }),
+        huntCandidate({ productId: '1001', sales: 1000, reviews: 2000 }),
+        huntCandidate({ productId: '1002', sales: 1000, reviews: 2000 }),
+        huntCandidate({ productId: '1003', sales: 100, reviews: 2000, rating: null }),
+        huntCandidate({ productId: '1004', sales: 100, reviews: 10 }),
       ],
       hasNextPage: false, total: 4,
     }];
@@ -225,7 +227,7 @@ describe('RunOfferHuntUseCase — busca, seleção e gravação', () => {
     expect(s.runs.items[0]!.rejectedBy).toEqual(out.rejectedBy);
     // Ranking gravado na execução = o devolvido, com comissões 1ª compra/recompra e marca de escolhido
     expect(s.runs.items[0]!.ranking).toEqual(out.ranking);
-    expect(out.ranking.map((r) => [r.goodsId, r.chosen])).toEqual([['1002', true]]);
+    expect(out.ranking.map((r) => [r.productId, r.chosen])).toEqual([['1002', true]]);
     expect(out.ranking[0]).toMatchObject({ salesBucket: 1000, reviewsBucket: 2000, commissionPercent: expect.any(Number), returningCommissionPercent: expect.any(Number) });
     expect(JSON.stringify(s.runs.items[0]!.ranking)).not.toContain('SECRET');
   });
@@ -245,7 +247,7 @@ describe('RunOfferHuntUseCase — busca, seleção e gravação', () => {
   });
 
   it('IA ok: reordena o top e grava o motivo; recebe no máx. 15 e topN = min(topN, saldo)', async () => {
-    const ranker = new FakeRanker([{ goodsId: '2030', reason: 'Melhor custo' }, { goodsId: '2010', reason: 'Vende muito' }]);
+    const ranker = new FakeRanker([{ productId: '2030', reason: 'Melhor custo' }, { productId: '2010', reason: 'Vende muito' }]);
     const s = setup({ hunt: { aiEnabled: true }, ranker });
     s.catalog.pages = [{ items: items(...Array.from({ length: 10 }, (_, i) => `20${i}0`)), hasNextPage: true, total: 99 },
       { items: items(...Array.from({ length: 10 }, (_, i) => `30${i}0`)), hasNextPage: false, total: 99 }];
@@ -330,5 +332,76 @@ describe('RunOfferHuntUseCase — AUTO e segredo', () => {
     const dump = JSON.stringify([ok, failed, s.runs.items, s.finds.items, s.offers.items, s.ranker.inputs, err, (err as Error).message,
       spies.map((sp) => sp.mock.calls)]);
     expect(dump).not.toContain(AT_TOKEN);
+  });
+});
+
+describe('RunOfferHuntUseCase — multimarca (Mercado Livre)', () => {
+  const mlItem = (productId: string, i = 0) => huntCandidate({
+    provider: 'MERCADO_LIVRE', productId, skc: null, activityId: null, hasSecondaryCommission: false,
+    commissionReturningPct: 0, commissionReturningCents: 0, commissionNewCents: 1000 - i * 100, imageUrl: 'https://http2.mlstatic.com/a.webp',
+  });
+  const mlSetup = (hunt: Partial<OfferHunt> = {}) => {
+    const s = setup({
+      hunt: { provider: 'MERCADO_LIVRE', sourceOptions: { extraEarningsOnly: true }, ...hunt },
+      ent: { [K.MARKETPLACE_SHEIN_ENABLED]: false },
+    });
+    s.credentials.state = { state: 'ok', cred: { provider: 'MERCADO_LIVRE', publicIdentifier: 'tag', secret: null, session: { cookies: { ssid: 'SSID-SECRET' } } } };
+    return s;
+  };
+
+  it('portões da marca: sem plano Shein roda; credencial/aceite ML; fonte ML com sort padrão e flags; achado ML sem goodsId', async () => {
+    const s = mlSetup();
+    s.mlCatalog.pages = [{ items: [mlItem('MLB100100'), mlItem('MLB100200', 1)], hasNextPage: false }];
+    const out = await s.run();
+    expect(out.status).toBe('SUCCEEDED');
+    expect(s.riskGate.calls[0]).toEqual([TENANT, 'MERCADO_LIVRE', 'OFFER_HUNTER']);
+    expect(s.catalog.calls).toHaveLength(0);
+    expect(s.mlCatalog.calls.map((c) => c.method)).toEqual(['listCategories', 'fetchPage']);
+    expect(s.mlCatalog.calls[1]!.query).toMatchObject({
+      page: 1, keyword: null, category: { categoryId: null }, options: { sort: 'relevance', extraEarningsOnly: true },
+    });
+    expect(out.finds.map((f) => [f.provider, f.productId, f.goodsId])).toEqual([['MERCADO_LIVRE', 'MLB100100', null], ['MERCADO_LIVRE', 'MLB100200', null]]);
+    expect(out.ranking.every((r) => r.provider === 'MERCADO_LIVRE')).toBe(true);
+    expect(s.runs.items[0]!.provider).toBe('MERCADO_LIVRE');
+  });
+
+  it('credencial ML sem ssid → AFFILIATE_CREDENTIAL_REQUIRED sem chamar a fonte', async () => {
+    const s = mlSetup();
+    s.credentials.state = { state: 'ok', cred: { provider: 'MERCADO_LIVRE', publicIdentifier: 'tag', secret: null, session: { cookies: {} } } };
+    await expect(s.run()).rejects.toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REQUIRED' });
+    expect(s.mlCatalog.calls).toHaveLength(0);
+  });
+
+  it('repetição por marca: mesmo id escolhido pela Shein não barra; pelo ML barra', async () => {
+    const s = mlSetup();
+    s.finds.seed({ provider: 'SHEIN', productId: 'MLB100100', createdAt: new Date(NOW.getTime() - 86_400_000) });
+    s.finds.seed({ provider: 'MERCADO_LIVRE', productId: 'MLB100200', createdAt: new Date(NOW.getTime() - 86_400_000) });
+    s.mlCatalog.pages = [{ items: [mlItem('MLB100100'), mlItem('MLB100200', 1)], hasNextPage: false }];
+    const out = await s.run();
+    expect(out.finds.map((f) => f.productId)).toEqual(['MLB100100']);
+    expect(out.rejectedBy).toMatchObject({ repeated: 1 });
+  });
+
+  it('teto somado: achados Shein do dia consomem o saldo do ML', async () => {
+    const s = mlSetup();
+    for (let i = 0; i < 10; i++) s.finds.seed({ provider: 'SHEIN', productId: `9${i}000` });
+    await expect(s.run()).rejects.toMatchObject({ code: 'OFFER_HUNT_DAILY_LIMIT' });
+    expect(s.mlCatalog.calls).toHaveLength(0);
+  });
+
+  it('sessão recusada pela fonte ML → marca recusa na credencial ML e pausa', async () => {
+    const s = mlSetup();
+    s.mlCatalog.error = new AffiliateCredentialRejectedError('MERCADO_LIVRE');
+    const out = await s.run({ trigger: 'SCHEDULED' });
+    expect(out).toMatchObject({ status: 'FAILED', pausedReason: 'CREDENTIAL_REJECTED' });
+    expect(s.credentials.rejected).toHaveLength(1);
+  });
+
+  it('AUTO: link pedido ao Resolve com a URL do anúncio ML', async () => {
+    const s = mlSetup({ deliveryMode: 'AUTO' });
+    await s.settings.upsert(TENANT, 'session-1', 'conv-1');
+    s.mlCatalog.pages = [{ items: [mlItem('MLB100100')], hasNextPage: false }];
+    await s.run().catch(() => null);
+    expect(s.resolveCalls[0]?.[1]).toBe('https://produto.mercadolivre.com.br/MLB-100100');
   });
 });

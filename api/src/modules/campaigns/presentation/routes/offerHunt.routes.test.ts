@@ -42,7 +42,7 @@ vi.mock('../../../../shared/http/hooks/resolveMembership', async () => {
 
 const URL = '/api/offer-hunts';
 const RUN_BASE = {
-  id: 'run-1', tenantId: 'tenant-a', huntId: 'hunt-1', trigger: 'MANUAL' as const, status: 'SUCCEEDED' as const, seenCount: 5, matchedCount: 2,
+  id: 'run-1', tenantId: 'tenant-a', provider: 'SHEIN' as const, huntId: 'hunt-1', trigger: 'MANUAL' as const, status: 'SUCCEEDED' as const, seenCount: 5, matchedCount: 2,
   chosenCount: 1, sentCount: 0, aiUsed: false, aiFallback: false, rejectedBy: { minSales: 3 }, errorCode: null, startedAt: NOW, finishedAt: NOW,
 };
 const ID = 'hunt-1';
@@ -50,7 +50,7 @@ const ID = 'hunt-1';
 const GATED: [string, string, object?][] = [
   ['GET', '/'], ['POST', '/', { name: 'x' }], ['GET', `/${ID}`], ['PUT', `/${ID}`, { topN: 2 }], ['DELETE', `/${ID}`],
   ['POST', `/${ID}/pause`], ['POST', `/${ID}/resume`], ['POST', `/${ID}/run`], ['GET', `/${ID}/runs`], ['GET', `/${ID}/runs/run-1`], ['GET', `/${ID}/finds`],
-  ['POST', '/finds/f1/approve'], ['POST', '/finds/f1/dismiss'], ['POST', '/finds/f1/resend'], ['GET', '/usage'], ['GET', '/options'], ['GET', '/settings'],
+  ['POST', '/finds/f1/approve'], ['POST', '/finds/f1/dismiss'], ['POST', '/finds/f1/resend'], ['GET', '/usage'], ['GET', '/options'], ['GET', '/options/providers'], ['GET', '/settings'],
   ['PUT', '/settings', { sessionId: 's1', conversationId: 'c1' }],
 ];
 
@@ -67,7 +67,8 @@ async function call(method: string, path: string, payload?: object) {
 }
 
 const find: OfferHuntFind = {
-  id: 'f1', tenantId: 'tenant-a', huntId: ID, runId: 'run-1', status: 'PENDING_REVIEW', goodsId: '12345678', skcCode: 'sk1',
+  id: 'f1', tenantId: 'tenant-a', huntId: ID, runId: 'run-1', status: 'PENDING_REVIEW', provider: 'SHEIN', productId: '12345678', goodsId: '12345678',
+  commissionEstimated: false, skcCode: 'sk1',
   activityId: 'act1', title: 'Vestido', imageUrl: 'https://img.ltwebstatic.com/v.jpg', priceCents: 5990, originalPriceCents: 9990, discountPercent: 40, commissionPercent: 15,
   commissionCents: 898, returningCommissionPercent: 5, returningCommissionCents: 300, extraCommissionCents: 0, salesBucket: 1000,
   reviewsBucket: 100, rating: 4.8, score: 81.5, factors: [{ key: 'commission', points: 30, max: 40 }], aiReason: null,
@@ -169,7 +170,7 @@ describe('rotas (super admin)', () => {
     const out: RunOfferHuntOutput = {
       runId: 'run-1', status: 'SUCCEEDED', errorCode: null, seenCount: 30, matchedCount: 12, chosenCount: 1, sentCount: 0,
       aiUsed: true, aiFallback: false, rejectedBy: { minSales: 21, minReviews: 14, repeated: 2 },
-      ranking: [{ goodsId: '12345678', title: 'Vestido', imageUrl: 'https://img.ltwebstatic.com/a.jpg', priceCents: 5990,
+      ranking: [{ provider: 'SHEIN', productId: '12345678', commissionEstimated: false, title: 'Vestido', imageUrl: 'https://img.ltwebstatic.com/a.jpg', priceCents: 5990,
         discountPercent: 40, commissionPercent: 20, commissionCents: 1198, returningCommissionPercent: 4.9, returningCommissionCents: 293,
         extraCommissionCents: 0, salesBucket: 1000, reviewsBucket: 500, rating: 4.8, score: 81.5,
         factors: [{ key: 'commission', points: 30, max: 40 }], aiReason: 'Boa comissão', chosen: true }],
@@ -180,7 +181,9 @@ describe('rotas (super admin)', () => {
     expect(res.statusCode).toBe(200);
     const data = res.json().data;
     expect(data.rejectedBy).toEqual({ minSales: 21, minReviews: 14, repeated: 2 });
-    expect(data.ranking[0]).toEqual(out.ranking[0]);
+    // Shein também sai com `goodsId` (= productId) para o painel anterior
+    expect(data.ranking[0]).toEqual({ ...out.ranking[0], goodsId: '12345678' });
+    expect(data.finds[0]).toMatchObject({ provider: 'SHEIN', productId: '12345678', goodsId: '12345678', commissionEstimated: false });
     expect(data.finds[0]).toMatchObject({ id: 'f1', score: 81.5, factors: [{ key: 'commission', points: 30, max: 40 }] });
     expect(data.finds[0].imageUrl).toBe('https://img.ltwebstatic.com/v.jpg');
     expect(data.finds[0].skcCode).toBeUndefined();
@@ -216,7 +219,7 @@ describe('rotas (super admin)', () => {
 
   it('GET /:id/runs/:runId: execução com ranking; outro tenant/caçada → 404 OFFER_HUNT_NOT_FOUND', async () => {
     const { PrismaOfferHuntRunRepository } = await import('../../infrastructure/repositories/hunter/PrismaOfferHuntRunRepository');
-    const ranking = [{ goodsId: '1', title: 'V', imageUrl: null, priceCents: 100, discountPercent: null, commissionPercent: 10, commissionCents: 10,
+    const ranking = [{ provider: 'SHEIN' as const, productId: '1', commissionEstimated: false, title: 'V', imageUrl: null, priceCents: 100, discountPercent: null, commissionPercent: 10, commissionCents: 10,
       returningCommissionPercent: null, returningCommissionCents: null, extraCommissionCents: 0, salesBucket: null, reviewsBucket: null,
       rating: null, score: 50, factors: [], aiReason: null, chosen: true }];
     const get = vi.spyOn(PrismaOfferHuntRunRepository.prototype, 'findById').mockResolvedValueOnce({ ...RUN_BASE, ranking });
@@ -238,6 +241,53 @@ describe('rotas (super admin)', () => {
     const res = await call('PUT', '/settings', { sessionId: 's1', conversationId: 'c-outro' });
     expect(res.statusCode).toBe(404);
     expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it('GET /options?provider: marca vai ao use case (padrão SHEIN); marca desconhecida → 400', async () => {
+    const { GetOfferHunterOptionsUseCase } = await import('../../application/use-cases/hunter/OfferHunterInfoUseCases');
+    const exec = vi.spyOn(GetOfferHunterOptionsUseCase.prototype, 'execute').mockResolvedValue({ provider: 'MERCADO_LIVRE' } as never);
+    expect((await call('GET', '/options?provider=MERCADO_LIVRE')).statusCode).toBe(200);
+    expect(exec).toHaveBeenLastCalledWith('tenant-a', 'MERCADO_LIVRE');
+    await call('GET', '/options');
+    expect(exec).toHaveBeenLastCalledWith('tenant-a', 'SHEIN');
+    expect((await call('GET', '/options?provider=SHOPEE')).statusCode).toBe(400);
+  });
+
+  it('GET /options/providers: portões por marca, sem chamar a fonte', async () => {
+    const { GetOfferHunterProvidersUseCase } = await import('../../application/use-cases/hunter/OfferHunterInfoUseCases');
+    const gates = { plan: true, hunterEntitlement: true, credential: false, riskAccepted: false, aiAvailable: true, destination: false };
+    const items = [{ provider: 'SHEIN' as const, credentialState: 'MISSING' as const, gates }, { provider: 'MERCADO_LIVRE' as const, credentialState: 'OK' as const, gates }];
+    vi.spyOn(GetOfferHunterProvidersUseCase.prototype, 'execute').mockResolvedValue({ items });
+    const res = await call('GET', '/options/providers');
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toEqual({ items });
+  });
+
+  it('POST / com provider e sourceOptions da marca; marca desconhecida → 400; filtro fora da marca → 422', async () => {
+    const create = vi.spyOn(PrismaOfferHuntRepository.prototype, 'createWithinLimit')
+      .mockImplementation(async (input) => ({ ...makeHunt({ tenantId: 'tenant-a' }), ...input, id: 'hunt-ml' }));
+    const res = await call('POST', '/', {
+      name: 'ML', provider: 'MERCADO_LIVRE', sourceOptions: { sort: 'lowest_price', extraEarningsOnly: true }, aiConfigured: true, aiIntent: 'moda',
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().data).toMatchObject({
+      provider: 'MERCADO_LIVRE', sourceOptions: { sort: 'lowest_price', extraEarningsOnly: true, bestSellersOnly: null }, aiConfigured: true, aiIntent: 'moda',
+    });
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ provider: 'MERCADO_LIVRE' }), 5);
+    // Sem provider: Shein (API anterior)
+    await call('POST', '/', { name: 'Shein' });
+    expect(create).toHaveBeenLastCalledWith(expect.objectContaining({ provider: 'SHEIN', sourceOptions: null }), 5);
+    expect((await call('POST', '/', { name: 'x', provider: 'SHOPEE' })).statusCode).toBe(400);
+    const bad = await call('POST', '/', { name: 'x', provider: 'MERCADO_LIVRE', filters: { minReviews: 10 } });
+    expect(bad.statusCode).toBe(422);
+    expect(JSON.stringify(bad.json())).toContain('filters.minReviews');
+  });
+
+  it('PUT /:id não troca a marca → 422 provider', async () => {
+    vi.spyOn(PrismaOfferHuntRepository.prototype, 'findById').mockResolvedValue(makeHunt({ tenantId: 'tenant-a' }));
+    const res = await call('PUT', `/${ID}`, { provider: 'MERCADO_LIVRE' });
+    expect(res.statusCode).toBe(422);
+    expect(JSON.stringify(res.json())).toContain('provider');
   });
 
   it('DELETE /:id → 204', async () => {

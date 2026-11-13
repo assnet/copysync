@@ -3,7 +3,8 @@ import type { HuntCandidate } from '../../hunter/HuntCandidate';
 /** Candidato de teste (valores parecidos com os da sonda). Usado só por testes. */
 export function huntCandidate(patch: Partial<HuntCandidate> = {}): HuntCandidate {
   return {
-    goodsId: '533885353',
+    provider: 'SHEIN',
+    productId: '533885353',
     skc: 'sz2407221234567890',
     activityId: '20',
     title: 'Vestido Midi Floral',
@@ -22,6 +23,10 @@ export function huntCandidate(patch: Partial<HuntCandidate> = {}): HuntCandidate
     rank: 3,
     categoryId: '4436',
     campaignEndsAt: null,
+    hasSecondaryCommission: true,
+    // Shein: extra marcado = R$ extra > 0
+    extraFlag: (patch.extraCommissionCents ?? 0) > 0,
+    commissionEstimated: false,
     ...patch,
   };
 }

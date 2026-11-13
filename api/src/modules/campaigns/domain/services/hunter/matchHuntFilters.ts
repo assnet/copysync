@@ -17,7 +17,8 @@ function set(v: number | null | undefined): v is number {
 /**
  * Filtros locais (HUNT-03) que recusam o candidato, na ordem fixa dos campos; vazio = passa. Filtro
  * ausente/null = não filtra. Filtro ligado e dado ausente no candidato (preço, nota, data de fim) = recusa
- * por aquela chave. Comissão % (com `commissionOperator`, ausente = GTE) e R$ olham a de cliente novo.
+ * por aquela chave. Comissão % (com `commissionOperator`, ausente = GTE) e R$ olham a primária (Shein: cliente
+ * novo; ML: percentual do hub). Extra: `extraFlag` ou R$ extra > 0.
  * `endsWithinDays`: termina entre `now` e `now + N dias` (já terminada = fora).
  */
 export function huntFilterRejections(c: HuntCandidate, f: HuntLocalFilters, now: Date): HuntFilterKey[] {
@@ -32,7 +33,7 @@ export function huntFilterRejections(c: HuntCandidate, f: HuntLocalFilters, now:
   if (set(f.minRating) && (c.rating === null || c.rating < f.minRating)) out.push('minRating');
   if (set(f.minSales) && c.sales < f.minSales) out.push('minSales');
   if (set(f.minReviews) && c.reviews < f.minReviews) out.push('minReviews');
-  if (f.onlyWithExtra === true && c.extraCommissionCents <= 0) out.push('onlyWithExtra');
+  if (f.onlyWithExtra === true && !c.extraFlag && c.extraCommissionCents <= 0) out.push('onlyWithExtra');
   if (set(f.endsWithinDays)) {
     const ends = c.campaignEndsAt?.getTime();
     if (ends === undefined || ends < now.getTime() || ends > now.getTime() + f.endsWithinDays * DAY_MS) out.push('endsWithinDays');

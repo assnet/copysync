@@ -122,7 +122,19 @@ describe('POST /:provider/risk-acceptance', () => {
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ scope: 'OFFER_HUNTER', noticeVersion: HUNTER_VERSION }));
   });
 
-  it('scope inválido → 400; OFFER_HUNTER fora da SHEIN → 422; super admin → 403 no link', async () => {
+  it('scope OFFER_HUNTER no MERCADO_LIVRE: grava com a versão própria do ML', async () => {
+    db.members.set('u1:t1', { role: 'ADMIN', tenant: { status: 'ACTIVE' } });
+    const mlVersion = OFFER_HUNTER_RISK_NOTICE_VERSION.MERCADO_LIVRE!;
+    const mlRow = { ...row, provider: 'MERCADO_LIVRE' as const, scope: 'OFFER_HUNTER' as const, noticeVersion: mlVersion };
+    const create = vi.spyOn(PrismaMarketplaceRiskAcceptanceRepository.prototype, 'create').mockResolvedValue({ acceptance: mlRow, created: true });
+    vi.spyOn(PrismaAuditLogRepository.prototype, 'create').mockResolvedValue(undefined);
+    const res = await accept('u1', { noticeVersion: mlVersion, locale: 'pt-BR', scope: 'OFFER_HUNTER' }, 'MERCADO_LIVRE');
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toEqual({ acceptedAt: AT.toISOString(), noticeVersion: mlVersion, scope: 'OFFER_HUNTER' });
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ provider: 'MERCADO_LIVRE', scope: 'OFFER_HUNTER', noticeVersion: mlVersion }));
+  });
+
+  it('scope inválido → 400; OFFER_HUNTER em marca sem aviso do caçador → 422; super admin → 403 no link', async () => {
     db.members.set('u1:t1', { role: 'ADMIN', tenant: { status: 'ACTIVE' } });
     const create = vi.spyOn(PrismaMarketplaceRiskAcceptanceRepository.prototype, 'create');
     expect((await accept('u1', { noticeVersion: HUNTER_VERSION, locale: 'pt-BR', scope: 'OTHER' })).statusCode).toBe(400);

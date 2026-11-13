@@ -95,6 +95,11 @@ describe('MercadoLivreAffiliateClient.listAccountTags', () => {
     stubFetch(async () => json({}, 429));
     await expect(client().listAccountTags(COOKIES)).rejects.toBeInstanceOf(AffiliateApiRateLimitedError);
   });
+
+  it('403 no bootstrap segue = sessão recusada (helper compartilhado com o hub)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('x', { status: 403 })));
+    await expect(client().listAccountTags(COOKIES)).rejects.toBeInstanceOf(AffiliateCredentialRejectedError);
+  });
 });
 
 describe('MercadoLivreAffiliateClient.getActiveTag', () => {

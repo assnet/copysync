@@ -7,6 +7,7 @@ import type {
 } from '@prisma/client';
 import { HUNT_REJECTION_KEYS, type HuntCommissionBand, type HuntRejectionCounts, type HuntRejectionKey, type HuntScoreFactor, type HuntSort } from '../../domain/hunter/HuntCandidate';
 import type { OfferHunt, OfferHuntDefinition, OfferHuntFind, OfferHuntFindSnapshot, OfferHunterSettings, OfferHuntRankingItem, OfferHuntRun, OfferHuntRunSummary } from '../../domain/hunter/OfferHunt';
+import { isHuntProvider, type HuntProvider, type HuntSourceOptions } from '../../domain/hunter/HuntProvider';
 import { COMM_RATE, SORT_CODE } from '../http/SheinCatalogClient';
 
 // O banco guarda os códigos da própria fonte (sort 0/7/9…, commRate 1–5); o domínio usa os nomes.
@@ -44,31 +45,43 @@ export function rejectionsOf(raw: Prisma.JsonValue | null | undefined): HuntReje
 const numOrNull = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const strOrNull = (v: unknown): string | null => (typeof v === 'string' ? v : null);
 
-/** Lê o ranking gravado; item sem `goodsId`/`score` some; coluna nula ou não-lista = null. */
-export function rankingOf(raw: Prisma.JsonValue | null | undefined): OfferHuntRankingItem[] | null {
+/** Marca gravada; ausente/estranha = SHEIN (tudo antes do multimarca era Shein). */
+const providerOf = (v: unknown, fallback: HuntProvider = 'SHEIN'): HuntProvider => (isHuntProvider(v) ? v : fallback);
+
+/**
+ * Lê o ranking gravado; item sem id (`productId`, ou `goodsId` do JSON antigo) ou `score` some; coluna nula ou
+ * não-lista = null. Item sem `provider` herda o da execução.
+ */
+export function rankingOf(raw: Prisma.JsonValue | null | undefined, runProvider: HuntProvider = 'SHEIN'): OfferHuntRankingItem[] | null {
   if (!Array.isArray(raw)) return null;
   return raw.flatMap((x) => {
     if (!x || typeof x !== 'object' || Array.isArray(x)) return [];
     const o = x as Record<string, unknown>;
-    if (typeof o.goodsId !== 'string' || typeof o.score !== 'number') return [];
+    const productId = typeof o.productId === 'string' ? o.productId : typeof o.goodsId === 'string' ? o.goodsId : null;
+    if (productId === null || typeof o.score !== 'number') return [];
     return [{
-      goodsId: o.goodsId, title: strOrNull(o.title), imageUrl: strOrNull(o.imageUrl), priceCents: numOrNull(o.priceCents),
+      provider: providerOf(o.provider, runProvider), productId, title: strOrNull(o.title), imageUrl: strOrNull(o.imageUrl), priceCents: numOrNull(o.priceCents),
       discountPercent: numOrNull(o.discountPercent), commissionPercent: numOrNull(o.commissionPercent),
       commissionCents: numOrNull(o.commissionCents), returningCommissionPercent: numOrNull(o.returningCommissionPercent),
       returningCommissionCents: numOrNull(o.returningCommissionCents), extraCommissionCents: numOrNull(o.extraCommissionCents),
+      commissionEstimated: o.commissionEstimated === true,
       salesBucket: numOrNull(o.salesBucket), reviewsBucket: numOrNull(o.reviewsBucket), rating: numOrNull(o.rating),
       score: o.score, factors: factorsOf((o.factors ?? null) as Prisma.JsonValue), aiReason: strOrNull(o.aiReason), chosen: o.chosen === true,
     }];
   });
 }
 
-/** Grava o ranking só com a lista fechada de campos (nada além do que a tela mostra). */
+/**
+ * Grava o ranking só com a lista fechada de campos (nada além do que a tela mostra). Shein também leva `goodsId`
+ * (= productId) para a leitura da versão anterior em caso de rollback.
+ */
 export function rankingToData(r: OfferHuntRankingItem[] | null): Prisma.InputJsonValue | typeof Prisma.DbNull {
   if (r === null) return Prisma.DbNull;
   return r.map((i) => ({
-    goodsId: i.goodsId, title: i.title, imageUrl: i.imageUrl, priceCents: i.priceCents, discountPercent: i.discountPercent,
+    provider: i.provider, productId: i.productId, ...(i.provider === 'SHEIN' ? { goodsId: i.productId } : {}), title: i.title, imageUrl: i.imageUrl, priceCents: i.priceCents, discountPercent: i.discountPercent,
     commissionPercent: i.commissionPercent, commissionCents: i.commissionCents, returningCommissionPercent: i.returningCommissionPercent,
-    returningCommissionCents: i.returningCommissionCents, extraCommissionCents: i.extraCommissionCents, salesBucket: i.salesBucket,
+    returningCommissionCents: i.returningCommissionCents, extraCommissionCents: i.extraCommissionCents,
+    commissionEstimated: i.commissionEstimated, salesBucket: i.salesBucket,
     reviewsBucket: i.reviewsBucket, rating: i.rating, score: i.score,
     factors: i.factors.map((f) => ({ key: f.key, points: f.points, max: f.max })), aiReason: i.aiReason, chosen: i.chosen,
   })) as Prisma.InputJsonValue;
@@ -79,11 +92,28 @@ export function rejectionsToData(r: HuntRejectionCounts | null): Prisma.InputJso
   return r === null ? Prisma.DbNull : ({ ...r } as Prisma.InputJsonValue);
 }
 
+/** Lê `sourceOptions`: só as chaves conhecidas com o tipo certo; vazio/estranho = null. */
+export function sourceOptionsOf(raw: Prisma.JsonValue | null | undefined): HuntSourceOptions | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const o = raw as Record<string, unknown>;
+  const out: HuntSourceOptions = {};
+  if (typeof o.sort === 'string') out.sort = o.sort;
+  if (typeof o.extraEarningsOnly === 'boolean') out.extraEarningsOnly = o.extraEarningsOnly;
+  if (typeof o.bestSellersOnly === 'boolean') out.bestSellersOnly = o.bestSellersOnly;
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+function sourceOptionsToData(o: HuntSourceOptions | null): Prisma.InputJsonValue | typeof Prisma.DbNull {
+  const v = sourceOptionsOf((o ?? null) as Prisma.JsonValue);
+  return v === null ? Prisma.DbNull : (v as Prisma.InputJsonValue);
+}
+
 export class PrismaOfferHuntMapper {
   static huntToDomain(raw: PrismaOfferHunt): OfferHunt {
     return {
       id: raw.id,
       tenantId: raw.tenantId,
+      provider: providerOf(raw.provider),
       name: raw.name,
       status: raw.status,
       pauseReason: raw.pauseReason,
@@ -91,6 +121,7 @@ export class PrismaOfferHuntMapper {
       categoryId: raw.categoryId,
       commissionBand: raw.commissionBand === null ? null : (BAND_OF_CODE.get(raw.commissionBand) ?? null),
       keyword: raw.keyword,
+      sourceOptions: sourceOptionsOf(raw.sourceOptions),
       filters: {
         minPriceCents: raw.minPriceCents,
         maxPriceCents: raw.maxPriceCents,
@@ -105,6 +136,8 @@ export class PrismaOfferHuntMapper {
         endsWithinDays: raw.endsWithinDays,
       },
       aiEnabled: raw.aiEnabled,
+      aiConfigured: raw.aiConfigured,
+      aiIntent: raw.aiIntent,
       topN: raw.topN,
       repeatAfterDays: raw.repeatAfterDays,
       deliveryMode: raw.deliveryMode,
@@ -123,6 +156,9 @@ export class PrismaOfferHuntMapper {
   /** Definição (parcial) → colunas. Campo ausente não entra no `data`. */
   static definitionToData(d: Partial<OfferHuntDefinition>): Prisma.OfferHuntUncheckedUpdateInput {
     const out: Prisma.OfferHuntUncheckedUpdateInput = {};
+    if (d.provider !== undefined) out.provider = d.provider;
+    if (d.sourceOptions !== undefined) out.sourceOptions = sourceOptionsToData(d.sourceOptions);
+    if (d.aiIntent !== undefined) out.aiIntent = d.aiIntent;
     if (d.name !== undefined) out.name = d.name;
     if (d.sort !== undefined) out.sort = SORT_CODE[d.sort];
     if (d.categoryId !== undefined) out.categoryId = d.categoryId;
@@ -142,7 +178,7 @@ export class PrismaOfferHuntMapper {
       out.extraCommissionOnly = f.onlyWithExtra === true;
       out.endsWithinDays = f.endsWithinDays ?? null;
     }
-    for (const k of ['aiEnabled', 'topN', 'repeatAfterDays', 'deliveryMode', 'intervalMinutes', 'windowStartMinute', 'windowEndMinute', 'weekdaysMask'] as const) {
+    for (const k of ['aiEnabled', 'aiConfigured', 'topN', 'repeatAfterDays', 'deliveryMode', 'intervalMinutes', 'windowStartMinute', 'windowEndMinute', 'weekdaysMask'] as const) {
       if (d[k] !== undefined) (out as Record<string, unknown>)[k] = d[k];
     }
     return out;
@@ -152,6 +188,7 @@ export class PrismaOfferHuntMapper {
     return {
       id: raw.id,
       tenantId: raw.tenantId,
+      provider: providerOf(raw.provider),
       huntId: raw.huntId,
       trigger: raw.trigger,
       status: raw.status,
@@ -162,7 +199,7 @@ export class PrismaOfferHuntMapper {
       aiUsed: raw.aiUsed,
       aiFallback: raw.aiFallback,
       rejectedBy: rejectionsOf(raw.rejectedBy),
-      ranking: rankingOf(raw.ranking),
+      ranking: rankingOf(raw.ranking, providerOf(raw.provider)),
       errorCode: raw.errorCode,
       startedAt: raw.startedAt,
       finishedAt: raw.finishedAt,
@@ -181,6 +218,9 @@ export class PrismaOfferHuntMapper {
       tenantId: raw.tenantId,
       huntId: raw.huntId,
       runId: raw.runId,
+      provider: providerOf(raw.provider),
+      // Linha gravada pelo código anterior (deploy em voo) só tem goodsId
+      productId: raw.productId ?? raw.goodsId ?? '',
       goodsId: raw.goodsId,
       skcCode: raw.skcCode,
       activityId: raw.activityId,
@@ -194,6 +234,7 @@ export class PrismaOfferHuntMapper {
       returningCommissionPercent: num(raw.returningCommissionPercent),
       returningCommissionCents: raw.returningCommissionCents,
       extraCommissionCents: raw.extraCommissionCents,
+      commissionEstimated: raw.commissionEstimated,
       salesBucket: raw.salesBucket,
       reviewsBucket: raw.reviewsBucket,
       rating: num(raw.rating),
@@ -214,7 +255,10 @@ export class PrismaOfferHuntMapper {
 
   static snapshotToData(s: OfferHuntFindSnapshot) {
     return {
-      goodsId: s.goodsId,
+      provider: s.provider,
+      productId: s.productId,
+      // Coluna legada só da Shein
+      goodsId: s.provider === 'SHEIN' ? s.productId : null,
       skcCode: s.skcCode,
       activityId: s.activityId,
       title: s.title,
@@ -227,6 +271,7 @@ export class PrismaOfferHuntMapper {
       returningCommissionPercent: dec(s.returningCommissionPercent),
       returningCommissionCents: s.returningCommissionCents,
       extraCommissionCents: s.extraCommissionCents,
+      commissionEstimated: s.commissionEstimated,
       salesBucket: s.salesBucket,
       reviewsBucket: s.reviewsBucket,
       rating: dec(s.rating),

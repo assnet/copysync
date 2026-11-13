@@ -1,4 +1,6 @@
-import type { HuntCandidate, HuntScore, HuntScoreFactor, HuntScoreFactorKey } from '../../hunter/HuntCandidate';
+import type { HuntCandidate, HuntFilterKey, HuntScore, HuntScoreFactor, HuntScoreFactorKey } from '../../hunter/HuntCandidate';
+import type { HuntCapabilities } from '../../hunter/HuntProvider';
+import { huntCapabilities } from './huntCapabilities';
 
 /**
  * Pesos (pontos máximos) por fator. Soma = 100. Grupos: comissão 40 · prova social 30 · preço 20 ·
@@ -51,9 +53,38 @@ const DAY_MS = 86_400_000;
 const clamp01 = (x: number) => (Number.isFinite(x) ? Math.min(1, Math.max(0, x)) : 0);
 const logScale = (v: number, cap: number, ln: (x: number) => number) => clamp01(ln(1 + Math.max(0, v)) / ln(1 + cap));
 
-/** Valor esperado da comissão em centavos (ponderação acima). */
-export function expectedCommissionCents(c: Pick<HuntCandidate, 'commissionNewCents' | 'commissionReturningCents'>): number {
+/**
+ * Valor esperado da comissão em centavos: com secundária (Shein) 70% primária + 30% secundária; sem secundária
+ * (ML) 100% da primária. `hasSecondaryCommission` ausente = com secundária (comportamento original).
+ */
+export function expectedCommissionCents(
+  c: Pick<HuntCandidate, 'commissionNewCents' | 'commissionReturningCents'> & { hasSecondaryCommission?: boolean },
+): number {
+  if (c.hasSecondaryCommission === false) return Math.max(0, c.commissionNewCents);
   return N.commissionNewShare * Math.max(0, c.commissionNewCents) + N.commissionReturningShare * Math.max(0, c.commissionReturningCents);
+}
+
+/**
+ * Fator que depende de um dado que só existe se a marca o oferece (mesmo dado do filtro local). Marca sem o filtro
+ * = fator fora da nota (renormalizada). `rank` não tem filtro: sempre entra (sem rank = 0, como hoje).
+ */
+const FACTOR_DATA: Readonly<Partial<Record<HuntScoreFactorKey, HuntFilterKey>>> = {
+  commission: 'minCommissionPct',
+  sales: 'minSales',
+  rating: 'minRating',
+  reviews: 'minReviews',
+  discount: 'minDiscountPct',
+  priceBand: 'minPriceCents',
+  extraCommission: 'onlyWithExtra',
+  endingSoon: 'endsWithinDays',
+};
+
+/** Fatores da nota para a marca, na ordem fixa de `HUNT_SCORE_WEIGHTS`. */
+export function huntScoreFactorsFor(caps: Pick<HuntCapabilities, 'localFilters'>): HuntScoreFactorKey[] {
+  return (Object.keys(HUNT_SCORE_WEIGHTS) as HuntScoreFactorKey[]).filter((k) => {
+    const data = FACTOR_DATA[k];
+    return data === undefined || caps.localFilters.includes(data);
+  });
 }
 
 function priceBand(cents: number | null): number {
@@ -70,8 +101,15 @@ function endingSoon(ends: Date | null, now: Date): number {
   return clamp01(1 - left / (N.endingSoonDays * DAY_MS));
 }
 
-/** Nota 0–100 (1 casa) e fatores; a nota é exatamente a soma dos pontos dos fatores. */
+/**
+ * Nota 0–100 (1 casa) e fatores; a nota é exatamente a soma dos pontos dos fatores. Fatores que a marca não tem
+ * saem e o máximo de cada fator restante é escalado para a soma dar 100 (marca com todos os fatores = pesos
+ * originais, mesmas notas). Extra: R$ em escala log; sem R$ mas com `extraFlag` (ML "ganhos extras") = ponto cheio.
+ */
 export function scoreHuntCandidate(c: HuntCandidate, now: Date): HuntScore {
+  const keys = huntScoreFactorsFor(huntCapabilities(c.provider));
+  const total = keys.reduce((a, k) => a + HUNT_SCORE_WEIGHTS[k], 0);
+  const scale = total > 0 ? 100 / total : 0;
   const norm: Record<HuntScoreFactorKey, number> = {
     commission: logScale(expectedCommissionCents(c) / 100, N.commissionCapCents / 100, Math.log),
     sales: logScale(c.sales, N.salesCap, Math.log10),
@@ -80,16 +118,20 @@ export function scoreHuntCandidate(c: HuntCandidate, now: Date): HuntScore {
     rank: c.rank === null || c.rank < 1 ? 0 : clamp01((N.rankZeroAt - c.rank) / (N.rankZeroAt - 1)),
     discount: clamp01(c.discountPct / N.discountCapPct),
     priceBand: priceBand(c.priceCents),
-    extraCommission: logScale(c.extraCommissionCents / 100, N.extraCapCents / 100, Math.log),
+    extraCommission: c.extraCommissionCents > 0
+      ? logScale(c.extraCommissionCents / 100, N.extraCapCents / 100, Math.log)
+      : c.extraFlag ? 1 : 0,
     endingSoon: endingSoon(c.campaignEndsAt, now),
   };
   // Em décimos inteiros: a soma não sofre erro de ponto flutuante
   let tenths = 0;
-  const factors: HuntScoreFactor[] = (Object.keys(HUNT_SCORE_WEIGHTS) as HuntScoreFactorKey[]).map((key) => {
-    const max = HUNT_SCORE_WEIGHTS[key];
-    const t = Math.round(norm[key] * max * 10);
+  const factors: HuntScoreFactor[] = keys.map((key) => {
+    const exact = HUNT_SCORE_WEIGHTS[key] * scale;
+    const max = Math.round(exact * 10) / 10;
+    // Pontos nunca passam do máximo exibido (arredondado)
+    const t = Math.min(Math.round(max * 10), Math.round(norm[key] * exact * 10));
     tenths += t;
     return { key, points: t / 10, max };
   });
-  return { score: tenths / 10, factors };
+  return { score: Math.min(1000, tenths) / 10, factors };
 }

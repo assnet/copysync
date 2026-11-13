@@ -4,6 +4,8 @@ import {
   OFFER_HUNT_STATUSES,
 } from '../../domain/hunter/OfferHunt';
 import { HUNTER_LIMITS as L } from '../../domain/services/hunter/hunterLimits';
+import { HUNT_PROVIDERS } from '../../domain/hunter/HuntProvider';
+import { HUNT_AI_INTENT_MAX } from '../../domain/services/hunter/validateHuntDefinition';
 import { MINUTES_PER_DAY, ALL_WEEKDAYS_MASK } from '../../domain/services/postingWindow';
 
 // Validação grossa no schema; a fina (faixas cruzadas, janela vazia, caractere de controle) é 422 com o campo, no use case.
@@ -45,14 +47,37 @@ const filtersSchema = {
   additionalProperties: false,
 } as const;
 
+/** Filtros da fonte próprios da marca (validados por capacidade no use case). */
+const sourceOptionsSchema = {
+  type: ['object', 'null'],
+  properties: {
+    sort: { type: ['string', 'null'], minLength: 1, maxLength: 32 },
+    extraEarningsOnly: { type: ['boolean', 'null'] },
+    bestSellersOnly: { type: ['boolean', 'null'] },
+  },
+  additionalProperties: false,
+} as const;
+
+const providerSchema = { type: 'string', enum: [...HUNT_PROVIDERS] } as const;
+
+/** `GET /options?provider=` (ausente = SHEIN). */
+export const optionsQuerySchema = {
+  type: 'object', properties: { provider: providerSchema }, additionalProperties: false,
+} as const;
+
 const definitionProperties = {
+  /** Só na criação (ausente = SHEIN); na edição precisa ser a mesma marca. */
+  provider: providerSchema,
   name: { type: 'string', minLength: 1, maxLength: L.nameMaxLength },
   sort: { type: 'string', enum: [...HUNT_SORTS] },
   categoryId: { type: ['string', 'null'], maxLength: 64 },
   commissionBand: { type: ['string', 'null'], enum: [...HUNT_COMMISSION_BANDS, null] },
   keyword: { type: ['string', 'null'], maxLength: L.keywordMaxLength },
+  sourceOptions: sourceOptionsSchema,
   filters: filtersSchema,
   aiEnabled: { type: 'boolean' },
+  aiConfigured: { type: 'boolean' },
+  aiIntent: { type: ['string', 'null'], maxLength: HUNT_AI_INTENT_MAX },
   topN: { type: 'integer', minimum: 1, maximum: L.topNMax },
   repeatAfterDays: { type: 'integer', minimum: L.repeatAfterDaysMin, maximum: L.repeatAfterDaysMax },
   deliveryMode: { type: 'string', enum: [...OFFER_HUNT_DELIVERY_MODES] },
@@ -85,8 +110,11 @@ const factors = { type: 'array', items: obj({ key: { type: 'string' }, points: {
 const dateTime = { type: 'string', format: 'date-time' } as const;
 const nullableDateTime = { type: ['string', 'null'], format: 'date-time' } as const;
 
+const sourceOptionsOut = { type: ['object', 'null'], properties: { sort: nullableStr, extraEarningsOnly: { type: ['boolean', 'null'] }, bestSellersOnly: { type: ['boolean', 'null'] } } };
+
 const huntSchema = obj({
   id: { type: 'string' },
+  provider: { type: 'string' },
   name: { type: 'string' },
   status: { type: 'string', enum: [...OFFER_HUNT_STATUSES] },
   pauseReason: { type: ['string', 'null'], enum: [...OFFER_HUNT_PAUSE_REASONS, null] },
@@ -94,6 +122,7 @@ const huntSchema = obj({
   categoryId: nullableStr,
   commissionBand: nullableStr,
   keyword: nullableStr,
+  sourceOptions: sourceOptionsOut,
   filters: obj({
     minPriceCents: nullableInteger, maxPriceCents: nullableInteger, minDiscountPct: nullableNumber,
     minCommissionPct: nullableNumber, commissionOperator: nullableStr, minCommissionCents: nullableInteger, minRating: nullableNumber,
@@ -101,6 +130,8 @@ const huntSchema = obj({
     endsWithinDays: nullableInteger,
   }),
   aiEnabled: { type: 'boolean' },
+  aiConfigured: { type: 'boolean' },
+  aiIntent: nullableStr,
   topN: { type: 'integer' },
   repeatAfterDays: { type: 'integer' },
   deliveryMode: { type: 'string' },
@@ -123,7 +154,9 @@ const rejectedBy = {
 } as const;
 
 const rankingItemSchema = obj({
-  goodsId: { type: 'string' }, title: nullableStr, imageUrl: nullableStr, priceCents: nullableInteger,
+  provider: { type: 'string' }, productId: { type: 'string' },
+  /** Compatibilidade: = productId na Shein; null nas demais marcas. */
+  goodsId: nullableStr, commissionEstimated: { type: 'boolean' }, title: nullableStr, imageUrl: nullableStr, priceCents: nullableInteger,
   discountPercent: { type: ['number', 'null'] }, commissionPercent: { type: ['number', 'null'] }, commissionCents: nullableInteger,
   returningCommissionPercent: { type: ['number', 'null'] }, returningCommissionCents: nullableInteger,
   extraCommissionCents: nullableInteger, salesBucket: nullableInteger, reviewsBucket: nullableInteger,
@@ -132,6 +165,7 @@ const rankingItemSchema = obj({
 
 const runSummaryProps = {
   id: { type: 'string' },
+  provider: { type: 'string' },
   huntId: nullableStr,
   trigger: { type: 'string', enum: [...OFFER_HUNT_RUN_TRIGGERS] },
   status: { type: 'string', enum: [...OFFER_HUNT_RUN_STATUSES] },
@@ -158,7 +192,11 @@ const findSchema = obj({
   huntId: nullableStr,
   runId: nullableStr,
   status: { type: 'string', enum: [...OFFER_HUNT_FIND_STATUSES] },
-  goodsId: { type: 'string' },
+  provider: { type: 'string' },
+  productId: { type: 'string' },
+  /** Compatibilidade: = productId na Shein; null nas demais marcas. */
+  goodsId: nullableStr,
+  commissionEstimated: { type: 'boolean' },
   title: { type: 'string' },
   imageUrl: nullableStr,
   priceCents: nullableInteger,
@@ -223,7 +261,15 @@ export const usageResponse = envelope(obj({
 
 const localFiltersOut = obj(Object.fromEntries(Object.keys(filtersSchema.properties).map((k) => [k, { type: ['number', 'boolean', 'string', 'null'] }])));
 
+const gatesOut = obj(Object.fromEntries(['plan', 'hunterEntitlement', 'credential', 'riskAccepted', 'aiAvailable', 'destination'].map((k) => [k, { type: 'boolean' }])));
+const stringList = { type: 'array', items: { type: 'string' } };
+
 export const optionsResponse = envelope(obj({
+  provider: { type: 'string' },
+  capabilities: obj({
+    provider: { type: 'string' }, sorts: stringList, defaultSort: { type: 'string' }, sourceFilters: stringList,
+    localFilters: stringList, commissionModel: { type: 'string' },
+  }),
   categories: { type: 'array', items: obj({ categoryId: { type: 'string' }, name: { type: 'string' } }) },
   sourceStatus: { type: 'string' },
   sorts: { type: 'array', items: { type: 'string' } },
@@ -239,7 +285,12 @@ export const optionsResponse = envelope(obj({
     'huntsMax', 'topNMax', 'topNDefault', 'repeatAfterDaysMin', 'repeatAfterDaysMax', 'repeatAfterDaysDefault',
     'intervalMinutesMin', 'intervalMinutesMax', 'keywordMaxLength', 'nameMaxLength', 'endsWithinDaysMax',
   ].map((k) => [k, { type: 'integer' }]))),
-  gates: obj(Object.fromEntries(['plan', 'hunterEntitlement', 'credential', 'riskAccepted', 'aiAvailable', 'destination'].map((k) => [k, { type: 'boolean' }]))),
+  gates: gatesOut,
+}));
+
+/** Passo 0: portões por marca, sem chamar fonte. */
+export const providersResponse = envelope(obj({
+  items: { type: 'array', items: obj({ provider: { type: 'string' }, credentialState: { type: 'string' }, gates: gatesOut }) },
 }));
 
 export const settingsResponse = envelope(obj({ sessionId: nullableStr, conversationId: nullableStr, valid: { type: 'boolean' }, groupName: nullableStr }));

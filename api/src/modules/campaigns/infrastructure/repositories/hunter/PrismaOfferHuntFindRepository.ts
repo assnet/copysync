@@ -8,7 +8,11 @@ import type {
 } from '../../../domain/contracts/hunter/IOfferHuntFindRepository';
 import type { OfferHuntPageCursor } from '../../../domain/contracts/hunter/IOfferHuntRunRepository';
 import type { OfferHuntFind, OfferHuntFindDelivery, OfferHuntFindStatus } from '../../../domain/hunter/OfferHunt';
+import type { HuntProvider } from '../../../domain/hunter/HuntProvider';
 import { PrismaOfferHuntMapper as Mapper } from '../../mappers/PrismaOfferHuntMapper';
+
+/** Chave de repetição: caçada + marca + produto (linha antiga sem `productId` usa `goodsId`). */
+const repeatKey = (huntId: string, provider: string, productId: string) => `${huntId}:${provider}:${productId}`;
 
 /** Disparo mais recente da oferta atual + nome do grupo (tenant em todo filtro). */
 const deliveryInclude = (tenantId: string) => ({
@@ -82,7 +86,7 @@ export class PrismaOfferHuntFindRepository implements IOfferHuntFindRepository {
 
   /**
    * Anti-join da repetição dentro do lock: duas execuções simultâneas da mesma caçada (MANUAL × AUTO)
-   * leem `recentGoodsIds` antes de qualquer gravação; aqui a 2ª vê o que a 1ª gravou e descarta.
+   * leem `recentProductIds` antes de qualquer gravação; aqui a 2ª vê o que a 1ª gravou e descarta.
    */
   private async withoutRepeats(
     tx: Prisma.TransactionClient, tenantId: string, finds: NewOfferHuntFind[], repeatSince: Date | undefined,
@@ -93,13 +97,16 @@ export class PrismaOfferHuntFindRepository implements IOfferHuntFindRepository {
     if (huntIds.length > 0) {
       const rows = await tx.offerHuntFind.findMany({
         where: { tenantId, huntId: { in: huntIds }, createdAt: { gte: repeatSince } },
-        select: { huntId: true, goodsId: true },
+        select: { huntId: true, provider: true, productId: true, goodsId: true },
       });
-      for (const r of rows) taken.add(`${r.huntId}:${r.goodsId}`);
+      for (const r of rows) {
+        const id = r.productId ?? r.goodsId;
+        if (r.huntId && id) taken.add(repeatKey(r.huntId, r.provider, id));
+      }
     }
     return finds.filter((f) => {
       if (!f.huntId) return true;
-      const key = `${f.huntId}:${f.goodsId}`;
+      const key = repeatKey(f.huntId, f.provider, f.productId);
       if (taken.has(key)) return false;
       taken.add(key);
       return true;
@@ -110,13 +117,13 @@ export class PrismaOfferHuntFindRepository implements IOfferHuntFindRepository {
     return this.prisma.offerHuntFind.count({ where: { tenantId, createdAt: { gte: since } } });
   }
 
-  async recentGoodsIds(tenantId: string, huntId: string, since: Date): Promise<Set<string>> {
+  async recentProductIds(tenantId: string, huntId: string, provider: HuntProvider, since: Date): Promise<Set<string>> {
     const rows = await this.prisma.offerHuntFind.findMany({
-      where: { tenantId, huntId, createdAt: { gte: since } },
-      select: { goodsId: true },
-      distinct: ['goodsId'],
+      where: { tenantId, huntId, provider, createdAt: { gte: since } },
+      select: { productId: true, goodsId: true },
+      distinct: ['productId', 'goodsId'],
     });
-    return new Set(rows.map((r) => r.goodsId));
+    return new Set(rows.flatMap((r) => { const id = r.productId ?? r.goodsId; return id ? [id] : []; }));
   }
 
   async findById(tenantId: string, id: string): Promise<OfferHuntFind | null> {

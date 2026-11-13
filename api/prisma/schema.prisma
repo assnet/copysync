@@ -198,6 +198,7 @@ model Tenant {
   offerHuntRuns              OfferHuntRun[]
   offerHuntFinds             OfferHuntFind[]
   offerHunterSettings        OfferHunterSettings?
+  offerHuntAiSuggestions     OfferHuntAiSuggestion[]
 
   @@index([slug])
   @@map("tenants")
@@ -1258,7 +1259,15 @@ model OfferHunt {
   status               OfferHuntStatus         @default(ACTIVE)
   /// Preenchido só com status PAUSED.
   pauseReason          OfferHuntPauseReason?
-  // Filtros da fonte (enviados à Shein)
+  /// Marca da caçada (fixa depois de criada); caçadas antigas = SHEIN.
+  provider             AffiliateProvider       @default(SHEIN)
+  /// Filtros da fonte próprios da marca (ML: `sort`, `extraEarningsOnly`, `bestSellersOnly`); Shein = null.
+  sourceOptions        Json?
+  /// Configurada pela IA (só registro/exibição).
+  aiConfigured         Boolean                 @default(false)
+  /// Intenção dada à IA na configuração (só registro/exibição).
+  aiIntent             String?                 @db.Text
+  // Filtros da fonte (Shein: colunas abaixo)
   /// Código de ordenação da fonte (0 recomendado, 7, 9, 10, 11, 12): dica, a ordem final é a pontuação.
   sort                 Int                     @default(0)
   categoryId           String?
@@ -1312,6 +1321,7 @@ model OfferHuntRun {
   tenantId     String
   /// null = caçada excluída (a execução segue contando na guarda de 24/dia).
   huntId       String?
+  provider     AffiliateProvider   @default(SHEIN)
   trigger      OfferHuntRunTrigger
   status       OfferHuntRunStatus  @default(RUNNING)
   seenCount    Int                 @default(0)
@@ -1345,12 +1355,16 @@ model OfferHuntFind {
   /// null = caçada excluída (o achado segue contando no teto do dia).
   huntId                     String?
   runId                      String?
-  goodsId                    String
+  provider                   AffiliateProvider   @default(SHEIN)
+  /// Id do produto na marca (Shein = goodsId; ML = MLB…). Anulável só por linhas do código antigo: ler COALESCE(productId, goodsId).
+  productId                  String?
+  /// Só Shein (legado; = productId).
+  goodsId                    String?
   skcCode                    String?
   activityId                 String?
   // Retrato do item no momento da execução (só exibição)
   title                      String              @db.Text
-  /// Foto da fonte (https, host *.ltwebstatic.com); null = sem foto.
+  /// Foto da fonte (https, host da marca); null = sem foto.
   imageUrl                   String?             @db.Text
   priceCents                 Int?
   originalPriceCents         Int?
@@ -1360,6 +1374,8 @@ model OfferHuntFind {
   returningCommissionPercent Decimal?            @db.Decimal(5, 2)
   returningCommissionCents   Int?
   extraCommissionCents       Int?
+  /// Comissão estimada pela tabela por categoria (ML sem dado do hub).
+  commissionEstimated        Boolean             @default(false)
   salesBucket                Int?
   reviewsBucket              Int?
   rating                     Decimal?            @db.Decimal(3, 2)
@@ -1386,8 +1402,8 @@ model OfferHuntFind {
   run    OfferHuntRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
   offer  Offer?        @relation(fields: [offerId], references: [id], onDelete: SetNull)
 
-  // Regra de repetição (produto já escolhido pela caçada dentro da janela)
-  @@index([huntId, goodsId, createdAt])
+  // Regra de repetição (produto da marca já escolhido pela caçada dentro da janela)
+  @@index([huntId, provider, productId, createdAt])
   // Teto diário por tenant
   @@index([tenantId, createdAt])
   @@index([tenantId, status])
@@ -1414,6 +1430,19 @@ model OfferHunterSettings {
   @@index([sessionId])
   @@index([conversationId])
   @@map("offer_hunter_settings")
+}
+
+/// Sugestão de configuração pela IA no assistente do caçador (1 linha por chamada; teto/dia por tenant,
+/// `HUNTER_AI_LIMITS.aiSuggestionsPerDayMax`). Sem intenção, prompt nem resposta: só a contagem.
+model OfferHuntAiSuggestion {
+  id        String   @id @default(cuid())
+  tenantId  String
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@map("offer_hunt_ai_suggestions")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

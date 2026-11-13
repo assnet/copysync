@@ -1,0 +1,764 @@
+{
+ "polycard_client_model": {
+  "polycard_context": {
+   "contract_version": "1.3.0",
+   "picture_template": "https://http2.mlstatic.com/D_{square}_NP{2x}_{id}-{size}{sanitized_title}.webp",
+   "picture_size_default": "AB",
+   "url_prefix": "https://",
+   "type": "grid-card",
+   "card_size": "large",
+   "checkbox": false,
+   "thousand_separator": ".",
+   "decimal_separator": ",",
+   "styles_default": [],
+   "picture_overlay_default": true,
+   "picture_square_default": "Q",
+   "url_fragments_default": "#polycard_client=affiliates"
+  },
+  "polycards": [
+   {
+    "metadata": {
+     "id": "MLB7806564298",
+     "product_id": "MLB66126960",
+     "url": "www.mercadolivre.com.br/leve-3-pague-2-creatina-growth-supplements-250gr-sem-sabor/p/MLB66126960",
+     "card_type": "grid-card",
+     "vertical": "",
+     "extra_commission": "false",
+     "brand_commission": "false",
+     "type": "product"
+    },
+    "pictures": {
+     "scale": "FILL",
+     "pictures": [
+      {
+       "id": "810731-MLA107960983825_032026"
+      }
+     ],
+     "square": "Q",
+     "alt_text": "Imagem",
+     "overlay": true
+    },
+    "components": [
+     {
+      "type": "highlight",
+      "id": "highlight",
+      "highlight": {
+       "text": "MAIS VENDIDO",
+       "styles": {
+        "color_hex": "#FFFFFF",
+        "background_color_hex": "#FF7733"
+       }
+      }
+     },
+     {
+      "type": "title",
+      "id": "title",
+      "title": {
+       "text": "Leve 3 Pague 2 Creatina Growth Supplements 250gr Sem Sabor",
+       "long_title": false
+      }
+     },
+     {
+      "type": "review_compacted",
+      "id": "review_compacted",
+      "review_compacted": {
+       "text": "{icon_star_fill} {label} {label2}",
+       "alt_text": "Classificação 4.9 de 5 estrelas. Mais de 100 produtos vendidos.",
+       "values": [
+        {
+         "key": "icon_star_fill",
+         "type": "icon",
+         "icon": {
+          "key": "icon_star_fill",
+          "icon_id": "icon_star_fill"
+         }
+        },
+        {
+         "key": "label",
+         "type": "label",
+         "label": {
+          "text": "4.9"
+         },
+         "styles": {
+          "color_hex": "#000000",
+          "font_size": "xs",
+          "font_weight": "regular"
+         }
+        },
+        {
+         "key": "label2",
+         "type": "label",
+         "label": {
+          "text": "| +100 vendidos"
+         },
+         "styles": {
+          "color_hex": "#737373",
+          "font_size": "xs"
+         }
+        }
+       ]
+      }
+     },
+     {
+      "type": "chip",
+      "id": "affiliates_commission_chip",
+      "chip": {
+       "type": "composite",
+       "inverted": false,
+       "inline": true,
+       "pill": {
+        "text": "GANHOS 12%",
+        "styles": {
+         "font_weight": "semibold",
+         "background_color_hex": "#E3F6F5"
+        }
+       }
+      }
+     },
+     {
+      "type": "price",
+      "id": "price",
+      "price": {
+       "previous_price": {
+        "value": 166.98,
+        "currency": "BRL",
+        "decimal_style": "normal"
+       },
+       "current_price": {
+        "value": 146.98,
+        "currency": "BRL",
+        "decimal_style": "superscript"
+       },
+       "discount_label": {
+        "text": "11% OFF no Crédito disponível"
+       },
+       "installments": {
+        "text": "ou {price_total} em outros meios",
+        "no_interest": false,
+        "values": [
+         {
+          "key": "price_total",
+          "type": "price",
+          "price": {
+           "value": 166.98,
+           "currency": "BRL"
+          },
+          "styles": {
+           "color": "primary"
+          }
+         }
+        ]
+       }
+      }
+     }
+    ]
+   },
+   {
+    "metadata": {
+     "id": "MLB2808852761",
+     "product_id": "MLB19539520",
+     "url": "www.mercadolivre.com.br/creatina-150g-suplemento-monohidratada-em-po-100-pura-soldiers-nutrition/p/MLB19539520",
+     "card_type": "grid-card",
+     "vertical": "",
+     "extra_commission": "false",
+     "brand_commission": "true",
+     "type": "product"
+    },
+    "pictures": {
+     "scale": "FILL",
+     "pictures": [
+      {
+       "id": "699730-MLA118227739192_102026"
+      }
+     ],
+     "square": "Q",
+     "alt_text": "Imagem",
+     "overlay": true
+    },
+    "components": [
+     {
+      "type": "highlight",
+      "id": "highlight",
+      "highlight": {
+       "text": "MAIS VENDIDO",
+       "styles": {
+        "color_hex": "#FFFFFF",
+        "background_color_hex": "#FF7733"
+       }
+      }
+     },
+     {
+      "type": "title",
+      "id": "title",
+      "title": {
+       "text": "Creatina 150g Suplemento Monohidratada em pó 100% Pura - Soldiers Nutrition",
+       "long_title": false
+      }
+     },
+     {
+      "type": "review_compacted",
+      "id": "review_compacted",
+      "review_compacted": {
+       "text": "{icon_star_fill} {label} {label2}",
+       "alt_text": "Classificação 4.9 de 5 estrelas. Mais de 50mil produtos vendidos.",
+       "values": [
+        {
+         "key": "icon_star_fill",
+         "type": "icon",
+         "icon": {
+          "key": "icon_star_fill",
+          "icon_id": "icon_star_fill"
+         }
+        },
+        {
+         "key": "label",
+         "type": "label",
+         "label": {
+          "text": "4.9"
+         },
+         "styles": {
+          "color_hex": "#000000",
+          "font_size": "xs",
+          "font_weight": "regular"
+         }
+        },
+        {
+         "key": "label2",
+         "type": "label",
+         "label": {
+          "text": "| +50mil vendidos"
+         },
+         "styles": {
+          "color_hex": "#737373",
+          "font_size": "xs"
+         }
+        }
+       ]
+      }
+     },
+     {
+      "type": "chip",
+      "id": "affiliates_commission_chip",
+      "chip": {
+       "type": "composite",
+       "inverted": false,
+       "inline": true,
+       "pill": {
+        "text": "{ganancia} {extra}",
+        "values": [
+         {
+          "key": "ganancia",
+          "type": "label",
+          "label": {
+           "text": "GANHOS"
+          }
+         },
+         {
+          "key": "extra",
+          "type": "label",
+          "label": {
+           "text": "EXTRAS"
+          },
+          "styles": {
+           "font_style": "italic"
+          }
+         }
+        ],
+        "styles": {
+         "font_weight": "semibold",
+         "background_color_hex": "#A5F8F2"
+        }
+       },
+       "label": {
+        "text": "17%",
+        "styles": {
+         "font_weight": "semibold",
+         "background_color_hex": "#E3F6F5"
+        }
+       },
+       "brand": {
+        "text": "{prefix} {nombre} {icon_cockade}",
+        "values": [
+         {
+          "key": "prefix",
+          "type": "label",
+          "label": {
+           "text": "Patrocinado por"
+          },
+          "styles": {
+           "font_weight": "regular"
+          }
+         },
+         {
+          "key": "nombre",
+          "type": "label",
+          "label": {
+           "text": "Soldiers Nutrition"
+          },
+          "styles": {
+           "font_weight": "semibold"
+          }
+         },
+         {
+          "key": "icon_cockade",
+          "type": "icon",
+          "icon": {
+           "key": "icon_cockade",
+           "alt_text": "Loja oficial",
+           "icon_id": "icon_cockade"
+          }
+         }
+        ]
+       }
+      }
+     },
+     {
+      "type": "price",
+      "id": "price",
+      "price": {
+       "previous_price": {
+        "value": 44.99,
+        "currency": "BRL",
+        "decimal_style": "normal"
+       },
+       "current_price": {
+        "value": 32.88,
+        "currency": "BRL",
+        "decimal_style": "superscript"
+       },
+       "discount_label": {
+        "text": "26% OFF",
+        "styles": {
+         "color_hex": "#FFFFFF",
+         "background_color_hex": "#00A650"
+        }
+       }
+      }
+     }
+    ]
+   },
+   {
+    "metadata": {
+     "id": "MLB7643858550",
+     "product_id": "MLB24221283",
+     "url": "www.mercadolivre.com.br/filamento-pet-g-masterprint-amarelo-translucido/p/MLB24221283",
+     "card_type": "grid-card",
+     "vertical": "",
+     "extra_commission": "true",
+     "brand_commission": "false",
+     "type": "product"
+    },
+    "pictures": {
+     "scale": "FILL",
+     "pictures": [
+      {
+       "id": "777059-MLA118064046797_092026"
+      }
+     ],
+     "square": "Q",
+     "alt_text": "Imagem",
+     "overlay": true
+    },
+    "components": [
+     {
+      "type": "highlight",
+      "id": "highlight",
+      "highlight": {
+       "text": "MAIS VENDIDO",
+       "styles": {
+        "color_hex": "#FFFFFF",
+        "background_color_hex": "#FF7733"
+       }
+      }
+     },
+     {
+      "type": "title",
+      "id": "title",
+      "title": {
+       "text": "Filamento Pet-g Masterprint Amarelo Translúcido",
+       "long_title": false
+      }
+     },
+     {
+      "type": "review_compacted",
+      "id": "review_compacted",
+      "review_compacted": {
+       "text": "{icon_star_fill} {label} {label2}",
+       "alt_text": "Classificação 4.8 de 5 estrelas. Mais de 5mil produtos vendidos.",
+       "values": [
+        {
+         "key": "icon_star_fill",
+         "type": "icon",
+         "icon": {
+          "key": "icon_star_fill",
+          "icon_id": "icon_star_fill"
+         }
+        },
+        {
+         "key": "label",
+         "type": "label",
+         "label": {
+          "text": "4.8"
+         },
+         "styles": {
+          "color_hex": "#000000",
+          "font_size": "xs",
+          "font_weight": "regular"
+         }
+        },
+        {
+         "key": "label2",
+         "type": "label",
+         "label": {
+          "text": "| +5mil vendidos"
+         },
+         "styles": {
+          "color_hex": "#737373",
+          "font_size": "xs"
+         }
+        }
+       ]
+      }
+     },
+     {
+      "type": "chip",
+      "id": "affiliates_commission_chip",
+      "chip": {
+       "type": "composite",
+       "inverted": false,
+       "inline": true,
+       "pill": {
+        "text": "{ganancia} {extra}",
+        "values": [
+         {
+          "key": "ganancia",
+          "type": "label",
+          "label": {
+           "text": "GANHOS"
+          }
+         },
+         {
+          "key": "extra",
+          "type": "label",
+          "label": {
+           "text": "EXTRAS"
+          },
+          "styles": {
+           "font_style": "italic"
+          }
+         }
+        ],
+        "styles": {
+         "font_weight": "semibold",
+         "background_color_hex": "#A5F8F2"
+        }
+       },
+       "label": {
+        "text": "10%",
+        "styles": {
+         "font_weight": "semibold",
+         "background_color_hex": "#E3F6F5"
+        }
+       }
+      }
+     },
+     {
+      "type": "price",
+      "id": "price",
+      "price": {
+       "previous_price": {
+        "value": 109.9,
+        "currency": "BRL",
+        "decimal_style": "normal"
+       },
+       "current_price": {
+        "value": 89.9,
+        "currency": "BRL",
+        "decimal_style": "superscript"
+       },
+       "discount_label": {
+        "text": "18% OFF no Crédito disponível"
+       },
+       "installments": {
+        "text": "ou {price_total} em outros meios",
+        "no_interest": false,
+        "values": [
+         {
+          "key": "price_total",
+          "type": "price",
+          "price": {
+           "value": 109.9,
+           "currency": "BRL"
+          },
+          "styles": {
+           "color": "primary"
+          }
+         }
+        ]
+       }
+      }
+     }
+    ]
+   },
+   {
+    "metadata": {
+     "id": "MLB7038595266",
+     "product_id": "MLB54984333",
+     "url": "www.mercadolivre.com.br/celular-samsung-galaxy-a17-com-ia-256gb-8gb-ram-cam-de-50mp-tela-de-67-nfc-ip54-cinza/p/MLB54984333",
+     "card_type": "grid-card",
+     "vertical": "",
+     "extra_commission": "false",
+     "brand_commission": "false",
+     "type": "product"
+    },
+    "pictures": {
+     "scale": "FILL",
+     "pictures": [
+      {
+       "id": "617918-MLA96431049734_102025"
+      }
+     ],
+     "square": "Q",
+     "alt_text": "Imagem",
+     "overlay": true
+    },
+    "components": [
+     {
+      "type": "highlight",
+      "id": "highlight",
+      "highlight": {
+       "text": "MAIS VENDIDO",
+       "styles": {
+        "color_hex": "#FFFFFF",
+        "background_color_hex": "#FF7733"
+       }
+      }
+     },
+     {
+      "type": "title",
+      "id": "title",
+      "title": {
+       "text": "Celular Samsung Galaxy A17 Com Ia, 256gb, 8gb Ram, Câm De 50mp, Tela De 6.7 , Nfc, Ip54 - Cinza",
+       "long_title": false
+      }
+     },
+     {
+      "type": "review_compacted",
+      "id": "review_compacted",
+      "review_compacted": {
+       "text": "{icon_star_fill} {label} {label2}",
+       "alt_text": "Classificação 4.9 de 5 estrelas. Mais de 50mil produtos vendidos.",
+       "values": [
+        {
+         "key": "icon_star_fill",
+         "type": "icon",
+         "icon": {
+          "key": "icon_star_fill",
+          "icon_id": "icon_star_fill"
+         }
+        },
+        {
+         "key": "label",
+         "type": "label",
+         "label": {
+          "text": "4.9"
+         },
+         "styles": {
+          "color_hex": "#000000",
+          "font_size": "xs",
+          "font_weight": "regular"
+         }
+        },
+        {
+         "key": "label2",
+         "type": "label",
+         "label": {
+          "text": "| +50mil vendidos"
+         },
+         "styles": {
+          "color_hex": "#737373",
+          "font_size": "xs"
+         }
+        }
+       ]
+      }
+     },
+     {
+      "type": "chip",
+      "id": "affiliates_commission_chip",
+      "chip": {
+       "type": "composite",
+       "inverted": false,
+       "inline": true,
+       "pill": {
+        "text": "GANHOS 5%",
+        "styles": {
+         "font_weight": "semibold",
+         "background_color_hex": "#E3F6F5"
+        }
+       }
+      }
+     },
+     {
+      "type": "price",
+      "id": "price",
+      "price": {
+       "current_price": {
+        "value": 1349,
+        "currency": "BRL",
+        "decimal_style": "superscript"
+       },
+       "installments": {
+        "text": "12x {price}",
+        "no_interest": false,
+        "values": [
+         {
+          "key": "price",
+          "type": "price",
+          "price": {
+           "value": 130.95,
+           "currency": "BRL"
+          }
+         }
+        ]
+       }
+      }
+     }
+    ]
+   }
+  ],
+  "contract_version": "1.3.0"
+ },
+ "container_url": "https://lista.mercadolivre.com.br/_Container_aff-hub-best-selling",
+ "filters": [
+  {
+   "id": "category",
+   "name": "Categorías",
+   "values": [
+    {
+     "id": "MLB5726",
+     "name": "Eletrodomésticos"
+    },
+    {
+     "id": "MLB263532",
+     "name": "Ferramentas"
+    },
+    {
+     "id": "MLB1384",
+     "name": "Bebês"
+    },
+    {
+     "id": "MLB1071",
+     "name": "Pet Shop"
+    },
+    {
+     "id": "MLB1196",
+     "name": "Livros, Revistas e Comics"
+    },
+    {
+     "id": "MLB1648",
+     "name": "Informática"
+    },
+    {
+     "id": "MLB5672",
+     "name": "Acessórios para Veículos"
+    },
+    {
+     "id": "MLB1051",
+     "name": "Celulares e Telefones"
+    },
+    {
+     "id": "MLB1403",
+     "name": "Alimentos e Bebidas"
+    },
+    {
+     "id": "MLB3937",
+     "name": "Joias e Relógios"
+    },
+    {
+     "id": "MLB1144",
+     "name": "Games"
+    },
+    {
+     "id": "MLB271599",
+     "name": "Agro"
+    },
+    {
+     "id": "MLB1039",
+     "name": "Câmeras e Acessórios"
+    },
+    {
+     "id": "MLB1574",
+     "name": "Casa, Móveis e Decoração"
+    },
+    {
+     "id": "MLB1276",
+     "name": "Esportes e Fitness"
+    },
+    {
+     "id": "MLB264586",
+     "name": "Saúde"
+    },
+    {
+     "id": "MLB1500",
+     "name": "Construção"
+    },
+    {
+     "id": "MLB1246",
+     "name": "Beleza e Cuidado Pessoal"
+    },
+    {
+     "id": "MLB1499",
+     "name": "Indústria e Comércio"
+    },
+    {
+     "id": "MLB1132",
+     "name": "Brinquedos e Hobbies"
+    },
+    {
+     "id": "MLB12404",
+     "name": "Festas e Lembrancinhas"
+    },
+    {
+     "id": "MLB1368",
+     "name": "Arte, Papelaria e Armarinho"
+    },
+    {
+     "id": "MLB1430",
+     "name": "Calçados, Roupas e Bolsas"
+    },
+    {
+     "id": "MLB1000",
+     "name": "Eletrônicos, Áudio e Vídeo"
+    },
+    {
+     "id": "MLB1182",
+     "name": "Instrumentos Musicais"
+    }
+   ]
+  },
+  {
+   "id": "extra_commission",
+   "name": "Comisión extra"
+  },
+  {
+   "id": "best_seller",
+   "name": "Más vendidos"
+  }
+ ],
+ "sort": {
+  "id": "relevance",
+  "name": "Mais relevantes"
+ },
+ "available_sorts": [
+  {
+   "id": "lowest_price",
+   "name": "Menor preço"
+  },
+  {
+   "id": "highest_price",
+   "name": "Maior preço"
+  }
+ ],
+ "next_offset": 18
+}

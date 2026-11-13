@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import {
-  GetOfferHunterDestinationUseCase, GetOfferHunterOptionsUseCase, GetOfferHunterUsageUseCase,
+  GetOfferHunterDestinationUseCase, GetOfferHunterOptionsUseCase, GetOfferHunterProvidersUseCase, GetOfferHunterUsageUseCase,
 } from './OfferHunterInfoUseCases';
 import { ListOfferHuntFindsUseCase, ListOfferHuntRunsUseCase, OFFER_HUNT_PAGE_SIZE } from './OfferHuntHistoryUseCases';
 import { SetOfferHunterDestinationUseCase } from './SetOfferHunterDestinationUseCase';
@@ -10,7 +10,7 @@ import type { OfferHuntRunSummary } from '../../../domain/hunter/OfferHunt';
 import type { OfferHuntPageCursor } from '../../../domain/contracts/hunter/IOfferHuntRunRepository';
 import { ENTITLEMENT_KEYS } from '../../../../tenants/domain/entitlementKeys';
 import {
-  AT_TOKEN, FakeCatalog, FakeCredentials, FakeRiskGate, HUNT, InMemorySettings, MAX_ENTITLEMENTS, MEMBER, NOW, TENANT, makeHunt,
+  AT_TOKEN, FakeCatalog, FakeCredentials, FakeRiskGate, HUNT, InMemorySettings, MAX_ENTITLEMENTS, MEMBER, NOW, TENANT, makeHunt, testProviders, FakeHuntCatalogSource,
 } from './hunterTestFakes';
 
 const reader = (map: Record<string, unknown>) => ({
@@ -44,7 +44,7 @@ describe('GetOfferHunterOptionsUseCase', () => {
   let settings: InMemorySettings;
   let ent: Record<string, unknown>;
   const make = (ai = true) => new GetOfferHunterOptionsUseCase({
-    entitlements: reader(ent), credentials, riskGate: risk, ai: { isAvailable: async () => ai }, settings, catalog,
+    entitlements: reader(ent), credentials, riskGate: risk, ai: { isAvailable: async () => ai }, settings, providers: testProviders(catalog),
   });
 
   beforeEach(() => {
@@ -96,7 +96,7 @@ describe('GetOfferHunterOptionsUseCase', () => {
 
   it('erro da IA ao checar vira aiAvailable false', async () => {
     const uc = new GetOfferHunterOptionsUseCase({
-      entitlements: reader(ent), credentials, riskGate: risk, ai: { isAvailable: async () => { throw new Error('x'); } }, settings, catalog,
+      entitlements: reader(ent), credentials, riskGate: risk, ai: { isAvailable: async () => { throw new Error('x'); } }, settings, providers: testProviders(catalog),
     });
     expect((await uc.execute(TENANT)).gates.aiAvailable).toBe(false);
   });
@@ -132,7 +132,7 @@ describe('destino', () => {
 
 describe('histórico com cursor keyset assinado', () => {
   const run = (i: number): OfferHuntRunSummary => ({
-    id: `run-${String(i).padStart(3, '0')}`, tenantId: TENANT, huntId: HUNT, trigger: 'MANUAL', status: 'SUCCEEDED',
+    id: `run-${String(i).padStart(3, '0')}`, tenantId: TENANT, provider: 'SHEIN', huntId: HUNT, trigger: 'MANUAL', status: 'SUCCEEDED',
     seenCount: 0, matchedCount: 0, chosenCount: 0, sentCount: 0, aiUsed: false, aiFallback: false, rejectedBy: null, hasRanking: false, errorCode: null,
     startedAt: new Date(NOW.getTime() - i * 60_000), finishedAt: null,
   });
@@ -182,5 +182,60 @@ describe('OfferHunterAudienceGate', () => {
     expect(await gate(true).allows({ audience: 'entitled', isSuperAdmin: false, tenantId: TENANT })).toBe(true);
     expect(await gate(null).allows({ audience: 'entitled', isSuperAdmin: true, tenantId: TENANT })).toBe(false);
     expect(await gate(true).allows({ audience: 'entitled', isSuperAdmin: false, tenantId: null })).toBe(false);
+  });
+});
+
+describe('Opções por marca e GET /options/providers', () => {
+  const ML_STATE = { state: 'ok' as const, cred: { provider: 'MERCADO_LIVRE' as const, publicIdentifier: 'tag', secret: null, session: { cookies: { ssid: 'S' } } } };
+
+  it('options(MERCADO_LIVRE): capacidades e presets da marca, plano livre, fonte ML (sem chamar a Shein)', async () => {
+    const shein = new FakeCatalog();
+    const ml = new FakeHuntCatalogSource('MERCADO_LIVRE');
+    const credentials = new FakeCredentials();
+    credentials.state = ML_STATE;
+    const uc = new GetOfferHunterOptionsUseCase({
+      entitlements: reader({ ...MAX_ENTITLEMENTS, [ENTITLEMENT_KEYS.MARKETPLACE_SHEIN_ENABLED]: false }), credentials,
+      riskGate: new FakeRiskGate(), ai: { isAvailable: async () => true }, settings: new InMemorySettings(), providers: testProviders(shein, ml),
+    });
+    const out = await uc.execute(TENANT, 'MERCADO_LIVRE');
+    expect(out).toMatchObject({ provider: 'MERCADO_LIVRE', sourceStatus: 'OK', sorts: ['relevance', 'lowest_price', 'highest_price'] });
+    expect(out.gates).toMatchObject({ plan: true, credential: true });
+    expect(out.capabilities.localFilters).not.toContain('minReviews');
+    expect(out.categories).toEqual([{ categoryId: 'MLB1430', name: 'Roupas' }]);
+    // Predefinições: nenhuma usa filtro fora da marca; ordenação sempre da marca
+    for (const p of out.presets) expect(out.sorts).toContain(p.definition.source.sort);
+    expect(out.presets.map((p) => p.key)).not.toContain('NEW_ARRIVALS');
+    expect(shein.calls).toHaveLength(0);
+    expect(JSON.stringify(out)).not.toContain('"S"');
+  });
+
+  it('options(SHEIN) padrão: presets e sorts de antes', async () => {
+    const uc = new GetOfferHunterOptionsUseCase({
+      entitlements: reader(MAX_ENTITLEMENTS), credentials: new FakeCredentials(), riskGate: new FakeRiskGate(),
+      ai: { isAvailable: async () => true }, settings: new InMemorySettings(), providers: testProviders(new FakeCatalog()),
+    });
+    const out = await uc.execute(TENANT);
+    expect(out.provider).toBe('SHEIN');
+    expect(out.presets.map((p) => p.key)).toEqual(['TOP_COMMISSION', 'BEST_SELLERS', 'BIGGEST_DISCOUNT', 'NEW_ARRIVALS', 'CUSTOM']);
+    expect(out.sorts).toContain('BEST_SELLING');
+  });
+
+  it('providers: portões de cada marca sem chamar nenhuma fonte', async () => {
+    const shein = new FakeCatalog();
+    const ml = new FakeHuntCatalogSource('MERCADO_LIVRE');
+    const credentials = new FakeCredentials();
+    (credentials as unknown as { resolveState: (t: string, p: string) => Promise<unknown> }).resolveState = async (_t: string, p: string) => (p === 'MERCADO_LIVRE' ? { state: 'rejected', since: NOW, code: 'X' } : credentials.state) as never;
+    const risk = new FakeRiskGate();
+    const uc = new GetOfferHunterProvidersUseCase({
+      entitlements: reader({ ...MAX_ENTITLEMENTS, [ENTITLEMENT_KEYS.MARKETPLACE_SHEIN_ENABLED]: false }), credentials, riskGate: risk,
+      ai: { isAvailable: async () => false }, settings: new InMemorySettings(), providers: testProviders(shein, ml),
+    });
+    const { items } = await uc.execute(TENANT);
+    expect(items.map((i) => [i.provider, i.credentialState, i.gates.plan, i.gates.credential])).toEqual([
+      ['SHEIN', 'OK', false, true], ['MERCADO_LIVRE', 'REJECTED', true, false],
+    ]);
+    expect(risk.calls.map((c) => c[1])).toEqual(['SHEIN', 'MERCADO_LIVRE']);
+    expect(shein.calls).toHaveLength(0);
+    expect(ml.calls).toHaveLength(0);
   });
 });

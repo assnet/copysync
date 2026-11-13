@@ -100,7 +100,8 @@ describe('SheinCatalogClient.list', () => {
     expect(await list()).toEqual({
       items: [
         {
-          goodsId: '533885353',
+          provider: 'SHEIN',
+          productId: '533885353',
           skc: 'sz2407221234567890',
           activityId: '20',
           title: 'Vestido Midi Floral',
@@ -113,6 +114,9 @@ describe('SheinCatalogClient.list', () => {
           commissionReturningPct: 8,
           commissionReturningCents: 479,
           extraCommissionCents: 150,
+          hasSecondaryCommission: true,
+          extraFlag: true,
+          commissionEstimated: false,
           sales: 300,
           reviews: 1000,
           rating: 4.85,
@@ -131,7 +135,7 @@ describe('SheinCatalogClient.list', () => {
       json(page([{ ...ITEM, goodsId: null }, { ...ITEM, goodsId: '12a' }, 'lixo', { ...ITEM, goodsId: '1'.repeat(13) }, ITEM])),
     );
     const r = await list();
-    expect(r.items.map((i) => i.goodsId)).toEqual(['533885353']);
+    expect(r.items.map((i) => i.productId)).toEqual(['533885353']);
   });
 
   it.each([

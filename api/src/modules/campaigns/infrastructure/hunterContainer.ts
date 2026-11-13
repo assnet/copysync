@@ -7,6 +7,9 @@ import { PrismaOfferHunterSettingsRepository } from './repositories/hunter/Prism
 import { PrismaOfferGeneratorConfigRepository } from './repositories/PrismaOfferGeneratorConfigRepository';
 import { PrismaBroadcastGroupUsageReader } from './repositories/PrismaBroadcastGroupUsageReader';
 import { SheinCatalogClient } from './http/SheinCatalogClient';
+import { HuntProviderRegistry } from './hunter/HuntProviderRegistry';
+import { SheinHuntProviderAdapter } from './hunter/providers/SheinHuntProviderAdapter';
+import { createMercadoLivreHuntAdapter } from './hunter/providers/mercadoLivreHuntAdapter';
 import { LazyAiTextGenerator } from './adapters/LazyAiTextGenerator';
 import { AiHuntCandidateRanker } from '../application/services/hunter/AiHuntCandidateRanker';
 import { HuntFindDelivery } from '../application/services/hunter/HuntFindDelivery';
@@ -20,7 +23,8 @@ import {
 } from '../application/use-cases/hunter/OfferHuntCrudUseCases';
 import { GetOfferHuntRunUseCase, ListOfferHuntFindsUseCase, ListOfferHuntRunsUseCase } from '../application/use-cases/hunter/OfferHuntHistoryUseCases';
 import {
-  GetOfferHunterDestinationUseCase, GetOfferHunterOptionsUseCase, GetOfferHunterUsageUseCase,
+  GetOfferHunterDestinationUseCase, GetOfferHunterOptionsUseCase, GetOfferHunterProvidersUseCase, GetOfferHunterUsageUseCase,
+  type GetOfferHunterOptionsDeps,
 } from '../application/use-cases/hunter/OfferHunterInfoUseCases';
 import { OfferHunterAudienceGate } from '../application/services/hunter/offerHunterAudience';
 import { LazyHuntAiAvailability } from './adapters/LazyHuntAiAvailability';
@@ -40,7 +44,11 @@ const finds    = lazy(() => new PrismaOfferHuntFindRepository(prisma));
 const settings = lazy(() => new PrismaOfferHunterSettingsRepository(prisma));
 const configs  = lazy(() => new PrismaOfferGeneratorConfigRepository(prisma));
 const groupUsage = lazy(() => new PrismaBroadcastGroupUsageReader(prisma));
-const catalog  = lazy(() => new SheinCatalogClient());
+/** Uma entrada por marca do caçador (sessão, catálogo, URL do produto, hosts de foto). */
+const providers = lazy(() => new HuntProviderRegistry([
+  new SheinHuntProviderAdapter(new SheinCatalogClient()),
+  createMercadoLivreHuntAdapter(),
+]));
 const ranker   = lazy(() => new AiHuntCandidateRanker(new LazyAiTextGenerator()));
 
 const delivery = lazy(() => new HuntFindDelivery({
@@ -52,13 +60,14 @@ const delivery = lazy(() => new HuntFindDelivery({
   images: offersContainer.resolveProductData(),
   enqueue: offersContainer.enqueueOffer(),
   configs: configs(),
+  providers: providers(),
 }));
 
 const runHunt = lazy(() => new RunOfferHuntUseCase({
   hunts: hunts(),
   runs: runs(),
   finds: finds(),
-  catalog: catalog(),
+  providers: providers(),
   credentials: offersContainer.credentialGateway(),
   entitlements: offersContainer.entitlements(),
   riskGate: offersContainer.riskGate(),
@@ -84,14 +93,16 @@ const listRuns   = lazy(() => new ListOfferHuntRunsUseCase({ hunts: hunts(), run
 const getRun     = lazy(() => new GetOfferHuntRunUseCase({ runs: runs() }));
 const listFinds  = lazy(() => new ListOfferHuntFindsUseCase({ hunts: hunts(), finds: finds() }));
 const usage      = lazy(() => new GetOfferHunterUsageUseCase({ finds: finds(), runs: runs(), entitlements: offersContainer.entitlements() }));
-const options    = lazy(() => new GetOfferHunterOptionsUseCase({
+const optionsDeps = lazy((): GetOfferHunterOptionsDeps => ({
   entitlements: offersContainer.entitlements(),
   credentials: offersContainer.credentialGateway(),
   riskGate: offersContainer.riskGate(),
   ai: new LazyHuntAiAvailability(),
   settings: settings(),
-  catalog: catalog(),
+  providers: providers(),
 }));
+const options    = lazy(() => new GetOfferHunterOptionsUseCase(optionsDeps()));
+const providerStates = lazy(() => new GetOfferHunterProvidersUseCase(optionsDeps()));
 const getDestination = lazy(() => new GetOfferHunterDestinationUseCase({ settings: settings(), configs: configs() }));
 const audienceGate = lazy(() => new OfferHunterAudienceGate(offersContainer.entitlements()));
 
@@ -117,6 +128,8 @@ export const hunterContainer = {
   listOfferHuntFinds:    listFinds,
   getOfferHunterUsage:   usage,
   getOfferHunterOptions: options,
+  getOfferHunterProviders: providerStates,
+  huntProviders:         providers,
   getOfferHunterDestination: getDestination,
   audienceGate,
 };

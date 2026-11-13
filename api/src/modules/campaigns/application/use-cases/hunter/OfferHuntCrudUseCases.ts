@@ -15,12 +15,17 @@ export type OfferHuntDefinitionInput = Partial<OfferHuntDefinition>;
 
 /** Padrões da criação (o assistente do painel aplica a predefinição antes). */
 export const OFFER_HUNT_DEFAULTS: Omit<OfferHuntDefinition, 'name'> = {
+  // API anterior ao multimarca não manda `provider`: Shein
+  provider: 'SHEIN',
   sort: 'RECOMMENDED',
   categoryId: null,
   commissionBand: null,
   keyword: null,
+  sourceOptions: null,
   filters: {},
   aiEnabled: false,
+  aiConfigured: false,
+  aiIntent: null,
   topN: HUNTER_LIMITS.topNDefault,
   repeatAfterDays: HUNTER_LIMITS.repeatAfterDaysDefault,
   deliveryMode: 'REVIEW',
@@ -42,7 +47,8 @@ export interface OfferHuntCrudDeps {
 function pickDefinition(input: OfferHuntDefinitionInput): OfferHuntDefinitionInput {
   const out: OfferHuntDefinitionInput = {};
   const keys: (keyof OfferHuntDefinition)[] = [
-    'name', 'sort', 'categoryId', 'commissionBand', 'keyword', 'filters', 'aiEnabled', 'topN', 'repeatAfterDays',
+    'provider', 'name', 'sort', 'categoryId', 'commissionBand', 'keyword', 'sourceOptions', 'filters', 'aiEnabled',
+    'aiConfigured', 'aiIntent', 'topN', 'repeatAfterDays',
     'deliveryMode', 'intervalMinutes', 'windowStartMinute', 'windowEndMinute', 'weekdaysMask',
   ];
   for (const k of keys) if (input[k] !== undefined) (out as Record<string, unknown>)[k] = input[k];
@@ -98,7 +104,12 @@ export class UpdateOfferHuntUseCase extends OfferHuntUseCase {
   async execute(input: { tenantId: string; huntId: string; definition: OfferHuntDefinitionInput }): Promise<OfferHunt> {
     const { tenantId, huntId } = input;
     const current = await load(this.deps.hunts, tenantId, huntId);
-    const def = checked({ ...current, ...pickDefinition(input.definition) });
+    const body = pickDefinition(input.definition);
+    // Marca é fixa depois de criada (filtros, repetição e histórico são da marca)
+    if (body.provider !== undefined && body.provider !== current.provider) {
+      throw new OfferInvalidInputError('Provider cannot change', 'provider');
+    }
+    const def = checked({ ...current, ...body });
     const patch = current.status === 'ACTIVE' ? { ...def, nextRunAt: huntRunDueAt(this.now(), schedule(def), current.lastRunAt) } : def;
     const updated = await this.deps.hunts.update(tenantId, huntId, patch);
     if (!updated) throw new OfferHuntNotFoundError();

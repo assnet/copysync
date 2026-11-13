@@ -14,3 +14,13 @@ describe('safeFindImageUrl', () => {
     expect(safeFindImageUrl(v)).toBeNull();
   });
 });
+
+describe('safeFindImageUrl por marca', () => {
+  it('ML aceita só *.mlstatic.com; Shein recusa mlstatic e ML recusa ltwebstatic', () => {
+    expect(safeFindImageUrl('https://http2.mlstatic.com/D_Q_NP_1.webp', 'MERCADO_LIVRE')).toBe('https://http2.mlstatic.com/D_Q_NP_1.webp');
+    expect(safeFindImageUrl('https://http2.mlstatic.com/a.webp', 'SHEIN')).toBeNull();
+    expect(safeFindImageUrl('https://img.ltwebstatic.com/a.jpg', 'MERCADO_LIVRE')).toBeNull();
+    expect(safeFindImageUrl('http://http2.mlstatic.com/a.webp', 'MERCADO_LIVRE')).toBeNull();
+    expect(safeFindImageUrl('https://mlstatic.com.evil.com/a.webp', 'MERCADO_LIVRE')).toBeNull();
+  });
+});

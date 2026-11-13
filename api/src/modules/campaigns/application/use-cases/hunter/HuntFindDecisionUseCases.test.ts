@@ -6,7 +6,7 @@ import { EnqueueOfferUseCase } from '../EnqueueOfferUseCase';
 import {
   FakeEntitlementReader, InMemoryOfferDispatchRepository, InMemoryOfferGeneratorConfigRepository, InMemoryOfferRepository,
 } from '../offerTestFakes';
-import { InMemoryFinds, InMemoryRuns, InMemorySettings, MAX_ENTITLEMENTS, NOW, TENANT } from './hunterTestFakes';
+import { FakeCatalog, InMemoryFinds, InMemoryRuns, InMemorySettings, MAX_ENTITLEMENTS, NOW, TENANT, testProviders } from './hunterTestFakes';
 import type { BroadcastGroupUsageRow, ListBroadcastGroupRowsOptions } from '../../../domain/contracts/IBroadcastGroupUsageReader';
 import { ENTITLEMENT_KEYS } from '../../../../tenants/domain/entitlementKeys';
 import { AffiliateCredentialRejectedError } from '../../../../../shared/errors/internal/OfferErrors';
@@ -31,6 +31,7 @@ function setup() {
     images,
     enqueue: new EnqueueOfferUseCase({ offers, dispatches, rand: () => 0 }),
     configs: new InMemoryOfferGeneratorConfigRepository(),
+    providers: testProviders(new FakeCatalog()),
     now: () => NOW,
   });
   const approve = new ApproveHuntFindUseCase({ finds, entitlements, delivery });
@@ -50,7 +51,7 @@ describe('ApproveHuntFindUseCase', () => {
   it('entrega pelo Enqueue (HUNTER, hunt:<id>, grupo do destino) com o link do tenant e grava SENT + offerId', async () => {
     const s = setup();
     await s.settings.upsert(TENANT, 'session-1', 'conv-1');
-    const run = await s.runs.startWithinDailyLimit({ tenantId: TENANT, huntId: 'hunt-1', trigger: 'MANUAL', startedAt: NOW }, { since: NOW, limit: 24 });
+    const run = await s.runs.startWithinDailyLimit({ tenantId: TENANT, huntId: 'hunt-1', trigger: 'MANUAL', startedAt: NOW, provider: 'SHEIN' as const }, { since: NOW, limit: 24 });
     const find = s.finds.seed({ goodsId: '533885353', runId: run!.id });
     const out = await s.approve.execute({ tenantId: TENANT, findId: find.id });
     expect(s.resolve).toHaveBeenCalledWith(TENANT, 'https://br.shein.com/product-p-533885353.html', { riskScope: 'OFFER_HUNTER' });

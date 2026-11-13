@@ -22,6 +22,7 @@ import type { AppError } from '../../../../shared/errors/AppError';
 
 const VERSION = MARKETPLACE_RISK_NOTICE_VERSION.SHEIN!;
 const HUNTER_VERSION = OFFER_HUNTER_RISK_NOTICE_VERSION.SHEIN!;
+const ML_HUNTER_VERSION = OFFER_HUNTER_RISK_NOTICE_VERSION.MERCADO_LIVRE!;
 const AT = new Date('2026-11-10T12:00:00.000Z');
 
 /** Fake em memória com a mesma unique do banco (tenant, provider, escopo, versão). */
@@ -76,12 +77,17 @@ describe('marketplaceRiskNotice', () => {
     }
   });
 
-  it('versão por provider e escopo: caçador só SHEIN, com versão própria', () => {
+  it('versão por provider e escopo: caçador com aviso próprio por marca (SHEIN e MERCADO_LIVRE)', () => {
     expect(currentRiskNoticeVersion('SHEIN', 'AFFILIATE_LINK')).toBe('2026-11-10');
     expect(currentRiskNoticeVersion('SHEIN', 'OFFER_HUNTER')).toBe('2026-11-12');
-    expect(requiresRiskAcceptance('SHEIN', 'OFFER_HUNTER')).toBe(true);
-    for (const p of ['SHOPEE', 'MERCADO_LIVRE', 'AMAZON'] as const) {
-      expect(currentRiskNoticeVersion(p, 'OFFER_HUNTER')).toBeNull();
+    expect(currentRiskNoticeVersion('MERCADO_LIVRE', 'OFFER_HUNTER')).toBe('2026-11-13');
+    expect(currentRiskNoticeVersion('MERCADO_LIVRE', 'AFFILIATE_LINK')).toBeNull();
+    for (const p of ['SHOPEE', 'AMAZON'] as const) expect(currentRiskNoticeVersion(p, 'OFFER_HUNTER')).toBeNull();
+  });
+
+  it('OFFER_HUNTER é fail-closed: toda marca exige aceite, mesmo sem aviso', () => {
+    for (const p of ['SHEIN', 'MERCADO_LIVRE', 'SHOPEE', 'AMAZON'] as const) {
+      expect(requiresRiskAcceptance(p, 'OFFER_HUNTER')).toBe(true);
     }
   });
 });
@@ -126,7 +132,56 @@ describe('AcceptMarketplaceRiskUseCase', () => {
     expect(repo.create).not.toHaveBeenCalled();
   });
 
-  it('OFFER_HUNTER para provider que não é SHEIN → 422 no campo scope', async () => {
+  it('ADMIN aceita o aviso do caçador do MERCADO_LIVRE com a versão própria; separado do Shein', async () => {
+    const { sut, rows, audit } = makeSut();
+    expect(await sut.execute(input({ provider: 'MERCADO_LIVRE', scope: 'OFFER_HUNTER', noticeVersion: ML_HUNTER_VERSION })))
+      .toEqual({ acceptedAt: AT, noticeVersion: ML_HUNTER_VERSION, scope: 'OFFER_HUNTER' });
+    expect(rows).toEqual([expect.objectContaining({ provider: 'MERCADO_LIVRE', scope: 'OFFER_HUNTER', noticeVersion: ML_HUNTER_VERSION })]);
+    expect(audit.create).toHaveBeenCalledWith(expect.objectContaining({
+      meta: { provider: 'MERCADO_LIVRE', scope: 'OFFER_HUNTER', noticeVersion: ML_HUNTER_VERSION, locale: 'pt-BR' },
+    }));
+    const { repo } = makeSut();
+    expect(await isMarketplaceRiskAccepted(repo, 't1', 'SHEIN', 'OFFER_HUNTER')).toBe(false);
+  });
+
+  it('aceite ML do caçador: unique por (tenant, provider, escopo, versão); outra marca e outro tenant não herdam', async () => {
+    const { sut, rows, repo, audit } = makeSut();
+    const ml = input({ provider: 'MERCADO_LIVRE', scope: 'OFFER_HUNTER', noticeVersion: ML_HUNTER_VERSION });
+    await sut.execute(ml);
+    await sut.execute({ ...ml, userId: 'u2' });
+    expect(rows).toHaveLength(1);
+    expect(audit.create).toHaveBeenCalledTimes(1);
+    expect(await isMarketplaceRiskAccepted(repo, 't1', 'MERCADO_LIVRE', 'OFFER_HUNTER')).toBe(true);
+    expect(await isMarketplaceRiskAccepted(repo, 't1', 'SHEIN', 'OFFER_HUNTER')).toBe(false);
+    expect(await isMarketplaceRiskAccepted(repo, 't2', 'MERCADO_LIVRE', 'OFFER_HUNTER')).toBe(false);
+    await sut.execute(input({ scope: 'OFFER_HUNTER', noticeVersion: HUNTER_VERSION }));
+    expect(rows.map((r) => `${r.provider}:${r.scope}`)).toEqual(['MERCADO_LIVRE:OFFER_HUNTER', 'SHEIN:OFFER_HUNTER']);
+  });
+
+  it('versão do Shein no aviso ML do caçador → 409 com a vigente do ML', async () => {
+    const { sut, repo } = makeSut();
+    expect(await errorOf(sut.execute(input({ provider: 'MERCADO_LIVRE', scope: 'OFFER_HUNTER', noticeVersion: HUNTER_VERSION }))))
+      .toMatchObject({ statusCode: 409, meta: { provider: 'MERCADO_LIVRE', currentVersion: ML_HUNTER_VERSION, scope: 'OFFER_HUNTER' } });
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('super admin aceita o aviso ML do caçador (bySuperAdmin); no escopo do link segue 403', async () => {
+    const { sut, rows, audit } = makeSut();
+    await sut.execute(input({ provider: 'MERCADO_LIVRE', isSuperAdmin: true, userId: 'sa1', scope: 'OFFER_HUNTER', noticeVersion: ML_HUNTER_VERSION }));
+    expect(rows[0]).toMatchObject({ provider: 'MERCADO_LIVRE', acceptedByUserId: 'sa1' });
+    expect(audit.create).toHaveBeenCalledWith(expect.objectContaining({ meta: expect.objectContaining({ bySuperAdmin: true }) }));
+    expect(await errorOf(sut.execute(input({ isSuperAdmin: true }))))
+      .toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
+  });
+
+  it('MERCADO_LIVRE segue sem aviso do link (AFFILIATE_LINK) → 422', async () => {
+    const { sut, repo } = makeSut();
+    expect(await errorOf(sut.execute(input({ provider: 'MERCADO_LIVRE' }))))
+      .toMatchObject({ statusCode: 422, code: 'AFFILIATE_CREDENTIAL_INVALID' });
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('OFFER_HUNTER para marca sem aviso do caçador → 422 no campo scope', async () => {
     const { sut, repo } = makeSut();
     expect(await errorOf(sut.execute(input({ provider: 'SHOPEE', scope: 'OFFER_HUNTER' }))))
       .toMatchObject({ statusCode: 422, code: 'AFFILIATE_CREDENTIAL_INVALID', meta: { field: 'scope' } });
@@ -234,7 +289,28 @@ describe('requireMarketplaceRiskAccepted', () => {
     expect(repo.findCurrent).toHaveBeenLastCalledWith('t1', 'SHEIN', 'OFFER_HUNTER', HUNTER_VERSION);
   });
 
-  it('provider sem aviso passa sem consultar o repositório', async () => {
+  it('OFFER_HUNTER fail-closed: marca sem aviso do caçador é recusada sem consultar o repositório', async () => {
+    const { repo } = makeRepo();
+    for (const p of ['SHOPEE', 'AMAZON'] as const) {
+      expect(await errorOf(requireMarketplaceRiskAccepted(repo, 't1', p, 'OFFER_HUNTER'))).toMatchObject({
+        statusCode: 403, code: 'MARKETPLACE_RISK_NOT_ACCEPTED', meta: { provider: p, noticeVersion: '', scope: 'OFFER_HUNTER' },
+      });
+      expect(await isMarketplaceRiskAccepted(repo, 't1', p, 'OFFER_HUNTER')).toBe(false);
+    }
+    expect(repo.findCurrent).not.toHaveBeenCalled();
+  });
+
+  it('MERCADO_LIVRE no caçador exige o aceite ML; o aceite do link Shein não vale', async () => {
+    const { repo } = makeRepo();
+    await repo.create({ tenantId: 't1', provider: 'SHEIN', scope: 'OFFER_HUNTER', noticeVersion: HUNTER_VERSION, acceptedByUserId: 'u1', locale: 'pt-BR' });
+    expect(await errorOf(requireMarketplaceRiskAccepted(repo, 't1', 'MERCADO_LIVRE', 'OFFER_HUNTER'))).toMatchObject({
+      statusCode: 403, meta: { provider: 'MERCADO_LIVRE', noticeVersion: ML_HUNTER_VERSION, scope: 'OFFER_HUNTER' },
+    });
+    await repo.create({ tenantId: 't1', provider: 'MERCADO_LIVRE', scope: 'OFFER_HUNTER', noticeVersion: ML_HUNTER_VERSION, acceptedByUserId: 'u1', locale: 'pt-BR' });
+    await expect(requireMarketplaceRiskAccepted(repo, 't1', 'MERCADO_LIVRE', 'OFFER_HUNTER')).resolves.toBeUndefined();
+  });
+
+  it('provider sem aviso do link (AFFILIATE_LINK) passa sem consultar o repositório', async () => {
     const { repo } = makeRepo();
     for (const p of ['SHOPEE', 'MERCADO_LIVRE', 'AMAZON'] as const) {
       await expect(requireMarketplaceRiskAccepted(repo, 't1', p)).resolves.toBeUndefined();

@@ -2,20 +2,21 @@ import type { IOfferHuntRunRepository } from '../../../domain/contracts/hunter/I
 import type { IOfferHuntFindRepository } from '../../../domain/contracts/hunter/IOfferHuntFindRepository';
 import type { IOfferHunterSettingsRepository } from '../../../domain/contracts/hunter/IOfferHunterSettingsRepository';
 import type { IOfferGeneratorConfigRepository } from '../../../domain/contracts/IOfferGeneratorConfigRepository';
-import type { ISheinCatalogClient } from '../../../domain/contracts/ISheinCatalogClient';
+import type { IHuntProviderAdapter, IHuntProviderRegistry } from '../../../domain/contracts/hunter/IHuntProviderAdapter';
+import type { AffiliateCredentialState } from '../../../domain/contracts/IAffiliateCredentialGateway';
 import type { IAffiliateCredentialGateway } from '../../../domain/contracts/IAffiliateCredentialGateway';
 import type { IEntitlementReader } from '../../../domain/contracts/IEntitlementReader';
 import type { IMarketplaceRiskGate } from '../../../domain/contracts/IMarketplaceRiskGate';
 import type { IHuntAiAvailability } from '../../hunter/contracts/IHuntAiAvailability';
-import { HUNT_COMMISSION_BANDS, HUNT_SORTS, type HuntCommissionBand, type HuntSort } from '../../../domain/hunter/HuntCandidate';
-import { HUNT_PRESETS, huntPreset, type HuntPreset, type HuntPresetDefinition } from '../../../domain/services/hunter/huntPresets';
+import { HUNT_PROVIDERS, type HuntProvider } from '../../../domain/hunter/HuntProvider';
+import { huntPresetsFor, type HuntPreset, type HuntProviderPresetDefinition } from '../../../domain/services/hunter/huntPresets';
+import { huntCapabilitiesView } from '../../../domain/services/hunter/huntCapabilities';
+import { HUNT_PROVIDER_PLAN_KEY } from '../../services/hunter/huntProviderGates';
 import { HUNTER_LIMITS } from '../../../domain/services/hunter/hunterLimits';
 import { startOfDayInZone } from '../../../domain/services/startOfDayInZone';
 import { ENTITLEMENT_KEYS } from '../../../../tenants/domain/entitlementKeys';
 import { AffiliateCredentialRejectedError } from '../../../../../shared/errors/internal/OfferErrors';
 import { logger } from '../../../../../shared/logger/logger';
-
-const PROVIDER = 'SHEIN' as const;
 
 // ── Uso do dia ───────────────────────────────────────────────────────────────
 
@@ -66,24 +67,26 @@ export class GetOfferHunterUsageUseCase {
 export type HuntCategorySourceStatus = 'OK' | 'LOCKED' | 'NO_CREDENTIAL' | 'CREDENTIAL_REJECTED' | 'UNAVAILABLE';
 
 export interface OfferHunterGates {
-  /** `marketplace_shein_enabled`. */
+  /** Plano da marca (Shein `marketplace_shein_enabled`; ML sem chave = true). */
   plan: boolean;
   /** `offer_hunter_enabled`. */
   hunterEntitlement: boolean;
-  /** Conta Shein conectada, não recusada, com sessão. */
+  /** Conta da marca conectada, não recusada, com sessão utilizável. */
   credential: boolean;
-  /** Aviso de risco do caçador (`OFFER_HUNTER`) na versão vigente. */
+  /** Aviso de risco do caçador (`OFFER_HUNTER`) da marca na versão vigente. */
   riskAccepted: boolean;
   aiAvailable: boolean;
   destination: boolean;
 }
 
 export interface OfferHunterOptions {
+  provider: HuntProvider;
+  capabilities: ReturnType<typeof huntCapabilitiesView>;
   categories: { categoryId: string; name: string }[];
   sourceStatus: HuntCategorySourceStatus;
-  sorts: readonly HuntSort[];
-  commissionBands: readonly HuntCommissionBand[];
-  presets: { key: HuntPreset; definition: HuntPresetDefinition }[];
+  sorts: readonly string[];
+  commissionBands: readonly string[];
+  presets: { key: HuntPreset; definition: HuntProviderPresetDefinition }[];
   limits: {
     huntsMax: number; topNMax: number; topNDefault: number; repeatAfterDaysMin: number; repeatAfterDaysMax: number;
     repeatAfterDaysDefault: number; intervalMinutesMin: number; intervalMinutesMax: number; keywordMaxLength: number;
@@ -98,60 +101,82 @@ export interface GetOfferHunterOptionsDeps {
   riskGate: IMarketplaceRiskGate;
   ai: IHuntAiAvailability;
   settings: Pick<IOfferHunterSettingsRepository, 'get'>;
-  catalog: Pick<ISheinCatalogClient, 'listCategories'>;
+  providers: Pick<IHuntProviderRegistry, 'get'>;
+}
+
+/** Portões de uma marca sem chamar a fonte (estado da credencial junto, para o status das categorias). */
+async function providerGates(
+  deps: GetOfferHunterOptionsDeps, tenantId: string, adapter: IHuntProviderAdapter,
+  shared: { hunter: boolean; aiAvailable: boolean; destination: boolean },
+): Promise<{ gates: OfferHunterGates; state: AffiliateCredentialState }> {
+  const provider = adapter.provider;
+  const planKey = HUNT_PROVIDER_PLAN_KEY[provider];
+  const [plan, state, riskAccepted] = await Promise.all([
+    planKey ? deps.entitlements.getBoolean(tenantId, planKey) : Promise.resolve(true),
+    deps.credentials.resolveState(tenantId, provider),
+    deps.riskGate.isAccepted(tenantId, provider, 'OFFER_HUNTER'),
+  ]);
+  return {
+    state,
+    gates: {
+      plan: plan === true,
+      hunterEntitlement: shared.hunter,
+      credential: state.state === 'ok' && adapter.sessionFrom(state.cred) !== null,
+      riskAccepted,
+      aiAvailable: shared.aiAvailable,
+      destination: shared.destination,
+    },
+  };
+}
+
+async function sharedGates(deps: GetOfferHunterOptionsDeps, tenantId: string) {
+  const [hunter, aiAvailable, settings] = await Promise.all([
+    deps.entitlements.getBoolean(tenantId, ENTITLEMENT_KEYS.OFFER_HUNTER_ENABLED),
+    deps.ai.isAvailable(tenantId).catch(() => false),
+    deps.settings.get(tenantId),
+  ]);
+  return { hunter: hunter === true, aiAvailable, destination: !!(settings?.sessionId && settings.conversationId) };
 }
 
 /**
- * Tudo que o assistente precisa numa chamada. Categorias vêm da fonte com a sessão do tenant, só com
- * plano, caçador e aceite em dia (a mesma ordem da execução); falha da fonte vira `sourceStatus`, nunca erro.
- * O `AT` só vai ao cliente do catálogo; a saída não carrega token, `memberId` nem `did`.
+ * Tudo que o assistente precisa numa chamada, para a marca pedida (padrão SHEIN). Categorias vêm da fonte da
+ * marca com a sessão do tenant, só com plano, caçador e aceite em dia (a mesma ordem da execução); falha da
+ * fonte vira `sourceStatus`, nunca erro. A sessão só vai à fonte; a saída não carrega token, cookie, `memberId` nem `did`.
  */
 export class GetOfferHunterOptionsUseCase {
   constructor(private readonly deps: GetOfferHunterOptionsDeps) {}
 
-  async execute(tenantId: string): Promise<OfferHunterOptions> {
-    const { entitlements } = this.deps;
-    const [plan, hunter, state, riskAccepted, aiAvailable, settings] = await Promise.all([
-      entitlements.getBoolean(tenantId, ENTITLEMENT_KEYS.MARKETPLACE_SHEIN_ENABLED),
-      entitlements.getBoolean(tenantId, ENTITLEMENT_KEYS.OFFER_HUNTER_ENABLED),
-      this.deps.credentials.resolveState(tenantId, PROVIDER),
-      this.deps.riskGate.isAccepted(tenantId, PROVIDER, 'OFFER_HUNTER'),
-      this.deps.ai.isAvailable(tenantId).catch(() => false),
-      this.deps.settings.get(tenantId),
-    ]);
-    const token = state.state === 'ok' ? state.cred.session?.cookies?.AT : undefined;
-    const gates: OfferHunterGates = {
-      plan: plan === true,
-      hunterEntitlement: hunter === true,
-      credential: state.state === 'ok' && !!token,
-      riskAccepted,
-      aiAvailable,
-      destination: !!(settings?.sessionId && settings.conversationId),
-    };
+  async execute(tenantId: string, provider: HuntProvider = 'SHEIN'): Promise<OfferHunterOptions> {
+    const adapter = this.deps.providers.get(provider);
+    const caps = adapter.capabilities;
+    const { gates, state } = await providerGates(this.deps, tenantId, adapter, await sharedGates(this.deps, tenantId));
 
     let categories: OfferHunterOptions['categories'] = [];
     let sourceStatus: HuntCategorySourceStatus;
+    const session = state.state === 'ok' ? adapter.sessionFrom(state.cred) : null;
     if (!gates.plan || !gates.hunterEntitlement || !gates.riskAccepted) sourceStatus = 'LOCKED';
     else if (state.state === 'rejected') sourceStatus = 'CREDENTIAL_REJECTED';
-    else if (state.state !== 'ok' || !token) sourceStatus = 'NO_CREDENTIAL';
+    else if (!session) sourceStatus = 'NO_CREDENTIAL';
     else {
       try {
-        const list = await this.deps.catalog.listCategories({ token, memberId: state.cred.publicIdentifier });
+        const list = await adapter.catalog.listCategories(session);
         categories = list.flatMap((c) => (c.categoryId ? [{ categoryId: c.categoryId, name: c.name }] : []));
         sourceStatus = 'OK';
       } catch (err) {
         sourceStatus = err instanceof AffiliateCredentialRejectedError ? 'CREDENTIAL_REJECTED' : 'UNAVAILABLE';
-        logger.warn({ tenantId, code: (err as { code?: string }).code ?? 'UNEXPECTED' }, 'offer hunter categories unavailable');
+        logger.warn({ tenantId, provider, code: (err as { code?: string }).code ?? 'UNEXPECTED' }, 'offer hunter categories unavailable');
       }
     }
 
     return {
+      provider,
+      capabilities: huntCapabilitiesView(caps),
       categories,
       sourceStatus,
-      sorts: HUNT_SORTS,
+      sorts: caps.sorts,
       // Faixa da fonte agora é derivada do filtro de comissão: campo mantido vazio por compatibilidade
       commissionBands: [],
-      presets: HUNT_PRESETS.map((key) => ({ key, definition: huntPreset(key) })),
+      presets: huntPresetsFor(caps),
       limits: {
         huntsMax: HUNTER_LIMITS.huntsPerTenantMax,
         topNMax: HUNTER_LIMITS.topNMax,
@@ -167,6 +192,30 @@ export class GetOfferHunterOptionsUseCase {
       },
       gates,
     };
+  }
+}
+
+export interface OfferHunterProviderState {
+  provider: HuntProvider;
+  /** Estado da credencial da marca (o passo 0 mostra "sem conta"/"recusada"). */
+  credentialState: 'OK' | 'MISSING' | 'REJECTED';
+  gates: OfferHunterGates;
+}
+
+/** Passo 0 do assistente: portões de todas as marcas numa chamada leve, **sem** chamar nenhuma fonte. */
+export class GetOfferHunterProvidersUseCase {
+  constructor(private readonly deps: GetOfferHunterOptionsDeps) {}
+
+  async execute(tenantId: string): Promise<{ items: OfferHunterProviderState[] }> {
+    const shared = await sharedGates(this.deps, tenantId);
+    const items = await Promise.all(HUNT_PROVIDERS.map(async (provider) => {
+      const adapter = this.deps.providers.get(provider);
+      const { gates, state } = await providerGates(this.deps, tenantId, adapter, shared);
+      const credentialState: OfferHunterProviderState['credentialState'] =
+        state.state === 'rejected' ? 'REJECTED' : gates.credential ? 'OK' : 'MISSING';
+      return { provider, credentialState, gates };
+    }));
+    return { items };
   }
 }
 

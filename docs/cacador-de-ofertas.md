@@ -115,6 +115,26 @@ candidato pode contar em várias chaves.
 - Saída exigida `[{ id, reason }]`: ids ⊂ enviados, sem repetição, `reason` texto puro ≤ 140. Qualquer desvio ou
   erro do provedor → ranking determinístico e execução `aiFallback`. Prompt/validação: `huntRankingPrompt.ts`.
 
+## IA de configuração (`POST /offer-hunts/ai-suggest`, AI-01..06)
+
+- "Deixar a IA decidir os filtros" no assistente. Corpo `{ provider, intent ≤ 120 | null, pickProduct }`; resposta
+  `{ draft, reasons, dropped, sourceUsed, remainingToday }`. **Nada é salvo**: o usuário confere e salva (D5); a IA
+  não mexe em caçada salva. `draft.filters` em centavos/inteiros do contrato da caçada; `reasons`/`dropped` por
+  caminho do rascunho (`filters.maxPriceCents`, `sourceOptions.sort`…).
+- Portões: `offer_hunter_enabled` + plano da marca (`HUNT_PROVIDER_PLAN_KEY`) sempre. Fonte (categorias; com
+  `pickProduct` a amostra larga D6: ≤ 5 consultas de 1 página, ≤ 90 itens, 40 melhores pela nota + resumo por
+  categoria) só com aceite `OFFER_HUNTER` + credencial da marca; sem eles, só capacidades + intenção, categoria
+  null, `sourceUsed: false`. Falha da fonte não derruba a sugestão (1º erro encerra as consultas).
+- Teto técnico **5/dia por conta** (`hunterAiLimits.ts`, tabela `offer_hunt_ai_suggestions`, reserva atômica com
+  lock por tenant antes de ler a fonte). Gerador recusa (`AppError`: 409/422/429/503 do `IAiTextGenerator`) →
+  reserva devolvida e o código sobe; saída inválida → 422 `OFFER_HUNT_AI_SUGGEST_INVALID_OUTPUT` e conta.
+  Teto → 429 `OFFER_HUNT_AI_SUGGEST_DAILY_LIMIT`; sem intenção e sem `pickProduct` → 422; sem IA → 409
+  `AI_NOT_CONFIGURED` (sem gastar). Conta também em `ai_requests_per_day` (`purpose: 'offer_hunt_config'`).
+- Prompt (`huntConfigPrompt.ts`, puro): marca, só filtros/ordenações da marca, categorias reais (id+nome), intenção
+  sanitizada em `<intencao>` como DADO NÃO CONFIÁVEL, amostra sem id/link de produto, token, memberId nem tenant.
+  Parse estrito: 1º objeto JSON; campo fora das capacidades/categorias/limites é descartado e listado em `dropped`;
+  nenhum campo aproveitável → null. Nunca logar prompt, intenção ou resposta (só códigos e contagens).
+
 ## Entrega
 
 - `HuntFindDelivery` (aprovação no REVIEW ou AUTO): `ResolveAffiliateProductUseCase` com `riskScope: 'OFFER_HUNTER'`
@@ -138,15 +158,37 @@ candidato pode contar em várias chaves.
 ## Aceite de risco próprio
 
 - `marketplace_risk_acceptances.scope` (`AFFILIATE_LINK` padrão · `OFFER_HUNTER`), único por (tenant, provider,
-  scope, versão). Versão `OFFER_HUNTER_RISK_NOTICE_VERSION.SHEIN = '2026-11-12'` (`marketplaceRiskNotice.ts`); o aviso
-  Shein atual (`2026-11-10`) não mudou.
-- Texto autônomo: busca automática recorrente, link automático pela sessão, envio automático, cláusulas 3.3.2 e
-  Anexo 3 §6, encerramento da conta/perda de comissão, risco do titular. **Um só aceite cobre todo o fluxo do
+  scope, versão). **Um aviso por marca, aceite separado** (D2, 2026-11-13): `OFFER_HUNTER_RISK_NOTICE_VERSION` =
+  `{ SHEIN: '2026-11-12', MERCADO_LIVRE: '2026-11-13' }` (`marketplaceRiskNotice.ts`); aceitar uma marca não libera a
+  outra. O aviso Shein do link (`AFFILIATE_LINK`, `2026-11-10`) não mudou e o ML segue sem aviso de link.
+- **Fail-closed no escopo `OFFER_HUNTER`**: marca sem versão de aviso do caçador = não aceito (`isMarketplaceRiskAccepted`
+  → false, `requireMarketplaceRiskAccepted` → 403 com versão `''`, `requiresRiskAcceptance(_, 'OFFER_HUNTER')` sempre
+  true, aceite → 422 no campo `scope`). Marca nova no caçador só roda depois de ganhar aviso próprio aqui **e** no app.
+  No `AFFILIATE_LINK` nada muda: marca sem aviso passa (gerador, vitrine, story e monitoramento do ML intocados).
+- Texto autônomo por marca: busca automática recorrente, link automático pela sessão, envio automático, proibição de
+  automação nos termos (Shein: cláusulas 3.3.2 e Anexo 3 §6; ML: Termos do Programa de Afiliados, sem número de
+  cláusula, não confirmado), suspensão/encerramento da conta e perda de comissão, risco do titular. **Um só aceite cobre todo o fluxo do
   caçador**; gerador, vitrine, story e monitoramento seguem no escopo padrão.
 - Aceitam o `ADMIN` do tenant **e o super admin** (decisão do dono 2026-11-12: na prévia só ele vê a tela). Aceite do
   super admin fica com o id dele e `bySuperAdmin: true` na auditoria; o diálogo avisa que vale para a conta inteira.
   Exceção só do escopo `OFFER_HUNTER`: no aviso Shein do link (`AFFILIATE_LINK`) o super admin segue recusado (403).
   A rota de aceite não tem portão de audiência. Só inclusão. Caixa de aceite nunca persistida.
+
+## Multimarca: núcleo (`.specs/features/offer-hunter-multi/` T1–T3)
+
+Caçada tem `provider` (`SHEIN` | `MERCADO_LIVRE`, subconjunto de `AffiliateProvider`; antigas = SHEIN, fixa depois de
+criada → 422 `provider`). Tudo que muda por marca fica no adaptador (`IHuntProviderAdapter`, registry único em
+`hunterContainer.huntProviders`, também usado pelo `offerHuntAiContainer`): `sessionFrom(credencial)`, `catalog`
+(`IHuntCatalogSource`), `productUrl(productId)` e `imageHosts`; capacidades em `domain/services/hunter/huntCapabilities.ts`
+(constante, nunca banco). `HuntCandidate` genérico: `productId` (Shein = goodsId), `hasSecondaryCommission` (sem
+secundária = 100% da primária), `extraFlag`, `commissionEstimated`. Pontuação tira o fator cujo dado a marca não tem
+(mesma chave do filtro local) e renormaliza para 100; Shein dá exatamente as notas de antes (teste de equivalência).
+Portões por marca: plano só na Shein (`marketplace_shein_enabled`), credencial/aceite `OFFER_HUNTER` da marca, teto e
+guardas somados por conta. Repetição por `provider + productId`; `offer_hunt_finds.productId` é anulável só por linhas
+do código anterior (leitura usa `productId ?? goodsId`; `goodsId` só Shein). Shein ordena por `sort` (coluna); outras
+marcas por `sourceOptions.sort` + flags da fonte; filtro fora das capacidades = 422 com o campo. `GET /options?provider=`
+devolve capacidades/categorias/presets/portões da marca; `GET /options/providers` só portões, sem chamar fonte.
+Respostas mantêm `goodsId` (= productId na Shein, null nas outras) para o painel anterior.
 
 ## Job (`OfferHuntSchedulerJob`)
 
@@ -192,7 +234,7 @@ Aceite: `POST /api/integrations/affiliate-credentials/:provider/risk-acceptance`
 - Persistência (`tab`): `offerHunter.wizard*` (limpo ao salvar), `offerHunter.destinationDraft`,
   `offerHunter.destinationPickerOpen`, `offerHunter.detail.<id>`.
 - Privacidade: tela `offerHunter`, flags `sessionName`, `groupNames`, `groupAvatars`, `productImages`, `productText`.
-- Textos em `strings.ts` (aviso espelhado da API, teste de hash próprio); ícones via `AppIcon`, sem brilhinho de IA.
+- Textos em `strings.ts` (aviso por marca em `riskNotice[provider]`, versão por marca espelhada da API, hash+versão travados por marca em `strings.test.ts`; `useHunterRiskAcceptance(provider)`, `HunterRiskNoticeDialog provider`); ícones via `AppIcon`, sem brilhinho de IA.
 
 ## Observado × garantido
 
@@ -218,6 +260,7 @@ IP, o recurso para e volta ao dono.
 ## O que não fazer
 
 - Forjar `armortoken`/`smdeviceid`/`x-oest`/`anti-in`, headless ou insistir em desafio anti-bot.
+- Liberar marca no caçador sem aviso próprio (escopo `OFFER_HUNTER` é fail-closed) ou reusar o aceite de uma marca em outra.
 - Ler página de produto Shein (a URL `product-p-<id>` só alimenta o Resolve) ou endpoint fora da lista fechada.
 - Guardar catálogo em tabela: só o achado escolhido é persistido.
 - Contar `HUNTER` em `offer_generations_per_day` ou tratar teto ausente como ilimitado.

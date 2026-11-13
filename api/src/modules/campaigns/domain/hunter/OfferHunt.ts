@@ -1,5 +1,6 @@
 // Entidades e enums do Caçador de Ofertas (espelham os enums Prisma, sem importá-los). Puro.
 import type { HuntCommissionBand, HuntLocalFilters, HuntRejectionCounts, HuntScoreFactor, HuntSort } from './HuntCandidate';
+import type { HuntProvider, HuntSourceOptions } from './HuntProvider';
 
 export const OFFER_HUNT_STATUSES = ['ACTIVE', 'PAUSED'] as const;
 export type OfferHuntStatus = (typeof OFFER_HUNT_STATUSES)[number];
@@ -22,16 +23,25 @@ export type OfferHuntRunTrigger = (typeof OFFER_HUNT_RUN_TRIGGERS)[number];
 export const OFFER_HUNT_FIND_STATUSES = ['PENDING_REVIEW', 'APPROVED', 'DISMISSED', 'SENT', 'FAILED'] as const;
 export type OfferHuntFindStatus = (typeof OFFER_HUNT_FIND_STATUSES)[number];
 
-/** Campos editáveis de uma caçada (criação e edição). */
+/** Campos editáveis de uma caçada (criação e edição). `provider` só na criação (fixo depois). */
 export interface OfferHuntDefinition {
+  /** Marca da caçada (caçadas antigas = SHEIN). */
+  provider: HuntProvider;
   name: string;
+  /** Ordenação Shein (coluna `sort`); outras marcas = `RECOMMENDED` e ordenam por `sourceOptions.sort`. */
   sort: HuntSort;
   categoryId: string | null;
   /** null = sem filtro de faixa na fonte. */
   commissionBand: HuntCommissionBand | null;
   keyword: string | null;
+  /** Filtros da fonte próprios da marca (ML: `sort`, `extraEarningsOnly`, `bestSellersOnly`); Shein = null. */
+  sourceOptions: HuntSourceOptions | null;
   filters: HuntLocalFilters;
   aiEnabled: boolean;
+  /** Configurada pela IA (só registro/exibição; a IA não muda filtros nas buscas). */
+  aiConfigured: boolean;
+  /** Intenção dada à IA na configuração (≤ 120), só registro/exibição. */
+  aiIntent: string | null;
   topN: number;
   repeatAfterDays: number;
   deliveryMode: OfferHuntDeliveryMode;
@@ -68,19 +78,23 @@ export interface OfferHuntRunCounters {
 
 /** Item do ranking de uma execução (só exibição; sem link, token nem id de afiliado). */
 export interface OfferHuntRankingItem {
-  goodsId: string;
+  provider: HuntProvider;
+  /** Id na marca (Shein = goodsId). */
+  productId: string;
   title: string | null;
-  /** https em *.ltwebstatic.com (o presenter confere de novo). */
+  /** https no host da marca (o presenter confere de novo). */
   imageUrl: string | null;
   priceCents: number | null;
   discountPercent: number | null;
-  /** Comissão de 1ª compra (cliente novo). */
+  /** Comissão primária (Shein 1ª compra; ML percentual do hub). */
   commissionPercent: number | null;
   commissionCents: number | null;
-  /** Comissão de recompra (cliente que retorna). */
+  /** Comissão de recompra (só Shein). */
   returningCommissionPercent: number | null;
   returningCommissionCents: number | null;
   extraCommissionCents: number | null;
+  /** Comissão estimada pela tabela (ML sem dado do hub). Ausente no JSON antigo = false. */
+  commissionEstimated: boolean;
   salesBucket: number | null;
   reviewsBucket: number | null;
   rating: number | null;
@@ -93,6 +107,7 @@ export interface OfferHuntRankingItem {
 export interface OfferHuntRun extends OfferHuntRunCounters {
   id: string;
   tenantId: string;
+  provider: HuntProvider;
   /** null = caçada excluída. */
   huntId: string | null;
   trigger: OfferHuntRunTrigger;
@@ -108,11 +123,15 @@ export type OfferHuntRunSummary = Omit<OfferHuntRun, 'ranking'> & { hasRanking: 
 
 /** Retrato do item escolhido (só exibição) + pontuação. */
 export interface OfferHuntFindSnapshot {
-  goodsId: string;
+  provider: HuntProvider;
+  /** Id na marca (Shein = goodsId; ML = `MLB…`). Repetição é por `provider + productId`. */
+  productId: string;
+  /** Coluna legada só da Shein (= productId); outras marcas = null. */
+  goodsId: string | null;
   skcCode: string | null;
   activityId: string | null;
   title: string;
-  /** https e host *.ltwebstatic.com (normalizado pelo cliente da fonte); null = sem foto. */
+  /** https e host da marca (normalizado pelo cliente da fonte); null = sem foto. */
   imageUrl: string | null;
   priceCents: number | null;
   originalPriceCents: number | null;
@@ -122,6 +141,7 @@ export interface OfferHuntFindSnapshot {
   returningCommissionPercent: number | null;
   returningCommissionCents: number | null;
   extraCommissionCents: number | null;
+  commissionEstimated: boolean;
   salesBucket: number | null;
   reviewsBucket: number | null;
   rating: number | null;

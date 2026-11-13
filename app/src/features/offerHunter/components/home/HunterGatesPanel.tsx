@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { CircleCheck, CircleDashed, Info, KeyRound, Lock, ShieldAlert, Users, type LucideIcon } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { AFFILIATE_CREDENTIALS_PATH, AFFILIATE_PLANS_PATH } from '@/features/navigation/model';
-import { offerHunterStrings } from '../../strings';
+import { offerHunterStrings, type HunterRiskProvider } from '../../strings';
 import { HUNT_BLOCKING_GATES } from '../../hooks';
 import type { HuntGateKey, HuntOptions } from '../../types';
 
@@ -21,7 +21,9 @@ const GATE_ICONS: Record<HuntGateKey, LucideIcon> = {
 export interface HunterGatesPanelProps {
   options: HuntOptions;
   blockedBy: HuntGateKey | null;
-  onOpenRisk: () => void;
+  /** Marca dos portões exibidos (padrão SHEIN): o aviso de risco aberto é o dela. */
+  provider?: HunterRiskProvider;
+  onOpenRisk: (provider: HunterRiskProvider) => void;
   onFocusDestination: () => void;
 }
 
@@ -29,14 +31,14 @@ export interface HunterGatesPanelProps {
  * Estados travados (`options.gates`) na ordem da execução. Plano fechado mostra só o upgrade (as demais
  * etapas não valem sem ele); senão, lista de etapas com a ação de cada pendente. IA indisponível é só aviso.
  */
-export function HunterGatesPanel({ options, blockedBy, onOpenRisk, onFocusDestination }: HunterGatesPanelProps) {
+export function HunterGatesPanel({ options, blockedBy, provider = 'SHEIN', onOpenRisk, onFocusDestination }: HunterGatesPanelProps) {
   const navigate = useNavigate();
   const { gates, sourceStatus } = options;
 
   const act = (key: HuntGateKey) => {
     if (key === 'plan' || key === 'hunterEntitlement') navigate(AFFILIATE_PLANS_PATH);
     else if (key === 'credential') navigate(AFFILIATE_CREDENTIALS_PATH);
-    else if (key === 'riskAccepted') onOpenRisk();
+    else if (key === 'riskAccepted') onOpenRisk(provider);
     else if (key === 'destination') onFocusDestination();
   };
 

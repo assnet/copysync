@@ -1,3 +1,4 @@
+import type { HuntProvider } from '../../hunter/HuntProvider';
 import type { OfferHuntFind, OfferHuntFindSnapshot, OfferHuntFindStatus } from '../../hunter/OfferHunt';
 import type { OfferHuntPageCursor } from './IOfferHuntRunRepository';
 
@@ -28,15 +29,15 @@ export interface IOfferHuntFindRepository {
   /**
    * Grava `min(finds.length, limit − achados do tenant desde since)` na ordem dada, numa transação
    * serializada por tenant (desenho do `createWithinDailyLimit`). Devolve os gravados (pode ser `[]`).
-   * Com `repeatSince`, descarta antes de contar o saldo o goodsId que a mesma caçada já escolheu desde
-   * essa data (inclusive no próprio lote), dentro do mesmo lock: execuções simultâneas não repetem item.
+   * Com `repeatSince`, descarta antes de contar o saldo o produto (`provider + productId`) que a mesma caçada já
+   * escolheu desde essa data (inclusive no próprio lote), dentro do mesmo lock: execuções simultâneas não repetem item.
    */
   insertWithinDailyLimit(
     tenantId: string, finds: NewOfferHuntFind[], quota: { since: Date; limit: number; repeatSince?: Date },
   ): Promise<OfferHuntFind[]>;
   countCreatedSince(tenantId: string, since: Date): Promise<number>;
-  /** goodsIds já escolhidos pela caçada desde `since` (qualquer estado): regra de repetição. */
-  recentGoodsIds(tenantId: string, huntId: string, since: Date): Promise<Set<string>>;
+  /** Ids de produto da marca já escolhidos pela caçada desde `since` (qualquer estado): regra de repetição. */
+  recentProductIds(tenantId: string, huntId: string, provider: HuntProvider, since: Date): Promise<Set<string>>;
   /** Com `delivery` (disparo mais recente da oferta, grupo e sessão). */
   findById(tenantId: string, id: string): Promise<OfferHuntFind | null>;
   /** Com `delivery`, como `findById`. */

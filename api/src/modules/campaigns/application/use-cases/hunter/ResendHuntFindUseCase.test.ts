@@ -5,7 +5,7 @@ import { EnqueueOfferUseCase } from '../EnqueueOfferUseCase';
 import {
   FakeEntitlementReader, InMemoryOfferDispatchRepository, InMemoryOfferGeneratorConfigRepository, InMemoryOfferRepository,
 } from '../offerTestFakes';
-import { InMemoryFinds, InMemoryRuns, InMemorySettings, MAX_ENTITLEMENTS, NOW, TENANT } from './hunterTestFakes';
+import { FakeCatalog, InMemoryFinds, InMemoryRuns, InMemorySettings, MAX_ENTITLEMENTS, NOW, TENANT, testProviders } from './hunterTestFakes';
 import { ENTITLEMENT_KEYS } from '../../../../tenants/domain/entitlementKeys';
 import { HUNTER_LIMITS } from '../../../domain/services/hunter/hunterLimits';
 import { LANE_TIMEOUT_HOLD_SECONDS } from '../../../domain/offerTyping';
@@ -29,6 +29,7 @@ function setup(ent: Record<string, unknown> = {}) {
     images: { storeImage: async () => null, discardImage: async () => {} },
     enqueue: new EnqueueOfferUseCase({ offers, dispatches, rand: () => 0 }),
     configs: new InMemoryOfferGeneratorConfigRepository(),
+    providers: testProviders(new FakeCatalog()),
     now: () => clock,
   });
   const uc = new ResendHuntFindUseCase({ finds, entitlements, delivery, now: () => clock });
@@ -46,7 +47,7 @@ describe('ResendHuntFindUseCase', () => {
     const out = await s.uc.execute({ tenantId: TENANT, findId: find.id });
     const offer = s.offers.items[0]!;
     expect(offer).toMatchObject({ origin: 'HUNTER', sourceKey: `hunt:${find.id}:r1`, affiliateUrl: 'https://onelink.shein.com/1/tenant-new' });
-    expect(s.resolve).toHaveBeenCalledWith(TENANT, expect.stringContaining(find.goodsId), { riskScope: 'OFFER_HUNTER' });
+    expect(s.resolve).toHaveBeenCalledWith(TENANT, expect.stringContaining(find.productId), { riskScope: 'OFFER_HUNTER' });
     expect(out).toMatchObject({ status: 'SENT', offerId: offer.id, resendCount: 1, lastResentAt: NOW });
     expect(await s.finds.countCreatedSince(TENANT, new Date(0))).toBe(used);
     expect(s.finds.items).toHaveLength(1);

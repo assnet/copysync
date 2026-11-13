@@ -1,4 +1,5 @@
-import type { HuntLocalFilters, HuntSourceFilters } from '../../hunter/HuntCandidate';
+import type { HuntFilterKey, HuntLocalFilters, HuntSourceFilters } from '../../hunter/HuntCandidate';
+import type { HuntCapabilities } from '../../hunter/HuntProvider';
 
 export const HUNT_PRESETS = ['TOP_COMMISSION', 'BEST_SELLERS', 'BIGGEST_DISCOUNT', 'NEW_ARRIVALS', 'CUSTOM'] as const;
 export type HuntPreset = (typeof HUNT_PRESETS)[number];
@@ -26,4 +27,28 @@ const PRESETS: Readonly<Record<HuntPreset, HuntPresetDefinition>> = {
 export function huntPreset(preset: HuntPreset): HuntPresetDefinition {
   const p = PRESETS[preset];
   return { source: { ...p.source }, local: { ...p.local } };
+}
+
+/** Predefinição de uma marca: ordenação como texto da marca (Shein = `HuntSort`; ML = `relevance`…). */
+export interface HuntProviderPresetDefinition {
+  source: { sort: string; commissionBand: HuntSourceFilters['commissionBand'] };
+  local: HuntLocalFilters;
+}
+
+/**
+ * Predefinições que fazem sentido na marca: filtro local fora das capacidades tira a predefinição; ordenação que a
+ * marca não tem vira a padrão dela, e a predefinição que só se distinguia pela ordenação (sem filtro) sai
+ * (ficaria igual a CUSTOM). Shein = todas, idênticas a `huntPreset`.
+ */
+export function huntPresetsFor(caps: Pick<HuntCapabilities, 'sorts' | 'defaultSort' | 'localFilters'>): {
+  key: HuntPreset; definition: HuntProviderPresetDefinition;
+}[] {
+  return HUNT_PRESETS.flatMap((key) => {
+    const p = huntPreset(key);
+    const localKeys = (Object.keys(p.local) as (keyof HuntLocalFilters)[]).filter((k) => k !== 'commissionOperator');
+    if (localKeys.some((k) => !caps.localFilters.includes(k as HuntFilterKey))) return [];
+    const sortOk = caps.sorts.includes(p.source.sort);
+    if (!sortOk && key !== 'CUSTOM' && localKeys.length === 0) return [];
+    return [{ key, definition: { source: { sort: sortOk ? p.source.sort : caps.defaultSort, commissionBand: p.source.commissionBand }, local: p.local } }];
+  });
 }

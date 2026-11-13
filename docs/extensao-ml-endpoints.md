@@ -316,3 +316,66 @@ Conta do dono com 3 etiquetas, chamada feita na própria página do ML:
        │  (produto extraído do DOM)              │  e dados do produto
        └────────────────────────────────────────►│
 ```
+
+## 12. Hub de afiliados — busca (2026-11-13)
+
+Fonte do Caçador de Ofertas no ML (`.specs/features/offer-hunter-multi/`, design §1). Captura feita no navegador do
+dono (sem clonar perfil do Chrome); fixture reduzida, sem dado pessoal, em
+`api/src/modules/campaigns/infrastructure/http/__fixtures__/mlHubSearch.json`.
+
+### Request
+
+```
+POST https://www.mercadolivre.com.br/affiliate-program/api/hub/search?is_affiliate=true&device=desktop
+{"search":"","sort":"relevance","filters":[{"id":"best_seller","value":true}],"offset":0}
+```
+
+- `search`: palavra (vazio = sem busca). `sort`: `relevance` | `lowest_price` | `highest_price`.
+- `filters`: `{"id":"best_seller","value":true}` (mais vendidos), `{"id":"extra_commission","value":true}` (ganhos
+  extras), `{"id":"category","value":"MLB5726"}`. **Suposição**: o valor de `category` é o `id` de
+  `filters[category].values[]` da resposta; esse filtro não foi capturado no request.
+- `offset`: página × 18 (página 1 = 0). A página do hub manda `x-csrf-token` e `x-custom-origin`; o servidor manda só
+  os headers do `createLink` (abaixo) e funciona.
+
+### Response
+
+- `polycard_client_model.polycard_context.picture_template`
+  (`https://http2.mlstatic.com/D_{square}_NP{2x}_{id}-{size}{sanitized_title}.webp`), `picture_square_default` `Q`,
+  `picture_size_default` `AB`.
+- `polycard_client_model.polycards[]` (18 por página): `metadata.id` (`MLB\d+`, anúncio), `metadata.product_id`,
+  `metadata.url`, `metadata.extra_commission`/`brand_commission` (string `"true"`/`"false"`); `pictures.pictures[0].id`;
+  `components[]` por `id`: `title`, `price` (`current_price.value`, `previous_price.value`, `discount_label`),
+  `review_compacted` (`values[label].label.text` = nota; `alt_text` "Classificação 4.9 de 5 estrelas. Mais de 100
+  produtos vendidos."), `highlight` ("MAIS VENDIDO") e **`affiliates_commission_chip`**: pill simples
+  `"GANHOS 12%"` ou composite `"{ganancia} {extra}"` → "GANHOS EXTRAS" com o percentual em `chip.label.text` ("17%").
+  Patrocinado por marca (`brand_commission` `"true"`) também vem como "GANHOS EXTRAS".
+- `filters`: `category` (25 categorias raiz `{id, name}`), `extra_commission`, `best_seller`; `sort`,
+  `available_sorts`; `next_offset` (ausente = última página).
+- Comissão vem por cartão (percentual já com o extra); a tabela oficial por categoria
+  (`mercadoLivreCommissionTable.ts`, leitura 2026-11-06) só estima quando o chip falta (`commissionEstimated`).
+
+### Sonda da Render (aprovada 2026-11-13)
+
+Bootstrap `GET /afiliados/linkbuilder` com só o `ssid` → 200 com `_csrf`; `POST /affiliate-program/api/hub/search` →
+200 com 18 cartões em "mais vendidos", "ganhos extras" e busca "vestido" (45–51 KB). Headers iguais aos do
+`createLink`: `User-Agent` fixo, `Accept: application/json`, `Content-Type: application/json`,
+`Origin: https://www.mercadolivre.com.br`, `Referer: https://www.mercadolivre.com.br/afiliados/hub?is_affiliate=true`,
+`X-Requested-With: XMLHttpRequest`, `X-Csrf-Token: <_csrf>`, `Cookie` (sessão + bootstrap). curl sem esses headers
+toma 403 do WAF em `GET /afiliados/hub`.
+
+### Implementação
+
+- Bootstrap compartilhado: `campaigns/infrastructure/http/mercadoLivreBootstrap.ts` (`createLink`/tags e hub).
+- Cliente: `MercadoLivreHubClient` (`IHuntCatalogSource`); mapeador puro `domain/services/hunter/mercadoLivreHubMapper.ts`;
+  capacidades `mercadoLivreCapabilities.ts`; adaptador `infrastructure/hunter/providers/mercadoLivreHuntAdapter.ts`
+  (URL do produto `https://produto.mercadolivre.com.br/MLB-<dígitos>`).
+- `redirect: 'manual'`, timeout 8 s, corpo ≤ 256 KiB. Erros: redirect para login ou 401 = sessão recusada; **403 sem
+  redirect (WAF), inclusive no bootstrap do hub, = fonte indisponível** (não pausa a credencial; no `createLink` o
+  403 do bootstrap segue = recusada); 429 = rate limit; formato inesperado = indisponível. Foto só https
+  `*.mlstatic.com`. Cookie/token nunca em log, erro ou resposta.
+
+### Não fazer
+
+- Não mandar `x-custom-origin` nem outro header de navegador além dos acima sem nova sonda da Render.
+- Não ler página de produto para achar comissão; não clonar perfil do Chrome para sondar.
+- Não clicar em nada no hub durante captura: um clique abriu o centro de notificações e marcou notificações como lidas.

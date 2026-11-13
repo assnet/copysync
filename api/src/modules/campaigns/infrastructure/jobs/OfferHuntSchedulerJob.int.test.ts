@@ -15,8 +15,8 @@ const tenants: string[] = [];
 const NOW = new Date('2026-11-12T16:00:00.000Z');
 
 const def = (tenantId: string, nextRunAt: Date): CreateOfferHuntInput => ({
-  tenantId, name: 'job', sort: 'BEST_SELLING', categoryId: null, commissionBand: null, keyword: null, filters: {},
-  aiEnabled: false, topN: 3, repeatAfterDays: 7, deliveryMode: 'REVIEW', intervalMinutes: 60, windowStartMinute: 0,
+  tenantId, provider: 'SHEIN', name: 'job', sort: 'BEST_SELLING', categoryId: null, commissionBand: null, keyword: null, sourceOptions: null, filters: {},
+  aiEnabled: false, aiConfigured: false, aiIntent: null, topN: 3, repeatAfterDays: 7, deliveryMode: 'REVIEW', intervalMinutes: 60, windowStartMinute: 0,
   windowEndMinute: 1440, weekdaysMask: 127, nextRunAt,
 });
 

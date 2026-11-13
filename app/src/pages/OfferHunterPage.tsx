@@ -8,7 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/contexts/TenantContext';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { serverNow } from '@/services/serverClock';
-import { offerHunterErrorMessage, offerHunterStrings as t } from '@/features/offerHunter/strings';
+import { offerHunterErrorMessage, offerHunterStrings as t, type HunterRiskProvider } from '@/features/offerHunter/strings';
 import {
   useHuntOptions, useHunterSettings, useHuntUsage, useOfferHunts,
 } from '@/features/offerHunter/hooks';
@@ -57,6 +57,7 @@ export function OfferHunterPage() {
   const [wizard, setWizard, clearWizard] = usePersistedState<WizardState>('offerHunter.home.wizard', WIZARD_CLOSED, { scope: 'tab', version: 1 });
   const [filter, setFilter] = usePersistedState<HuntFilter>('offerHunter.home.filter', 'ALL', { scope: 'tab', version: 1 });
   const [riskOpen, setRiskOpen] = useState(false);
+  const [riskProvider, setRiskProvider] = useState<HunterRiskProvider>('SHEIN');
   const [removing, setRemoving] = useState<Hunt | null>(null);
   const [snack, setSnack] = useState<{ severity: 'success' | 'error' | 'info'; text: string } | null>(null);
   const destinationRef = useRef<HunterDestinationCardHandle>(null);
@@ -144,7 +145,7 @@ export function OfferHunterPage() {
         <HunterGatesPanel
           options={options}
           blockedBy={blockedBy}
-          onOpenRisk={() => setRiskOpen(true)}
+          onOpenRisk={(provider) => { setRiskProvider(provider); setRiskOpen(true); }}
           onFocusDestination={() => destinationRef.current?.focusAndPick()}
         />
       )}
@@ -256,12 +257,13 @@ export function OfferHunterPage() {
 
       <HunterRiskNoticeDialog
         open={riskOpen}
+        provider={riskProvider}
         canAccept={canAcceptRisk}
         isSuperAdmin={isSuperAdmin}
         onClose={() => setRiskOpen(false)}
         onAccepted={() => {
           setRiskOpen(false);
-          setSnack({ severity: 'success', text: t.riskNotice.accepted });
+          setSnack({ severity: 'success', text: t.riskNotice[riskProvider].accepted });
           void opts.reload();
         }}
         onStale={() => void opts.reload()}
