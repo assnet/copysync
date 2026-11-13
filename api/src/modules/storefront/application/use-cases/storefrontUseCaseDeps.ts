@@ -9,6 +9,8 @@ import type { IStorefrontMediaStore } from '../../domain/contracts/IStorefrontMe
 import type { IStorefrontPageTemplate } from '../../domain/contracts/IStorefrontPageTemplate';
 import type { Storefront } from '../../domain/entities/Storefront';
 import type { IPublicSlugRegistry } from '../../../link-rotation/domain/contracts/IPublicSlugRegistry';
+import type { IAuditLogRepository } from '../../../../shared/audit/IAuditLogRepository';
+import type { UserPasswordConfirmer } from '../../../auth/application/use-cases/ConfirmUserPasswordUseCase';
 import type { LinkDomainReader } from '../../../link-rotation/application/use-cases/linkRotationUseCaseDeps';
 import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
 import { PlanFeatureUnavailableError } from '../../../../shared/errors/internal/PlanErrors';
@@ -17,11 +19,13 @@ import { StorefrontNotFoundError } from '../../../../shared/errors/internal/Stor
 /** Upload em partes: só o ciclo de consumo (o painel sobe por `chunkedUpload`). */
 export type StorefrontUploadStore = Pick<IUploadSessionStore, 'beginConsume' | 'releaseConsume' | 'discard' | 'binPath'>;
 
-/** Repositórios presos à mesma transação: página/ofertas + claim do nome. */
+/** Repositórios presos à mesma transação: página/ofertas + claim do nome + auditoria. */
 export interface StorefrontSlugTransactionScope {
   slugs: IPublicSlugRegistry;
   storefronts: IStorefrontRepository;
   offers: IStorefrontOfferRepository;
+  /** Auditoria no mesmo tx: se ela falha, a escrita é desfeita (exclusão da página). */
+  audit: IAuditLogRepository;
 }
 
 /**
@@ -49,6 +53,8 @@ export interface StorefrontUseCaseDeps {
   /** Domínios de links da plataforma (o tenant só lê). */
   domains: LinkDomainReader;
   template: IStorefrontPageTemplate;
+  /** Senha do usuário logado antes de ação sensível (excluir a página). */
+  confirmPassword: UserPasswordConfirmer;
   /** Relógio injetável (`publishedAt`). */
   now?: () => Date;
 }

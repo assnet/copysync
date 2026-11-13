@@ -261,6 +261,18 @@ export class InMemoryPublicSlugRegistry implements IPublicSlugRegistry {
     if (old) await this.repo.reserveSlug(old.domainId, old.slug, input.tenantId, input.reserveUntil);
     this.storefronts = this.storefronts.filter((s) => !(input.kind === PublicSlugKind.STOREFRONT && s.ownerId === input.ownerId));
   }
+
+  async releaseWithoutReservation(input: { tenantId: string; kind: PublicSlugKind; ownerId: string }) {
+    const old = this.location(input.tenantId, input.kind, input.ownerId);
+    if (old) {
+      this.repo.reservations = this.repo.reservations.filter(
+        (x) => !(x.domainId === old.domainId && x.slug === old.slug && x.tenantId === input.tenantId),
+      );
+    }
+    this.storefronts = this.storefronts.filter(
+      (s) => !(input.kind === PublicSlugKind.STOREFRONT && s.ownerId === input.ownerId && s.tenantId === input.tenantId),
+    );
+  }
 }
 
 /** "Transação" em memória: erro restaura rotações, grupos, reservas e claims de página. */

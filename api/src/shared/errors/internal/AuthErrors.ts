@@ -120,3 +120,12 @@ export class PasswordResetInvalidError extends AppError {
     super('PASSWORD_RESET_INVALID', 'Reset link is invalid, expired or already used', 404);
   }
 }
+
+// ── Confirmação de senha em ação sensível (docs/seguranca-login.md) ──────────
+
+/** 5 senhas erradas em 15 min: o usuário logado espera `retryAfterSeconds` para tentar de novo. */
+export class PasswordConfirmationLockedError extends AppError {
+  constructor(retryAfterSeconds: number) {
+    super('PASSWORD_CONFIRMATION_LOCKED', 'Too many wrong passwords. Try again later.', 429, { retryAfterSeconds });
+  }
+}

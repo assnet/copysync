@@ -1,6 +1,6 @@
 # Excluir Página de Ofertas — spec + design + tasks
 
-Estado: **plano, aguardando decisões D1–D3 do dono**. Base: api 0.95.0 · app 0.118.0. Doc: `docs/pagina-de-ofertas.md`.
+Estado: **decisões fechadas; em implementação**. Base: api 0.95.0 · app 0.118.0. Doc: `docs/pagina-de-ofertas.md`.
 Escopo médio (1 use case, 1 rota, 1 serviço de confirmação de senha, 1 diálogo). Branch `feature/storefront-delete`.
 
 ## Objetivo
@@ -55,13 +55,17 @@ página, produtos, imagens (produtos, foto e capa) e o subdomínio, que volta a 
   estado "criar página". Textos em `strings.ts`, `Blurred` no subdomínio, claro/escuro, Tooltip.
 - **SD-07** Docs (`pagina-de-ofertas.md`: exclusão, o que não fazer), CHANGELOG, versões api 0.96.0 / app 0.119.0.
 
-## Decisões pendentes do dono
+## Decisões (dono: "prossiga" com as recomendações, 2026-11-13)
 
-| # | Pergunta | Recomendação |
-|---|---|---|
-| D1 | Subdomínio depois de excluir: **livre na hora** para qualquer conta, ou **reservado 30 dias** à conta antiga (padrão do Gestor de Links, evita que outra pessoa pegue o endereço que ainda está em bios/links antigos)? | Livre na hora, como você pediu; nome **premium/especial** continua exigindo liberação do super admin. Aviso no diálogo: "outra conta poderá usar este endereço". |
-| D2 | Operador (não admin) hoje edita a página igual ao admin. Na exclusão fica só ADMIN e super admin, certo? | Sim. |
-| D3 | Limite de tentativas de senha: 5 erros em 15 min bloqueiam por 15 min? | Sim. |
+- **D1** Subdomínio **livre na hora** para qualquer conta (sem reserva de 30 dias); nome premium/especial continua
+  exigindo liberação do super admin. O diálogo avisa que outra conta poderá usar o endereço.
+- **D2** Exclusão só para `ADMIN` do tenant e super admin; `OPERATOR` 403 e sem botão.
+- **D3** 5 senhas erradas em 15 min por usuário → 429 `PASSWORD_CONFIRMATION_LOCKED` por 15 min; erro de senha =
+  401 `INVALID_CREDENTIALS` genérico.
+
+Contrato fixo: `POST /api/storefront/delete` corpo `{ "password": string }` → 204. Erros: 401 `INVALID_CREDENTIALS`,
+429 `PASSWORD_CONFIRMATION_LOCKED` (`meta.retryAfterSeconds`), 403 `FORBIDDEN` (papel), 404 `STOREFRONT_NOT_FOUND`.
+`GET /api/storefront` passa a informar `canDelete: boolean` (papel do usuário) para o painel mostrar a zona de perigo.
 
 ## Tasks
 

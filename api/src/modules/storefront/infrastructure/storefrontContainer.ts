@@ -1,6 +1,11 @@
 import { promises as fs } from 'fs';
 import { prisma } from '../../../shared/database/prisma.client';
 import { env } from '../../../shared/config/env';
+import { PrismaAuditLogRepository } from '../../../shared/audit/PrismaAuditLogRepository';
+import { PrismaUserRepository } from '../../users/infrastructure/repositories/PrismaUserRepository';
+import { ConfirmUserPasswordUseCase } from '../../auth/application/use-cases/ConfirmUserPasswordUseCase';
+import { PrismaPasswordConfirmationRepository } from '../../auth/infrastructure/repositories/PrismaPasswordConfirmationRepository';
+import { bcryptPasswordVerifier } from '../../auth/infrastructure/security/bcryptPasswordVerifier';
 import { PrismaEntitlementReader } from '../../tenants/infrastructure/repositories/PrismaEntitlementReader';
 import { mediaContainer } from '../../media/infrastructure/mediaContainer';
 import { offersContainer } from '../../campaigns/infrastructure/offersContainer';
@@ -21,6 +26,7 @@ import { UpdateStorefrontOfferUseCase } from '../application/use-cases/UpdateSto
 import { SetStorefrontOfferStatusUseCase } from '../application/use-cases/SetStorefrontOfferStatusUseCase';
 import { ReorderStorefrontOffersUseCase } from '../application/use-cases/ReorderStorefrontOffersUseCase';
 import { DeleteStorefrontOfferUseCase } from '../application/use-cases/DeleteStorefrontOfferUseCase';
+import { DeleteStorefrontUseCase } from '../application/use-cases/DeleteStorefrontUseCase';
 import { RenderPublicStorefrontUseCase } from '../application/use-cases/RenderPublicStorefrontUseCase';
 import type { IPublicPageRenderer } from '../domain/contracts/IPublicPageRenderer';
 import { createStorefrontPageTemplate } from '../presentation/templates/storefrontPageTemplate';
@@ -38,10 +44,15 @@ function lazy<T>(make: () => T): () => T {
   return () => (value ??= make());
 }
 
-/** Claim do nome + página + ofertas no mesmo `tx` (transação do namespace do rodízio). */
+/** Claim do nome + página + ofertas + auditoria no mesmo `tx` (transação do namespace do rodízio). */
 const slugTransaction: StorefrontSlugTransaction = (fn) =>
   linkRotationContainer.runInSlugTransaction(({ slugs, tx }) =>
-    fn({ slugs, storefronts: new PrismaStorefrontRepository(tx), offers: new PrismaStorefrontOfferRepository(tx) }),
+    fn({
+      slugs,
+      storefronts: new PrismaStorefrontRepository(tx),
+      offers: new PrismaStorefrontOfferRepository(tx),
+      audit: new PrismaAuditLogRepository(tx),
+    }),
   );
 
 const storefronts = lazy(() => new PrismaStorefrontRepository(prisma));
@@ -68,6 +79,11 @@ const deps = lazy((): StorefrontUseCaseDeps => ({
   domains:            linkRotationContainer.domainRepository,
   // Mesmas origens da página do rodízio (`publicLinkComposition`).
   template: createStorefrontPageTemplate({ mediaOrigin: env.S3_PUBLIC_URL ?? null, assetBaseUrl: env.PANEL_URL ?? null }),
+  confirmPassword: new ConfirmUserPasswordUseCase({
+    users: new PrismaUserRepository(),
+    attempts: new PrismaPasswordConfirmationRepository(),
+    verifyPassword: bcryptPasswordVerifier,
+  }),
 }));
 
 const useCases = lazy(() => ({
@@ -82,6 +98,7 @@ const useCases = lazy(() => ({
   setOfferStatus: new SetStorefrontOfferStatusUseCase(deps()),
   reorderOffers:  new ReorderStorefrontOffersUseCase(deps()),
   deleteOffer:  new DeleteStorefrontOfferUseCase(deps()),
+  delete:       new DeleteStorefrontUseCase(deps()),
 }));
 
 const publicRenderer = lazy(() => new RenderPublicStorefrontUseCase(deps()));

@@ -82,6 +82,7 @@ enum AuditAction {
   WORKER_SCALING_SETTINGS_CHANGED
   WORKER_SCALE_REQUESTED
   INFRA_COST_SETTINGS_CHANGED
+  STOREFRONT_DELETED
 }
 
 enum ExtensionInstallationStatus {
@@ -229,6 +230,7 @@ model User {
   marketplaceRiskAcceptances MarketplaceRiskAcceptance[]
   loginCodes                 LoginCode[]
   passwordResetRequests      PasswordResetRequest[]
+  passwordConfirmations      PasswordConfirmationAttempt[]
 
   @@index([email])
   @@map("users")
@@ -331,6 +333,22 @@ model LoginCode {
   @@index([userId, createdAt])
   @@index([createdAt])
   @@map("login_codes")
+}
+
+/// Confirmação da senha do usuário logado em ação sensível (docs/seguranca-login.md). A linha nasce
+/// `success = false` ANTES do bcrypt (reserva: conta no teto) e vira `true` se a senha confere.
+/// Nunca guarda a senha nem derivado dela. `action` é texto (ex.: STOREFRONT_DELETE).
+model PasswordConfirmationAttempt {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String
+  success   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("password_confirmation_attempts")
 }
 
 /// Pedido de redefinição de senha (docs/recuperacao-de-senha.md). Toda requisição grava uma linha

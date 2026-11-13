@@ -26,13 +26,15 @@ export class StorefrontMediaStore implements IStorefrontMediaStore {
    * @deprecated, mas `acquireLocalFile` baixaria o arquivo só para apagá-lo: exceção
    * consciente, mesmo uso de `MediaOfferStore.removeImage`. Falha só é logada.
    */
-  async remove(url: string): Promise<void> {
-    if (!STOREFRONT_IMAGE_NAME.test(url.split(/[?#]/)[0] ?? '')) return;
+  async remove(url: string): Promise<boolean> {
+    if (!STOREFRONT_IMAGE_NAME.test(url.split(/[?#]/)[0] ?? '')) return true;
     const files = this.deps.files();
     try {
       await files.remove(files.resolveLocalPath(url) ?? url);
+      return true;
     } catch (err) {
       logger.warn({ err }, 'storefront image remove failed');
+      return false;
     }
   }
 }

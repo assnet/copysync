@@ -9,8 +9,11 @@ import type { StorefrontPageImageKind } from '../../application/use-cases/SetSto
 import type { SaveStorefrontDTO } from '../../application/use-cases/SaveStorefrontUseCase';
 import type { PreviewStorefrontDraft } from '../../application/use-cases/PreviewStorefrontUseCase';
 import type { UpdateStorefrontOfferInput } from '../../domain/contracts/IStorefrontOfferRepository';
+import { canDeleteStorefront } from '../../domain/services/storefrontRules';
 import { StorefrontPresenter } from '../presenters/StorefrontPresenter';
 import {
+  assertExactDeleteStorefrontBody,
+  deleteStorefrontBodySchema,
   extractOfferBodySchema,
   imageKindParamSchema,
   imageResponse,
@@ -49,8 +52,25 @@ export async function storefrontRoutes(app: FastifyInstance): Promise<void> {
     preHandler: preHandler(),
     schema: { tags, summary: 'Página, ofertas, endereço, catálogo de categorias e domínios', response: { 200: storefrontOverviewResponse } },
   }, async (request, reply) => {
-    const out = await uc().get.execute(request.tenantContext.tenantId);
-    httpResponse.ok(reply, StorefrontPresenter.overview(out));
+    const { tenantId, role, isSuperAdmin } = request.tenantContext;
+    const out = await uc().get.execute(tenantId);
+    httpResponse.ok(reply, StorefrontPresenter.overview(out, { canDelete: canDeleteStorefront(role, isSuperAdmin) }));
+  });
+
+  // POST e não DELETE: o corpo leva a senha. Papel, senha e bloqueio (401/403/429) no use case.
+  app.post<{ Body: { password: string } }>('/delete', {
+    preValidation: async (request) => assertExactDeleteStorefrontBody(request.body),
+    preHandler: preHandler(),
+    config: { rateLimit: perTenantRateLimit(rateLimitPresets.lifecycle) },
+    schema: {
+      tags,
+      summary: 'Excluir a página inteira (ofertas, imagens e endereço) confirmando a senha do usuário logado',
+      body: deleteStorefrontBodySchema,
+    },
+  }, async (request, reply) => {
+    const { tenantId, userId, role, isSuperAdmin } = request.tenantContext;
+    await uc().delete.execute({ tenantId, userId, role, isSuperAdmin, password: request.body.password });
+    httpResponse.noContent(reply);
   });
 
   app.get<{ Querystring: { slug: string; domainId?: string } }>('/slug-availability', {

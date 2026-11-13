@@ -38,8 +38,10 @@ um de `linkRotationId`/`storefrontId` por CHECK). Unicidade no banco, não na ap
   | `PREMIUM` | "Comprar": banner do nome especial, Salvar bloqueado (`409 STOREFRONT_SLUG_PREMIUM`) |
   | `INVALID` | regra do formato (`slugRules.ts`: 3–50, `[a-z0-9-]`, sem hífen nas pontas) |
 
-- Troca de nome ou exclusão: o antigo fica reservado 30 dias ao mesmo tenant (`link_slug_reservations`), no domínio
-  antigo. Apagar dono chama `release` na mesma tx, antes do delete; o Cascade da FK é só rede.
+- Troca de nome (página ou rodízio) e exclusão de rodízio: o antigo fica reservado 30 dias ao mesmo tenant
+  (`link_slug_reservations`), no domínio antigo. Apagar dono chama `release` na mesma tx, antes do delete; o
+  Cascade da FK é só rede.
+- Exclusão da **página** é a exceção: `releaseWithoutReservation`, nome livre na hora (ver "Excluir a página").
 - Rodízio também passa pelo registry em create/rename/delete. No rodízio: `OWNED` → `LINK_SLUG_TAKEN`, `PREMIUM` →
   `LINK_SLUG_RESERVED` (nome especial é da página).
 - Rede da janela de deploy: `check` também olha `link_rotations` sem claim. Backfill idempotente
@@ -157,8 +159,37 @@ Link-rotation não importa storefront. Apex segue a landing; página não existe
 | POST | `/offers/:id/status` | `SetStorefrontOfferStatusUseCase` (publicar vai para o fim da aba) |
 | PUT | `/offers/order` | `ReorderStorefrontOffersUseCase` |
 | DELETE | `/offers/:id` | `DeleteStorefrontOfferUseCase` (apaga a imagem) |
+| POST | `/delete` | `DeleteStorefrontUseCase` (corpo `{ password }`, 204; sem gate do plano) |
+
+`GET /` devolve também `canDelete` (admin do tenant ou super admin): o painel só mostra a zona de perigo com `true`.
 
 Admin de nomes especiais: `/api/admin/link-domains/:id/premium-grants` (super-admin), ver acima.
+
+## Excluir a página
+
+`POST /api/storefront/delete` com `{ "password": string }` (1–200) → `204`. É POST e não DELETE porque o corpo leva
+segredo. Corpo exato: campo extra ou tipo errado → `400` (`assertExactDeleteStorefrontBody` no `preValidation`; o Ajv
+do Fastify removeria o campo em silêncio). Limite de rota por tenant (`rateLimitPresets.lifecycle`).
+
+Ordem do `DeleteStorefrontUseCase` (cada passo só roda se o anterior passou):
+
+1. **Papel** (D2): `ADMIN` do tenant ou super admin (`canDeleteStorefront`). `OPERATOR` → `403 FORBIDDEN`.
+2. **Página existe**: senão `404 STOREFRONT_NOT_FOUND`. Não exige `storefront_enabled`: vale com `PAUSED_BY_PLAN`.
+3. **Senha do usuário logado** (D3), via `ConfirmUserPasswordUseCase` (módulo `auth`, ver
+   [`seguranca-login.md`](seguranca-login.md)): super admin usa a própria. Errada → `401 INVALID_CREDENTIALS`
+   (mesmo erro do login; o painel não trata esse código como token vencido). 5 erradas em 15 min → `429
+   PASSWORD_CONFIRMATION_LOCKED` com `meta.retryAfterSeconds`, por 15 min. Cada POST conta uma tentativa.
+4. **Transação** (`runInSlugTransaction`): relê a página, coleta as imagens (ofertas + foto + capa),
+   `slugs.releaseWithoutReservation`, `storefronts.delete` (ofertas e claim em cascade) e auditoria
+   `STOREFRONT_DELETED` com `{ slug, domainId, offers, bySuperAdmin }`. Auditoria que falha desfaz tudo.
+5. **Depois do commit**: `media.remove` de cada imagem, 10 por vez. Nunca lança; falha vira contagem no log
+   (`images`, `failed`), sem nome de arquivo.
+
+Endereço (D1): livre **na hora** para qualquer tenant, sem a reserva de 30 dias (e uma reserva antiga do próprio
+tenant para o mesmo nome é apagada junto). Nome especial continua protegido: o próximo dono passa pelo `guardWrite`
+do `claim` e precisa de grant; o grant do tenant que excluiu não é revogado. Reservas de nomes **anteriores** da
+página (trocas de nome) seguem até vencer. Depois de excluir, o tenant cria página nova pelo fluxo normal, se o
+plano permitir. A página pública pode ficar até 60 s em cache (`max-age=60`).
 
 ## Efeitos de plano
 
@@ -191,6 +222,12 @@ qualquer flag ligada.
 - Não pôr preço do nome especial no banco nem gateway: texto em `catalog.ts`.
 - Não usar o nome do app em código, rota ou chave (white label); marca só via `APP_NAME`.
 - Não rodar migration/backfill local contra `api/.env` (produção).
+- Não excluir a página por cascade direto (`storefronts.delete` solto, apagar tenant à parte): só pelo
+  `DeleteStorefrontUseCase`, senão ficam imagens órfãs, sem auditoria e sem senha.
+- Não logar, auditar, devolver nem persistir a senha da exclusão (nem em `usePersistedState`).
+- Não reservar o endereço na exclusão da página (`release`): é `releaseWithoutReservation`. E não usar
+  `releaseWithoutReservation` no rodízio nem na troca de nome.
+- Não apagar imagem dentro da transação: storage só depois do commit.
 
 ## Pendências e riscos aceitos
 
@@ -206,6 +243,10 @@ qualquer flag ligada.
 - Fora da v1: cliques por oferta, oferta vinda do gerador/monitoramento, mais de uma página por tenant, tradução da
   página pública.
 
+- Exclusão: `GET /` exige `storefront_enabled`, então tenant com a página `PAUSED_BY_PLAN` não chega à zona de
+  perigo pelo painel (a rota de exclusão aceita). Oferta criada no instante da exclusão pode deixar 1 imagem órfã
+  (sem trava na página). Sem job de órfãos.
+
 ## Mapa de arquivos
 
 | Camada | Caminho |
@@ -216,5 +257,5 @@ qualquer flag ligada.
 | Rotas e template | `storefront/presentation/` (`routes/storefront.routes.ts`, `templates/renderStorefrontPage.ts`, `storefrontPageTemplate.ts`) |
 | Namespace | `link-rotation/domain/services/decideSlugAvailability.ts`, `domain/contracts/IPublicSlugRegistry.ts`, `infrastructure/repositories/PrismaPublicSlugRegistry.ts` |
 | Erros | `shared/errors/internal/StorefrontErrors.ts`, `LinkRotationErrors.ts`, `MediaErrors.ts`, `PlanErrors.ts` |
-| Banco | `20261029030000_add_storefront_and_public_slug_claims`, `20261029040000_add_premium_slug_audit_actions` |
+| Banco | `20261029030000_add_storefront_and_public_slug_claims`, `20261029040000_add_premium_slug_audit_actions`, `20261116100000_add_audit_action_storefront_deleted` |
 | Painel | `app/src/features/storefront/`, `features/plans/` (`catalog.ts`, `PlansFeatureNotice`), `features/linkDomainsAdmin/` (`PremiumGrantsDialog`), `app/NavItemBadge.tsx` |

@@ -27,6 +27,12 @@ export interface ReleasePublicSlugInput {
   reserveUntil: Date;
 }
 
+export interface ReleasePublicSlugWithoutReservationInput {
+  tenantId: string;
+  kind: PublicSlugKind;
+  ownerId: string;
+}
+
 /**
  * Dono único de `<slug>.<domínio>` (rodízio e página de ofertas). A porta não recebe transação:
  * a infra monta uma instância presa ao tx (`runInSlugTransaction` do container) e o dono é
@@ -47,4 +53,10 @@ export interface IPublicSlugRegistry {
   move(input: MovePublicSlugInput): Promise<void>;
   /** Reserva o nome ao tenant e apaga o claim. Chamar antes de apagar o dono. */
   release(input: ReleasePublicSlugInput): Promise<void>;
+  /**
+   * Apaga o claim SEM reservar o nome (e apaga uma reserva do próprio tenant para ele): o endereço
+   * fica livre na hora para qualquer tenant. Nome premium continua exigindo grant no `claim` do
+   * próximo dono. Só a exclusão da Página de Ofertas usa; o rodízio segue com `release`.
+   */
+  releaseWithoutReservation(input: ReleasePublicSlugWithoutReservationInput): Promise<void>;
 }

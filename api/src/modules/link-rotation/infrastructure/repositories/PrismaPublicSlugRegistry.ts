@@ -5,6 +5,7 @@ import type {
   IPublicSlugRegistry,
   MovePublicSlugInput,
   ReleasePublicSlugInput,
+  ReleasePublicSlugWithoutReservationInput,
 } from '../../domain/contracts/IPublicSlugRegistry';
 import { PublicSlugKind } from '../../domain/enums/LinkRotationEnums';
 import {
@@ -108,6 +109,15 @@ export class PrismaPublicSlugRegistry implements IPublicSlugRegistry {
     const { tenantId, kind, ownerId } = input;
     const old = await this.currentLocation(tenantId, kind, ownerId);
     if (old) await this.reserve(old.domainId, old.slug, tenantId, input.reserveUntil);
+    await this.db.publicSlugClaim.deleteMany({ where: { tenantId, ...ownerWhere(kind, ownerId) } });
+  }
+
+  async releaseWithoutReservation(input: ReleasePublicSlugWithoutReservationInput): Promise<void> {
+    const { tenantId, kind, ownerId } = input;
+    const old = await this.currentLocation(tenantId, kind, ownerId);
+    if (old) {
+      await this.db.linkSlugReservation.deleteMany({ where: { domainId: old.domainId, slug: old.slug, tenantId } });
+    }
     await this.db.publicSlugClaim.deleteMany({ where: { tenantId, ...ownerWhere(kind, ownerId) } });
   }
 

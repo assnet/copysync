@@ -124,6 +124,11 @@ IPs da Cloudflare (se voltar, a hospedagem mudou: rever esta regra).
 "Esqueci minha senha" usa o mesmo Turnstile (`assertHuman`) e grava `PASSWORD_RESET_OK` ao concluir, que zera a
 contagem de falhas e a suspeita do e-mail (posse do e-mail provada pelo link). Ver [`recuperacao-de-senha.md`](recuperacao-de-senha.md).
 
+## Confirmação de senha em ação sensível
+
+Usuário já logado confirma a própria senha antes de ação destrutiva (hoje: excluir a Página de Ofertas, ação
+`STOREFRONT_DELETE`) por `ConfirmUserPasswordUseCase` (`auth/application/use-cases`), sem `LoginGuard` (não é login por e-mail/IP). Tabela `password_confirmation_attempts`: a tentativa é gravada como falha **antes** do bcrypt, sob `pg_advisory_xact_lock` por usuário, e vira sucesso se a senha confere. 5 falhas em 15 min → `429 PASSWORD_CONFIRMATION_LOCKED` (`meta.retryAfterSeconds`) por 15 min, sem rodar bcrypt; senha errada ou usuário sem senha → `401 INVALID_CREDENTIALS` (hash fixo, mesmo tempo). Sucesso não zera as falhas. Linhas com mais de 24 h do usuário são podadas na tentativa seguinte. Ação nova: acrescente ao tipo `PasswordConfirmationAction` e injete o use case; nunca logar a senha, nunca segurar a trava durante o bcrypt, nunca aceitar `userId` do corpo.
+
 ## O que não fazer
 
 - Não revelar se o e-mail existe (mensagem, status ou tempo diferente por caso).

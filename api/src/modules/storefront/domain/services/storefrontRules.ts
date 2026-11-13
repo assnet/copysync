@@ -157,3 +157,8 @@ export const STOREFRONT_IMAGE_PRESETS: Readonly<Record<StorefrontImageKind, Stor
 /** Qualidade WebP de saída e teto de pixels da entrada (anti bomba de descompressão). */
 export const STOREFRONT_IMAGE_WEBP_QUALITY = 80;
 export const STOREFRONT_IMAGE_MAX_INPUT_PIXELS = 40_000_000;
+
+/** Excluir a página inteira: só admin do tenant ou super admin (operador não). */
+export function canDeleteStorefront(role: 'SUPER_ADMIN' | 'ADMIN' | 'OPERATOR', isSuperAdmin: boolean): boolean {
+  return isSuperAdmin || role === 'ADMIN';
+}

@@ -34,7 +34,8 @@ export type AuditAction =
   | 'MARKETPLACE_RISK_ACCEPTED'
   | 'WORKER_SCALING_SETTINGS_CHANGED'
   | 'WORKER_SCALE_REQUESTED'
-  | 'INFRA_COST_SETTINGS_CHANGED';
+  | 'INFRA_COST_SETTINGS_CHANGED'
+  | 'STOREFRONT_DELETED';
 
 export interface CreateAuditLogInput {
   tenantId?: string;

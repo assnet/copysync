@@ -51,6 +51,6 @@ describe('StorefrontMediaStore', () => {
   it('falha ao remover não lança', async () => {
     const { store, files } = setup();
     files.remove.mockRejectedValueOnce(new Error('boom'));
-    await expect(store.remove(`https://cdn/media/${NAME}`)).resolves.toBeUndefined();
+    await expect(store.remove(`https://cdn/media/${NAME}`)).resolves.toBe(false);
   });
 });

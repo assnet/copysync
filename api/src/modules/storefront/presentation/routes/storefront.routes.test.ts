@@ -101,6 +101,7 @@ describe('GET /storefront', () => {
     expect(data.offers.drafts[0].tenantId).toBeUndefined();
     expect(data.offers.drafts[0]).not.toHaveProperty('linkRebuilt');
     expect(data.publicUrl).toBe('https://ana.copysync.com.br');
+    expect(data.canDelete).toBe(true);
   });
 
   it('sem página: storefront null', async () => {

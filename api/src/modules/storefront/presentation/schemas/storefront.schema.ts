@@ -1,3 +1,4 @@
+import { ValidationError } from '../../../../shared/errors/internal/ResourceErrors';
 import { StorefrontOfferStatus, StorefrontStatus } from '../../domain/enums/StorefrontEnums';
 import { AFFILIATE_PROVIDERS } from '../../../integrations/domain/enums/AffiliateProvider';
 import { STOREFRONT_CATEGORY_KEYS } from '../../domain/services/storefrontCategories';
@@ -215,8 +216,21 @@ export const storefrontOverviewResponse = envelope({
         properties: { id: { type: 'string' }, hostname: { type: 'string' } },
       },
     },
+    canDelete: { type: 'boolean' },
   },
 });
+
+/**
+ * Excluir a página: só a senha do usuário logado. O Ajv do Fastify remove campo extra e converte
+ * tipo em silêncio; nesta rota (ação destrutiva com segredo) o corpo é exato, conferido por
+ * `assertExactDeleteStorefrontBody` no `preValidation` (corpo ainda cru) → 400.
+ */
+export const deleteStorefrontBodySchema = {
+  type: 'object',
+  required: ['password'],
+  additionalProperties: false,
+  properties: { password: { type: 'string', minLength: 1, maxLength: 200 } },
+} as const;
 
 export const storefrontResponse = envelope(storefrontItem);
 
@@ -244,3 +258,10 @@ export const previewResponse = envelope({
 });
 
 export const offerResponse = envelope(offerItem);
+
+/** Corpo cru tem de ser exatamente `{ password: string }`. A mensagem nunca ecoa o corpo. */
+export function assertExactDeleteStorefrontBody(body: unknown): void {
+  const ok = typeof body === 'object' && body !== null && !Array.isArray(body)
+    && Object.keys(body).length === 1 && typeof (body as { password?: unknown }).password === 'string';
+  if (!ok) throw new ValidationError('Body must be exactly { password: string }');
+}

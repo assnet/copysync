@@ -46,7 +46,8 @@ export const StorefrontPresenter = {
     };
   },
 
-  overview(out: GetStorefrontOutput) {
+  /** `canDelete`: papel do usuário logado (admin do tenant ou super admin) → zona de perigo no painel. */
+  overview(out: GetStorefrontOutput, viewer: { canDelete: boolean }) {
     return {
       storefront: out.storefront ? StorefrontPresenter.storefront(out.storefront) : null,
       publicUrl: out.publicUrl,
@@ -57,6 +58,7 @@ export const StorefrontPresenter = {
       categories: out.categories,
       subtitleSuggestions: out.subtitleSuggestions,
       domains: out.domains,
+      canDelete: viewer.canDelete,
     };
   },
 };
