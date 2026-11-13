@@ -4,7 +4,10 @@ import type { HuntProvider } from '../types';
 import { huntBrandName } from '../strings';
 import { huntProviderBrand } from '../providers';
 
-/** Logo da loja (Tooltip e leitor de tela com o nome). A logo é decorativa: o nome vai no texto oculto. */
+/**
+ * Logo da loja (Tooltip e leitor de tela com o nome). A logo é decorativa: o nome vai no texto oculto.
+ * Medidas do texto oculto em px (no `sx`, `width: 1` = 100% e estourava a largura da página).
+ */
 export function ProviderBadge({ provider, size = 24 }: { provider: HuntProvider; size?: number }) {
   const name = huntBrandName(provider);
   return (
@@ -18,5 +21,5 @@ export function ProviderBadge({ provider, size = 24 }: { provider: HuntProvider;
 }
 
 const visuallyHidden = {
-  position: 'absolute', width: 1, height: 1, p: 0, m: -1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
+  position: 'absolute', width: '1px', height: '1px', p: 0, m: '-1px', overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
 } as const;

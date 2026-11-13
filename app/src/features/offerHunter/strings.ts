@@ -862,6 +862,16 @@ export const huntBrandName = (provider: HuntProvider) => BRANDS[provider].name;
 /** Rótulos da comissão da loja (filtro, chips, recusas, detalhe). */
 export const commissionCopy = (provider: HuntProvider): CommissionWords => COMMISSION[provider];
 
+/** Dica da predefinição com a comissão da loja (ML não tem "1ª compra"). */
+export function presetHint(key: HuntPreset, provider: HuntProvider): string {
+  if (key === 'TOP_COMMISSION') return `${COMMISSION[provider].label} a partir de 15%.`;
+  return offerHunterStrings.presets[key].hint;
+}
+
+/** Tooltip do campo "Predefinição" com a comissão da loja. */
+export const presetTip = (provider: HuntProvider): string =>
+  `Um ponto de partida: preenche os filtros (como a ${COMMISSION[provider].label.toLowerCase()}). Você pode ajustar depois.`;
+
 type GateCopy = { title: string; doneTitle: string; text: string; action: string };
 
 /** Texto do portão com o nome da loja onde importa (conta de afiliado). Padrão SHEIN. */

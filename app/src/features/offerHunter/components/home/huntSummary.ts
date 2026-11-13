@@ -1,4 +1,4 @@
-import { commissionCopy, offerHunterStrings } from '../../strings';
+import { commissionCopy, offerHunterStrings, presetHint } from '../../strings';
 import { formatCents } from '../../format';
 import type { Hunt, HuntFilters, HuntOptions, HuntPreset, MlHuntSort } from '../../types';
 import { fallbackCapabilities, providerOf, sortInColumn } from '../../providers';
@@ -49,8 +49,8 @@ export function huntSummaryChips(hunt: Hunt, options: HuntOptions | null): HuntS
   // Opções de outra loja não servem para nomear predefinição/categoria desta caçada
   const opts = options && providerOf(options) === provider ? options : null;
   if (opts) {
-    const preset = t.presets[matchPreset(hunt, opts.presets)];
-    push('preset', preset.label, preset.hint);
+    const key = matchPreset(hunt, opts.presets);
+    push('preset', t.presets[key].label, presetHint(key, provider));
   }
   if (hunt.categoryId) {
     const cat = opts?.categories.find((x) => x.categoryId === hunt.categoryId);

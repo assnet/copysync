@@ -52,7 +52,8 @@ export function HunterGatesPanel({ options, blockedBy, provider = 'SHEIN', onOpe
   const done = steps.filter((k) => gates[k]).length;
 
   return (
-    <Stack spacing={1.5} sx={{ mb: 3 }}>
+    // Tudo liberado = pilha vazia: some para não deixar a folga do `mb` sob o cabeçalho
+    <Stack spacing={1.5} sx={{ mb: 3, '&:empty': { display: 'none' } }}>
       {blockedBy && planClosed && (
         <Paper
           variant="outlined"

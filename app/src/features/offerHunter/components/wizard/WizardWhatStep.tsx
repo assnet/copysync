@@ -4,7 +4,7 @@ import { alpha, useTheme } from '@mui/material/styles';
 import { Check } from 'lucide-react';
 import { AppIcon, ToggleOption } from '@/components';
 import type { HuntOptions, HuntPreset, HuntSourceOptions, MlHuntSort } from '../../types';
-import { huntBrandName, offerHunterStrings as t, sourceStatusText } from '../../strings';
+import { huntBrandName, offerHunterStrings as t, presetHint, presetTip, sourceStatusText } from '../../strings';
 import { capabilitiesOf, hasSourceFilter, providerOf, sortInColumn } from '../../providers';
 import type { FieldErrors, HuntWizardDraft } from './wizardDraft';
 import { AiHint, FieldHeading, FieldTip } from './fields';
@@ -58,7 +58,7 @@ export function WizardWhatStep({ draft, options, errors, onChange, onPreset }: P
       />
 
       <Box>
-        <FieldHeading id={presetsId} label={w.preset} tip={tips.preset} />
+        <FieldHeading id={presetsId} label={w.preset} tip={presetTip(provider)} />
         <Box
           role="radiogroup"
           aria-labelledby={presetsId}
@@ -88,7 +88,7 @@ export function WizardWhatStep({ draft, options, errors, onChange, onPreset }: P
                   <Typography variant="subtitle2" sx={{ fontWeight: 700, flex: 1 }}>{label.label}</Typography>
                   {selected && <Box component="span" sx={{ color: 'primary.main', display: 'inline-flex' }}><AppIcon icon={Check} size="sm" label={t.wizard.presetSelected} /></Box>}
                 </Box>
-                <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.35 }}>{label.hint}</Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.35 }}>{presetHint(p.key, provider)}</Typography>
               </ButtonBase>
             );
           })}
