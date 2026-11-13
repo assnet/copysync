@@ -6,18 +6,24 @@ import {
 import { Eye, EyeOff, Trash2 } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { Blurred, useBlur } from '@/features/privacy';
+import { serverNow } from '@/services/serverClock';
 import { storefrontStrings } from '../strings';
 import type { StorefrontApiError } from '../types';
 
 const t = storefrontStrings.deletePage;
-/** Bloqueio sem `retryAfterSeconds` na resposta: a janela da API é de 15 min. */
-const DEFAULT_LOCK_SECONDS = 15 * 60;
+/** Com bloqueio ativo, o texto dos minutos restantes é refeito neste intervalo. */
+const LOCK_TICK_MS = 30_000;
 
 export interface DeleteStorefrontDialogProps {
   open: boolean;
   /** Endereço público sem o protocolo (ou só o subdomínio); null = sem endereço para mostrar. */
   address: string | null;
   offerCount: number;
+  /**
+   * Fim do bloqueio por senha errada (ms, relógio do servidor), guardado por quem chama: fechar e
+   * reabrir o diálogo não libera o campo. null = sem bloqueio.
+   */
+  lockedUntil: number | null;
   onClose: () => void;
   /**
    * Exclui com a senha digitada. Resolve quando a página foi excluída (quem chama fecha e recarrega);
@@ -31,32 +37,34 @@ export interface DeleteStorefrontDialogProps {
  * A senha vive só em `useState` deste diálogo: nunca em `usePersistedState`/storage, e é apagada
  * ao fechar, ao concluir e a cada erro.
  */
-export function DeleteStorefrontDialog({ open, address, offerCount, onClose, onConfirm }: DeleteStorefrontDialogProps) {
+export function DeleteStorefrontDialog({ open, address, offerCount, lockedUntil, onClose, onConfirm }: DeleteStorefrontDialogProps) {
   const blurAddress = useBlur('storefront.subdomain');
   const [password, setPassword] = useState('');
   const [visible, setVisible] = useState(false);
   const [sending, setSending] = useState(false);
   const [wrongPassword, setWrongPassword] = useState(false);
   const [alert, setAlert] = useState<string | null>(null);
-  const [locked, setLocked] = useState(false);
+  const [now, setNow] = useState(serverNow);
   const inputRef = useRef<HTMLInputElement>(null);
-  const unlockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const stopUnlockTimer = () => {
-    if (unlockTimer.current) clearTimeout(unlockTimer.current);
-    unlockTimer.current = null;
-  };
-
-  // Abrir ou fechar sempre começa do zero: nada digitado sobrevive ao diálogo.
+  // Abrir ou fechar sempre começa do zero: nada digitado sobrevive ao diálogo. O bloqueio não
+  // entra aqui: vem de `lockedUntil` e continua valendo ao reabrir.
   useEffect(() => {
     setPassword('');
     setVisible(false);
     setWrongPassword(false);
     setAlert(null);
-    setLocked(false);
-    stopUnlockTimer();
   }, [open]);
-  useEffect(() => stopUnlockTimer, []);
+
+  const lockMs = lockedUntil ? lockedUntil - now : 0;
+  const locked = lockMs > 0;
+  useEffect(() => setNow(serverNow()), [open, lockedUntil]);
+  // Um timer por vez até o fim do bloqueio (rearmado a cada `now`), limpo ao fechar e ao desmontar.
+  useEffect(() => {
+    if (!open || lockMs <= 0) return;
+    const timer = setTimeout(() => setNow(serverNow()), Math.min(lockMs, LOCK_TICK_MS));
+    return () => clearTimeout(timer);
+  }, [open, lockMs]);
 
   // Senha recusada: o foco volta ao campo assim que ele é reabilitado.
   useEffect(() => {
@@ -68,18 +76,8 @@ export function DeleteStorefrontDialog({ open, address, offerCount, onClose, onC
   const showError = (err: unknown) => {
     const e = (err ?? {}) as StorefrontApiError;
     if (e.code === 'INVALID_CREDENTIALS') return setWrongPassword(true);
-    if (e.code === 'PASSWORD_CONFIRMATION_LOCKED') {
-      const raw = e.meta?.retryAfterSeconds;
-      const seconds = typeof raw === 'number' && raw > 0 ? raw : DEFAULT_LOCK_SECONDS;
-      setLocked(true);
-      setAlert(t.errors.locked(Math.max(1, Math.ceil(seconds / 60))));
-      stopUnlockTimer();
-      unlockTimer.current = setTimeout(() => {
-        setLocked(false);
-        setAlert(null);
-      }, seconds * 1000);
-      return;
-    }
+    // Bloqueio: quem chama grava o prazo em `lockedUntil`; o aviso sai dele.
+    if (e.code === 'PASSWORD_CONFIRMATION_LOCKED') return;
     setAlert(e.code === 'FORBIDDEN' ? t.errors.forbidden : t.errors.generic);
   };
 
@@ -89,7 +87,7 @@ export function DeleteStorefrontDialog({ open, address, offerCount, onClose, onC
     const typed = password;
     setSending(true);
     setWrongPassword(false);
-    if (!locked) setAlert(null);
+    setAlert(null);
     try {
       await onConfirm(typed);
     } catch (err) {
@@ -125,7 +123,9 @@ export function DeleteStorefrontDialog({ open, address, offerCount, onClose, onC
             <Alert severity="warning" variant="outlined" sx={{ py: 0.5 }}>{t.addressFreed}</Alert>
             <Typography variant="body2" color="text.secondary">{t.irreversible}</Typography>
 
-            {alert && <Alert severity="error" role="alert">{alert}</Alert>}
+            {(locked || alert) && (
+              <Alert severity="error" role="alert">{locked ? t.errors.locked(Math.ceil(lockMs / 60_000)) : alert}</Alert>
+            )}
 
             <TextField
               label={t.passwordLabel}
@@ -138,7 +138,7 @@ export function DeleteStorefrontDialog({ open, address, offerCount, onClose, onC
               error={wrongPassword}
               helperText={wrongPassword ? t.errors.wrongPassword : t.passwordHelp}
               disabled={sending || locked}
-              autoComplete="current-password"
+              autoComplete="off"
               inputRef={inputRef}
               autoFocus
               fullWidth

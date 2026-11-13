@@ -10,6 +10,7 @@ import { makeStorefrontDeps, seedPageWithClaim, type StorefrontFakes } from '../
 import { ConfirmUserPasswordUseCase } from '../../../auth/application/use-cases/ConfirmUserPasswordUseCase';
 import { InMemoryPasswordConfirmationRepository } from '../../../auth/test/inMemoryPasswordConfirmation';
 import type { User } from '../../../users/domain/entities/User';
+import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
 
 /*
  * POST /storefront/delete de ponta a ponta sem banco: Fastify real, use case real com fakes em
@@ -43,13 +44,14 @@ const PASSWORDS: Record<string, string> = { 'user-1': ADMIN_PASSWORD, 'root-1': 
 
 let app: FastifyInstance;
 let fakes: StorefrontFakes;
+let made: ReturnType<typeof makeStorefrontDeps>;
 let attempts: InMemoryPasswordConfirmationRepository;
 let verify: ReturnType<typeof vi.fn>;
 let logs: unknown[];
 const bodies: string[] = [];
 
 beforeEach(async () => {
-  const made = makeStorefrontDeps();
+  made = makeStorefrontDeps();
   fakes = made.fakes;
   seedPageWithClaim(fakes, { avatarUrl: 'https://media.example/storefront-1.webp' });
   fakes.offers.seed();
@@ -147,6 +149,14 @@ describe('POST /storefront/delete', () => {
     expect(res.json().error.code).toBe('PASSWORD_CONFIRMATION_LOCKED');
     expect(res.json().error.meta.retryAfterSeconds).toBeGreaterThan(0);
     expect(res.json().error.meta.retryAfterSeconds).toBeLessThanOrEqual(900);
+    // Retry-After (segundos) sai do `meta.retryAt` (ISO), que acompanha o `retryAfterSeconds`
+    const { retryAfterSeconds, retryAt } = res.json().error.meta as { retryAfterSeconds: number; retryAt: string };
+    expect(new Date(retryAt).toISOString()).toBe(retryAt);
+    const header = Number(res.headers['retry-after']);
+    expect(header).toBeGreaterThan(0);
+    expect(header).toBeLessThanOrEqual(retryAfterSeconds);
+    expect(header).toBeGreaterThanOrEqual(retryAfterSeconds - 5);
+    expect(Math.abs(Date.parse(retryAt) - (Date.now() + retryAfterSeconds * 1000))).toBeLessThan(5000);
     expect(verify).toHaveBeenCalledTimes(5);
     expect(fakes.storefronts.pages).toHaveLength(1);
   });
@@ -178,6 +188,54 @@ describe('POST /storefront/delete', () => {
     const everything = JSON.stringify({ bodies, logs, audit: fakes.audit.entries, attempts: attempts.rows });
     expect(everything).not.toContain(ADMIN_PASSWORD);
     expect(everything).not.toContain('errada-secreta');
+  });
+});
+
+describe('GET /storefront — plano sem a página', () => {
+  const get = (role = 'ADMIN') => app.inject({ method: 'GET', url: '/api/storefront', headers: { ...AUTH, 'x-test-role': role } });
+  beforeEach(() => {
+    const real = new GetStorefrontUseCase(made.deps);
+    const original = GetStorefrontUseCase.prototype.execute;
+    vi.spyOn(GetStorefrontUseCase.prototype, 'execute').mockImplementation((tenantId: string) => original.call(real, tenantId));
+    fakes.entitlements.values = { [ENTITLEMENT_KEYS.STOREFRONT_ENABLED]: false };
+  });
+
+  it('página existe (perdeu o plano): 200 com resumo PAUSED_BY_PLAN, endereço, offersCount, canDelete e planLocked', async () => {
+    fakes.offers.seed({ title: 'segredo-da-oferta' });
+    const res = await get();
+    expect(res.statusCode).toBe(200);
+    const data = res.json().data;
+    expect(data).toMatchObject({
+      storefront: { status: 'PAUSED_BY_PLAN', slug: 'minhaloja', domainId: 'dom-1', offersCount: 2 },
+      publicUrl: 'https://minhaloja.ofertas.example',
+      offers: { drafts: [], published: [] }, categories: [], subtitleSuggestions: [], domains: [],
+      canDelete: true, planLocked: true,
+    });
+    expect(res.body).not.toContain('segredo-da-oferta');
+  });
+
+  it('operador vê o resumo, mas sem canDelete', async () => {
+    expect((await get('OPERATOR')).json().data).toMatchObject({ planLocked: true, canDelete: false });
+  });
+
+  it('sem página criada: segue 403 PLAN_FEATURE_UNAVAILABLE', async () => {
+    fakes.storefronts.pages = [];
+    const res = await get();
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe('PLAN_FEATURE_UNAVAILABLE');
+  });
+
+  it('plano liberado: planLocked e offersCount ausentes', async () => {
+    fakes.entitlements.values = { [ENTITLEMENT_KEYS.STOREFRONT_ENABLED]: true };
+    const data = (await get()).json().data;
+    expect(data).not.toHaveProperty('planLocked');
+    expect(data.storefront).not.toHaveProperty('offersCount');
+    expect(data.offers.drafts).toHaveLength(1);
+  });
+
+  it('a exclusão continua alcançável com a página travada pelo plano', async () => {
+    expect((await post({ password: ADMIN_PASSWORD })).statusCode).toBe(204);
+    expect((await get()).statusCode).toBe(403);
   });
 });
 

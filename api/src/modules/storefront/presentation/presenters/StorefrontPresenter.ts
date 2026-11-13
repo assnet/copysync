@@ -46,10 +46,15 @@ export const StorefrontPresenter = {
     };
   },
 
-  /** `canDelete`: papel do usuário logado (admin do tenant ou super admin) → zona de perigo no painel. */
+  /**
+   * `canDelete`: papel do usuário logado (admin do tenant ou super admin) → zona de perigo no painel.
+   * Plano sem a página (`planLocked: true`, campo ausente no caso normal): `storefront.offersCount`
+   * traz o total e as listas vêm vazias; só a exclusão funciona.
+   */
   overview(out: GetStorefrontOutput, viewer: { canDelete: boolean }) {
+    const page = out.storefront ? StorefrontPresenter.storefront(out.storefront) : null;
     return {
-      storefront: out.storefront ? StorefrontPresenter.storefront(out.storefront) : null,
+      storefront: page && out.planLocked ? { ...page, offersCount: out.planLocked.offersCount } : page,
       publicUrl: out.publicUrl,
       offers: {
         drafts: out.offers.drafts.map(StorefrontPresenter.offer),
@@ -59,6 +64,7 @@ export const StorefrontPresenter = {
       subtitleSuggestions: out.subtitleSuggestions,
       domains: out.domains,
       canDelete: viewer.canDelete,
+      ...(out.planLocked ? { planLocked: true as const } : {}),
     };
   },
 };

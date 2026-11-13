@@ -5,6 +5,7 @@ import { storefrontRoutes } from './storefront.routes';
 import { errorHandler } from '../../../../shared/http/errorHandler';
 import { rateLimitPresets } from '../../../../shared/http/rateLimitPresets';
 import { PrismaEntitlementReader } from '../../../tenants/infrastructure/repositories/PrismaEntitlementReader';
+import { PrismaStorefrontRepository } from '../../infrastructure/repositories/PrismaStorefrontRepository';
 import { GetStorefrontUseCase } from '../../application/use-cases/GetStorefrontUseCase';
 import { PreviewStorefrontUseCase } from '../../application/use-cases/PreviewStorefrontUseCase';
 import { SetStorefrontImageUseCase } from '../../application/use-cases/SetStorefrontImageUseCase';
@@ -77,6 +78,8 @@ describe('GET /storefront', () => {
 
   it('plano sem a página responde 403 PLAN_FEATURE_UNAVAILABLE', async () => {
     vi.spyOn(PrismaEntitlementReader.prototype, 'getBoolean').mockResolvedValue(false);
+    // Sem página criada (com página o GET devolve o resumo `planLocked`; ver storefrontDelete.routes.test.ts)
+    vi.spyOn(PrismaStorefrontRepository.prototype, 'findByTenant').mockResolvedValue(null);
     const res = await app.inject({ method: 'GET', url: PREFIX, headers: AUTH });
     expect(res.statusCode).toBe(403);
     expect(res.json().error).toMatchObject({ code: 'PLAN_FEATURE_UNAVAILABLE' });

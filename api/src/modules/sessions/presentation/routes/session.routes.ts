@@ -81,9 +81,11 @@ function buildUseCases() {
     requestSessionPairingCode: new RequestSessionPairingCodeUseCase(sessionRepo, auditRepo, engine),
     deleteSession: new DeleteSessionUseCase(sessionRepo, authStateRepo, auditRepo, engine, [
       new PrismaLinkRotationPlanEnforcementStore(prisma),
-      // Envios de oferta na fila da sessão fecham na hora (SKIPPED/SESSION_DELETED)
+    ], lease.release, [
+      // Envios de oferta na fila da sessão fecham na hora (SKIPPED/SESSION_DELETED), DEPOIS do soft
+      // delete: com a sessão já excluída o claim do worker não reivindica nenhum no meio
       new PrismaSessionOfferDispatchStore(prisma),
-    ], lease.release),
+    ]),
   };
 }
 

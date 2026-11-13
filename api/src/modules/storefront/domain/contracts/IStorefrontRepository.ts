@@ -38,6 +38,11 @@ export interface IStorefrontRepository {
   update(tenantId: string, input: UpdateStorefrontInput): Promise<Storefront>;
   /** Plano → status (`ApplyPlanToStorefrontUseCase`). Devolve o status gravado, ou null sem página. */
   setStatus(tenantId: string, status: StorefrontStatus): Promise<StorefrontStatus | null>;
+  /**
+   * Trava a linha da página até o fim da transação (`SELECT … FOR UPDATE`): só tem efeito em repo preso
+   * a um tx. Criação de oferta (FK) e troca de imagem (`update`) esperam o commit de quem travou.
+   */
+  lockForUpdate(tenantId: string): Promise<void>;
   delete(tenantId: string): Promise<void>;
   /** Rota pública: resolve pelo claim `(domainId, slug)` de kind STOREFRONT. Sem tenant (o Host decide). */
   findPublicByAddress(domainId: string, slug: string): Promise<PublicStorefront | null>;

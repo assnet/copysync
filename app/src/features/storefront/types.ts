@@ -30,6 +30,8 @@ export interface Storefront {
   colorCard: string;
   categories: string[];
   status: StorefrontStatus;
+  /** Total de ofertas; só vem com `planLocked` (as listas chegam vazias). */
+  offersCount?: number;
   /** null = endereço ausente (janela inconsistente); a página não é servida. */
   domainId: string | null;
   slug: string | null;
@@ -84,6 +86,8 @@ export interface StorefrontOverview {
   domains: StorefrontDomain[];
   /** Papel do usuário permite excluir a página (admin da conta ou super admin). Ausente = não. */
   canDelete?: boolean;
+  /** Plano sem a página, mas ela existe (pausada): só o aviso de plano e a exclusão. Ausente = normal. */
+  planLocked?: boolean;
 }
 
 export type SlugAvailabilityStatus = 'INVALID' | 'RESERVED' | 'PREMIUM' | 'TAKEN' | 'OWNED' | 'AVAILABLE';
@@ -135,4 +139,6 @@ export interface StorefrontApiError {
   code?: string;
   field?: string;
   meta?: Record<string, unknown> | null;
+  /** Header `Retry-After` de um 429 (segundos ou data HTTP). */
+  retryAfter?: string;
 }

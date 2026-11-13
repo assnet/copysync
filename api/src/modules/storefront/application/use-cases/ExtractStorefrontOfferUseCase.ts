@@ -1,4 +1,5 @@
 import type { StorefrontOffer } from '../../domain/entities/StorefrontOffer';
+import type { CreateStorefrontOfferInput } from '../../domain/contracts/IStorefrontOfferRepository';
 import { StorefrontOfferStatus } from '../../domain/enums/StorefrontEnums';
 import {
   keepOfferCategory,
@@ -49,7 +50,7 @@ export class ExtractStorefrontOfferUseCase {
 
     // Posição lida por último: extração lenta não pega a mesma posição de outra recém-criada
     const max = await offers.maxPosition(tenantId, page.id, StorefrontOfferStatus.DRAFT);
-    const offer = await offers.create({
+    const offer = await this.createOrDropImage(imageUrl, {
       tenantId,
       storefrontId: page.id,
       status: StorefrontOfferStatus.DRAFT,
@@ -66,6 +67,20 @@ export class ExtractStorefrontOfferUseCase {
       category: keepOfferCategory(input.category ?? null, page.categories),
     });
     return { offer, linkRebuilt: resolved.linkRebuilt };
+  }
+
+  /**
+   * A extração é lenta e a página pode ser excluída no meio: a exclusão trava a linha da página
+   * (`lockForUpdate`), o INSERT espera o commit e falha pela FK (`STOREFRONT_NOT_FOUND`). A imagem
+   * recém-gravada não entrou na lista da exclusão: é apagada aqui para não ficar órfã.
+   */
+  private async createOrDropImage(imageUrl: string | null, input: CreateStorefrontOfferInput): Promise<StorefrontOffer> {
+    try {
+      return await this.deps.offers.create(input);
+    } catch (err) {
+      if (imageUrl) await this.deps.media.remove(imageUrl).catch(() => false);
+      throw err;
+    }
   }
 
   private async storeImage(sourceUrl: string): Promise<string | null> {

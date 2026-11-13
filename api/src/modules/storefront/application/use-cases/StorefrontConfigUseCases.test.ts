@@ -39,6 +39,24 @@ describe('GetStorefrontUseCase', () => {
     await expect(new GetStorefrontUseCase(deps).execute(TENANT)).rejects.toBeInstanceOf(PlanFeatureUnavailableError);
   });
 
+  it('sem plano mas com página → resumo planLocked: status efetivo PAUSED_BY_PLAN, endereço e total, sem ofertas nem catálogo', async () => {
+    lockPlan();
+    const page = seedPageWithClaim(fakes); // linha ainda ACTIVE: o status devolvido é o efetivo
+    fakes.offers.seed({ status: PUBLISHED });
+    fakes.offers.seed({ status: DRAFT });
+    fakes.offers.seed({ tenantId: OTHER_TENANT });
+    const out = await new GetStorefrontUseCase(deps).execute(TENANT);
+    expect(out.storefront).toMatchObject({ id: page.id, status: 'PAUSED_BY_PLAN', address: { slug: 'minhaloja' } });
+    expect(out.publicUrl).toBe(`https://minhaloja.${STOREFRONT_HOST}`);
+    expect(out.planLocked).toEqual({ offersCount: 2 });
+    expect(out).toMatchObject({ offers: { drafts: [], published: [] }, categories: [], subtitleSuggestions: [], domains: [] });
+  });
+
+  it('com plano: planLocked ausente', async () => {
+    seedPageWithClaim(fakes);
+    expect(await new GetStorefrontUseCase(deps).execute(TENANT)).not.toHaveProperty('planLocked');
+  });
+
   it('sem página → storefront null com catálogo, sugestões e domínios ativos', async () => {
     fakes.domains.items.push(makeDomain({ id: 'dom-off', hostname: 'off.example', status: LinkDomainStatus.PAUSED }));
     const out = await new GetStorefrontUseCase(deps).execute(TENANT);

@@ -213,7 +213,7 @@ describe('StorefrontPage', () => {
       expect(screen.getByText(d.addressFreed)).toBeInTheDocument();
       expect(confirmButton()).toBeDisabled();
       expect(passwordField()).toHaveAttribute('type', 'password');
-      expect(passwordField()).toHaveAttribute('autocomplete', 'current-password');
+      expect(passwordField()).toHaveAttribute('autocomplete', 'off');
       fireEvent.change(passwordField(), { target: { value: SECRET } });
       expect(confirmButton()).toBeEnabled();
       fireEvent.click(screen.getByRole('button', { name: d.showPassword }));
@@ -291,6 +291,88 @@ describe('StorefrontPage', () => {
       typeAndSend();
       expect(await screen.findByText(d.alreadyDeleted)).toBeInTheDocument();
       expect(await screen.findByRole('button', { name: t.empty.cta })).toBeInTheDocument();
+    });
+
+    it('429: fechar e reabrir dentro do bloqueio mantém a espera', async () => {
+      await openDialog();
+      svc.deleteStorefront.mockRejectedValue({ status: 429, code: 'PASSWORD_CONFIRMATION_LOCKED', meta: { retryAfterSeconds: 840 } });
+      typeAndSend();
+      await screen.findByText(d.errors.locked(14));
+      fireEvent.click(screen.getByRole('button', { name: d.cancel }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: t.dangerZone.button }));
+      await screen.findByRole('dialog');
+      expect(screen.getByText(d.errors.locked(14))).toBeInTheDocument();
+      expect(passwordField()).toBeDisabled();
+      expect(confirmButton()).toBeDisabled();
+    });
+
+    it.each([
+      ['meta.retryAt', { meta: { retryAt: new Date(Date.now() + 300_000).toISOString() }, retryAfter: '600' }, 5],
+      ['header Retry-After', { retryAfter: '120' }, 2],
+      ['nada (15 min)', {}, 15],
+    ])('429 sem retryAfterSeconds usa %s', async (_label, extra, minutes) => {
+      await openDialog();
+      svc.deleteStorefront.mockRejectedValue({ status: 429, code: 'PASSWORD_CONFIRMATION_LOCKED', ...extra });
+      typeAndSend();
+      expect(await screen.findByText(d.errors.locked(minutes))).toBeInTheDocument();
+      expect(passwordField()).toBeDisabled();
+    });
+
+    it('204: durante o recarregamento a página antiga some e Editar não ressuscita o rascunho', async () => {
+      await openDialog();
+      svc.deleteStorefront.mockResolvedValue(undefined);
+      let finishReload!: (o: StorefrontOverview) => void;
+      svc.getStorefront.mockReturnValue(new Promise<StorefrontOverview>((r) => { finishReload = r; }));
+      typeAndSend();
+      await screen.findByText(d.done);
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      // recarregando: quem clicar em Editar (se ainda estiver na tela) regravaria o rascunho da página excluída
+      const edit = screen.queryByRole('button', { name: t.config.edit });
+      if (edit) fireEvent.click(edit);
+      expect(edit).toBeNull();
+      finishReload({ ...overview, canDelete: true });
+      expect(await screen.findByRole('button', { name: t.empty.cta })).toBeInTheDocument();
+      expect(Object.keys(sessionStorage).some((k) => k.includes('storefront.form'))).toBe(false);
+    });
+
+    describe('plano sem a página (planLocked)', () => {
+      const locked = (canDelete: boolean): StorefrontOverview => {
+        const base = withPage(canDelete);
+        return { ...base, planLocked: true, categories: [], domains: [], storefront: { ...base.storefront!, status: 'PAUSED_BY_PLAN', offersCount: 7 } };
+      };
+
+      it('admin vê o aviso de plano e a exclusão, sem edição nem ofertas', async () => {
+        svc.getStorefront.mockResolvedValue(locked(true));
+        renderPage('dark');
+        expect(await screen.findByText(t.page.paused)).toBeInTheDocument();
+        expect(screen.queryByText('tela de planos')).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: t.config.edit })).not.toBeInTheDocument();
+        expect(screen.queryByText(t.addOffer.title)).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: t.dangerZone.button }));
+        const dialog = await screen.findByRole('dialog');
+        expect(within(dialog).getByText(d.offersItem(7))).toBeInTheDocument();
+        svc.deleteStorefront.mockResolvedValue(undefined);
+        svc.getStorefront.mockRejectedValue({ status: 403, code: 'PLAN_FEATURE_UNAVAILABLE' });
+        typeAndSend();
+        await waitFor(() => expect(svc.deleteStorefront).toHaveBeenCalledWith(SECRET));
+        expect(await screen.findByText('tela de planos')).toBeInTheDocument();
+      });
+
+      it('"Ver planos" leva à tela de planos', async () => {
+        svc.getStorefront.mockResolvedValue(locked(true));
+        renderPage();
+        fireEvent.click(await screen.findByRole('link', { name: t.page.seePlans }));
+        expect(await screen.findByText('tela de planos')).toBeInTheDocument();
+      });
+
+      it('sem canDelete mostra só o aviso de plano', async () => {
+        svc.getStorefront.mockResolvedValue(locked(false));
+        renderPage();
+        expect(await screen.findByText(t.page.paused)).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: t.dangerZone.button })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: t.config.edit })).not.toBeInTheDocument();
+      });
     });
 
     it('cancelar fecha e reabrir vem com o campo vazio', async () => {

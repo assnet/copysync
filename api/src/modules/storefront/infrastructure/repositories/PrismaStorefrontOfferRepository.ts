@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import type { TransactionClient } from '../../../../shared/database/UnitOfWork';
 import type {
   CreateStorefrontOfferInput,
@@ -78,6 +78,7 @@ export class PrismaStorefrontOfferRepository implements IStorefrontOfferReposito
     return rows.map((r) => r.id);
   }
 
+  /** P2003 = a página foi excluída no meio da extração (FK): vira `STOREFRONT_NOT_FOUND`, nunca erro cru. */
   async create(input: CreateStorefrontOfferInput): Promise<StorefrontOffer> {
     const row = await this.prisma.storefrontOffer.create({
       data: {
@@ -95,6 +96,9 @@ export class PrismaStorefrontOfferRepository implements IStorefrontOfferReposito
         imageUrl: input.imageUrl,
         category: input.category,
       },
+    }).catch((err: unknown) => {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') throw new StorefrontNotFoundError();
+      throw err;
     });
     return PrismaStorefrontOfferMapper.toDomain(row);
   }

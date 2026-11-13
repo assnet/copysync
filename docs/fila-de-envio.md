@@ -89,16 +89,19 @@ Sessão excluída (`sessions.deletedAt`) não reconecta: esperar as 6 h do §2.2
 (2026-11-13): todo envio `QUEUED` dela vira **`SKIPPED` / `SESSION_DELETED`** (`domain/offerDispatchReasons.ts`),
 vencido ou futuro, de oferta em envio ou pausada. Sem estado novo. Três pontos:
 
-1. **Na exclusão**: `PrismaSessionOfferDispatchStore.pauseBySession` entra na lista `SessionLinkedResources` do
-   `DeleteSessionUseCase` (mesma porta do rodízio de links, composta em `session.routes.ts`), antes do soft delete,
-   filtrando `tenantId`.
+1. **Na exclusão**: `PrismaSessionOfferDispatchStore.pauseBySession` entra na lista `afterDelete` do
+   `DeleteSessionUseCase` (mesma porta `SessionLinkedResources` do rodízio de links, composta em
+   `session.routes.ts`), **depois** do soft delete, filtrando `tenantId`. Antes rodava antes do soft delete e,
+   nessa janela, um `QUEUED` podia ser reivindicado e falhar como erro de envio; com a sessão já excluída o claim
+   (item 3) não pega mais nada dela. O rodízio de links continua pausando **antes** do soft delete. Falha ao
+   fechar não desfaz a exclusão (log `warn`): o item 2 fecha o que sobrar.
 2. **No tick**: `skipForDeletedSessions(DELETED_SESSION_SWEEP_LIMIT = 500)` roda depois do `skipExpired` e antes do
    claim. Pega o que escapou do item 1 (envio que estava `SENDING` e voltou à fila, enfileirado no meio da exclusão,
    sessões excluídas antes desta regra). CTE com `LIMIT … FOR UPDATE OF d SKIP LOCKED` + `UPDATE … FROM`: dois
    workers não se esperam nem fecham a mesma linha. Não usar `id IN (SELECT … LIMIT … FOR UPDATE)`: o planner
    reexecuta a subconsulta e passa do limite (pego no teste de integração).
-3. **No claim**: sessão excluída entra no mesmo `NOT IN` do dono da sessão (`s."deletedAt" IS NOT NULL OR lease
-   alheio`): nunca ocupa vaga do tick, mesmo com mais de 500 pendentes.
+3. **No claim**: sessão excluída e sessão com lease alheio são dois `NOT IN` separados (não um `OR`, que forçava
+   `Seq Scan` em `sessions`): nunca ocupa vaga do tick, mesmo com mais de 500 pendentes.
 
 A oferta que ficou sem envio aberto é fechada pelo sweep de órfãs (`SENT` se algum grupo saiu, senão `FAILED`);
 o achado do caçador mostra "Não enviado" e o painel, "A sessão foi excluída antes do envio". Sessão **viva**
@@ -106,8 +109,29 @@ fora do ar não muda: segue o §2.2.1. Envio `SENDING` não é tocado (termina o
 
 EXPLAIN ANALYZE (Postgres 16 descartável; 60 mil envios, 10 mil `QUEUED` sendo 3 mil de sessão excluída; 3,2 mil
 sessões, 300 excluídas): **~4 ms** fechando 500 e **~0,8 ms** sem nada a fechar. `Seq Scan` em `sessions` (tabela
-pequena) → `Hash Join` com os `QUEUED` por `offer_dispatches_status_notBefore_idx`. Sem índice nem migration.
+pequena) → `Hash Join` com os `QUEUED` por `offer_dispatches_status_notBefore_idx`. Medição da época, sem índice
+(o índice parcial veio depois, abaixo).
 Produção em 2026-11-13: 33 sessões (12 excluídas), 7.297 `QUEUED`, **nenhum** de sessão excluída.
+
+**Índice parcial (2026-11-13).** Sessão excluída nunca sai da tabela, então o conjunto cresce para sempre.
+Migration `20261116100200_sessions_deleted_partial_index`: `sessions_deleted_partial_idx ON sessions(id) WHERE
+"deletedAt" IS NOT NULL`. O Prisma 5 não declara índice parcial: ele existe **só na migration**, com comentário
+no `model Session`; `prisma migrate diff` (banco → schema) segue vazio. Não remover nem "corrigir" pelo schema.
+
+EXPLAIN ANALYZE (Postgres 16 descartável; 8 mil sessões sendo **5 mil excluídas**; 60 mil envios, 10 mil `QUEUED`
+sendo 3 mil de sessão excluída; `auto_explain` nas consultas reais do repositório):
+
+| Consulta | Antes (sem índice, `OR`) | Depois (índice + dois `NOT IN`) |
+| --- | --- | --- |
+| Claim, subconsulta de `sessions` | `Seq Scan` 8 mil linhas, ~0,45 ms | excluídas: `Index Only Scan` no parcial (Heap Fetches 0), ~0,15 ms; lease alheio: `Index Scan` em `sessions_ownerWorkerId_idx`, ~0,004 ms |
+| Claim, total | ~24 ms | ~24 ms |
+| `skipForDeletedSessions(500)`, CTE | `Index Scan` em `sessions_pkey` + filtro, ~2,2 ms | `Index Scan` no parcial, ~2,1 ms |
+
+Leitura honesta: neste volume o ganho é pequeno (o claim é dominado pelo `DISTINCT ON` e pelas janelas de
+postagem, não por `sessions`). O que muda é a curva: a subconsulta do claim deixa de ler a tabela inteira a cada
+tick e passa a ler só as excluídas pelo índice, sem ir ao heap. Só o índice, mantendo o `OR`, **não** muda o
+plano do claim (medido: continua `Seq Scan`); por isso os dois `NOT IN`. O `ownerWorkerId IS NOT NULL` é
+redundante com o `<>`, mas é o que deixa o btree servir.
 
 ### 2.3 Previsão: encostar no fim da faixa
 

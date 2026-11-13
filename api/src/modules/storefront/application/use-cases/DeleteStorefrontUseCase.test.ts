@@ -30,10 +30,31 @@ describe('DeleteStorefrontUseCase', () => {
     expect(fakes.rotations.reservations).toHaveLength(0);
     expect(fakes.audit.entries).toEqual([{
       tenantId: TENANT, userId: USER, action: 'STOREFRONT_DELETED',
-      meta: { slug: 'minhaloja', domainId: STOREFRONT_DOMAIN, offers: 3, bySuperAdmin: false },
+      // `images`: só a contagem do que o pós-commit deve remover (nunca nome de arquivo)
+      meta: { slug: 'minhaloja', domainId: STOREFRONT_DOMAIN, offers: 3, images: 4, bySuperAdmin: false },
     }]);
+    expect(JSON.stringify(fakes.audit.entries)).not.toContain('.webp');
     expect([...fakes.media.removed].sort()).toEqual([img(1), img(2), img(3), img(4)]);
     expect(fakes.confirmPassword.calls).toEqual([{ userId: USER, action: 'STOREFRONT_DELETE' }]);
+  });
+
+  it('trava a página (FOR UPDATE) antes de ler e listar o que será apagado', async () => {
+    const { fakes, run } = setup();
+    const { calls } = fakes.storefronts;
+    const find = fakes.storefronts.findByTenant.bind(fakes.storefronts);
+    vi.spyOn(fakes.storefronts, 'findByTenant').mockImplementation((t) => { calls.push('find'); return find(t); });
+    const list = fakes.offers.listByStorefront.bind(fakes.offers);
+    vi.spyOn(fakes.offers, 'listByStorefront').mockImplementation((t, id) => { calls.push('list'); return list(t, id); });
+    await run();
+    // 1º find = checagem antes da senha (fora do tx); dentro do tx a trava vem primeiro
+    expect(calls).toEqual(['find', 'lock', 'find', 'list', 'delete']);
+  });
+
+  it('remoção sem falha: log estruturado com a contagem e failed 0', async () => {
+    const { run } = setup();
+    const info = vi.spyOn(logger, 'info').mockImplementation(() => undefined);
+    await run();
+    expect(info).toHaveBeenCalledWith({ tenantId: TENANT, images: 4, failed: 0 }, expect.any(String));
   });
 
   it('endereço fica livre na hora para outro tenant (sem reserva de 30 dias)', async () => {
@@ -108,7 +129,7 @@ describe('DeleteStorefrontUseCase', () => {
     const { deps, fakes } = makeStorefrontDeps();
     fakes.storefronts.seed({ address: null });
     await new DeleteStorefrontUseCase(deps).execute({ tenantId: TENANT, userId: USER, role: 'ADMIN', isSuperAdmin: false, password: PASSWORD });
-    expect(fakes.audit.entries[0]!.meta).toEqual({ slug: null, domainId: null, offers: 0, bySuperAdmin: false });
+    expect(fakes.audit.entries[0]!.meta).toEqual({ slug: null, domainId: null, offers: 0, images: 0, bySuperAdmin: false });
     expect(fakes.media.removed).toHaveLength(0);
   });
 

@@ -1,9 +1,11 @@
 import type { Storefront } from '../../domain/entities/Storefront';
 import type { StorefrontOffer } from '../../domain/entities/StorefrontOffer';
-import { StorefrontOfferStatus } from '../../domain/enums/StorefrontEnums';
+import { StorefrontOfferStatus, StorefrontStatus } from '../../domain/enums/StorefrontEnums';
 import { STOREFRONT_CATEGORIES } from '../../domain/services/storefrontCategories';
 import { STOREFRONT_SUBTITLE_SUGGESTIONS } from '../../domain/services/storefrontRules';
-import { requireStorefrontEnabled, type StorefrontUseCaseDeps } from './storefrontUseCaseDeps';
+import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
+import { PlanFeatureUnavailableError } from '../../../../shared/errors/internal/PlanErrors';
+import type { StorefrontUseCaseDeps } from './storefrontUseCaseDeps';
 import { storefrontPublicUrl } from './storefrontPageModel';
 
 type Deps = Pick<StorefrontUseCaseDeps, 'storefronts' | 'offers' | 'entitlements' | 'domains'>;
@@ -19,6 +21,11 @@ export interface GetStorefrontOutput {
   subtitleSuggestions: readonly string[];
   /** Domínios ACTIVE para o tenant escolher o endereço. */
   domains: { id: string; hostname: string }[];
+  /**
+   * Presente só quando o plano não libera a página mas ela existe: resumo para o tenant conseguir
+   * excluir (ofertas, catálogo e domínios vêm vazios; nada é editável, as demais rotas seguem 403).
+   */
+  planLocked?: { offersCount: number };
 }
 
 /** Tela da página: configuração, ofertas por aba e o que o form precisa para escolher. */
@@ -26,8 +33,9 @@ export class GetStorefrontUseCase {
   constructor(private readonly deps: Deps) {}
 
   async execute(tenantId: string): Promise<GetStorefrontOutput> {
-    await requireStorefrontEnabled(this.deps.entitlements, tenantId);
-    const { storefronts, offers, domains } = this.deps;
+    const { storefronts, offers, domains, entitlements } = this.deps;
+    const enabled = (await entitlements.getBoolean(tenantId, ENTITLEMENT_KEYS.STOREFRONT_ENABLED)) === true;
+    if (!enabled) return this.planLocked(tenantId);
 
     const [page, active] = await Promise.all([storefronts.findByTenant(tenantId), domains.listActive()]);
     const list = page ? await offers.listByStorefront(tenantId, page.id) : [];
@@ -50,6 +58,31 @@ export class GetStorefrontUseCase {
       categories: STOREFRONT_CATEGORIES.map((c) => ({ key: c.key, label: c.label })),
       subtitleSuggestions: STOREFRONT_SUBTITLE_SUGGESTIONS,
       domains: active.map((d) => ({ id: d.id, hostname: d.hostname })),
+    };
+  }
+
+  /**
+   * Plano sem a página. Sem página criada: 403 como sempre (o painel leva aos planos). Com página
+   * (perdeu o plano): resumo só para chegar à exclusão. Status é sempre o efetivo `PAUSED_BY_PLAN`,
+   * mesmo se a linha ainda não foi atualizada pelo billing.
+   */
+  private async planLocked(tenantId: string): Promise<GetStorefrontOutput> {
+    const { storefronts, offers, domains } = this.deps;
+    const page = await storefronts.findByTenant(tenantId);
+    if (!page) throw new PlanFeatureUnavailableError(ENTITLEMENT_KEYS.STOREFRONT_ENABLED);
+
+    const [counts, domain] = await Promise.all([
+      offers.countByStorefront(tenantId, page.id),
+      page.address ? domains.findById(page.address.domainId) : null,
+    ]);
+    return {
+      storefront: { ...page, status: StorefrontStatus.PAUSED_BY_PLAN },
+      publicUrl: domain && page.address ? storefrontPublicUrl(domain.hostname, page.address.slug) : null,
+      offers: { drafts: [], published: [] },
+      categories: [],
+      subtitleSuggestions: [],
+      domains: [],
+      planLocked: { offersCount: counts.total },
     };
   }
 }

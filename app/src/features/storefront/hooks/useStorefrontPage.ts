@@ -2,9 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { storefrontService } from '@/services/storefront.service';
+import { serverNow } from '@/services/serverClock';
 import type { AddOfferDraft } from '../components/AddOfferCard';
 import { PLAN_FEATURE_KEYS, isPlanFeatureUnavailable, isSheinUnavailable } from '@/features/plans/planGate';
 import { storefrontUpgradePath } from '../planGate';
+import { lockedUntilFrom } from '../deleteLock';
 import type { StorefrontOfferTab } from '../reorder';
 import {
   STOREFRONT_FORM_DEFAULTS,
@@ -107,6 +109,11 @@ export function useStorefrontPage() {
   const [toast, setToast] = useState<StorefrontToast | null>(null);
   /** Diálogo de excluir a página: não persiste (reload fecha a ação destrutiva; a senha vive só no diálogo). */
   const [deleteOpen, setDeleteOpen] = useState(false);
+  /**
+   * Fim do bloqueio da confirmação de senha (ms, relógio do servidor). Fica aqui, e não no diálogo,
+   * para fechar e reabrir não liberar o campo; só em memória (reload consulta a API de novo).
+   */
+  const [deleteLockedUntil, setDeleteLockedUntil] = useState<number | null>(null);
 
   const notify = (message: string, severity: StorefrontToast['severity'] = 'success') => setToast({ message, severity });
 
@@ -326,17 +333,21 @@ export function useStorefrontPage() {
   /**
    * Exclui a página com a senha de quem está logado. Sucesso (ou página que já não existe): fecha o
    * diálogo, limpa o estado de trabalho persistido e recarrega para o estado "criar página". Os
-   * demais erros sobem para o diálogo, que mostra o texto de cada código.
+   * demais erros sobem para o diálogo, que mostra o texto de cada código (o 429 também grava o prazo).
    */
   const deletePage = async (password: string) => {
     let gone = false;
     try {
       await storefrontService.deleteStorefront(password);
     } catch (err) {
+      if (codeOf(err) === 'PASSWORD_CONFIRMATION_LOCKED') setDeleteLockedUntil(lockedUntilFrom(err, serverNow()));
       if (codeOf(err) !== 'STOREFRONT_NOT_FOUND') throw err;
       gone = true;
     }
     setDeleteOpen(false);
+    // A página antiga sai da tela antes de recarregar (skeleton): sem isso, "Editar" durante o
+    // `load()` regravaria o rascunho da página excluída e ele reapareceria no modo criar.
+    setOverview(null);
     clearDraft();
     clearTab();
     clearAddDraft();
@@ -368,7 +379,7 @@ export function useStorefrontPage() {
     toggleStatus, deleteOffer, reorder,
     editingOffer, openEditOffer: (o: StorefrontOffer) => setEditOfferId(o.id), closeEditOffer: clearEditOffer, saveOffer,
     // exclusão da página
-    deleteOpen, openDelete: () => setDeleteOpen(true), closeDelete: () => setDeleteOpen(false), deletePage,
+    deleteOpen, openDelete: () => setDeleteOpen(true), closeDelete: () => setDeleteOpen(false), deletePage, deleteLockedUntil,
     // prévia e avisos
     viewport, setViewport,
     toast, notify, closeToast: () => setToast(null),

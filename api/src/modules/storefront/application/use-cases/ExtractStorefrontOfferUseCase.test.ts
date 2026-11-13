@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { StorefrontNotFoundError } from '../../../../shared/errors/internal/StorefrontErrors';
 import { ExtractStorefrontOfferUseCase } from './ExtractStorefrontOfferUseCase';
 import { makeResolved, makeStorefrontDeps, MEDIA_URL, TENANT, type StorefrontFakes } from './storefrontTestFakes';
 import { StorefrontOfferStatus } from '../../domain/enums/StorefrontEnums';
@@ -54,6 +55,13 @@ describe('ExtractStorefrontOfferUseCase', () => {
     fakes.entitlements.values = {};
     await expect(useCase.execute(input)).rejects.toMatchObject({ code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: ENTITLEMENT_KEYS.STOREFRONT_ENABLED } });
     expect(fakes.resolveProduct.calls).toEqual([]);
+  });
+
+  it('página excluída no meio da extração: o INSERT falha e a imagem recém-gravada é apagada (sem órfã)', async () => {
+    vi.spyOn(fakes.offers, 'create').mockRejectedValueOnce(new StorefrontNotFoundError());
+    await expect(useCase.execute(input)).rejects.toMatchObject({ code: 'STOREFRONT_NOT_FOUND' });
+    expect(fakes.media.saved).toHaveLength(1);
+    expect(fakes.media.removed).toEqual([`${MEDIA_URL}1.webp`]);
   });
 
   it('sem página responde STOREFRONT_NOT_FOUND', async () => {

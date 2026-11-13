@@ -178,12 +178,42 @@ Ordem do `DeleteStorefrontUseCase` (cada passo só roda se o anterior passou):
 3. **Senha do usuário logado** (D3), via `ConfirmUserPasswordUseCase` (módulo `auth`, ver
    [`seguranca-login.md`](seguranca-login.md)): super admin usa a própria. Errada → `401 INVALID_CREDENTIALS`
    (mesmo erro do login; o painel não trata esse código como token vencido). 5 erradas em 15 min → `429
-   PASSWORD_CONFIRMATION_LOCKED` com `meta.retryAfterSeconds`, por 15 min. Cada POST conta uma tentativa.
-4. **Transação** (`runInSlugTransaction`): relê a página, coleta as imagens (ofertas + foto + capa),
-   `slugs.releaseWithoutReservation`, `storefronts.delete` (ofertas e claim em cascade) e auditoria
-   `STOREFRONT_DELETED` com `{ slug, domainId, offers, bySuperAdmin }`. Auditoria que falha desfaz tudo.
-5. **Depois do commit**: `media.remove` de cada imagem, 10 por vez. Nunca lança; falha vira contagem no log
-   (`images`, `failed`), sem nome de arquivo.
+   PASSWORD_CONFIRMATION_LOCKED` com `meta.retryAfterSeconds` e `meta.retryAt` (ISO; vira o header
+   `Retry-After`), por 15 min. Cada POST conta uma tentativa.
+4. **Transação** (`runInSlugTransaction`): **trava a linha da página** (`storefronts.lockForUpdate`, `SELECT …
+   FOR UPDATE`), relê a página, coleta as imagens (ofertas + foto + capa), `slugs.releaseWithoutReservation`,
+   `storefronts.delete` (ofertas e claim em cascade) e auditoria `STOREFRONT_DELETED` com
+   `{ slug, domainId, offers, images, bySuperAdmin }` (`images` = **quantas** imagens o passo 5 deve remover;
+   nunca nome de arquivo). Auditoria que falha desfaz tudo.
+5. **Depois do commit**: `media.remove` de cada imagem, 10 por vez. Nunca lança; o resultado vira log
+   estruturado `{ tenantId, images, failed }` (`info` com `failed: 0`, `warn` se alguma falhou), sem nome de arquivo.
+
+**Corrida com criação de oferta e troca de foto/capa.** A trava do passo 4 vem antes de listar. Quem escreve na
+página no meio espera o commit e falha por página inexistente, apagando a imagem que acabou de gravar:
+`POST /offers` (o INSERT espera pela FK; `PrismaStorefrontOfferRepository.create` traduz `P2003` em
+`STOREFRONT_NOT_FOUND` e o `ExtractStorefrontOfferUseCase` remove a imagem) e `PUT /images/:kind` (o `update`
+não acha a linha e o use case já removia a imagem nova). Quem gravou antes da trava entra na lista da exclusão.
+Não trocar a trava por checagem fora da transação nem listar antes dela (teste de integração da corrida em
+`DeleteStorefrontUseCase.int.test.ts`).
+
+**Risco aceito: imagem órfã.** O passo 5 é melhor esforço e fica fora da transação (storage não participa de
+commit). Se o processo cair entre o commit e a remoção, ou o storage falhar, os arquivos ficam no storage sem
+linha no banco. Não há job de limpeza nem fila para isso (decisão: volume baixo, arquivo pequeno, sem dado
+pessoal além da arte da oferta). Rastro: a auditoria `STOREFRONT_DELETED` guarda `images` e o log guarda
+`failed`; auditoria com `images > 0` sem log correspondente indica queda no meio. Não guardar nome de arquivo
+na auditoria.
+
+**Página pausada pelo plano chega à exclusão.** `GET /api/storefront` sem `storefront_enabled`: sem página
+criada segue `403 PLAN_FEATURE_UNAVAILABLE`; **com** página devolve `200` com um resumo e `planLocked: true`
+(campo ausente no caso normal): `storefront` com `status: 'PAUSED_BY_PLAN'` (sempre o efetivo, mesmo se a linha
+ainda não foi atualizada pelo billing), `slug`/`domainId`, os demais campos da página e `offersCount` (total;
+só vem aqui); `publicUrl`; `canDelete`; `offers.drafts/published`, `categories`, `subtitleSuggestions` e
+`domains` **vazios**. Nada é editável: salvar, imagens, prévia e ofertas seguem `403`. O formato completo da
+página foi mantido de propósito: o painel atual monta o formulário com `page.categories`/`page.title` e
+quebraria com um objeto reduzido; com ele, a tela abre, mostra o aviso de pausada e a zona de perigo, e
+qualquer edição cai no 403 que leva aos planos. Painel novo deve ler `planLocked` e mostrar só o resumo +
+exclusão (usar `storefront.offersCount`, pois as listas vêm vazias). Decisão de produto ainda pendente sobre a
+tela; a API já responde do jeito seguro.
 
 Endereço (D1): livre **na hora** para qualquer tenant, sem a reserva de 30 dias (e uma reserva antiga do próprio
 tenant para o mesmo nome é apagada junto). Nome especial continua protegido: o próximo dono passa pelo `guardWrite`

@@ -1,4 +1,5 @@
 import { Alert, Box, Button, Skeleton, Snackbar, Stack } from '@mui/material';
+import { Link as RouterLink } from 'react-router-dom';
 import { RotateCw } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { AddOfferCard } from './components/AddOfferCard';
@@ -10,6 +11,7 @@ import { StorefrontConfigCard } from './components/StorefrontConfigCard';
 import { StorefrontHeader } from './components/StorefrontHeader';
 import { StorefrontPreview } from './components/StorefrontPreview';
 import { useStorefrontPage } from './hooks/useStorefrontPage';
+import { storefrontUpgradePath } from './planGate';
 import { previewRevision } from './storefrontForm';
 import { storefrontStrings } from './strings';
 
@@ -40,6 +42,18 @@ export function StorefrontPage() {
   const { overview } = s;
   const page = overview?.storefront ?? null;
   const onCopyFailed = () => s.notify(t.address.copyFailed, 'error');
+  const dangerZone = page && overview?.canDelete === true && <StorefrontDangerZone onDelete={s.openDelete} />;
+  const deleteDialog = overview && (
+    <DeleteStorefrontDialog
+      open={s.deleteOpen && page !== null}
+      address={overview.publicUrl?.replace(/^https?:\/\//, '') ?? page?.slug ?? null}
+      // `planLocked`: as listas vêm vazias e o total chega em `offersCount`
+      offerCount={page?.offersCount ?? overview.offers.drafts.length + overview.offers.published.length}
+      lockedUntil={s.deleteLockedUntil}
+      onClose={s.closeDelete}
+      onConfirm={s.deletePage}
+    />
+  );
 
   return (
     <Box>
@@ -58,6 +72,18 @@ export function StorefrontPage() {
         >
           {t.page.loadError}
         </Alert>
+      ) : overview.planLocked ? (
+        // Plano sem a página, mas ela existe: só o aviso com o caminho do upgrade e a exclusão.
+        <Stack spacing={3}>
+          <Alert
+            severity="warning"
+            action={<Button component={RouterLink} to={storefrontUpgradePath} color="inherit" size="small">{t.page.seePlans}</Button>}
+          >
+            {t.page.paused}
+          </Alert>
+          {dangerZone}
+          {deleteDialog}
+        </Stack>
       ) : (
         <Stack spacing={3}>
           {page?.status === 'PAUSED_BY_PLAN' && <Alert severity="warning">{t.page.paused}</Alert>}
@@ -118,15 +144,8 @@ export function StorefrontPage() {
             </Stack>
           </Box>
 
-          {page && overview.canDelete === true && <StorefrontDangerZone onDelete={s.openDelete} />}
-
-          <DeleteStorefrontDialog
-            open={s.deleteOpen && page !== null}
-            address={overview.publicUrl?.replace(/^https?:\/\//, '') ?? page?.slug ?? null}
-            offerCount={overview.offers.drafts.length + overview.offers.published.length}
-            onClose={s.closeDelete}
-            onConfirm={s.deletePage}
-          />
+          {dangerZone}
+          {deleteDialog}
 
           <EditOfferDialog
             offer={s.editingOffer}

@@ -51,7 +51,7 @@ export class ConfirmUserPasswordUseCase {
       await repo.pruneUser(userId, new Date(now.getTime() - PASSWORD_CONFIRMATION_RETENTION_MS));
       const failures = await repo.failuresSince(userId, new Date(now.getTime() - PASSWORD_CONFIRMATION_LOOKBACK_MS));
       const lock = evaluatePasswordConfirmationLock(failures, now);
-      if (lock.locked) throw new PasswordConfirmationLockedError(lock.retryAfterSeconds);
+      if (lock.locked) throw new PasswordConfirmationLockedError(lock.retryAfterSeconds, now);
       return repo.reserve({ userId, action, createdAt: now });
     });
 

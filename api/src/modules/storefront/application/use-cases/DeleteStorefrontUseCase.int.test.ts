@@ -14,7 +14,10 @@ import { PrismaStorefrontRepository } from '../../infrastructure/repositories/Pr
 import { PrismaStorefrontOfferRepository } from '../../infrastructure/repositories/PrismaStorefrontOfferRepository';
 import { StorefrontOfferStatus } from '../../domain/enums/StorefrontEnums';
 import { DeleteStorefrontUseCase } from './DeleteStorefrontUseCase';
-import { FakeMediaStore } from './storefrontTestFakes';
+import { ExtractStorefrontOfferUseCase } from './ExtractStorefrontOfferUseCase';
+import {
+  FakeEntitlementReader, FakeImageFetcher, FakeImageProcessor, FakeMediaStore, FakeResolveProduct, MEDIA_URL,
+} from './storefrontTestFakes';
 import type { StorefrontSlugTransaction } from './storefrontUseCaseDeps';
 
 /*
@@ -31,15 +34,21 @@ const base = { title: 'Ofertas', subtitle: null, colorPrimary: '#15803D', colorB
 const pages = new PrismaStorefrontRepository(prisma);
 const offers = new PrismaStorefrontOfferRepository(prisma);
 let failAudit = false;
+/** Roda dentro do tx da exclusão, logo depois de listar as ofertas (janela da corrida). */
+let afterList: (() => Promise<void>) | null = null;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const slugTransaction: StorefrontSlugTransaction = (fn) =>
   new UnitOfWork().runInTransaction((tx) => {
     const audit = new PrismaAuditLogRepository(tx);
     const failing: IAuditLogRepository = { create: async (i) => { await audit.create(i); if (failAudit) throw new Error('audit down'); } };
+    const txOffers = new PrismaStorefrontOfferRepository(tx);
+    const list = txOffers.listByStorefront.bind(txOffers);
+    txOffers.listByStorefront = async (t, id) => { const rows = await list(t, id); await afterList?.(); return rows; };
     return fn({
       slugs: new PrismaPublicSlugRegistry(tx),
       storefronts: new PrismaStorefrontRepository(tx),
-      offers: new PrismaStorefrontOfferRepository(tx),
+      offers: txOffers,
       audit: failing,
     });
   });
@@ -146,6 +155,53 @@ describe('DeleteStorefrontUseCase (Postgres)', () => {
     expect(await prisma.publicSlugClaim.count({ where: { storefrontId: pageId } })).toBe(1); // outro tenant não libera
     await run(SECRET);
     expect(await prisma.linkSlugReservation.count({ where: { domainId, slug: SLUG } })).toBe(0);
+  });
+
+  it('corrida com criação de oferta: o INSERT espera a exclusão, falha por página inexistente e apaga a própria imagem', async () => {
+    await seedPage(tenantA, SLUG);
+    const store = new FakeMediaStore();
+    let listed!: () => void;
+    const deleteListed = new Promise<void>((r) => { listed = r; });
+    // Extração "lenta": só termina de resolver o link depois que a exclusão já listou o que vai apagar
+    const resolveProduct = new FakeResolveProduct();
+    const slow = { execute: async (t: string, url: string) => { await deleteListed; return resolveProduct.execute(t, url); } };
+    const extract = new ExtractStorefrontOfferUseCase({
+      storefronts: pages, offers, entitlements: new FakeEntitlementReader(), images: new FakeImageProcessor(),
+      media: store, resolveProduct: slow, imageFetcher: new FakeImageFetcher(),
+    });
+    // A exclusão segura o tx aberto depois de listar: tempo de sobra para o INSERT tentar entrar
+    afterList = async () => { listed(); await sleep(400); };
+    const creating = extract.execute({ tenantId: tenantA, url: 'https://meli.la/abc' }).then(() => 'created', (e: { code?: string }) => e.code);
+    await run(SECRET);
+    afterList = null;
+
+    expect(await creating).toBe('STOREFRONT_NOT_FOUND');
+    expect(await prisma.storefrontOffer.count({ where: { tenantId: tenantA } })).toBe(0);
+    // A imagem gravada pela extração não ficou órfã: foi apagada por quem a criou
+    expect(store.saved).toHaveLength(1);
+    expect(store.removed).toEqual([`${MEDIA_URL}1.webp`]);
+  });
+
+  it('corrida com troca de capa: o UPDATE espera a exclusão e falha (a imagem nova nunca fica fora da lista)', async () => {
+    await seedPage(tenantA, SLUG);
+    media.removed.length = 0;
+    let swap: Promise<string | undefined> | null = null;
+    afterList = async () => {
+      swap = pages.update(tenantA, { coverUrl: img(9) }).then(() => 'updated', (e: { code?: string }) => e.code);
+      await sleep(400);
+    };
+    await run(SECRET);
+    afterList = null;
+
+    // Sem a trava o UPDATE passava no meio e img(9) sumia com a página sem ser removida do storage
+    expect(await swap).toBe('STOREFRONT_NOT_FOUND');
+    expect([...media.removed].sort()).toEqual([img(1), img(2), img(3), img(4)]);
+  });
+
+  it('auditoria guarda só a contagem de imagens a remover', async () => {
+    const audit = await prisma.auditLog.findMany({ where: { tenantId: tenantA, action: 'STOREFRONT_DELETED' }, orderBy: { createdAt: 'desc' }, take: 1 });
+    expect(audit[0]!.meta).toMatchObject({ offers: 3, images: 4 });
+    expect(JSON.stringify(audit[0]!.meta)).not.toContain('.webp');
   });
 
   it('nome premium liberado continua protegido: próximo dono sem grant é recusado', async () => {

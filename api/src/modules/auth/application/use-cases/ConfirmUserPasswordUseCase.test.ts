@@ -42,7 +42,9 @@ describe('ConfirmUserPasswordUseCase', () => {
     }
     s.verifyPassword.mockClear();
     await expect(s.run(SECRET)).rejects.toMatchObject({
-      code: 'PASSWORD_CONFIRMATION_LOCKED', statusCode: 429, meta: { retryAfterSeconds: 14 * 60 },
+      code: 'PASSWORD_CONFIRMATION_LOCKED', statusCode: 429,
+      // `retryAt` (ISO) = relógio da tentativa + espera: é o que vira o header Retry-After
+      meta: { retryAfterSeconds: 14 * 60, retryAt: new Date(s.clock.ms + 14 * 60_000).toISOString() },
     });
     expect(s.verifyPassword).not.toHaveBeenCalled();
     expect(s.attempts.rows).toHaveLength(5);

@@ -9,6 +9,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — app 0.119.0 / api 0.96.0 — Excluir Página de Ofertas
+
+#### app
+
+- **`StorefrontDangerZone.tsx`** / **`DeleteStorefrontDialog.tsx`** — zona de perigo (admin e super admin) e diálogo com endereço, número de ofertas, aviso de que outra conta poderá usar o endereço e confirmação pela senha (só em memória); bloqueio por tentativas com espera; rascunhos limpos após excluir; conta com a página pausada pelo plano consegue excluir.
+- **`apiClient.ts`** — 401 `INVALID_CREDENTIALS` não renova token, não repete o pedido nem desloga.
+
 ### Fixed — app 0.118.1 / api 0.95.1 — IA do caçador, salvar config do gerador e percentual do Story
 
 #### app

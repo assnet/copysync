@@ -29,6 +29,7 @@ export const storefrontStrings = {
     loadError: 'Não foi possível carregar a sua página.',
     retry: 'Tentar de novo',
     paused: 'Sua página está pausada porque o plano atual não inclui a Página de Ofertas. O nome continua reservado para você.',
+    seePlans: 'Ver planos',
     noDomain: 'A Página de Ofertas ainda não está disponível. Assim que liberarmos um domínio, você poderá criar a sua.',
   },
 

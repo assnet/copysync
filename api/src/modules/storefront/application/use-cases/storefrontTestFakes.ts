@@ -96,7 +96,10 @@ export class InMemoryStorefrontRepository implements IStorefrontRepository {
     p.status = status;
     return status;
   }
-  async delete(tenantId: string) { this.pages = this.pages.filter((x) => x.tenantId !== tenantId); }
+  /** Ordem das chamadas que importam para a exclusão (trava antes de ler). */
+  calls: string[] = [];
+  async lockForUpdate(_tenantId: string) { this.calls.push('lock'); }
+  async delete(tenantId: string) { this.calls.push('delete'); this.pages = this.pages.filter((x) => x.tenantId !== tenantId); }
   async findPublicByAddress(domainId: string, slug: string): Promise<PublicStorefront | null> {
     return this.publicByAddress.get(`${domainId}/${slug}`) ?? null;
   }

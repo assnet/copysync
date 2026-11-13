@@ -135,9 +135,10 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
    * mesma definição do lease) não é candidato — só o dono do socket envia. Sessão minha ou sem dono
    * vivo: como antes; `sessionId` nulo nunca é excluído. Anti-join com o conjunto (pequeno) de
    * sessões alheias, aplicado antes do DISTINCT ON, nos dois caminhos (sequencial e concorrente).
-   * EXPLAIN ANALYZE (Postgres 16 descartável, 50k envios/500 QUEUED, 3,2k sessões, ~1 ms): o candidato
-   * segue em `offer_dispatches_status_notBefore_idx` e a subquery vira `hashed SubPlan` avaliado UMA vez
-   * (Seq Scan em "sessions": `<>` não usa `sessions_ownerWorkerId_idx`; tabela pequena) — sem lookup por linha.
+   * Dois `NOT IN` separados (excluídas / lease alheio), cada um `hashed SubPlan` avaliado UMA vez e servido
+   * por índice: `sessions_deleted_partial_idx` (Index Only Scan) e `sessions_ownerWorkerId_idx` (pelo
+   * `IS NOT NULL`). Um `OR` só forçava Seq Scan em "sessions", que cresce com as excluídas
+   * (medição em docs/fila-de-envio.md §2.2.2).
    */
   async claimDue(now: Date, limit: number, options: ClaimDueOptions = {}): Promise<OfferDispatch[]> {
     if (limit <= 0) return [];
@@ -179,10 +180,15 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
                 WHERE d."status" = 'QUEUED'::"OfferDispatchStatus" AND d."notBefore" <= ${now}
                   -- Sessão com lease vivo de outro processo: só o dono envia (nulo nunca entra no NOT IN).
                   -- Sessão excluída nunca é candidata: o lote de skipForDeletedSessions fecha esses envios
-                  AND (d."sessionId" IS NULL OR d."sessionId" NOT IN (
-                    SELECT s."id" FROM "sessions" s
-                     WHERE s."deletedAt" IS NOT NULL
-                        OR (s."ownerWorkerId" <> ${this.workerId} AND s."leaseUntil" > (now() AT TIME ZONE 'UTC'))))
+                  -- Dois NOT IN (e não um OR): cada lado usa o seu índice, sessions_deleted_partial_idx
+                  -- (parcial, só excluídas) e sessions_ownerWorkerId_idx (o IS NOT NULL é redundante com o
+                  -- <>, mas é o que deixa o btree servir), sem Seq Scan em "sessions" (§2.2.2)
+                  AND (d."sessionId" IS NULL OR (
+                    d."sessionId" NOT IN (SELECT s."id" FROM "sessions" s WHERE s."deletedAt" IS NOT NULL)
+                    AND d."sessionId" NOT IN (
+                      SELECT s."id" FROM "sessions" s
+                       WHERE s."ownerWorkerId" IS NOT NULL AND s."ownerWorkerId" <> ${this.workerId}
+                         AND s."leaseUntil" > (now() AT TIME ZONE 'UTC'))))
                   -- Pausa global do tenant; suspenso/cancelado (billing) fica QUEUED até reativar
                   AND d."tenantId" IN (SELECT "id" FROM "tenants" WHERE "sendingPausedAt" IS NULL AND "status" = 'ACTIVE'::"TenantStatus")
                   -- Oferta do monitoramento fora do horário de postagem da configuração espera a janela abrir
@@ -282,7 +288,8 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
   /**
    * CROSS-TENANT por design (worker). Lote limitado com SKIP LOCKED: dois workers não esperam um pelo
    * outro nem fecham a mesma linha (o UPDATE reconfere QUEUED). Plano (docs/fila-de-envio.md §2.2.2):
-   * "sessions" excluídas (tabela pequena) → `offer_dispatches_sessionId_status_idx`; sem índice novo.
+   * a checagem de sessão excluída usa o índice parcial `sessions_deleted_partial_idx` (só na migration
+   * `20261116100200`; o Prisma 5 não declara índice parcial).
    */
   async skipForDeletedSessions(limit: number): Promise<number> {
     if (limit <= 0) return 0;

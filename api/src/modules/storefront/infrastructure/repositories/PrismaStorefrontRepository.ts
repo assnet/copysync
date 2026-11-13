@@ -75,6 +75,11 @@ export class PrismaStorefrontRepository implements IStorefrontRepository {
     return count === 0 ? null : status;
   }
 
+  /** Sem linha não trava nada (o chamador confere a existência em seguida, no mesmo tx). */
+  async lockForUpdate(tenantId: string): Promise<void> {
+    await this.prisma.$queryRaw`SELECT "id" FROM "storefronts" WHERE "tenantId" = ${tenantId} FOR UPDATE`;
+  }
+
   /** Claim e ofertas caem por cascade (libera o endereço). */
   async delete(tenantId: string): Promise<void> {
     await this.prisma.storefront.deleteMany({ where: { tenantId } });

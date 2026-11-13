@@ -196,7 +196,13 @@ export const storefrontOverviewResponse = envelope({
   type: 'object',
   additionalProperties: false,
   properties: {
-    storefront: { anyOf: [storefrontItem, { type: 'null' }] },
+    // `offersCount` só vem com `planLocked` (plano sem a página, resumo para excluir).
+    storefront: {
+      anyOf: [
+        { ...storefrontItem, properties: { ...storefrontItem.properties, offersCount: { type: 'integer' } } },
+        { type: 'null' },
+      ],
+    },
     publicUrl: nullableString,
     offers: {
       type: 'object',
@@ -217,6 +223,8 @@ export const storefrontOverviewResponse = envelope({
       },
     },
     canDelete: { type: 'boolean' },
+    /** Ausente no caso normal; true = plano não libera a página, só a exclusão funciona. */
+    planLocked: { type: 'boolean' },
   },
 });
 

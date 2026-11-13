@@ -22,7 +22,7 @@ const IMAGE_REMOVE_BATCH = 10;
  * Exclui a Página de Ofertas inteira (docs/pagina-de-ofertas.md, "Excluir a página").
  * Ordem: papel (403) → página existe (404) → senha do usuário logado (401/429) → transação
  * (libera o endereço SEM reserva, apaga a página com as ofertas em cascade, audita) → depois do
- * commit, apaga as imagens do storage. Não exige `storefront_enabled`: vale com a página pausada
+ * commit, apaga as imagens do storage (best effort). Não exige `storefront_enabled`: vale com a página pausada
  * pelo plano. A senha só passa para `confirmPassword`; nunca vai para log nem auditoria.
  */
 export class DeleteStorefrontUseCase {
@@ -37,10 +37,13 @@ export class DeleteStorefrontUseCase {
     await confirmPassword.execute({ userId, password: input.password, action: 'STOREFRONT_DELETE' });
 
     const images = await this.deps.runInSlugTransaction(async (tx) => {
+      // Trava a página antes de listar: oferta nova (FK) e troca de foto/capa em andamento esperam o
+      // commit e falham por página inexistente, apagando a própria imagem (sem órfã fora desta lista).
+      await tx.storefronts.lockForUpdate(tenantId);
       // Relido no tx: é o estado que será apagado (imagens trocadas entre a checagem e aqui).
       const page = await requireStorefront(tx.storefronts, tenantId);
       const offers = await tx.offers.listByStorefront(tenantId, page.id);
-      const urls = [page.avatarUrl, page.coverUrl, ...offers.map((o) => o.imageUrl)].filter((u): u is string => !!u);
+      const urls = [...new Set([page.avatarUrl, page.coverUrl, ...offers.map((o) => o.imageUrl)].filter((u): u is string => !!u))];
       await tx.slugs.releaseWithoutReservation({ tenantId, kind: PublicSlugKind.STOREFRONT, ownerId: page.id });
       await tx.storefronts.delete(tenantId);
       await tx.audit.create({
@@ -51,16 +54,22 @@ export class DeleteStorefrontUseCase {
           slug: page.address?.slug ?? null,
           domainId: page.address?.domainId ?? null,
           offers: offers.length,
+          // Só a contagem (nunca nome de arquivo): é o registro do que o pós-commit deveria remover
+          images: urls.length,
           bySuperAdmin: isSuperAdmin,
         },
       });
-      return [...new Set(urls)];
+      return urls;
     });
 
     await this.removeImages(tenantId, images);
   }
 
-  /** Best effort: a página já não existe; falha vira só contagem no log (sem nome de arquivo). */
+  /**
+   * Best effort: a página já não existe; o resultado vira contagem em log estruturado (sem nome de
+   * arquivo). Queda do processo entre o commit e este ponto deixa arquivos órfãos: risco aceito, sem
+   * job de limpeza; a auditoria guarda `images` (docs/pagina-de-ofertas.md, "Excluir a página").
+   */
   private async removeImages(tenantId: string, urls: string[]): Promise<void> {
     const { media } = this.deps;
     let failed = 0;
@@ -70,7 +79,8 @@ export class DeleteStorefrontUseCase {
       );
       failed += results.filter((ok) => !ok).length;
     }
-    if (failed > 0) logger.warn({ tenantId, images: urls.length, failed }, 'storefront delete: images left in storage');
-    else logger.info({ tenantId, images: urls.length }, 'storefront deleted');
+    const result = { tenantId, images: urls.length, failed };
+    if (failed > 0) logger.warn(result, 'storefront delete: images left in storage');
+    else logger.info(result, 'storefront deleted');
   }
 }

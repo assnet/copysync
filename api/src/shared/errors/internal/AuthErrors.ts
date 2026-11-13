@@ -123,9 +123,15 @@ export class PasswordResetInvalidError extends AppError {
 
 // ── Confirmação de senha em ação sensível (docs/seguranca-login.md) ──────────
 
-/** 5 senhas erradas em 15 min: o usuário logado espera `retryAfterSeconds` para tentar de novo. */
+/**
+ * 5 senhas erradas em 15 min: o usuário logado espera `retryAfterSeconds` para tentar de novo.
+ * `retryAt` (ISO) é o que o `errorHandler` lê para o header `Retry-After`.
+ */
 export class PasswordConfirmationLockedError extends AppError {
-  constructor(retryAfterSeconds: number) {
-    super('PASSWORD_CONFIRMATION_LOCKED', 'Too many wrong passwords. Try again later.', 429, { retryAfterSeconds });
+  constructor(retryAfterSeconds: number, now: Date = new Date()) {
+    super('PASSWORD_CONFIRMATION_LOCKED', 'Too many wrong passwords. Try again later.', 429, {
+      retryAfterSeconds,
+      retryAt: new Date(now.getTime() + retryAfterSeconds * 1000).toISOString(),
+    });
   }
 }

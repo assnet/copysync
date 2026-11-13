@@ -414,6 +414,9 @@ model Session {
   @@index([tenantId, deletedAt])
   @@index([ownerWorkerId])
   @@index([connectRequestedAt])
+  // Índice parcial `sessions_deleted_partial_idx` ON (id) WHERE "deletedAt" IS NOT NULL existe só na
+  // migration 20261116100200 (Prisma 5 não declara índice parcial; `migrate diff` o ignora). Não remover:
+  // claim da fila de envio e `skipForDeletedSessions` (docs/fila-de-envio.md §2.2.2).
   @@map("sessions")
 }
 

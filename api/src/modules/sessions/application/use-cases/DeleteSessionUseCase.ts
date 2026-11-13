@@ -4,6 +4,7 @@ import type { IAuditLogRepository } from '../../../../shared/audit/IAuditLogRepo
 import type { IMessagingEngine } from '../../../../modules/messaging/domain/contracts/IMessagingEngine';
 import type { ReleaseSessionLeaseUseCase } from './ReleaseSessionLeaseUseCase';
 import { SessionNotFoundError } from '../../../../shared/errors/internal/SessionErrors';
+import { logger } from '../../../../shared/logger/logger';
 
 /** Recursos de outros módulos presos à sessão (ex.: rodízio de links → PAUSED). */
 export interface SessionLinkedResources {
@@ -22,6 +23,9 @@ export interface DeleteSessionInput {
  * - Removes auth state from DB.
  * - Pauses resources tied to the session (link rotations → PAUSED) before the soft delete.
  * - Marks the session as deleted (soft delete).
+ * - Depois do soft delete, fecha o que depende de a sessão já constar como excluída (`afterDelete`:
+ *   envios de oferta na fila). Antes havia uma janela em que um QUEUED era reivindicado pelo worker
+ *   e falhava como erro de envio; com a sessão já excluída o claim o ignora (docs/fila-de-envio.md §2.2.2).
  */
 export class DeleteSessionUseCase {
   constructor(
@@ -31,6 +35,8 @@ export class DeleteSessionUseCase {
     private readonly engine: IMessagingEngine,
     private readonly linkedResources: SessionLinkedResources[] = [],
     private readonly leaseRelease?: Pick<ReleaseSessionLeaseUseCase, 'execute'>,
+    /** Rodam DEPOIS do soft delete (melhor esforço: o que sobrar tem varredura própria). */
+    private readonly afterDelete: SessionLinkedResources[] = [],
   ) {}
 
   async execute(input: DeleteSessionInput): Promise<void> {
@@ -67,6 +73,16 @@ export class DeleteSessionUseCase {
 
     // Soft-delete the session record
     await this.sessionRepo.softDelete(input.sessionId, input.tenantId);
+
+    // Sessão já excluída: o claim da fila não pega mais envio dela, então fechar aqui não corre com o worker.
+    // Falha não desfaz a exclusão: o lote `skipForDeletedSessions` do worker fecha o que restar.
+    for (const r of this.afterDelete) {
+      try {
+        await r.pauseBySession(input.tenantId, input.sessionId);
+      } catch (err) {
+        logger.warn({ err, sessionId: input.sessionId, tenantId: input.tenantId }, 'session delete: linked resource not closed');
+      }
+    }
 
     await this.auditRepo.create({
       tenantId: input.tenantId,

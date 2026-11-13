@@ -7,6 +7,29 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.96.0] — 2026-11-13 — Excluir Página de Ofertas e descarte de envios de sessão excluída
+
+### Added
+
+#### storefront ([`docs/pagina-de-ofertas.md`](../docs/pagina-de-ofertas.md), spec `.specs/features/storefront-delete/`)
+
+- **`DeleteStorefrontUseCase.ts`** / **`POST /api/storefront/delete`** — exclui a página inteira: só `ADMIN` do tenant ou super admin, senha do usuário logado, transação com lock na página que libera o subdomínio **sem reserva** (`IPublicSlugRegistry.releaseWithoutReservation`), apaga página e ofertas e audita `STOREFRONT_DELETED` (slug, ofertas, imagens, `bySuperAdmin`); imagens removidas do storage após o commit.
+- **`GET /api/storefront`** — `canDelete`; conta sem plano mas com página recebe 200 com `planLocked: true` e `storefront.offersCount` (só para poder excluir; demais rotas seguem 403).
+
+#### auth ([`docs/seguranca-login.md`](../docs/seguranca-login.md))
+
+- **`ConfirmUserPasswordUseCase.ts`** / **`PrismaPasswordConfirmationRepository.ts`** — confirmação de senha para ação sensível: tentativa reservada antes do bcrypt, 401 `INVALID_CREDENTIALS` genérico, 5 erros em 15 min → 429 `PASSWORD_CONFIRMATION_LOCKED` com `Retry-After`.
+
+### Fixed
+
+#### campaigns / sessions ([`docs/fila-de-envio.md`](../docs/fila-de-envio.md))
+
+- **`PrismaOfferDispatchRepository.ts`** / **`ProcessDueOfferDispatchesUseCase.ts`** / **`DeleteSessionUseCase.ts`** — envio `QUEUED` de sessão excluída vira `SKIPPED`/`SESSION_DELETED` na hora (ao excluir a sessão e por lote no tick) e não ocupa vaga do claim; antes esperava ~6 h.
+
+### Breaking Changes
+
+- Nenhuma. **Migrations**: `20261116100000_add_audit_action_storefront_deleted`, `20261116100100_create_password_confirmation_attempts`, `20261116100200_sessions_deleted_partial_index`.
+
 ## [0.95.1] — 2026-11-13 — Sugestão da IA do caçador, config do gerador com sessão excluída e percentual único no Story
 
 ### Fixed

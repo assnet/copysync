@@ -675,6 +675,12 @@ describe('sessão excluída — envios descartados na hora (docs/fila-de-envio.m
     expect(await repo.countOpen(mon.id, tenantId)).toBe(2);
   });
 
+  it('índice parcial das sessões excluídas existe (só na migration; o Prisma não o declara)', async () => {
+    const rows = await prisma.$queryRaw<{ indexdef: string }[]>`
+      SELECT indexdef FROM pg_indexes WHERE tablename = 'sessions' AND indexname = 'sessions_deleted_partial_idx'`;
+    expect(rows[0]?.indexdef).toMatch(/\(id\) WHERE \("deletedAt" IS NOT NULL\)/);
+  });
+
   it('claim nunca reivindica sessão excluída, mesmo antes do lote; a viva fora do ar segue na vez dela', async () => {
     await seed();
     const got = await repo.claimDue(spToUtc(9), 10);
