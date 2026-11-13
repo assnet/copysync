@@ -7,6 +7,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.93.2] — 2026-11-12 — Caçador: 1ª busca imediata
+
+### Fixed
+
+#### campaigns
+
+- **`huntSchedule.ts`** (`huntRunDueAt`) / **`OfferHuntCrudUseCases.ts`** — criar, editar e retomar agendavam `agora + intervalo`, então a 1ª busca esperava o intervalo inteiro (ex.: 1 h). Agora `max(agora, última busca + intervalo)` dentro da janela: caçada nova busca no próximo tique do job; caçada que acabou de rodar não é antecipada.
+
 ## [0.93.1] — 2026-11-12 — Super admin aceita o aviso do Caçador de Ofertas
 
 ### Changed

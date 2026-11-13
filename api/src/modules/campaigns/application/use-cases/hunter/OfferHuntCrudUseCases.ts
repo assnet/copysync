@@ -2,7 +2,7 @@ import type { IOfferHuntRepository } from '../../../domain/contracts/hunter/IOff
 import type { IEntitlementReader } from '../../../domain/contracts/IEntitlementReader';
 import type { OfferHunt, OfferHuntDefinition } from '../../../domain/hunter/OfferHunt';
 import { HUNTER_LIMITS } from '../../../domain/services/hunter/hunterLimits';
-import { nextHuntRunAt } from '../../../domain/services/hunter/huntSchedule';
+import { huntRunDueAt } from '../../../domain/services/hunter/huntSchedule';
 import { validateHuntDefinition } from '../../../domain/services/hunter/validateHuntDefinition';
 import { ALL_WEEKDAYS_MASK, MINUTES_PER_DAY } from '../../../domain/services/postingWindow';
 import { ENTITLEMENT_KEYS } from '../../../../tenants/domain/entitlementKeys';
@@ -78,14 +78,14 @@ abstract class OfferHuntUseCase {
   }
 }
 
-/** Cria ativa, sob o teto de caçadas do tenant (atômico no repositório), com a 1ª execução agendada. */
+/** Cria ativa, sob o teto de caçadas do tenant (atômico no repositório); 1ª busca já (dentro da janela). */
 export class CreateOfferHuntUseCase extends OfferHuntUseCase {
   async execute(input: { tenantId: string; definition: OfferHuntDefinitionInput }): Promise<OfferHunt> {
     const { tenantId } = input;
     await requireHunterEnabled(this.deps.entitlements, tenantId);
     const def = checked({ ...OFFER_HUNT_DEFAULTS, name: '', ...pickDefinition(input.definition) });
     const created = await this.deps.hunts.createWithinLimit(
-      { ...def, tenantId, nextRunAt: nextHuntRunAt(this.now(), schedule(def)) },
+      { ...def, tenantId, nextRunAt: huntRunDueAt(this.now(), schedule(def), null) },
       HUNTER_LIMITS.huntsPerTenantMax,
     );
     if (!created) throw new OfferHuntLimitReachedError(HUNTER_LIMITS.huntsPerTenantMax);
@@ -93,13 +93,13 @@ export class CreateOfferHuntUseCase extends OfferHuntUseCase {
   }
 }
 
-/** Edita (parcial). Ativa: a próxima execução é recalculada a partir de agora; pausada fica sem agenda nova. */
+/** Edita (parcial). Ativa: próxima = max(agora, última + intervalo); pausada fica sem agenda nova. */
 export class UpdateOfferHuntUseCase extends OfferHuntUseCase {
   async execute(input: { tenantId: string; huntId: string; definition: OfferHuntDefinitionInput }): Promise<OfferHunt> {
     const { tenantId, huntId } = input;
     const current = await load(this.deps.hunts, tenantId, huntId);
     const def = checked({ ...current, ...pickDefinition(input.definition) });
-    const patch = current.status === 'ACTIVE' ? { ...def, nextRunAt: nextHuntRunAt(this.now(), schedule(def)) } : def;
+    const patch = current.status === 'ACTIVE' ? { ...def, nextRunAt: huntRunDueAt(this.now(), schedule(def), current.lastRunAt) } : def;
     const updated = await this.deps.hunts.update(tenantId, huntId, patch);
     if (!updated) throw new OfferHuntNotFoundError();
     return updated;
@@ -122,14 +122,14 @@ export class PauseOfferHuntUseCase extends OfferHuntUseCase {
   }
 }
 
-/** Retoma: limpa motivo, zera falhas e agenda a próxima a partir de agora. Já ativa: devolve como está. */
+/** Retoma: limpa motivo, zera falhas e agenda max(agora, última + intervalo). Já ativa: devolve como está. */
 export class ResumeOfferHuntUseCase extends OfferHuntUseCase {
   async execute(input: { tenantId: string; huntId: string }): Promise<OfferHunt> {
     const { tenantId, huntId } = input;
     const hunt = await load(this.deps.hunts, tenantId, huntId);
     if (hunt.status === 'ACTIVE') return hunt;
     await requireHunterEnabled(this.deps.entitlements, tenantId);
-    await this.deps.hunts.resume(tenantId, huntId, nextHuntRunAt(this.now(), schedule(hunt)));
+    await this.deps.hunts.resume(tenantId, huntId, huntRunDueAt(this.now(), schedule(hunt), hunt.lastRunAt));
     return load(this.deps.hunts, tenantId, huntId);
   }
 }

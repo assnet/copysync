@@ -23,6 +23,17 @@ export function nextHuntRunAt(now: Date, schedule: HuntSchedule, timeZone = POST
 }
 
 /**
+ * Agenda ao criar, editar ou retomar: `max(now, lastRunAt + intervalo)`, empurrada para a janela/dia.
+ * Nunca buscou (`lastRunAt` null) → já (o job pega no próximo tique); evita esperar o intervalo inteiro antes
+ * da 1ª busca e também não antecipa uma caçada que acabou de rodar.
+ */
+export function huntRunDueAt(now: Date, schedule: HuntSchedule, lastRunAt: Date | null, timeZone = POSTING_TIME_ZONE): Date {
+  assertInterval(schedule.intervalMinutes);
+  const afterLast = lastRunAt ? lastRunAt.getTime() + schedule.intervalMinutes * 60_000 : 0;
+  return resolveStartWithinPostingWindow(new Date(Math.max(now.getTime(), afterLast)), schedule, timeZone);
+}
+
+/**
  * Teto do dia zerado (HUNT-16): primeira abertura da janela a partir da meia-noite seguinte no fuso.
  */
 export function nextHuntRunNextDay(now: Date, schedule: HuntSchedule, timeZone = POSTING_TIME_ZONE): Date {

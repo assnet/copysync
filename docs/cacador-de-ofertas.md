@@ -107,6 +107,8 @@ desconto, comissão %/R$, nota, vendas, avaliações, "só com extra" e "termina
   (padrão `false`, ligada **só na Render**). `JobLease` `offer-hunter-scheduler`, tique 60 s.
 - Reivindica por CAS (`claimToken`/`claimedUntil` 15 min): até **3 por tique, 1 por tenant**, atraso 1–5 s entre
   tenants. Sem estado em memória.
+- Criar, editar ou retomar agenda `huntRunDueAt` = `max(agora, lastRunAt + intervalo)` na janela: **1ª busca já**
+  (próximo tique, ≤ 1 min), nunca esperando o intervalo inteiro. Depois de cada busca, `nextHuntRunAt` = agora + intervalo.
 - Fora da janela/dia (`weekdaysMask` + minutos, `postingWindow.ts`): só recalcula `nextRunAt`. Saldo zerado ou
   guarda de 24 → próxima no **dia seguinte**, sem chamar a Shein. 3 falhas seguidas de fonte → pausa
   `SOURCE_UNAVAILABLE`; `goodsList` nulo com `code "0"` conta como fonte indisponível.

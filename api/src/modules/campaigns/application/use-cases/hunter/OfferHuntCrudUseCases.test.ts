@@ -66,10 +66,10 @@ beforeEach(() => {
 const create = (name = 'Caça', extra = {}) => new CreateOfferHuntUseCase(deps).execute({ tenantId: TENANT, definition: { name, ...extra } });
 
 describe('CreateOfferHuntUseCase', () => {
-  it('cria com padrões e 1ª execução em now + intervalo', async () => {
+  it('cria com padrões e 1ª busca já (sem esperar o intervalo)', async () => {
     const h = await create('  Comissão  ', { intervalMinutes: 30 });
     expect(h).toMatchObject({ name: 'Comissão', topN: 3, repeatAfterDays: 7, deliveryMode: 'REVIEW', intervalMinutes: 30 });
-    expect(h.nextRunAt?.toISOString()).toBe('2026-11-12T15:30:00.000Z');
+    expect(h.nextRunAt?.toISOString()).toBe(NOW.toISOString());
   });
 
   it('6ª caçada → 409 OFFER_HUNT_LIMIT_REACHED', async () => {
@@ -89,12 +89,20 @@ describe('CreateOfferHuntUseCase', () => {
 });
 
 describe('UpdateOfferHuntUseCase', () => {
-  it('ativa: mescla e recalcula nextRunAt', async () => {
+  it('ativa e nunca buscou: mescla e agenda já', async () => {
     const h = await create();
     const up = await new UpdateOfferHuntUseCase({ ...deps, now: () => new Date('2026-11-12T16:00:00Z') })
       .execute({ tenantId: TENANT, huntId: h.id, definition: { intervalMinutes: 120, keyword: 'vestido' } });
     expect(up).toMatchObject({ name: 'Caça', intervalMinutes: 120, keyword: 'vestido' });
-    expect(up.nextRunAt?.toISOString()).toBe('2026-11-12T18:00:00.000Z');
+    expect(up.nextRunAt?.toISOString()).toBe('2026-11-12T16:00:00.000Z');
+  });
+
+  it('ativa que já buscou: próxima = última + novo intervalo', async () => {
+    const h = await create();
+    Object.assign(h, { lastRunAt: new Date('2026-11-12T15:30:00Z') });
+    const up = await new UpdateOfferHuntUseCase({ ...deps, now: () => new Date('2026-11-12T16:00:00Z') })
+      .execute({ tenantId: TENANT, huntId: h.id, definition: { intervalMinutes: 120 } });
+    expect(up.nextRunAt?.toISOString()).toBe('2026-11-12T17:30:00.000Z');
   });
 
   it('pausada: não agenda', async () => {
@@ -118,7 +126,7 @@ describe('pausa, retomada, exclusão, leitura', () => {
     Object.assign(h, { status: 'PAUSED', pauseReason: 'SOURCE_UNAVAILABLE', consecutiveFailures: 3, nextRunAt: null });
     const r = await new ResumeOfferHuntUseCase(deps).execute({ tenantId: TENANT, huntId: h.id });
     expect(r).toMatchObject({ status: 'ACTIVE', pauseReason: null, consecutiveFailures: 0 });
-    expect(r.nextRunAt?.toISOString()).toBe('2026-11-12T16:00:00.000Z');
+    expect(r.nextRunAt?.toISOString()).toBe(NOW.toISOString()); // nunca buscou → já
     const p = await new PauseOfferHuntUseCase(deps).execute({ tenantId: TENANT, huntId: h.id });
     expect(p).toMatchObject({ status: 'PAUSED', pauseReason: 'USER' });
   });

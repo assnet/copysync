@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nextHuntRunAt, nextHuntRunNextDay } from './huntSchedule';
+import { huntRunDueAt, nextHuntRunAt, nextHuntRunNextDay } from './huntSchedule';
 import { ALL_WEEKDAYS_MASK, weekdaysMask } from '../postingWindow';
 
 // 2026-11-12 é quinta; São Paulo = UTC−3
@@ -40,5 +40,21 @@ describe('nextHuntRunNextDay', () => {
   it('janela → abertura do dia seguinte, mesmo se hoje ainda está aberta', () => {
     const s = { ...FULL, startMinute: 480, endMinute: 1080 };
     expect(nextHuntRunNextDay(at('2026-11-12T10:00:00Z'), s).toISOString()).toBe('2026-11-13T11:00:00.000Z');
+  });
+});
+
+describe('huntRunDueAt', () => {
+  it('nunca buscou → agora (dentro da janela)', () => {
+    expect(huntRunDueAt(at('2026-11-12T15:00:00Z'), FULL, null).toISOString()).toBe('2026-11-12T15:00:00.000Z');
+  });
+  it('nunca buscou fora da janela → próxima abertura', () => {
+    const s = { ...FULL, startMinute: 8 * 60, endMinute: 17 * 60 };
+    expect(huntRunDueAt(at('2026-11-12T21:00:00Z'), s, null).toISOString()).toBe('2026-11-13T11:00:00.000Z');
+  });
+  it('buscou há pouco → última + intervalo', () => {
+    expect(huntRunDueAt(at('2026-11-12T15:10:00Z'), FULL, at('2026-11-12T15:00:00Z')).toISOString()).toBe('2026-11-12T16:00:00.000Z');
+  });
+  it('última busca antiga → agora', () => {
+    expect(huntRunDueAt(at('2026-11-12T15:00:00Z'), FULL, at('2026-11-12T10:00:00Z')).toISOString()).toBe('2026-11-12T15:00:00.000Z');
   });
 });
