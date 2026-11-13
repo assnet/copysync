@@ -2,7 +2,7 @@
 export type UsageTone = 'default' | 'warning' | 'error';
 
 /**
- * Regra única: sem teto (`null`) → `default`; esgotado → `error`; restando ≤ 20% do limite
+ * Regra única: sem limite (`null`) → `default`; esgotado → `error`; restando ≤ 20% do limite
  * (arredondado para cima, ou seja, uso ≥ 80%) → `warning`; senão `default`. Nada usado nunca
  * alerta (`0 de 1` seria `warning` pela regra do restante).
  */

@@ -172,7 +172,7 @@ function LeaseProcessesTable({ processes }: { processes: LeaseProcess[] }) {
   );
 }
 
-/** Adoção desligada: sem heartbeat; os processos vêm dos leases vivos e não há teto. */
+/** Adoção desligada: sem heartbeat; os processos vêm dos leases vivos e não há limite. */
 function LeaseView({ data }: { data: WorkerOccupancyList }) {
   const processes = data.processes ?? [];
   return (

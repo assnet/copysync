@@ -161,7 +161,7 @@ export const subscriptionStrings = {
     usage: (used: number, limit: number) => `${count(used)} de ${count(limit)}`,
     /** "3 de 10 hoje". */
     usageToday: (used: number, limit: number) => `${count(used)} de ${count(limit)} hoje`,
-    /** Uso sem teto: "3 em uso" / "3 hoje". */
+    /** Uso sem limite: "3 em uso" / "3 hoje". */
     usageUnlimited: (used: number) => `${count(used)} em uso`,
     usageUnlimitedToday: (used: number) => `${count(used)} hoje`,
     /** Barra de uso (leitor de tela). */

@@ -49,7 +49,7 @@ describe('AdminWorkersPage', () => {
     expect(screen.queryByText(t.lease.notice)).not.toBeInTheDocument();
   });
 
-  it('adoção desligada: aviso, processos pelos leases e sessões sem teto (tema escuro)', async () => {
+  it('adoção desligada: aviso, processos pelos leases e sessões sem limite (tema escuro)', async () => {
     vi.spyOn(adminWorkersService, 'list').mockResolvedValue({
       adoptionEnabled: false, workers: [], totals: { workers: 0, sessions: 0, pendingLogins: 0, maxSessions: 0 },
       awaiting: 0,

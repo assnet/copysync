@@ -40,15 +40,15 @@ export const workersAdminStrings = {
       : `${n} sessões sem worker com vaga. Elas conectam sozinhas quando abrir espaço.`),
   },
 
-  /** Adoção por capacidade desligada: processos vistos pelos leases de sessão, sem teto. */
+  /** Adoção por capacidade desligada: processos vistos pelos leases de sessão, sem limite. */
   lease: {
     notice: 'Adoção por capacidade desligada: as sessões são atendidas pelo processo principal da API.',
     noticeHint: 'Sem batimento de worker, cada processo aparece pelas sessões que ele mantém. Para ligar a adoção, veja WORKER_ADOPTION_ENABLED em docs/arquitetura-escala.md.',
     noticeHintAria: 'Saiba mais sobre a adoção por capacidade',
     processes: 'Processos ativos',
     sessions: 'Sessões conectadas',
-    sessionsNoCap: (n: number) => `${n.toLocaleString('pt-BR')} · sem teto`,
-    sessionsHint: 'Sessões com conexão aberta ou abrindo neste processo. Sem adoção, não há teto por processo.',
+    sessionsNoCap: (n: number) => `${n.toLocaleString('pt-BR')} · sem limite`,
+    sessionsHint: 'Sessões com conexão aberta ou abrindo neste processo. Sem adoção, não há limite por processo.',
     listTitle: 'Processos da API',
     empty: 'Nenhuma sessão conectada agora',
     emptyHint: 'Nenhum processo mantém sessão no momento.',

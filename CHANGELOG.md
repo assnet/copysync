@@ -9,6 +9,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Changed — app 0.116.2 — "sem limite" no lugar de "sem teto"
+
+#### app
+
+- **`workersAdmin/strings.ts`** — sessões conectadas sem adoção mostram "12 · sem limite" e a dica fala em "limite por processo": "sem teto" lembra pessoa em situação de rua. O termo técnico "teto" (teto por worker) continua no resto da tela.
+
 ### Changed — app 0.116.1 / api 0.93.1 — Caçador: selo MAX no menu e aceite pelo super admin
 
 #### app
