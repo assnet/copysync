@@ -26,7 +26,7 @@ const AI_TIMEOUT = new Error('AI_TIMEOUT');
 const AI_SYSTEM = [
   'Você escreve títulos curtos para stories de ofertas no Instagram, em português do Brasil.',
   'Reescreva o nome do produto em no máximo 60 caracteres, mantendo marca, modelo e o que o produto é.',
-  'Responda só com o título, em uma linha: sem aspas, sem emoji, sem preço, sem valores em reais e sem hashtags.',
+  'Responda só com o título, em uma linha: sem aspas, sem emoji, sem preço, sem valores em reais, sem percentual de desconto, sem números que não estejam no nome e sem hashtags.',
 ].join(' ');
 
 export interface RenderOfferStoryInput {
@@ -149,7 +149,7 @@ export class RenderOfferStoryUseCase {
         }),
         timeout,
       ]);
-      const text = sanitizeStoryHeadline(result.text);
+      const text = sanitizeStoryHeadline(result.text, title);
       if (text) return { text, fallback: false };
       logger.warn({ tenantId, code: 'AI_RESPONSE_INVALID' }, 'offer story headline AI fallback');
     } catch (err) {

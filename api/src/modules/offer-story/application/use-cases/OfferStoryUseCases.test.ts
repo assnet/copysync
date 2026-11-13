@@ -148,6 +148,8 @@ describe('RenderOfferStoryUseCase', () => {
     ['erro qualquer', (f: ReturnType<typeof setup>['fakes']) => { f.ai.error = new Error('boom'); }],
     ['resposta com preço', (f: ReturnType<typeof setup>['fakes']) => { f.ai.text = 'Fone por R$ 99'; }],
     ['resposta vazia', (f: ReturnType<typeof setup>['fakes']) => { f.ai.text = '  '; }],
+    ['resposta com percentual', (f: ReturnType<typeof setup>['fakes']) => { f.ai.text = 'Fone XYZ Pro com 80% OFF'; }],
+    ['resposta com número inventado', (f: ReturnType<typeof setup>['fakes']) => { f.ai.text = 'Fone XYZ Pro 2 unidades'; }],
     ['timeout', (f: ReturnType<typeof setup>['fakes']) => { f.ai.hang = true; }],
   ])('IA %s → título original + AI_FALLBACK', async (_l, arrange) => {
     const { fakes, render } = setup();
@@ -156,6 +158,22 @@ describe('RenderOfferStoryUseCase', () => {
     expect(out.headline).toBe(makeResolved().product.title);
     expect(out.warnings).toEqual(['AI_FALLBACK']);
     expect(fakes.renderer.calls).toHaveLength(1);
+  });
+
+  it('caso de produção: preço e cupom determinísticos, iguais em gerações repetidas, mesmo com a IA variando', async () => {
+    const { fakes, render } = setup();
+    fakes.resolveProduct.result = makeResolved({ product: { ...makeResolved().product, priceCents: 443500, originalPriceCents: 799900 } });
+    const input = { ...base, coupon: { code: 'PEDROSO', discountPercent: 80 } };
+    const first = await render.execute(input);
+    fakes.ai.text = 'Fone XYZ Pro por apenas 89% a menos';
+    const second = await render.execute(input);
+    for (const out of [first, second]) {
+      expect(out.price).toEqual({ fromCents: 799900, toCents: 88700 });
+      expect(out.coupon).toEqual({ code: 'PEDROSO', discountPercent: 80 });
+    }
+    expect(fakes.renderer.calls[1].price).toEqual(fakes.renderer.calls[0].price);
+    expect(fakes.renderer.calls[1].coupon).toEqual(fakes.renderer.calls[0].coupon);
+    expect(second.headline).toBe(makeResolved().product.title);
   });
 
   it('preço nulo → NO_PRICE e bloco de preço vazio, mesmo com desconto', async () => {

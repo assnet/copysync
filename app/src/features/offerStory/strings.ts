@@ -50,7 +50,7 @@ export const offerStoryStrings = {
     codeLabel: 'Código',
     codeHelp: `Até ${OFFER_STORY_RULES.couponMax} caracteres: letras, números, _ . - e espaço`,
     discountLabel: 'Desconto (%)',
-    discountHelp: `Opcional. De ${OFFER_STORY_RULES.discountMin} a ${OFFER_STORY_RULES.discountMax}; o preço "Por" já sai com o desconto.`,
+    discountHelp: `Opcional. De ${OFFER_STORY_RULES.discountMin} a ${OFFER_STORY_RULES.discountMax}; o preço "Por" já sai com o desconto e o selo mostra o desconto total.`,
     back: 'Voltar',
     generate: 'Gerar arte',
     previewTitle: 'Prévia do visual',

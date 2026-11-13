@@ -83,12 +83,23 @@ Preço nunca é inventado: vem do produto extraído ou do desconto digitado.
   gerador (letras, números, `_ . -`, espaço), **máx. 20** na arte (gerador aceita 40). Fora disso → `422
   OFFER_INVALID_INPUT` (`field: 'coupon'`). Painel valida igual antes de enviar (`productForm.ts`).
 - Desconto % inteiro 1–90, opcional; desconto sem código → 400 (schema). Cupom sem % não muda preço.
-- Arte mostra selo "CUPOM: <CÓDIGO>".
+- Arte mostra o ticket "CUPOM <CÓDIGO>", com o código literal (só `normalizeCoupon`; nunca gerado nem alterado).
+
+## Percentual na arte (fonte única)
+
+- A arte mostra **um único percentual**: o selo `-X% OFF` = `round((De − Por) / De × 100)`, entre 1 e 99
+  (`buildStoryLayoutModel`, `offPercent`), calculado dos mesmos centavos impressos em "De" e "Por".
+- O % digitado do cupom entra no "Por" (`computeStoryPrice`) e **não é impresso ao lado do código quando há selo**.
+  Só vira rótulo do ticket (`-d%`) quando não há selo (produto sem preço). Bug de produção 2026-11-13: selo `89%`
+  (De 7.999,00 → Por 887,00, cupom já aplicado) ao lado de ticket `-80%` (cupom digitado) na mesma arte; o selo
+  mudava a cada produto/preço e o ticket não.
+- Nenhum número da arte vem de IA nem de sorteio. Não criar segundo cálculo de desconto em layout: usar `offPercent`.
 
 ## Título com IA
 
 `IAiTextGenerator` (purpose `offer_story_headline`) encurta o título; `sanitizeStoryHeadline` tira aspas/emoji/
-quebras, corta em 60 e rejeita vazio ou com preço. Erro/inválido/IA indisponível → título original com `lineClamp` de
+quebras, corta em 60 e rejeita vazio, com preço, com percentual (`%`, "por cento") ou com número que não esteja
+no título do produto (modelo "800W" passa; número novo é inventado). Erro/inválido/IA indisponível → título original com `lineClamp` de
 2 linhas e aviso `AI_FALLBACK`; a arte sai mesmo assim. Gasto em `ai_usage_logs` e no teto diário existente.
 Imagem e título rodam em paralelo.
 

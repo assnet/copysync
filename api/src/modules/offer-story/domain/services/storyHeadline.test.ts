@@ -21,6 +21,22 @@ describe('sanitizeStoryHeadline', () => {
     },
   );
 
+  it.each([['Scooter com 80% OFF'], ['Scooter 80 % de desconto'], ['Fone com 50 por cento off']])(
+    'percentual %j → null',
+    (raw) => {
+      expect(sanitizeStoryHeadline(raw)).toBeNull();
+      expect(sanitizeStoryHeadline(raw, raw)).toBeNull();
+    },
+  );
+
+  it('número só passa se estiver no título do produto', () => {
+    const title = 'Scooter Elétrica Mobilidade 800W Bateria 48V 2 Lugares';
+    expect(sanitizeStoryHeadline('Scooter Elétrica 800W 48V', title)).toBe('Scooter Elétrica 800W 48V');
+    expect(sanitizeStoryHeadline('Scooter Elétrica 1000W', title)).toBeNull();
+    expect(sanitizeStoryHeadline('Scooter Elétrica 80 OFF', title)).toBeNull();
+    expect(sanitizeStoryHeadline('Scooter Elétrica', title)).toBe('Scooter Elétrica');
+  });
+
   it('corta na última palavra inteira dentro do teto, sem pontuação no fim', () => {
     const raw = 'Fone de ouvido Bluetooth sem fio com cancelamento de ruído, estojo e microfone';
     const out = sanitizeStoryHeadline(raw)!;
