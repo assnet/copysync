@@ -3,8 +3,10 @@ import { Pencil, Play } from 'lucide-react';
 import { AppIcon } from '@/components';
 import type { Hunt, HuntGateKey, HuntOptions } from '../../types';
 import { HuntSummaryChips } from '../home/HuntSummaryChips';
-import { offerHunterStrings as t } from '../../strings';
+import { gateCopy, offerHunterStrings as t, pauseReasonText } from '../../strings';
 import { formatDateTime } from '../../format';
+import { providerOf } from '../../providers';
+import { ProviderBadge } from '../ProviderBadge';
 
 const d = t.detail;
 
@@ -24,7 +26,8 @@ interface Props {
 /** Nome, estado, filtros ligados (chips), liga/desliga, "Rodar agora" e "Editar". Pausa automática vira alerta. */
 export function HuntDetailHeader({ hunt, options, blockedBy, running, toggling, onToggle, onRun, onEdit }: Props) {
   const active = hunt.status === 'ACTIVE';
-  const gateText = blockedBy ? d.gatedTooltip(t.gates[blockedBy].title) : null;
+  const provider = providerOf(hunt);
+  const gateText = blockedBy ? d.gatedTooltip(gateCopy(blockedBy, provider).title) : null;
   const autoPaused = hunt.status === 'PAUSED' && hunt.pauseReason && hunt.pauseReason !== 'USER';
   const next = active ? formatDateTime(hunt.nextRunAt) : null;
   const lastRun = formatDateTime(hunt.lastRunAt);
@@ -42,6 +45,7 @@ export function HuntDetailHeader({ hunt, options, blockedBy, running, toggling, 
       <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, alignItems: { xs: 'stretch', md: 'flex-start' }, gap: 2 }}>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+            <ProviderBadge provider={provider} size={32} />
             <Typography variant="h5" component="h1" sx={{ fontWeight: 700, overflowWrap: 'anywhere' }}>{hunt.name}</Typography>
             <Chip size="small" color={active ? 'success' : 'default'} variant={active ? 'filled' : 'outlined'} label={t.status[hunt.status]} />
           </Box>
@@ -82,7 +86,7 @@ export function HuntDetailHeader({ hunt, options, blockedBy, running, toggling, 
       </Box>
       {autoPaused && (
         <Alert severity="warning" sx={{ mt: 2 }}>
-          <strong>{t.autoPausedTitle}.</strong> {t.pauseReasons[hunt.pauseReason!]}
+          <strong>{t.autoPausedTitle}.</strong> {pauseReasonText(hunt.pauseReason!, provider)}
         </Alert>
       )}
     </Box>

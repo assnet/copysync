@@ -4,8 +4,11 @@ import { Check, MessageSquareText } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { Blurred, useBlur } from '@/features/privacy';
 import type { HuntRankingItem } from '../types';
-import { offerHunterStrings as t } from '../strings';
-import { formatCents } from '../format';
+import { commissionCopy, offerHunterStrings as t } from '../strings';
+import { formatCents, formatDecimal } from '../format';
+import { providerOf } from '../providers';
+import { ProviderBadge } from './ProviderBadge';
+import { EstimatedTag } from './EstimatedTag';
 import { ProductThumb } from './ProductThumb';
 import { ScoreBar } from './ScoreBar';
 
@@ -24,7 +27,7 @@ export function RankingTable({ items }: { items: HuntRankingItem[] }) {
       {items.map((item, i) => (
         <Box
           component="li"
-          key={item.goodsId}
+          key={item.productId ?? item.goodsId ?? i}
           data-testid="ranking-item"
           sx={{
             display: 'grid',
@@ -45,7 +48,10 @@ export function RankingTable({ items }: { items: HuntRankingItem[] }) {
           >
             {t.ranking.position(i + 1)}
           </Typography>
-          <ProductThumb src={item.imageUrl} size={48} />
+          <Box sx={{ position: 'relative' }}>
+            <ProductThumb src={item.imageUrl} size={48} />
+            {item.provider && <Box sx={{ position: 'absolute', right: -6, bottom: -6 }}><ProviderBadge provider={item.provider} size={20} /></Box>}
+          </Box>
           <Box sx={{ minWidth: 0 }}>
             <Blurred when={blurText} radius={5}>
               <Typography variant="body2" sx={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
@@ -57,6 +63,13 @@ export function RankingTable({ items }: { items: HuntRankingItem[] }) {
                 <Blurred when={blurText} radius={5} inline>
                   <Typography component="span" variant="caption" sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{formatCents(item.priceCents)}</Typography>
                 </Blurred>
+              )}
+              {item.commissionPercent != null && (
+                <Typography component="span" variant="caption" color="text.secondary" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, fontVariantNumeric: 'tabular-nums' }}>
+                  {`${commissionCopy(providerOf(item)).chip} `}
+                  <Blurred when={blurText} radius={5} inline>{`${formatDecimal(item.commissionPercent)}%`}</Blurred>
+                  {item.commissionEstimated && <EstimatedTag />}
+                </Typography>
               )}
               <Chip
                 size="small"

@@ -1,8 +1,8 @@
 import { Alert, Box, Chip, IconButton, LinearProgress, Stack, Tooltip, Typography } from '@mui/material';
 import { X } from 'lucide-react';
 import { AppIcon } from '@/components';
-import type { HuntRunResult } from '../types';
-import { offerHunterErrorMessage, offerHunterStrings as t } from '../strings';
+import type { HuntProvider, HuntRunResult } from '../types';
+import { offerHunterErrorMessage, offerHunterStrings as t, pauseReasonText } from '../strings';
 import { RankingTable } from './RankingTable';
 import { RejectionNote } from './RejectionNote';
 
@@ -12,13 +12,15 @@ interface Props {
   result: HuntRunResult | null;
   /** Erro rejeitado pelo `apiClient` ao rodar (teto do dia, limite de buscas…). */
   error: unknown;
+  /** Loja da caçada (textos de pausa e de recusa). Padrão SHEIN. */
+  provider?: HuntProvider;
   onClose?: () => void;
 }
 
 const test = t.wizard.test;
 
 /** Resultado de "Testar agora"/"Rodar agora": resumo, IA usada/indisponível, pausa automática e ranking. */
-export function RunResultPanel({ title, running, result, error, onClose }: Props) {
+export function RunResultPanel({ title, running, result, error, provider = 'SHEIN', onClose }: Props) {
   if (!running && !result && !error) return null;
   const failedMsg = result && result.status !== 'SUCCEEDED' && result.errorCode
     ? (t.errors[result.errorCode] ?? test.failed)
@@ -48,7 +50,7 @@ export function RunResultPanel({ title, running, result, error, onClose }: Props
         <Stack spacing={1.5}>
           {result.pausedReason && (
             <Alert severity="warning">
-              <strong>{t.autoPausedTitle}.</strong> {t.pauseReasons[result.pausedReason]}
+              <strong>{t.autoPausedTitle}.</strong> {pauseReasonText(result.pausedReason, provider)}
             </Alert>
           )}
           {failedMsg && !result.pausedReason && <Alert severity="error">{failedMsg}</Alert>}
@@ -60,7 +62,7 @@ export function RunResultPanel({ title, running, result, error, onClose }: Props
             <Chip size="small" variant="outlined" label={test.remainingToday(result.remainingToday)} />
             {result.aiUsed && !result.aiFallback && <Chip size="small" variant="outlined" color="primary" label={test.aiUsed} />}
           </Box>
-          <RejectionNote rejectedBy={result.rejectedBy} matchedCount={result.matchedCount} />
+          <RejectionNote rejectedBy={result.rejectedBy} matchedCount={result.matchedCount} provider={provider} />
           {result.aiFallback && <Alert severity="info">{test.aiFallback}</Alert>}
           <RankingTable items={result.ranking} />
         </Stack>

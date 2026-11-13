@@ -3,7 +3,7 @@ import { Alert, Box, Button, FormControlLabel, MenuItem, Radio, RadioGroup, Stac
 import { alpha, useTheme } from '@mui/material/styles';
 import { Play } from 'lucide-react';
 import { AppIcon, PostingWindowField } from '@/components';
-import { OFFER_HUNT_DELIVERY_MODES, type HuntOptions, type OfferHuntDeliveryMode } from '../../types';
+import { OFFER_HUNT_DELIVERY_MODES, type HuntOptions, type HuntProvider, type OfferHuntDeliveryMode } from '../../types';
 import { offerHunterStrings as t } from '../../strings';
 import { useOfferHunt } from '../../hooks';
 import { RunResultPanel } from '../RunResultPanel';
@@ -84,13 +84,13 @@ export function WizardWhenStep({ draft, options, errors, onChange, huntId }: Pro
         </RadioGroup>
       </Box>
 
-      {huntId && <WizardTestPanel huntId={huntId} />}
+      {huntId && <WizardTestPanel huntId={huntId} provider={draft.provider ?? 'SHEIN'} />}
     </Stack>
   );
 }
 
 /** "Testar agora": roda a caçada salva (`useOfferHunt(id).run`) e mostra o ranking. */
-function WizardTestPanel({ huntId }: { huntId: string }) {
+function WizardTestPanel({ huntId, provider }: { huntId: string; provider: HuntProvider }) {
   const { run, running, lastRun } = useOfferHunt(huntId);
   const [error, setError] = useState<unknown>(null);
   const start = async () => {
@@ -113,7 +113,7 @@ function WizardTestPanel({ huntId }: { huntId: string }) {
         </Tooltip>
       </Box>
       <Alert severity="info" sx={{ mb: 1.5 }}>{test.spendsQuota} {test.savedOnly}</Alert>
-      <RunResultPanel title={test.title} running={running} result={lastRun} error={error} />
+      <RunResultPanel title={test.title} running={running} result={lastRun} error={error} provider={provider} />
     </Box>
   );
 }

@@ -1,6 +1,7 @@
-import { offerHunterStrings } from '../../strings';
+import { commissionCopy, offerHunterStrings } from '../../strings';
 import { formatCents } from '../../format';
-import type { Hunt, HuntFilters, HuntOptions, HuntPreset } from '../../types';
+import type { Hunt, HuntFilters, HuntOptions, HuntPreset, MlHuntSort } from '../../types';
+import { fallbackCapabilities, providerOf, sortInColumn } from '../../providers';
 
 const t = offerHunterStrings;
 
@@ -9,10 +10,14 @@ const t = offerHunterStrings;
  * (a faixa da fonte não conta: é legado, sempre ANY) (os não definidos pela predefinição precisam estar vazios). Senão `CUSTOM`.
  */
 export function matchPreset(hunt: Hunt, presets: HuntOptions['presets']): HuntPreset {
+  const provider = providerOf(hunt);
+  const sort = sortInColumn(provider) ? hunt.sort : (hunt.sourceOptions?.sort ?? fallbackCapabilities(provider).defaultSort);
+  // Filtros da fonte ligados (ganhos extras, mais vendidos) não fazem parte de nenhuma predefinição
+  if (hunt.sourceOptions?.extraEarningsOnly || hunt.sourceOptions?.bestSellersOnly) return 'CUSTOM';
   for (const p of presets) {
     if (p.key === 'CUSTOM') continue;
     const { source, local } = p.definition;
-    if (source.sort !== hunt.sort) continue;
+    if (source.sort !== sort) continue;
     const keys = Object.keys(hunt.filters) as (keyof HuntFilters)[];
     const same = keys.every((k) => (local[k] ?? null) === (hunt.filters[k] ?? null));
     if (same) return p.key;
@@ -38,14 +43,26 @@ export function huntSummaryChips(hunt: Hunt, options: HuntOptions | null): HuntS
   const f = hunt.filters;
   const tip = t.wizard.tips;
   const c = t.home.chips;
+  const provider = providerOf(hunt);
+  const cc = commissionCopy(provider);
   const push = (key: string, label: string, tooltip: string) => out.push({ key, label, tooltip });
-  if (options) {
-    const preset = t.presets[matchPreset(hunt, options.presets)];
+  // Opções de outra loja não servem para nomear predefinição/categoria desta caçada
+  const opts = options && providerOf(options) === provider ? options : null;
+  if (opts) {
+    const preset = t.presets[matchPreset(hunt, opts.presets)];
     push('preset', preset.label, preset.hint);
   }
   if (hunt.categoryId) {
-    const cat = options?.categories.find((x) => x.categoryId === hunt.categoryId);
+    const cat = opts?.categories.find((x) => x.categoryId === hunt.categoryId);
     push('category', cat?.name ?? t.home.categoryUnknown, tip.category);
+  }
+  const so = hunt.sourceOptions;
+  if (!sortInColumn(provider) && so) {
+    if (so.sort && so.sort !== fallbackCapabilities(provider).defaultSort) {
+      push('sourceSort', c.sourceSort(t.mlSorts[so.sort as MlHuntSort] ?? so.sort), t.wizard.what.sourceSortTip);
+    }
+    if (so.extraEarningsOnly) push('extraEarningsOnly', c.extraEarningsOnly, t.wizard.what.extraEarningsOnlyHint);
+    if (so.bestSellersOnly) push('bestSellersOnly', c.bestSellersOnly, t.wizard.what.bestSellersOnlyHint);
   }
   const min = formatCents(f.minPriceCents);
   const max = formatCents(f.maxPriceCents);
@@ -53,16 +70,17 @@ export function huntSummaryChips(hunt: Hunt, options: HuntOptions | null): HuntS
   if (f.minDiscountPct != null) push('discount', c.discount(f.minDiscountPct), tip.minDiscount);
   if (f.minCommissionPct != null) {
     const op = t.wizard.refine.commissionOperators[f.commissionOperator ?? 'GTE'];
-    push('commission', c.commission(op.symbol, f.minCommissionPct), c.commissionTip(op.label, f.minCommissionPct));
+    push('commission', c.commission(op.symbol, f.minCommissionPct, cc.chip), c.commissionTip(op.label, f.minCommissionPct, cc.chipTip));
   }
   const commissionValue = formatCents(f.minCommissionCents);
-  if (commissionValue) push('commissionValue', c.commissionValue(commissionValue), tip.minCommissionValue);
+  if (commissionValue) push('commissionValue', c.commissionValue(commissionValue, cc.chip), cc.minValueTip);
   if (f.minRating != null) push('rating', c.rating(f.minRating), tip.minRating);
   if (f.minSales != null) push('sales', c.sales(f.minSales), tip.minSales);
   if (f.minReviews != null) push('reviews', c.reviews(f.minReviews), tip.minReviews);
   if (f.onlyWithExtra === true) push('onlyWithExtra', c.onlyWithExtra, t.wizard.refine.onlyWithExtraHint);
   if (f.endsWithinDays != null) push('endsWithin', c.endsWithin(f.endsWithinDays), tip.endsWithin);
   if (hunt.keyword) push('keyword', t.home.keyword(hunt.keyword), tip.keyword);
+  if (hunt.aiConfigured) push('aiConfigured', c.aiConfigured, c.aiConfiguredTip);
   return out;
 }
 

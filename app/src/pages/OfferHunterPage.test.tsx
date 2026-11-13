@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import type { Hunt, HuntGates, HuntOptions } from '@/features/offerHunter/types';
 
 const svc = vi.hoisted(() => ({
-  getOptions: vi.fn(), getUsage: vi.fn(), getSettings: vi.fn(), list: vi.fn(), saveSettings: vi.fn(),
+  getOptions: vi.fn(), getProviders: vi.fn(), getUsage: vi.fn(), getSettings: vi.fn(), list: vi.fn(), saveSettings: vi.fn(),
   pause: vi.fn(), resume: vi.fn(), remove: vi.fn(), update: vi.fn(), create: vi.fn(),
 }));
 vi.mock('@/services/offerHunter.service', () => ({ offerHunterService: svc }));
@@ -16,10 +16,11 @@ vi.mock('@/contexts/TenantContext', () => ({ useTenant: () => ({ activeTenantId:
 
 import { OfferHunterPage } from './OfferHunterPage';
 import { offerHunterStrings as t } from '@/features/offerHunter/strings';
+import { fallbackCapabilities } from '@/features/offerHunter/providers';
 
 const OPEN: HuntGates = { plan: true, hunterEntitlement: true, credential: true, riskAccepted: true, aiAvailable: true, destination: true };
 const options = (gates: Partial<HuntGates> = {}): HuntOptions => ({
-  categories: [], sourceStatus: 'OK', sorts: [], commissionBands: [], presets: [],
+  provider: 'SHEIN', capabilities: fallbackCapabilities('SHEIN'), categories: [], sourceStatus: 'OK', sorts: [], commissionBands: [], presets: [],
   limits: {
     huntsMax: 5, topNMax: 5, topNDefault: 3, repeatAfterDaysMin: 1, repeatAfterDaysMax: 30, repeatAfterDaysDefault: 7,
     intervalMinutesMin: 30, intervalMinutesMax: 1440, keywordMaxLength: 60, nameMaxLength: 60, endsWithinDaysMax: 30,
@@ -27,7 +28,7 @@ const options = (gates: Partial<HuntGates> = {}): HuntOptions => ({
   gates: { ...OPEN, ...gates },
 });
 const hunt = (id: string, over: Partial<Hunt> = {}): Hunt => ({
-  id, name: `Caçada ${id}`, status: 'ACTIVE', pauseReason: null, sort: 'RECOMMENDED', categoryId: null, commissionBand: null,
+  id, provider: 'SHEIN', sourceOptions: null, aiConfigured: false, aiIntent: null, name: `Caçada ${id}`, status: 'ACTIVE', pauseReason: null, sort: 'RECOMMENDED', categoryId: null, commissionBand: null,
   keyword: null, filters: {
     minPriceCents: null, maxPriceCents: null, minDiscountPct: null, minCommissionPct: null, commissionOperator: null, minCommissionCents: null,
     minRating: null, minSales: null, minReviews: null, onlyWithExtra: null, endsWithinDays: null,
@@ -47,6 +48,7 @@ beforeEach(() => {
   svc.getUsage.mockResolvedValue({ used: 3, limit: 10, remaining: 7, runsToday: 2, runsMax: 48 });
   svc.getSettings.mockResolvedValue({ sessionId: null, conversationId: null, valid: false });
   svc.list.mockResolvedValue([]);
+  svc.getProviders.mockRejectedValue({ code: 'UNKNOWN' });
 });
 
 describe('OfferHunterPage', () => {
@@ -96,5 +98,26 @@ describe('OfferHunterPage', () => {
     await waitFor(() => expect(svc.getOptions).toHaveBeenCalled());
     await waitFor(() => expect(screen.getByText(t.list.count(5, 5))).toBeInTheDocument());
     expect(createButton()).toBeDisabled();
+  });
+
+  it('várias lojas: painel da loja pronta, logo no cartão e trava pela loja da caçada', async () => {
+    const ml: HuntGates = { ...OPEN };
+    svc.getProviders.mockResolvedValue([
+      { provider: 'SHEIN', credentialState: 'MISSING', gates: { ...OPEN, credential: false } },
+      { provider: 'MERCADO_LIVRE', credentialState: 'OK', gates: ml },
+    ]);
+    svc.getOptions.mockImplementation((p: string) => Promise.resolve({ ...options(), provider: p }));
+    svc.list.mockResolvedValue([
+      hunt('a', { provider: 'MERCADO_LIVRE', status: 'PAUSED', pauseReason: 'USER' }),
+      hunt('b', { status: 'PAUSED', pauseReason: 'USER' }),
+    ]);
+    renderPage();
+    await waitFor(() => expect(svc.getOptions).toHaveBeenCalledWith('MERCADO_LIVRE'));
+    const list = await screen.findByRole('list', { name: t.home.listLabel });
+    expect(within(list).getByTestId('provider-badge-MERCADO_LIVRE')).toBeInTheDocument();
+    await waitFor(() => expect(createButton()).toBeEnabled());
+    const [mlSwitch, sheinSwitch] = within(list).getAllByRole('checkbox');
+    expect(mlSwitch).toBeEnabled();
+    expect(sheinSwitch).toBeDisabled();
   });
 });

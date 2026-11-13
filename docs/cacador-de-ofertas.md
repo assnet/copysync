@@ -235,8 +235,26 @@ Aceite: `POST /api/integrations/affiliate-credentials/:provider/risk-acceptance`
 
 - Rotas `/offer-hunter` e `/offer-hunter/:huntId` sob `OfferHunterRoute`; menu: filho de Afiliados só com
   `offerHunterVisible` (`useOfferHunterAccess` → `GET /access`). Sem `superAdminOnly`/`SuperAdminRoute`; selo MAX; nome + selo quebram em 2 linhas no menu.
-- Tela inicial (uso do dia vindo da API, destino, cartões, painel de portões, alerta de pausa), assistente em 3
-  passos (O que caçar → Refino → Quando e onde) com "Testar agora", detalhe com achados e execuções.
+- Tela inicial (uso do dia vindo da API, destino, cartões, painel de portões, alerta de pausa), assistente em 4
+  passos (Loja → O que caçar → Refino → Quando e onde) com "Testar agora", detalhe com achados e execuções.
+- Multimarca (T11–T13): `providers.ts` (`HUNT_PROVIDERS`, logo/nome/cor de `AFFILIATE_PROVIDERS` via
+  `MarketplaceLogo`, `huntProviderStatus`, `pickHomeProvider`, `sortInColumn`). A tela inicial lê
+  `GET /options/providers` e mostra o painel de portões da 1ª loja pronta (senão a 1ª com plano; falha = SHEIN); cada
+  cartão trava pela loja dele. Detalhe usa `useHuntOptions(hunt.provider)`.
+- Passo 0: grade de logos com estado (pronta, fora do plano, sem conta, conta recusada, aviso pendente) e ação
+  (planos, `/affiliates/credentials`, `HunterRiskNoticeDialog provider`). Fora do plano não é escolhível; sem
+  conta/aviso dá para montar e ligar depois. Edição: loja fixa (só logo). Trocar de loja recomeça ordem, categoria e
+  filtros com a 1ª predefinição dela (`seedProvider`).
+- Filtros por capacidade: assistente, chips, recusas e achados só mostram o que `capabilities` declara. Shein: ordem
+  na coluna `sort`, `sourceOptions` null. ML: ordem em `sourceOptions.sort` + "Só com ganhos extras"/"Só mais
+  vendidos"; sem avaliações/prazo; o "Só com comissão extra" local some (a fonte já filtra). Comissão: "de 1ª compra"
+  só na Shein (`commissionCopy`); ML sem recompra e com selo "estimada" (`commissionEstimated`).
+- "Deixar a IA decidir os filtros" (passo 0, desligado por padrão, `BrainCircuit`): intenção ≤ 120 + "Deixar a IA
+  escolher o produto" → `suggestConfig` → `applyAiSuggestion` troca os filtros pelos da IA, aplica `draft.sort` (Shein)
+  e marca cada campo com `AiHint` (motivo no Tooltip, borrável). Mexer no campo tira a marca. `dropped` vira aviso;
+  "X de 5 sugestões restantes hoje". `AI_NOT_CONFIGURED`/gate sem IA travam o interruptor. Salvar manda
+  `aiConfigured`/`aiIntent`. Não confundir com "Escolha com IA" (Refino, ranking a cada busca).
+- Rascunho do assistente em `usePersistedState` **version 3** (`WIZARD_DRAFT_VERSION`; v2 é descartado).
 - Persistência (`tab`): `offerHunter.wizard*` (limpo ao salvar), `offerHunter.destinationDraft`,
   `offerHunter.destinationPickerOpen`, `offerHunter.detail.<id>`.
 - Privacidade: tela `offerHunter`, flags `sessionName`, `groupNames`, `groupAvatars`, `productImages`, `productText`.

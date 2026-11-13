@@ -1,8 +1,8 @@
 import { apiClient } from './apiClient';
 import type { ApiSuccess } from '@/types/api.types';
 import type {
-  CreateHuntInput, HunterSettings, Hunt, HuntApproveResult, HuntFind, HuntOptions, HuntPage, HuntRun, HuntRunResult,
-  HuntUsage, SaveHunterSettingsInput, UpdateHuntInput,
+  CreateHuntInput, HunterSettings, Hunt, HuntAiSuggestInput, HuntAiSuggestion, HuntApproveResult, HuntFind, HuntOptions,
+  HuntPage, HuntProvider, HuntProviderState, HuntRun, HuntRunResult, HuntUsage, SaveHunterSettingsInput, UpdateHuntInput,
 } from '@/features/offerHunter/types';
 
 const BASE = '/offer-hunts';
@@ -27,8 +27,24 @@ export const offerHunterService = {
     return res.data.data;
   },
 
-  async getOptions(): Promise<HuntOptions> {
-    const res = await apiClient.get<ApiSuccess<HuntOptions>>(`${BASE}/options`);
+  /** Capacidades, categorias, predefinições, limites e portões **da loja** (padrão SHEIN). */
+  async getOptions(provider: HuntProvider = 'SHEIN'): Promise<HuntOptions> {
+    const res = await apiClient.get<ApiSuccess<HuntOptions>>(`${BASE}/options`, { params: { provider } });
+    return res.data.data;
+  },
+
+  /** Portões de todas as lojas numa chamada leve (sem chamar a fonte): passo 0 do assistente. */
+  async getProviders(): Promise<HuntProviderState[]> {
+    const res = await apiClient.get<ApiSuccess<{ items: HuntProviderState[] }>>(`${BASE}/options/providers`);
+    return res.data.data.items;
+  },
+
+  /**
+   * IA sugere a configuração (nada salvo). 429 `OFFER_HUNT_AI_SUGGEST_DAILY_LIMIT`, 409 `AI_NOT_CONFIGURED`,
+   * 422 `OFFER_HUNT_AI_SUGGEST_INPUT_REQUIRED`/`_INVALID_OUTPUT`, 503 `_PROVIDER_UNAVAILABLE`, 403 plano.
+   */
+  async suggestConfig(body: HuntAiSuggestInput): Promise<HuntAiSuggestion> {
+    const res = await apiClient.post<ApiSuccess<HuntAiSuggestion>>(`${BASE}/ai-suggest`, body);
     return res.data.data;
   },
 

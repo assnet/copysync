@@ -3,11 +3,13 @@ import { Filter } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { offerHunterStrings as t } from '../strings';
 import { rejectionSummary } from '../runRejections';
-import type { HuntRejectionCounts } from '../types';
+import type { HuntProvider, HuntRejectionCounts } from '../types';
 
 /** Por que "0 no filtro": quantos cada filtro barrou + dica. Execução sem `rejectedBy` não mostra nada. */
-export function RejectionNote({ rejectedBy, matchedCount }: { rejectedBy: HuntRejectionCounts | null | undefined; matchedCount: number }) {
-  const summary = rejectionSummary(rejectedBy, matchedCount);
+export function RejectionNote({ rejectedBy, matchedCount, provider }: {
+  rejectedBy: HuntRejectionCounts | null | undefined; matchedCount: number; provider?: HuntProvider;
+}) {
+  const summary = rejectionSummary(rejectedBy, matchedCount, provider);
   if (!summary) return null;
   return (
     <Box

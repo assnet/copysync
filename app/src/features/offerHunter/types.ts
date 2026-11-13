@@ -3,6 +3,14 @@
  * `OfferHuntPresenter.ts`). Envelope `{ success, data }` desembrulhado no service. Valores em centavos.
  */
 
+/** Lojas do caçador (espelho de `HUNT_PROVIDERS` da API; subconjunto de `AffiliateProvider`). */
+export const HUNT_PROVIDERS = ['SHEIN', 'MERCADO_LIVRE'] as const;
+export type HuntProvider = (typeof HUNT_PROVIDERS)[number];
+
+/** Ordenações da fonte do Mercado Livre (`sourceOptions.sort`). A Shein usa a coluna `sort` (`HUNT_SORTS`). */
+export const ML_HUNT_SORTS = ['relevance', 'lowest_price', 'highest_price'] as const;
+export type MlHuntSort = (typeof ML_HUNT_SORTS)[number];
+
 export const OFFER_HUNT_STATUSES = ['ACTIVE', 'PAUSED'] as const;
 export type OfferHuntStatus = (typeof OFFER_HUNT_STATUSES)[number];
 
@@ -58,6 +66,29 @@ export type HuntRejectionKey = (typeof HUNT_REJECTION_KEYS)[number];
 /** Quantos candidatos cada chave barrou (um candidato pode contar em várias). */
 export type HuntRejectionCounts = Partial<Record<HuntRejectionKey, number>>;
 
+/** Filtros da fonte próprios da marca (Shein: sempre vazio). null = não usa. */
+export interface HuntSourceOptions {
+  sort: string | null;
+  extraEarningsOnly: boolean | null;
+  bestSellersOnly: boolean | null;
+}
+
+/** Filtro local (chave de `HuntFilters` sem o operador). */
+export type HuntLocalFilterKey = Exclude<keyof HuntFilters, 'commissionOperator'>;
+export type HuntSourceFilterKey = 'keyword' | 'category' | 'sort' | 'extraEarningsOnly' | 'bestSellersOnly';
+/** Shein 1ª compra × recompra; ML percentual único (já inclui ganhos extras). */
+export type HuntCommissionModel = 'NEW_RETURNING' | 'SINGLE_WITH_EXTRA_FLAG';
+
+/** O que a marca filtra/ordena: a tela só oferece o que está aqui. */
+export interface HuntCapabilities {
+  provider: HuntProvider;
+  sorts: string[];
+  defaultSort: string;
+  sourceFilters: HuntSourceFilterKey[];
+  localFilters: HuntLocalFilterKey[];
+  commissionModel: HuntCommissionModel;
+}
+
 export interface HuntScoreFactor {
   key: HuntScoreFactorKey;
   points: number;
@@ -83,6 +114,8 @@ export interface HuntFilters {
 
 export interface Hunt {
   id: string;
+  /** Loja da caçada (fixa depois de criada). */
+  provider: HuntProvider;
   name: string;
   status: OfferHuntStatus;
   pauseReason: OfferHuntPauseReason | null;
@@ -91,8 +124,13 @@ export interface Hunt {
   /** Faixa da fonte derivada pelo servidor do filtro de comissão (só leitura). */
   commissionBand: HuntCommissionBand | null;
   keyword: string | null;
+  /** Filtros da fonte da marca (Shein: null). */
+  sourceOptions: HuntSourceOptions | null;
   filters: HuntFilters;
   aiEnabled: boolean;
+  /** A configuração veio de uma sugestão da IA ("Deixar a IA decidir os filtros"). */
+  aiConfigured: boolean;
+  aiIntent: string | null;
   topN: number;
   repeatAfterDays: number;
   deliveryMode: OfferHuntDeliveryMode;
@@ -112,6 +150,7 @@ export interface Hunt {
 
 export interface HuntRun {
   id: string;
+  provider: HuntProvider;
   huntId: string | null;
   trigger: OfferHuntRunTrigger;
   status: OfferHuntRunStatus;
@@ -141,9 +180,15 @@ export interface HuntFind {
   huntId: string | null;
   runId: string | null;
   status: OfferHuntFindStatus;
-  goodsId: string;
+  provider: HuntProvider;
+  /** Id do produto na loja (Shein goodsId, ML `MLB…`). */
+  productId: string;
+  /** Só Shein (legado); use `productId`. */
+  goodsId: string | null;
+  /** Comissão calculada pelo percentual da loja (ML), não lida em valor. */
+  commissionEstimated: boolean;
   title: string;
-  /** Foto da fonte (https, *.ltwebstatic.com) gravada no achado; null = sem foto. */
+  /** Foto da fonte (https, host da marca) gravada no achado; null = sem foto. */
   imageUrl: string | null;
   priceCents: number | null;
   originalPriceCents: number | null;
@@ -178,7 +223,11 @@ export interface HuntFind {
 
 /** Item do ranking de "Testar agora" (a imagem vem da fonte, não do storage: só exibição). */
 export interface HuntRankingItem {
-  goodsId: string;
+  provider: HuntProvider;
+  productId: string;
+  /** Só Shein (legado); use `productId`. */
+  goodsId: string | null;
+  commissionEstimated: boolean;
   title: string | null;
   imageUrl: string | null;
   priceCents: number | null;
@@ -244,7 +293,8 @@ export interface HuntCategory {
 export interface HuntPresetOption {
   key: HuntPreset;
   definition: {
-    source: { sort: HuntSort; commissionBand: HuntCommissionBand };
+    /** Shein: `HuntSort`; demais: ordenação da fonte (`sourceOptions.sort`). */
+    source: { sort: string; commissionBand: HuntCommissionBand };
     /** Só os filtros que a predefinição define. */
     local: Partial<HuntFilters>;
   };
@@ -277,15 +327,55 @@ export interface HuntGates {
 export type HuntGateKey = keyof HuntGates;
 
 export interface HuntOptions {
+  provider: HuntProvider;
+  capabilities: HuntCapabilities;
   categories: HuntCategory[];
   sourceStatus: HuntCategorySourceStatus;
-  sorts: HuntSort[];
+  sorts: string[];
   /** Vazio desde a faixa derivada no servidor (mantido por compatibilidade). */
   commissionBands: HuntCommissionBand[];
   presets: HuntPresetOption[];
   limits: HuntLimits;
   gates: HuntGates;
 }
+
+/** `GET /options/providers`: portões de cada loja, sem chamar a fonte (passo 0 do assistente). */
+export interface HuntProviderState {
+  provider: HuntProvider;
+  credentialState: 'OK' | 'MISSING' | 'REJECTED';
+  gates: HuntGates;
+}
+
+/** Corpo de `POST /offer-hunts/ai-suggest`. Sem intenção, `pickProduct` precisa ser true. */
+export interface HuntAiSuggestInput {
+  provider: HuntProvider;
+  intent: string | null;
+  pickProduct: boolean;
+}
+
+/** Rascunho da IA (nada salvo): campo null = a IA não decidiu. `reasons` por caminho (`filters.minPriceCents`…). */
+export interface HuntAiSuggestion {
+  draft: {
+    provider: HuntProvider;
+    name: string | null;
+    categoryId: string | null;
+    keyword: string | null;
+    /** Shein: ordenação da coluna `sort` (`HUNT_SORTS`); demais lojas: null (ordem em `sourceOptions.sort`). */
+    sort: HuntSort | null;
+    sourceOptions: Partial<HuntSourceOptions>;
+    filters: Partial<HuntFilters>;
+    aiEnabled: boolean | null;
+    topN: number | null;
+  };
+  reasons: Record<string, string>;
+  dropped: string[];
+  sourceUsed: boolean;
+  remainingToday: number;
+}
+
+/** Teto técnico de sugestões de IA por conta/dia e tamanho da intenção (espelho de `HUNTER_AI_LIMITS`). */
+export const HUNT_AI_SUGGESTIONS_PER_DAY = 5;
+export const HUNT_AI_INTENT_MAX = 120;
 
 /** Grupo de destino do caçador; `valid` = sessão e grupo definidos. */
 export interface HunterSettings {
@@ -303,12 +393,18 @@ export interface SaveHunterSettingsInput {
 
 /** Corpo de criar (só `name` obrigatório; o resto cai no padrão do servidor). */
 export interface CreateHuntInput {
+  /** Só na criação vale escolher; na edição precisa ser a mesma (trocar = 422). */
+  provider?: HuntProvider;
   name: string;
   sort?: HuntSort;
   categoryId?: string | null;
   keyword?: string | null;
+  /** Shein: null; demais marcas: só o que `capabilities.sourceFilters` declara. */
+  sourceOptions?: HuntSourceOptions | null;
   filters?: Partial<HuntFilters>;
   aiEnabled?: boolean;
+  aiConfigured?: boolean;
+  aiIntent?: string | null;
   topN?: number;
   repeatAfterDays?: number;
   deliveryMode?: OfferHuntDeliveryMode;

@@ -95,7 +95,7 @@ describe('strings do caçador', () => {
 
   it('uso do dia, assistente e erro por código', () => {
     expect(t.usage.finds(3, 10)).toBe('3 de 10 ofertas garimpadas hoje');
-    expect(t.wizard.steps).toEqual(['O que caçar', 'Refino', 'Quando e onde']);
+    expect(t.wizard.steps).toEqual(['Loja', 'O que caçar', 'Refino', 'Quando e onde']);
     expect(t.interval(90)).toBe('1 h 30 min');
     expect(offerHunterErrorMessage({ code: 'OFFER_HUNT_DAILY_LIMIT' })).toBe(t.errors.OFFER_HUNT_DAILY_LIMIT);
     expect(offerHunterErrorMessage({ code: 'DESCONHECIDO' })).toBe(t.errors.generic);

@@ -1,19 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Step, StepLabel, Stepper,
+  Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Stack, Step, StepLabel, Stepper,
   Tooltip, Typography, useMediaQuery,
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import { ArrowLeft, ArrowRight, Save, X } from 'lucide-react';
 import { AppIcon, ConfirmDialog } from '@/components';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import type { Hunt, HuntOptions, HuntPreset } from '../../types';
+import type { Hunt, HuntOptions, HuntPreset, HuntProvider } from '../../types';
 import { offerHunterErrorMessage, offerHunterStrings as t } from '../../strings';
-import { useOfferHunts } from '../../hooks';
+import { useHuntAiSuggest, useHuntOptions, useHuntProviders, useOfferHunts } from '../../hooks';
+import { capabilitiesOf, providerOf } from '../../providers';
 import {
-  WIZARD_STEPS, applyPreset, draftToBody, firstInvalidStep, initialDraft, isDirty, stepOfField, validateStep, wizardDraftKey,
-  type FieldErrors, type HuntWizardDraft,
+  WIZARD_DRAFT_VERSION, WIZARD_STEPS, applyAiSuggestion, applyPreset, draftToBody, dropChangedHints, firstInvalidStep, initialDraft,
+  isDirty, seedProvider, stepOfField, validateStep, wizardDraftKey, type FieldErrors, type HuntWizardAiState, type HuntWizardDraft,
 } from './wizardDraft';
+import { HuntProviderMark, WizardProviderStep } from './WizardProviderStep';
+import { WizardAiSuggestPanel } from './WizardAiSuggestPanel';
 import { WizardWhatStep } from './WizardWhatStep';
 import { WizardRefineStep } from './WizardRefineStep';
 import { WizardWhenStep } from './WizardWhenStep';
@@ -21,19 +24,24 @@ import { WizardWhenStep } from './WizardWhenStep';
 const wz = t.wizard;
 
 /**
- * Contrato fixo do assistente de 3 passos (T14). `hunt` presente = edição; ausente = nova caçada.
- * `onSaved` recebe a caçada gravada pela API.
+ * Assistente de 4 passos. `hunt` presente = edição (loja fixa); ausente = nova caçada. `options` = opções de uma
+ * loja já carregadas pela tela (limites; reaproveitadas se a loja escolhida for a mesma, senão o assistente busca as
+ * da loja). `onSaved` recebe a caçada gravada pela API.
  */
 export interface HuntWizardDialogProps {
   open: boolean;
   options: HuntOptions;
   hunt?: Hunt;
+  /** Abre o aviso de risco da loja (CTA do passo 0). */
+  onOpenRisk?: (provider: HuntProvider) => void;
+  /** Muda depois de um aceite de aviso: recarrega o estado das lojas e as opções. */
+  refreshKey?: number;
   onClose: () => void;
   onSaved: (hunt: Hunt) => void;
 }
 
 /**
- * Assistente O que caçar → Refino → Quando e onde. Rascunho por aba (uma chave por caçada em edição),
+ * Assistente Loja → O que caçar → Refino → Quando e onde. Rascunho por aba (uma chave por caçada em edição),
  * limpo ao salvar ou cancelar. Monta só aberto: a chave do rascunho é lida a cada abertura.
  */
 export function HuntWizardDialog(props: HuntWizardDialogProps) {
@@ -41,12 +49,37 @@ export function HuntWizardDialog(props: HuntWizardDialogProps) {
   return <HuntWizardBody key={wizardDraftKey(props.hunt?.id)} {...props} />;
 }
 
-function HuntWizardBody({ options, hunt, onClose, onSaved }: HuntWizardDialogProps) {
+function HuntWizardBody({ options, hunt, onOpenRisk, refreshKey, onClose, onSaved }: HuntWizardDialogProps) {
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
   const initial = useMemo(() => initialDraft(options, hunt), [options, hunt]);
-  const [draft, setDraft, clearDraft] = usePersistedState<HuntWizardDraft>(wizardDraftKey(hunt?.id), initial, { scope: 'tab', version: 2 });
+  const [draft, setDraft, clearDraft] = usePersistedState<HuntWizardDraft>(
+    wizardDraftKey(hunt?.id), initial, { scope: 'tab', version: WIZARD_DRAFT_VERSION },
+  );
   const { create, update } = useOfferHunts();
+  const providers = useHuntProviders(!hunt);
+  // Opções da loja escolhida: as da tela se for a mesma loja; senão, carregadas aqui
+  const baseProvider = providerOf(options);
+  const chosen = draft.provider;
+  const fetched = useHuntOptions(chosen && chosen !== baseProvider ? chosen : null);
+  const providerOptions = !chosen ? null : chosen === baseProvider ? options : fetched.options;
+  const aiSuggest = useHuntAiSuggest();
+  const [aiRemaining, setAiRemaining] = useState<number | null>(null);
+  const [aiBlocked, setAiBlocked] = useState(false);
+  const reloadProviders = providers.reload;
+  const reloadFetched = fetched.reload;
+  const firstRefresh = useRef(refreshKey);
+  useEffect(() => {
+    if (firstRefresh.current === refreshKey) return;
+    firstRefresh.current = refreshKey;
+    if (!hunt) void reloadProviders();
+    void reloadFetched();
+  }, [refreshKey, hunt, reloadProviders, reloadFetched]);
+  // Loja nova escolhida: as predefinições dela preenchem o rascunho (uma vez por loja)
+  useEffect(() => {
+    if (hunt || !providerOptions || !chosen || draft.presetFor === chosen || providerOf(providerOptions) !== chosen) return;
+    setDraft((d) => (d.provider === chosen && d.presetFor !== chosen ? seedProvider(d, providerOptions) : d));
+  }, [hunt, providerOptions, chosen, draft.presetFor, setDraft]);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -59,7 +92,7 @@ function HuntWizardBody({ options, hunt, onClose, onSaved }: HuntWizardDialogPro
   useEffect(() => { contentRef.current?.scrollTo?.({ top: 0 }); }, [step]);
 
   const change = (patch: Partial<HuntWizardDraft>) => {
-    setDraft((d) => ({ ...d, ...patch }));
+    setDraft((d) => dropChangedHints(d, { ...d, ...patch }));
     // Campo mexido deixa de mostrar o erro antigo
     setErrors((e) => {
       const keys = Object.keys(patch).flatMap((k) => (k === 'filters' ? Object.keys(e).filter((x) => x.startsWith('filters.')) : [k, k === 'postingWindow' ? 'weekdaysMask' : '']));
@@ -70,8 +103,41 @@ function HuntWizardBody({ options, hunt, onClose, onSaved }: HuntWizardDialogPro
     });
     setSaveError(null);
   };
-  const choosePreset = (key: HuntPreset) => setDraft((d) => applyPreset(d, key, options));
+  const choosePreset = (key: HuntPreset) => {
+    if (providerOptions) setDraft((d) => dropChangedHints(d, applyPreset(d, key, providerOptions)));
+  };
   const goTo = (s: number) => setDraft((d) => ({ ...d, step: s }));
+  const selectProvider = (provider: HuntProvider) => {
+    if (hunt) return;
+    setDraft((d) => (d.provider === provider ? d : { ...d, provider }));
+    setErrors((e) => {
+      if (!e.provider) return e;
+      const { provider: _drop, ...rest } = e;
+      return rest;
+    });
+  };
+  const changeAi = (patch: Partial<HuntWizardAiState>) => {
+    setDraft((d) => ({ ...d, ai: { ...d.ai, ...patch } }));
+    if (patch.intent !== undefined || patch.pickProduct !== undefined) aiSuggest.clearError();
+  };
+  const generate = async () => {
+    const opts = providerOptions;
+    const provider = draft.provider;
+    if (!opts || !provider) return;
+    const { data, errorCode } = await aiSuggest.suggest({ provider, intent: draft.ai.intent.trim() || null, pickProduct: draft.ai.pickProduct });
+    if (data) {
+      setAiRemaining(data.remainingToday);
+      setDraft((d) => applyAiSuggestion(d.presetFor === provider ? d : seedProvider(d, opts), data, opts));
+      return;
+    }
+    if (errorCode === 'OFFER_HUNT_AI_SUGGEST_DAILY_LIMIT') setAiRemaining(0);
+    if (errorCode === 'AI_NOT_CONFIGURED') setAiBlocked(true);
+  };
+  const aiAvailable = !aiBlocked && (providerOptions?.gates.aiAvailable
+    ?? providers.providers?.find((x) => x.provider === chosen)?.gates.aiAvailable
+    ?? options.gates.aiAvailable);
+  // Sem as opções da loja não dá para montar os passos seguintes
+  const optionsPending = Boolean(chosen) && !providerOptions;
 
   const next = () => {
     const e = validateStep(step, draft, limits);
@@ -100,7 +166,7 @@ function HuntWizardBody({ options, hunt, onClose, onSaved }: HuntWizardDialogPro
     setSaving(true);
     setSaveError(null);
     try {
-      const body = draftToBody(draft);
+      const body = draftToBody(draft, capabilitiesOf(providerOptions, draft.provider ?? undefined));
       const saved = hunt ? await update(hunt.id, body) : await create(body);
       clearDraft();
       onSaved(saved);
@@ -117,7 +183,9 @@ function HuntWizardBody({ options, hunt, onClose, onSaved }: HuntWizardDialogPro
   };
 
   const title = hunt ? wz.editTitle : wz.createTitle;
-  const headings = [wz.what, wz.refine, wz.when] as const;
+  const headings = [
+    { title: wz.provider.title, subtitle: hunt ? wz.provider.editSubtitle : wz.provider.subtitle }, wz.what, wz.refine, wz.when,
+  ] as const;
   const heading = headings[step];
   const hasErrors = Object.keys(errors).length > 0;
 
@@ -133,7 +201,8 @@ function HuntWizardBody({ options, hunt, onClose, onSaved }: HuntWizardDialogPro
         scroll="paper"
       >
         <DialogTitle id="hunt-wizard-title" sx={{ display: 'flex', alignItems: 'center', gap: 1, pr: 1.5, fontWeight: 700 }}>
-          <Box component="span" sx={{ flex: 1 }}>{title}</Box>
+          <Box component="span" sx={{ flex: 1, minWidth: 0 }}>{title}</Box>
+          {chosen && step > 0 && <Box sx={{ display: { xs: 'none', sm: 'inline-flex' } }}><HuntProviderMark provider={chosen} size={24} /></Box>}
           <Tooltip title={wz.close} arrow>
             <IconButton aria-label={wz.close} onClick={requestCancel} disabled={saving}><AppIcon icon={X} size="sm" /></IconButton>
           </Tooltip>
@@ -155,9 +224,51 @@ function HuntWizardBody({ options, hunt, onClose, onSaved }: HuntWizardDialogPro
           {saveError && <Alert severity="error" sx={{ mb: 2 }} role="alert">{saveError}</Alert>}
           {!saveError && hasErrors && <Alert severity="warning" sx={{ mb: 2 }}>{wz.validation.stepHasErrors}</Alert>}
 
-          {step === 0 && <WizardWhatStep draft={draft} options={options} errors={errors} onChange={change} onPreset={choosePreset} />}
-          {step === 1 && <WizardRefineStep draft={draft} options={options} errors={errors} onChange={change} />}
-          {step === 2 && <WizardWhenStep draft={draft} options={options} errors={errors} onChange={change} huntId={hunt?.id} />}
+          {step === 0 && (
+            <Stack spacing={2.5}>
+              <WizardProviderStep
+                provider={chosen}
+                editing={Boolean(hunt)}
+                providers={providers.providers}
+                providersLoading={providers.loading}
+                providersFailed={Boolean(providers.errorCode)}
+                onRetryProviders={() => void providers.reload()}
+                onSelect={selectProvider}
+                onOpenRisk={onOpenRisk}
+                error={errors.provider}
+              />
+              {optionsPending && !fetched.errorCode && (
+                <Box role="status" sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'text.secondary' }}>
+                  <CircularProgress size={16} /><Typography variant="body2">{wz.provider.optionsLoading}</Typography>
+                </Box>
+              )}
+              {optionsPending && fetched.errorCode && (
+                <Alert severity="error" action={<Button color="inherit" size="small" onClick={() => void fetched.reload()}>{t.page.retry}</Button>}>
+                  {wz.provider.optionsError}
+                </Alert>
+              )}
+              {chosen && (
+                <WizardAiSuggestPanel
+                  provider={chosen}
+                  ai={draft.ai}
+                  available={aiAvailable}
+                  ready={Boolean(providerOptions)}
+                  loading={aiSuggest.loading}
+                  errorCode={aiSuggest.errorCode}
+                  remainingToday={aiRemaining}
+                  intentError={errors.aiIntent}
+                  onChange={changeAi}
+                  onGenerate={() => void generate()}
+                />
+              )}
+            </Stack>
+          )}
+          {step > 0 && !providerOptions && (
+            <Box role="status" sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress aria-label={wz.provider.optionsLoading} /></Box>
+          )}
+          {step === 1 && providerOptions && <WizardWhatStep draft={draft} options={providerOptions} errors={errors} onChange={change} onPreset={choosePreset} />}
+          {step === 2 && providerOptions && <WizardRefineStep draft={draft} options={providerOptions} errors={errors} onChange={change} />}
+          {step === 3 && providerOptions && <WizardWhenStep draft={draft} options={providerOptions} errors={errors} onChange={change} huntId={hunt?.id} />}
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 1.5, gap: 1, flexWrap: 'wrap' }}>
           <Button color="inherit" onClick={requestCancel} disabled={saving} sx={{ mr: 'auto' }}>{wz.cancel}</Button>
@@ -167,14 +278,14 @@ function HuntWizardBody({ options, hunt, onClose, onSaved }: HuntWizardDialogPro
             </Button>
           )}
           {!last && (
-            <Button variant="contained" disableElevation onClick={next} endIcon={<AppIcon icon={ArrowRight} size="sm" />}>{wz.next}</Button>
+            <Button variant="contained" disableElevation onClick={next} disabled={optionsPending || aiSuggest.loading} endIcon={<AppIcon icon={ArrowRight} size="sm" />}>{wz.next}</Button>
           )}
           {last && (
             <Button
               variant="contained"
               disableElevation
               onClick={save}
-              disabled={saving}
+              disabled={saving || !providerOptions}
               startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <AppIcon icon={Save} size="sm" />}
             >
               {saving ? wz.saving : wz.save}

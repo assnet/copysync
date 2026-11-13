@@ -11,6 +11,7 @@ import { HuntFindsTab } from '@/features/offerHunter/components/detail/HuntFinds
 import { HuntRunsTab } from '@/features/offerHunter/components/detail/HuntRunsTab';
 import { RunResultPanel } from '@/features/offerHunter/components/RunResultPanel';
 import { HuntWizardDialog } from '@/features/offerHunter/components/wizard/HuntWizardDialog';
+import { providerOf } from '@/features/offerHunter/providers';
 
 const d = t.detail;
 
@@ -32,7 +33,8 @@ export function OfferHunterDetailPage() {
   const [ui, setUi] = usePersistedState<DetailUiState>(`offerHunter.detail.${huntId}`, { tab: 'finds', openFindId: null, editing: false }, { scope: 'tab', version: 1 });
   const huntRes = useOfferHunt(huntId);
   const { hunt, run, running, lastRun, clearLastRun, setActive, setData } = huntRes;
-  const { options, blockedBy } = useHuntOptions();
+  // Opções e portões da loja desta caçada (só depois de carregá-la)
+  const { options, blockedBy } = useHuntOptions(hunt ? providerOf(hunt) : null);
   const finds = useHuntFinds(huntId);
   const runs = useHuntRuns(huntId);
   const rankings = useRunRankings(huntId);
@@ -106,6 +108,7 @@ export function OfferHunterDetailPage() {
             running={running}
             result={lastRun}
             error={runError}
+            provider={providerOf(hunt)}
             onClose={() => { clearLastRun(); setRunError(null); }}
           />
         </Box>

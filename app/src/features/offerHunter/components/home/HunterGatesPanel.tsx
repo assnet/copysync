@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { CircleCheck, CircleDashed, Info, KeyRound, Lock, ShieldAlert, Users, type LucideIcon } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { AFFILIATE_CREDENTIALS_PATH, AFFILIATE_PLANS_PATH } from '@/features/navigation/model';
-import { offerHunterStrings, type HunterRiskProvider } from '../../strings';
+import { gateCopy, offerHunterStrings, sourceStatusText, type HunterRiskProvider } from '../../strings';
 import { HUNT_BLOCKING_GATES } from '../../hooks';
 import type { HuntGateKey, HuntOptions } from '../../types';
 
@@ -45,7 +45,7 @@ export function HunterGatesPanel({ options, blockedBy, provider = 'SHEIN', onOpe
   const planClosed = !gates.plan || !gates.hunterEntitlement;
   // `sourceStatus` só acrescenta quando a credencial existe mas a fonte falha (rejeitada/fora do ar).
   const sourceNote = gates.credential && (sourceStatus === 'CREDENTIAL_REJECTED' || sourceStatus === 'UNAVAILABLE')
-    ? t.sourceStatus[sourceStatus]
+    ? sourceStatusText(sourceStatus, provider)
     : null;
 
   const steps = HUNT_BLOCKING_GATES.filter((k) => k !== 'hunterEntitlement' || gates.plan);
@@ -63,11 +63,11 @@ export function HunterGatesPanel({ options, blockedBy, provider = 'SHEIN', onOpe
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ xs: 'flex-start', sm: 'center' }}>
             <Box sx={{ color: 'primary.main', display: 'inline-flex' }}><AppIcon icon={Lock} size="lg" /></Box>
             <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-              <Typography variant="subtitle1" fontWeight={700}>{t.gates[blockedBy].title}</Typography>
-              <Typography variant="body2" color="text.secondary">{t.gates[blockedBy].text}</Typography>
+              <Typography variant="subtitle1" fontWeight={700}>{gateCopy(blockedBy, provider).title}</Typography>
+              <Typography variant="body2" color="text.secondary">{gateCopy(blockedBy, provider).text}</Typography>
             </Box>
             <Button variant="contained" onClick={() => act(blockedBy)} sx={{ flexShrink: 0 }}>
-              {t.gates[blockedBy].action}
+              {gateCopy(blockedBy, provider).action}
             </Button>
           </Stack>
         </Paper>
@@ -104,8 +104,8 @@ export function HunterGatesPanel({ options, blockedBy, provider = 'SHEIN', onOpe
                     <AppIcon icon={ok ? CircleCheck : current ? GATE_ICONS[key] : CircleDashed} size="md" label={ok ? t.gatesPanel.done : t.gatesPanel.pending} />
                   </Box>
                   <Box sx={{ flex: '1 1 200px', minWidth: 0 }}>
-                    <Typography variant="body2" fontWeight={600} color={ok ? 'text.secondary' : 'text.primary'}>{ok ? t.gates[key].doneTitle : t.gates[key].title}</Typography>
-                    {!ok && <Typography variant="caption" color="text.secondary" display="block">{t.gates[key].text}</Typography>}
+                    <Typography variant="body2" fontWeight={600} color={ok ? 'text.secondary' : 'text.primary'}>{ok ? gateCopy(key, provider).doneTitle : gateCopy(key, provider).title}</Typography>
+                    {!ok && <Typography variant="caption" color="text.secondary" display="block">{gateCopy(key, provider).text}</Typography>}
                   </Box>
                   {!ok && (
                     <Button
@@ -116,7 +116,7 @@ export function HunterGatesPanel({ options, blockedBy, provider = 'SHEIN', onOpe
                       onClick={() => act(key)}
                       sx={{ flexShrink: 0, ml: { xs: 4.5, sm: 0 } }}
                     >
-                      {t.gates[key].action}
+                      {gateCopy(key, provider).action}
                     </Button>
                   )}
                 </Box>

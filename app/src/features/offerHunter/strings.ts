@@ -4,10 +4,11 @@
  * sem nome de marca (white label). O marketplace (SHEIN) é citado por ser a fonte das ofertas.
  */
 import type {
-  HuntCategorySourceStatus, HuntCommissionOperator, HuntRejectionKey, HuntGateKey, HuntPreset, HuntScoreFactorKey, HuntSort,
-  OfferHuntDeliveryMode, OfferHuntFindStatus, OfferHuntPauseReason, OfferHuntRunStatus, OfferHuntRunTrigger,
+  HuntCategorySourceStatus, HuntCommissionOperator, HuntRejectionKey, HuntGateKey, HuntPreset, HuntProvider, HuntScoreFactorKey,
+  HuntSort, MlHuntSort, OfferHuntDeliveryMode, OfferHuntFindStatus, OfferHuntPauseReason, OfferHuntRunStatus, OfferHuntRunTrigger,
   OfferHuntStatus,
 } from './types';
+import { HUNT_AI_SUGGESTIONS_PER_DAY } from './types';
 import { formatDecimal, formatInteger, formatRating } from './format';
 
 /**
@@ -47,10 +48,51 @@ const RISK_NOTICE_COMMON = {
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 
+/** Nome da loja com as preposições do português (a SHEIN / o Mercado Livre). */
+interface BrandWords { name: string; of: string; at: string; subject: string; subjectLower: string }
+const BRANDS: Record<HuntProvider, BrandWords> = {
+  SHEIN: { name: 'SHEIN', of: 'da SHEIN', at: 'na SHEIN', subject: 'A SHEIN', subjectLower: 'a SHEIN' },
+  MERCADO_LIVRE: { name: 'Mercado Livre', of: 'do Mercado Livre', at: 'no Mercado Livre', subject: 'O Mercado Livre', subjectLower: 'o Mercado Livre' },
+};
+
+/** Rótulos da comissão por loja: Shein separa 1ª compra × recompra; no ML é um percentual só. */
+interface CommissionWords {
+  label: string; condition: string; percent: string; tip: string; chip: string; chipTip: string; minValue: string;
+  minValueTip: string; rejection: string; rejectionValue: string; detail: string;
+}
+const COMMISSION: Record<HuntProvider, CommissionWords> = {
+  SHEIN: {
+    label: 'Comissão de 1ª compra',
+    condition: 'Condição da comissão de 1ª compra',
+    percent: 'Percentual da comissão de 1ª compra',
+    tip: 'Percentual de comissão de 1ª compra (cliente novo na SHEIN). A condição decide se vale maior, igual ou menor. "Qualquer comissão" não filtra.',
+    chip: 'Comissão 1ª compra',
+    chipTip: 'Comissão de 1ª compra',
+    minValue: 'Comissão mínima (R$)',
+    minValueTip: 'Valor mínimo que você ganha na 1ª compra do cliente.',
+    rejection: 'comissão de 1ª compra',
+    rejectionValue: 'comissão de 1ª compra em R$',
+    detail: 'Comissão (1ª compra)',
+  },
+  MERCADO_LIVRE: {
+    label: 'Comissão',
+    condition: 'Condição da comissão',
+    percent: 'Percentual da comissão',
+    tip: 'Percentual de comissão por venda informado pelo Mercado Livre (já soma os ganhos extras). A condição decide se vale maior, igual ou menor. "Qualquer comissão" não filtra.',
+    chip: 'Comissão',
+    chipTip: 'Comissão',
+    minValue: 'Comissão mínima (R$)',
+    minValueTip: 'Valor mínimo que você ganha por venda, calculado pelo percentual e pelo preço.',
+    rejection: 'comissão',
+    rejectionValue: 'comissão em R$',
+    detail: 'Comissão',
+  },
+};
+
 export const offerHunterStrings = {
   page: {
     title: 'Caçador de Ofertas',
-    subtitle: 'Busca as melhores ofertas da SHEIN no seu horário, escolhe as que mais valem a pena e manda para o seu grupo.',
+    subtitle: 'Busca as melhores ofertas da SHEIN e do Mercado Livre no seu horário, escolhe as que mais valem a pena e manda para o seu grupo.',
     menuLabel: 'Caçador de Ofertas',
     previewBadge: 'Prévia',
     loading: 'Carregando o caçador…',
@@ -95,7 +137,7 @@ export const offerHunterStrings = {
     title: 'Suas caçadas',
     count: (n: number, max: number) => `${n} de ${max} ${plural(max, 'caçada', 'caçadas')}`,
     create: 'Nova caçada',
-    createTooltip: 'Monta uma caçada em 3 passos',
+    createTooltip: 'Monta uma caçada em 4 passos',
     limitTooltip: (max: number) => `Você já tem ${max} ${plural(max, 'caçada', 'caçadas')}, o máximo. Exclua uma para criar outra.`,
     emptyTitle: 'Nenhuma caçada ainda',
     emptyHint: 'Crie uma caçada para receber ofertas escolhidas a dedo, sem precisar procurar.',
@@ -139,7 +181,7 @@ export const offerHunterStrings = {
   wizard: {
     createTitle: 'Nova caçada',
     editTitle: 'Editar caçada',
-    steps: ['O que caçar', 'Refino', 'Quando e onde'],
+    steps: ['Loja', 'O que caçar', 'Refino', 'Quando e onde'],
     stepsLabel: 'Etapas da caçada',
     stepDone: 'concluído',
     next: 'Continuar',
@@ -151,6 +193,80 @@ export const offerHunterStrings = {
     discardTitle: 'Descartar rascunho?',
     discardText: 'As escolhas desta caçada ainda não foram salvas.',
     discardConfirm: 'Descartar',
+
+    /** Passo 0: loja do caçador + "Deixar a IA decidir os filtros". */
+    provider: {
+      title: 'Onde caçar',
+      subtitle: 'Escolha a loja em que o caçador vai buscar as ofertas.',
+      editSubtitle: 'A loja fica fixa depois de criada. Para caçar em outra loja, crie uma nova caçada.',
+      gridLabel: 'Lojas do caçador',
+      fixedLabel: 'Loja desta caçada',
+      loading: 'Carregando as lojas…',
+      loadError: 'Não conseguimos carregar as lojas.',
+      optionsLoading: 'Carregando as opções da loja…',
+      optionsError: 'Não conseguimos carregar as opções desta loja.',
+      required: 'Escolha uma loja para continuar.',
+      selected: 'Selecionada',
+      states: {
+        READY: 'Pronta para caçar',
+        NO_PLAN: 'Fora do seu plano',
+        NO_ACCOUNT: 'Conta não conectada',
+        ACCOUNT_REJECTED: 'Conta saiu da sessão',
+        NO_RISK: 'Aviso de risco pendente',
+      },
+      stateHints: {
+        READY: 'Conta conectada e aviso aceito.',
+        NO_PLAN: 'O seu plano não inclui esta loja no caçador.',
+        NO_ACCOUNT: 'Dá para montar a caçada agora. Para ligar, conecte a sua conta de afiliado.',
+        ACCOUNT_REJECTED: 'Dá para montar a caçada agora. Para ligar, entre de novo pela extensão.',
+        NO_RISK: 'Dá para montar a caçada agora. Para ligar, um administrador aceita o aviso de risco.',
+      },
+      actions: {
+        NO_PLAN: 'Ver planos',
+        NO_ACCOUNT: 'Conectar conta',
+        ACCOUNT_REJECTED: 'Reconectar conta',
+        NO_RISK: 'Ler aviso',
+      },
+      actionTooltip: (action: string, brand: string) => `${action}: ${brand}`,
+    },
+
+    /** "Deixar a IA decidir os filtros": configura a caçada uma vez (diferente de "Escolha com IA" do Refino). */
+    aiSuggest: {
+      title: 'Deixar a IA decidir os filtros',
+      hint: 'Conte o que quer caçar e a IA monta o rascunho: nome, categoria, palavra-chave, ordem e filtros. Nada é salvo até você conferir e salvar.',
+      difference: 'Isto só preenche a configuração agora. O "Escolha com IA", no Refino, é outra coisa: escolhe as ofertas a cada busca.',
+      unavailable: 'Nenhum provedor de IA disponível na sua conta. Configure a IA para usar este atalho.',
+      chooseStoreFirst: 'Escolha a loja para usar a IA.',
+      intent: 'O que você quer caçar?',
+      intentPlaceholder: 'Ex.: tênis de corrida masculino até R$ 300 com boa comissão',
+      intentCounter: (n: number, max: number) => `${n}/${max}`,
+      pickProduct: 'Deixar a IA escolher o produto',
+      pickProductHint: 'A IA olha uma amostra de ofertas da loja e escolhe o tipo de produto com mais chance de vender.',
+      needInput: 'Descreva o que quer caçar ou deixe a IA escolher o produto.',
+      generate: 'Gerar com IA',
+      regenerate: 'Gerar de novo',
+      generating: 'Gerando a sugestão…',
+      generateTooltip: 'A IA preenche o rascunho. Cada geração conta no limite diário.',
+      remaining: (n: number) => `${n} de ${HUNT_AI_SUGGESTIONS_PER_DAY} ${plural(HUNT_AI_SUGGESTIONS_PER_DAY, 'sugestão restante', 'sugestões restantes')} hoje`,
+      applied: 'Rascunho preenchido pela IA. Confira os campos marcados nos próximos passos antes de salvar.',
+      replaces: 'Gerar de novo troca os filtros pela nova sugestão.',
+      dropped: (labels: string[]) => `${labels.length === 1 ? 'Uma sugestão foi ignorada' : `${labels.length} sugestões foram ignoradas`} por não valer nesta loja: ${labels.join(', ')}.`,
+      hintAria: 'Sugerido pela IA: ver motivo',
+      hintTitle: 'Sugerido pela IA',
+      hintNoReason: 'A IA preencheu este campo. Confira antes de salvar.',
+      otherField: 'outro campo',
+      errors: {
+        OFFER_HUNT_AI_SUGGEST_DAILY_LIMIT: `Você já usou as ${HUNT_AI_SUGGESTIONS_PER_DAY} sugestões de IA de hoje. O contador zera à meia-noite; até lá, monte a caçada à mão.`,
+        OFFER_HUNT_AI_SUGGEST_INPUT_REQUIRED: 'Descreva o que quer caçar ou deixe a IA escolher o produto.',
+        OFFER_HUNT_AI_SUGGEST_INVALID_OUTPUT: 'A IA não devolveu uma sugestão aproveitável. Descreva de outro jeito ou monte a caçada à mão.',
+        OFFER_HUNT_AI_SUGGEST_PROVIDER_UNAVAILABLE: 'Esta loja ainda não aceita sugestões de IA.',
+        AI_NOT_CONFIGURED: 'Nenhum provedor de IA disponível na sua conta. Configure a IA para usar este atalho.',
+        PLAN_FEATURE_UNAVAILABLE: 'O seu plano não inclui esta loja no caçador.',
+        OFFER_HUNTER_UNAVAILABLE: 'O caçador não está disponível para a sua conta.',
+        RATE_LIMITED: 'Muitas tentativas seguidas. Aguarde um pouco e tente de novo.',
+      } as Record<string, string>,
+      genericError: 'Não conseguimos gerar a sugestão agora. Tente de novo.',
+    },
 
     what: {
       title: 'O que caçar',
@@ -167,6 +283,13 @@ export const offerHunterStrings = {
       keyword: 'Palavra-chave',
       keywordPlaceholder: 'Ex.: vestido',
       keywordHelp: 'Opcional. Só ofertas com esta palavra no título.',
+      /** Filtros da fonte (lojas que filtram do lado delas, como o Mercado Livre). */
+      sourceSort: 'Ordem da busca',
+      sourceSortTip: 'Ordem em que a loja devolve as ofertas. A pontuação continua decidindo quais são escolhidas.',
+      extraEarningsOnly: 'Só com ganhos extras',
+      extraEarningsOnlyHint: 'Só produtos com ganhos extras de comissão no programa de afiliados.',
+      bestSellersOnly: 'Só mais vendidos',
+      bestSellersOnlyHint: 'Só produtos que a loja marca como mais vendidos.',
     },
 
     refine: {
@@ -245,7 +368,7 @@ export const offerHunterStrings = {
     tips: {
       name: 'Um nome para você reconhecer a caçada na lista.',
       preset: 'Um ponto de partida: preenche os filtros (como a comissão de 1ª compra). Você pode ajustar depois.',
-      category: 'Só ofertas desta categoria da SHEIN. Vazio = todas.',
+      category: 'Só ofertas desta categoria da loja. Vazio = todas.',
       keyword: 'Palavra que precisa aparecer no título da oferta.',
       price: 'Ofertas fora da faixa ficam de fora. Nas pontas da barra, sem limite.',
       minDiscount: 'Desconto mínimo sobre o preço cheio.',
@@ -253,7 +376,7 @@ export const offerHunterStrings = {
       commission: 'Percentual de comissão de 1ª compra (cliente novo na SHEIN). A condição decide se vale maior, igual ou menor. "Qualquer comissão" não filtra.',
       minCommissionValue: 'Valor mínimo que você ganha na 1ª compra do cliente.',
       minRating: 'Nota média mínima, de 0 a 5.',
-      minSales: 'A SHEIN informa vendas por faixa (ex.: 100+).',
+      minSales: 'A loja informa vendas por faixa (ex.: 100+).',
       minReviews: 'Quantidade mínima de avaliações.',
       endsWithin: 'Só ofertas que terminam em até tantos dias.',
       topN: 'Quantas ofertas, no máximo, cada busca escolhe.',
@@ -278,7 +401,7 @@ export const offerHunterStrings = {
     ratingUnit: 'de 5',
     daysUnit: 'dias',
     priceMaxOpen: (label: string) => `${label}+`,
-    sortHintLabel: (sort: string) => `Ordem sugerida à SHEIN: ${sort}`,
+    sortHintLabel: (sort: string, brand = 'SHEIN') => `Ordem sugerida à ${brand}: ${sort}`,
     intervalHelp: (min: string) => `O menor intervalo é ${min}.`,
     presetsLabel: 'Predefinições',
     presetSelected: 'Selecionada',
@@ -305,6 +428,13 @@ export const offerHunterStrings = {
     CUSTOM: { label: 'Personalizada', hint: 'Você escolhe todos os filtros.' },
   } satisfies Record<HuntPreset, { label: string; hint: string }>,
 
+  /** Ordenações da fonte do Mercado Livre (`sourceOptions.sort`). */
+  mlSorts: {
+    relevance: 'Mais relevantes',
+    lowest_price: 'Menor preço',
+    highest_price: 'Maior preço',
+  } satisfies Record<MlHuntSort, string>,
+
   sorts: {
     RECOMMENDED: 'Recomendados',
     TOP_RATED: 'Mais bem avaliados',
@@ -325,7 +455,7 @@ export const offerHunterStrings = {
     sales: { label: 'Vendas', hint: 'Quantas vezes o produto já foi vendido.' },
     rating: { label: 'Nota', hint: 'Média das avaliações dos compradores.' },
     reviews: { label: 'Avaliações', hint: 'Quantidade de avaliações: mais avaliações, nota mais confiável.' },
-    rank: { label: 'Destaque', hint: 'Posição do produto nos destaques da SHEIN.' },
+    rank: { label: 'Destaque', hint: 'Posição do produto nos destaques da loja.' },
     discount: { label: 'Desconto', hint: 'Diferença entre o preço cheio e o preço atual.' },
     priceBand: { label: 'Faixa de preço', hint: 'Preços na faixa que mais converte ganham pontos.' },
     extraCommission: { label: 'Comissão extra', hint: 'Bônus de comissão em campanha.' },
@@ -350,6 +480,8 @@ export const offerHunterStrings = {
     discount: (pct: number) => `${Math.round(pct)}% off`,
     commission: 'Comissão',
     returningCommission: 'Comissão de recompra',
+    estimated: 'estimada',
+    estimatedTip: 'Calculada pelo percentual que a loja informa e pelo preço. O valor final pode mudar na venda.',
     extraCommission: 'Comissão extra',
     rating: 'Nota',
     sales: (bucket: number) => `${bucket}+ vendas`,
@@ -542,7 +674,7 @@ export const offerHunterStrings = {
     OFFER_HUNT_RUN_THROTTLED: 'Muitas buscas hoje. Tente de novo amanhã.',
     OFFER_HUNT_LIMIT_REACHED: 'Você já tem o máximo de caçadas. Exclua uma para criar outra.',
     OFFER_HUNT_DESTINATION_REQUIRED: 'Escolha o grupo de destino antes de continuar.',
-    OFFER_HUNT_SOURCE_UNAVAILABLE: 'A SHEIN não respondeu agora. Tente de novo em alguns minutos.',
+    OFFER_HUNT_SOURCE_UNAVAILABLE: 'A loja não respondeu agora. Tente de novo em alguns minutos.',
     OFFER_HUNT_NOT_FOUND: 'Essa caçada não existe mais.',
     OFFER_HUNT_FIND_INVALID_STATE: 'Esse achado já foi revisado.',
     OFFER_HUNT_CURSOR_INVALID: 'A lista mudou. Recarregamos do início.',
@@ -553,8 +685,8 @@ export const offerHunterStrings = {
     PLAN_FEATURE_UNAVAILABLE: 'O caçador não está liberado no seu plano.',
     MARKETPLACE_RISK_NOT_ACCEPTED: 'Aceite o aviso de risco do caçador para continuar.',
     MARKETPLACE_RISK_NOTICE_OUTDATED: 'O aviso de risco foi atualizado. Recarregue a página para ler a versão atual.',
-    AFFILIATE_CREDENTIAL_REJECTED: 'A sua conta da SHEIN saiu da sessão. Entre de novo pela extensão.',
-    AFFILIATE_CREDENTIAL_REQUIRED: 'Conecte a sua conta de afiliado da SHEIN.',
+    AFFILIATE_CREDENTIAL_REJECTED: 'A sua conta de afiliado da loja saiu da sessão. Entre de novo pela extensão.',
+    AFFILIATE_CREDENTIAL_REQUIRED: 'Conecte a sua conta de afiliado da loja.',
     SESSION_NOT_CONNECTED: 'A sessão do grupo de destino está desconectada.',
     OFFER_INVALID_INPUT: 'Confira os campos destacados.',
     VALIDATION_ERROR: 'Confira os campos destacados.',
@@ -618,7 +750,7 @@ export const offerHunterStrings = {
     listLabel: 'Lista de caçadas',
     emptyCta: 'Criar a primeira caçada',
     emptySteps: [
-      'Você escolhe o que caçar: categoria, comissão de 1ª compra, preço e desconto.',
+      'Você escolhe a loja e o que caçar: categoria, comissão, preço e desconto. Se preferir, a IA monta os filtros.',
       'No horário definido, o caçador busca e dá uma pontuação a cada oferta.',
       'As melhores vão para o grupo de destino, com o seu link de afiliado.',
     ] as readonly string[],
@@ -640,13 +772,18 @@ export const offerHunterStrings = {
     /** Chips do resumo (cartão e cabeçalho do detalhe): curtos, explicação no Tooltip. */
     chips: {
       discount: (n: number) => `Desconto ≥ ${n}%`,
-      commission: (symbol: string, n: number) => `Comissão 1ª compra ${symbol} ${formatDecimal(n)}%`,
-      commissionTip: (label: string, n: number) => `Comissão de 1ª compra ${label.toLowerCase()} ${formatDecimal(n)}%.`,
-      commissionValue: (brl: string) => `Comissão 1ª compra ≥ ${brl}`,
+      commission: (symbol: string, n: number, name = 'Comissão 1ª compra') => `${name} ${symbol} ${formatDecimal(n)}%`,
+      commissionTip: (label: string, n: number, name = 'Comissão de 1ª compra') => `${name} ${label.toLowerCase()} ${formatDecimal(n)}%.`,
+      commissionValue: (brl: string, name = 'Comissão 1ª compra') => `${name} ≥ ${brl}`,
       rating: (n: number) => `Nota ≥ ${formatRating(n)}`,
       sales: (n: number) => `Vendas ≥ ${formatInteger(n)}`,
       reviews: (n: number) => `Avaliações ≥ ${formatInteger(n)}`,
       onlyWithExtra: 'Só com extra',
+      sourceSort: (label: string) => `Ordem: ${label}`,
+      extraEarningsOnly: 'Só com ganhos extras',
+      bestSellersOnly: 'Só mais vendidos',
+      aiConfigured: 'Configurada pela IA',
+      aiConfiguredTip: 'Os filtros desta caçada vieram de uma sugestão da IA, conferida antes de salvar.',
       endsWithin: (n: number) => `Termina em até ${n} ${plural(n, 'dia', 'dias')}`,
     },
     nextRunOverdue: 'Próxima busca em instantes',
@@ -718,6 +855,67 @@ export const offerHunterStrings = {
 } as const;
 
 export type OfferHunterStrings = typeof offerHunterStrings;
+
+/** Nome da loja como aparece nos textos do caçador. */
+export const huntBrandName = (provider: HuntProvider) => BRANDS[provider].name;
+
+/** Rótulos da comissão da loja (filtro, chips, recusas, detalhe). */
+export const commissionCopy = (provider: HuntProvider): CommissionWords => COMMISSION[provider];
+
+type GateCopy = { title: string; doneTitle: string; text: string; action: string };
+
+/** Texto do portão com o nome da loja onde importa (conta de afiliado). Padrão SHEIN. */
+export function gateCopy(key: HuntGateKey, provider: HuntProvider = 'SHEIN'): GateCopy {
+  const base = offerHunterStrings.gates[key];
+  if (key !== 'credential') return base;
+  const b = BRANDS[provider];
+  return {
+    ...base,
+    title: `Conecte a sua conta de afiliado ${b.of}`,
+    doneTitle: `Conta de afiliado ${b.of} conectada`,
+    text: `Entre ${b.at} pela extensão do navegador para o caçador gerar links com a sua conta.`,
+  };
+}
+
+/** Estado das categorias vindas da loja. */
+export function sourceStatusText(status: HuntCategorySourceStatus, provider: HuntProvider = 'SHEIN'): string {
+  const b = BRANDS[provider];
+  switch (status) {
+    case 'NO_CREDENTIAL': return `Conecte a sua conta ${b.of} para carregar as categorias.`;
+    case 'CREDENTIAL_REJECTED': return `A sua conta ${b.of} saiu da sessão. Entre de novo pela extensão.`;
+    case 'UNAVAILABLE': return `${b.subject} não respondeu agora. Você pode salvar sem categoria e tentar de novo depois.`;
+    default: return offerHunterStrings.sourceStatus[status];
+  }
+}
+
+/** Motivo da pausa com o nome da loja. */
+export function pauseReasonText(reason: OfferHuntPauseReason, provider: HuntProvider = 'SHEIN'): string {
+  const b = BRANDS[provider];
+  if (reason === 'SOURCE_UNAVAILABLE') return `Pausada porque ${b.subjectLower} não respondeu várias vezes seguidas. Retome quando quiser tentar de novo.`;
+  if (reason === 'CREDENTIAL_REJECTED') return `Pausada porque a sua conta de afiliado ${b.of} saiu da sessão. Entre de novo pela extensão e retome.`;
+  return offerHunterStrings.pauseReasons[reason];
+}
+
+/** Rótulo curto de um campo do rascunho (caminho da API) para listar sugestões ignoradas pela IA. */
+export function draftFieldLabel(path: string, provider: HuntProvider): string {
+  const w = offerHunterStrings.wizard;
+  const c = COMMISSION[provider];
+  const labels: Record<string, string> = {
+    name: w.what.name, sort: w.what.sort, categoryId: w.what.category, keyword: w.what.keyword, 'sourceOptions.sort': w.what.sourceSort,
+    'sourceOptions.extraEarningsOnly': w.what.extraEarningsOnly, 'sourceOptions.bestSellersOnly': w.what.bestSellersOnly,
+    'filters.minPriceCents': w.refine.price, 'filters.maxPriceCents': w.refine.price, 'filters.minDiscountPct': w.refine.minDiscount,
+    'filters.minCommissionPct': c.label, 'filters.minCommissionCents': c.minValue, 'filters.minRating': w.refine.minRating,
+    'filters.minSales': w.refine.minSales, 'filters.minReviews': w.refine.minReviews, 'filters.onlyWithExtra': w.refine.onlyWithExtra,
+    'filters.endsWithinDays': w.refine.endsWithin, aiEnabled: w.refine.ai, topN: w.refine.topN,
+  };
+  return labels[path] ?? w.aiSuggest.otherField;
+}
+
+/** Mensagem do erro da sugestão da IA por código. */
+export function aiSuggestErrorMessage(code: string | null): string {
+  const a = offerHunterStrings.wizard.aiSuggest;
+  return (code && a.errors[code]) || a.genericError;
+}
 
 /** Mensagem para o erro rejeitado pelo `apiClient` (código desconhecido → genérico). */
 export function offerHunterErrorMessage(err: unknown): string {

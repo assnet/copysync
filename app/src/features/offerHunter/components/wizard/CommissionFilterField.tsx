@@ -1,7 +1,7 @@
-import { useId } from 'react';
+import { useId, type ReactNode } from 'react';
 import { Box, Chip, MenuItem, Slider, Stack, TextField, Typography } from '@mui/material';
-import { HUNT_COMMISSION_OPERATORS, HUNT_COMMISSION_PCT_MAX, type HuntCommissionOperator, type HuntFilters } from '../../types';
-import { offerHunterStrings as t } from '../../strings';
+import { HUNT_COMMISSION_OPERATORS, HUNT_COMMISSION_PCT_MAX, type HuntCommissionOperator, type HuntFilters, type HuntProvider } from '../../types';
+import { commissionCopy, offerHunterStrings as t } from '../../strings';
 import { formatDecimal } from '../../format';
 import { FieldHeading } from './fields';
 
@@ -13,6 +13,9 @@ const DEFAULT_PCT = 15;
 const ANY = 'ANY';
 
 interface Props {
+  /** Loja da caçada: rótulo da comissão ("de 1ª compra" na Shein, só "Comissão" no ML). Padrão SHEIN. */
+  provider?: HuntProvider;
+  aiHint?: ReactNode;
   filters: Pick<HuntFilters, 'minCommissionPct' | 'commissionOperator'>;
   error?: string;
   onChange: (patch: Pick<HuntFilters, 'minCommissionPct' | 'commissionOperator'>) => void;
@@ -22,7 +25,8 @@ interface Props {
  * Filtro de comissão % (cliente novo): condição por extenso (símbolo ao lado) + barra 0–50, passo 1, com valor
  * visível e atalhos. "Qualquer comissão" = sem filtro (percentual e operador null).
  */
-export function CommissionFilterField({ filters, error, onChange }: Props) {
+export function CommissionFilterField({ provider = 'SHEIN', aiHint, filters, error, onChange }: Props) {
+  const cc = commissionCopy(provider);
   const headingId = useId();
   const helpId = useId();
   const op = filters.minCommissionPct == null ? null : (filters.commissionOperator ?? 'GTE');
@@ -39,7 +43,7 @@ export function CommissionFilterField({ filters, error, onChange }: Props) {
 
   return (
     <Box role="group" aria-labelledby={headingId}>
-      <FieldHeading id={headingId} label={r.commission} tip={t.wizard.tips.commission}>
+      <FieldHeading id={headingId} label={cc.label} tip={cc.tip} aiHint={aiHint}>
         {op && (
           <Typography variant="subtitle2" component="span" color="primary" sx={{ ml: 'auto', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
             {`${r.commissionOperators[op].symbol} ${formatDecimal(pct)}%`}
@@ -50,7 +54,7 @@ export function CommissionFilterField({ filters, error, onChange }: Props) {
         <TextField
           select
           size="small"
-          label={r.commissionCondition}
+          label={cc.condition}
           value={op ?? ANY}
           onChange={(e) => setOp(e.target.value)}
           fullWidth
@@ -71,7 +75,7 @@ export function CommissionFilterField({ filters, error, onChange }: Props) {
             valueLabelFormat={(v) => `${v}%`}
             getAriaValueText={(v) => `${v}%`}
             onChange={(_e, v) => setPct(v as number)}
-            slotProps={{ input: { 'aria-label': r.commissionPercent, 'aria-describedby': helpId } }}
+            slotProps={{ input: { 'aria-label': cc.percent, 'aria-describedby': helpId } }}
           />
         </Box>
         <Box role="group" aria-label={r.commissionShortcuts} sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>

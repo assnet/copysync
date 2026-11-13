@@ -10,7 +10,7 @@ import { HuntRunsTab } from './HuntRunsTab';
 import { RunResultPanel } from '../RunResultPanel';
 
 const run = (id: string, over: Partial<HuntRun> = {}): HuntRun => ({
-  id, huntId: 'h1', trigger: 'SCHEDULED', status: 'SUCCEEDED', errorCode: null, seenCount: 25, matchedCount: 0, chosenCount: 0,
+  id, provider: 'SHEIN', huntId: 'h1', trigger: 'SCHEDULED', status: 'SUCCEEDED', errorCode: null, seenCount: 25, matchedCount: 0, chosenCount: 0,
   sentCount: 0, aiUsed: false, aiFallback: false, rejectedBy: null, hasRanking: false,
   startedAt: '2026-11-12T10:00:00.000Z', finishedAt: '2026-11-12T10:00:05.000Z', ...over,
 });
@@ -18,7 +18,7 @@ const list = (items: HuntRun[]): HuntPagedList<HuntRun> => ({
   items, loading: false, loadingMore: false, hasMore: false, errorCode: null, loadMore: vi.fn(), reload: vi.fn(), replaceItem: vi.fn(),
 } as unknown as HuntPagedList<HuntRun>);
 const rankItem = {
-  goodsId: 'g1', title: 'Vestido', imageUrl: null, priceCents: 4990, discountPercent: 10, commissionPercent: 20, commissionCents: 998,
+  provider: 'SHEIN' as const, productId: 'g1', commissionEstimated: false, goodsId: 'g1', title: 'Vestido', imageUrl: null, priceCents: 4990, discountPercent: 10, commissionPercent: 20, commissionCents: 998,
   returningCommissionPercent: 4.9, returningCommissionCents: 245, extraCommissionCents: 0, salesBucket: 100, reviewsBucket: 50,
   rating: 4.5, score: 70, factors: [], aiReason: 'Boa comissão', chosen: true,
 };

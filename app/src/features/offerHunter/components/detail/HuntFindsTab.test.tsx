@@ -13,7 +13,7 @@ const props = (items: HuntFindsTabProps['items']): HuntFindsTabProps => ({
 describe('HuntFindsTab', () => {
   it('mostra a foto do achado; sem foto cai no ícone', () => {
     const { container } = render(<HuntFindsTab {...props([huntFind('1', { imageUrl: 'https://img.ltwebstatic.com/a.jpg' }), huntFind('2')])} />);
-    const imgs = container.querySelectorAll('img');
+    const imgs = [...container.querySelectorAll('img')].filter((i) => !i.closest('[data-testid^="provider-badge"]'));
     expect(imgs).toHaveLength(1);
     expect(imgs[0]).toHaveAttribute('src', 'https://img.ltwebstatic.com/a.jpg');
     expect(screen.getAllByTestId('hunt-find')).toHaveLength(2);
@@ -65,5 +65,24 @@ describe('HuntFindsTab', () => {
   it('achado sem oferta não mostra Reenviar', () => {
     render(<HuntFindsTab {...props([huntFind('1'), huntFind('2', { status: 'DISMISSED' })])} />);
     expect(screen.queryByRole('button', { name: 'Reenviar' })).not.toBeInTheDocument();
+  });
+
+  it('Mercado Livre: logo da loja, comissão "estimada" e sem recompra', () => {
+    render(<HuntFindsTab {...props([huntFind('9', {
+      provider: 'MERCADO_LIVRE', productId: 'MLB123456', goodsId: null, commissionEstimated: true, commissionPercent: 12,
+      commissionCents: 1200, returningCommissionPercent: null, returningCommissionCents: null,
+    })])} />);
+    expect(screen.getByTestId('provider-badge-MERCADO_LIVRE')).toHaveTextContent('Mercado Livre');
+    expect(screen.getByText('Comissão')).toBeInTheDocument();
+    expect(screen.getByTestId('commission-estimated')).toHaveTextContent('estimada');
+    expect(screen.queryByText('Comissão de recompra')).not.toBeInTheDocument();
+    expect(screen.queryByText('Comissão (1ª compra)')).not.toBeInTheDocument();
+  });
+
+  it('SHEIN: 1ª compra e recompra, sem "estimada"', () => {
+    render(<HuntFindsTab {...props([huntFind('1')])} />);
+    expect(screen.getByText('Comissão (1ª compra)')).toBeInTheDocument();
+    expect(screen.getByText('Comissão de recompra')).toBeInTheDocument();
+    expect(screen.queryByTestId('commission-estimated')).not.toBeInTheDocument();
   });
 });

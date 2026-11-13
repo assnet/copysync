@@ -4,8 +4,10 @@ import {
 } from '@mui/material';
 import { Bot, CalendarClock, ChevronRight, Clock, History, Pencil, Send, ShieldCheck, Trash2 } from 'lucide-react';
 import { AppIcon, OverflowTooltipText } from '@/components';
-import { offerHunterStrings } from '../../strings';
+import { offerHunterStrings, pauseReasonText } from '../../strings';
 import type { Hunt, HuntOptions } from '../../types';
+import { providerOf } from '../../providers';
+import { ProviderBadge } from '../ProviderBadge';
 import { isAutoPaused, lastRunLabel, nextRunLabel } from './huntSummary';
 import { HuntSummaryChips } from './HuntSummaryChips';
 
@@ -40,7 +42,8 @@ export function HuntCard({ hunt, options, nowMs, busy, blockedReason, onToggle, 
         borderLeftWidth: 4, borderLeftColor: active ? 'success.main' : autoPaused ? 'warning.main' : 'divider',
       }}
     >
-      <Stack direction="row" spacing={1} alignItems="flex-start">
+      <Stack direction="row" spacing={1.25} alignItems="flex-start">
+        <Box sx={{ pt: 0.25 }}><ProviderBadge provider={providerOf(hunt)} size={32} /></Box>
         <Box sx={{ minWidth: 0, flexGrow: 1 }}>
           <OverflowTooltipText text={hunt.name} typographyProps={{ id: titleId, variant: 'subtitle1', fontWeight: 700, component: 'h3' }} />
           <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mt: 0.25 }} flexWrap="wrap" useFlexGap>
@@ -70,7 +73,7 @@ export function HuntCard({ hunt, options, nowMs, busy, blockedReason, onToggle, 
       {autoPaused && hunt.pauseReason && (
         <Alert severity="warning" variant="outlined" sx={{ py: 0.25 }}>
           <AlertTitle sx={{ fontWeight: 600, mb: 0 }}>{t.autoPausedTitle}</AlertTitle>
-          <Typography variant="body2">{t.pauseReasons[hunt.pauseReason]}</Typography>
+          <Typography variant="body2">{pauseReasonText(hunt.pauseReason, providerOf(hunt))}</Typography>
         </Alert>
       )}
 

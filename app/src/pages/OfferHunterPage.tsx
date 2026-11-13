@@ -8,10 +8,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/contexts/TenantContext';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { serverNow } from '@/services/serverClock';
-import { offerHunterErrorMessage, offerHunterStrings as t, type HunterRiskProvider } from '@/features/offerHunter/strings';
+import { gateCopy, offerHunterErrorMessage, offerHunterStrings as t, type HunterRiskProvider } from '@/features/offerHunter/strings';
 import {
-  useHuntOptions, useHunterSettings, useHuntUsage, useOfferHunts,
+  firstClosedGate, useHuntOptions, useHuntProviders, useHunterSettings, useHuntUsage, useOfferHunts,
 } from '@/features/offerHunter/hooks';
+import { pickHomeProvider, providerOf } from '@/features/offerHunter/providers';
 import type { Hunt } from '@/features/offerHunter/types';
 import { HuntWizardDialog } from '@/features/offerHunter/components/wizard/HuntWizardDialog';
 import { HunterRiskNoticeDialog } from '@/features/offerHunter/components/HunterRiskNoticeDialog';
@@ -47,7 +48,10 @@ export function OfferHunterPage() {
   // Aviso do caçador: admin do tenant ou super admin (a prévia só aparece para ele; API aceita no escopo OFFER_HUNTER).
   const canAcceptRisk = isSuperAdmin || tenants.find((x) => x.id === activeTenantId)?.role === 'ADMIN';
 
-  const opts = useHuntOptions();
+  // Painel de portões e limites da loja "da vez": a 1ª pronta; senão a 1ª com plano (falha das lojas = SHEIN)
+  const providers = useHuntProviders();
+  const homeProvider = providers.providers ? pickHomeProvider(providers.providers) : providers.errorCode ? 'SHEIN' : null;
+  const opts = useHuntOptions(homeProvider);
   const usage = useHuntUsage();
   const settings = useHunterSettings();
   const hunts = useOfferHunts();
@@ -58,6 +62,8 @@ export function OfferHunterPage() {
   const [filter, setFilter] = usePersistedState<HuntFilter>('offerHunter.home.filter', 'ALL', { scope: 'tab', version: 1 });
   const [riskOpen, setRiskOpen] = useState(false);
   const [riskProvider, setRiskProvider] = useState<HunterRiskProvider>('SHEIN');
+  // Sobe a cada aceite: o assistente aberto recarrega o estado das lojas
+  const [riskVersion, setRiskVersion] = useState(0);
   const [removing, setRemoving] = useState<Hunt | null>(null);
   const [snack, setSnack] = useState<{ severity: 'success' | 'error' | 'info'; text: string } | null>(null);
   const destinationRef = useRef<HunterDestinationCardHandle>(null);
@@ -67,7 +73,15 @@ export function OfferHunterPage() {
   const huntsMax = options?.limits.huntsMax ?? 5;
   const atLimit = (list?.length ?? 0) >= huntsMax;
   const planClosed = Boolean(options && (!options.gates.plan || !options.gates.hunterEntitlement));
-  const blockedTitle = blockedBy ? t.gates[blockedBy].title : null;
+  const blockedTitle = blockedBy ? gateCopy(blockedBy, homeProvider ?? 'SHEIN').title : null;
+  /** Portão que impede ligar a caçada, pela loja dela (sem o estado das lojas, vale o da tela). */
+  const blockedReasonFor = (hunt: Hunt): string | null => {
+    const provider = providerOf(hunt);
+    const state = providers.providers?.find((s) => s.provider === provider);
+    if (!state) return blockedTitle;
+    const gate = firstClosedGate(state.gates);
+    return gate ? gateCopy(gate, provider).title : null;
+  };
 
   const createTooltip = !options
     ? t.page.loading
@@ -145,6 +159,7 @@ export function OfferHunterPage() {
         <HunterGatesPanel
           options={options}
           blockedBy={blockedBy}
+          provider={providerOf(options)}
           onOpenRisk={(provider) => { setRiskProvider(provider); setRiskOpen(true); }}
           onFocusDestination={() => destinationRef.current?.focusAndPick()}
         />
@@ -234,7 +249,7 @@ export function OfferHunterPage() {
                   options={options}
                   nowMs={now}
                   busy={hunts.busyId === hunt.id}
-                  blockedReason={blockedTitle}
+                  blockedReason={blockedReasonFor(hunt)}
                   onToggle={(active) => void toggle(hunt, active)}
                   onEdit={() => setWizard({ open: true, huntId: hunt.id })}
                   onRemove={() => setRemoving(hunt)}
@@ -250,6 +265,8 @@ export function OfferHunterPage() {
           open={wizard.open && (!wizard.huntId || Boolean(editing))}
           options={options}
           hunt={editing}
+          onOpenRisk={(provider) => { setRiskProvider(provider); setRiskOpen(true); }}
+          refreshKey={riskVersion}
           onClose={clearWizard}
           onSaved={handleSaved}
         />
@@ -264,9 +281,11 @@ export function OfferHunterPage() {
         onAccepted={() => {
           setRiskOpen(false);
           setSnack({ severity: 'success', text: t.riskNotice[riskProvider].accepted });
+          setRiskVersion((n) => n + 1);
           void opts.reload();
+          void providers.reload();
         }}
-        onStale={() => void opts.reload()}
+        onStale={() => { void opts.reload(); void providers.reload(); }}
       />
 
       <ConfirmDialog

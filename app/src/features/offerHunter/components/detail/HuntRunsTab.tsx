@@ -81,7 +81,7 @@ export function HuntRunsTab({ runs, openRunId, onToggleRun, rankings }: Props) {
               <Typography variant="body2" sx={{ mt: 1, fontVariantNumeric: 'tabular-nums' }}>
                 {r.counts(run.seenCount, run.matchedCount, run.chosenCount, run.sentCount)}
               </Typography>
-              <Box sx={{ mt: 0.5 }}><RejectionNote rejectedBy={run.rejectedBy} matchedCount={run.matchedCount} /></Box>
+              <Box sx={{ mt: 0.5 }}><RejectionNote rejectedBy={run.rejectedBy} matchedCount={run.matchedCount} provider={run.provider} /></Box>
               {run.errorCode && (
                 <Typography variant="caption" color="error" component="p" sx={{ mt: 0.5 }}>
                   {`${r.error}: ${t.errors[run.errorCode] ?? d.unknownError(run.errorCode)}`}

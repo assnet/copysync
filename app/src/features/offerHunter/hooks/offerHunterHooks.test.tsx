@@ -21,7 +21,7 @@ import { useHunterRiskAcceptance } from './useHunterRiskAcceptance';
 import { OfferHunterRoute } from '../components/OfferHunterRoute';
 
 const find = (id: string, over: Partial<HuntFind> = {}): HuntFind => ({
-  id, huntId: 'h1', runId: 'r1', status: 'PENDING_REVIEW', goodsId: `g${id}`, title: `Item ${id}`, imageUrl: null, priceCents: 1000,
+  id, huntId: 'h1', runId: 'r1', status: 'PENDING_REVIEW', provider: 'SHEIN', productId: `g${id}`, commissionEstimated: false, goodsId: `g${id}`, title: `Item ${id}`, imageUrl: null, priceCents: 1000,
   originalPriceCents: null, discountPercent: null, commissionPercent: 10, commissionCents: 100,
   returningCommissionPercent: null, returningCommissionCents: null, extraCommissionCents: null, salesBucket: null,
   reviewsBucket: null, rating: null, score: 50, factors: [], aiReason: null, failureReason: null, offerId: null,

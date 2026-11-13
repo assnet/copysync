@@ -23,4 +23,8 @@ describe('runRejections', () => {
     expect(rejectionSummary(undefined, 0)).toBeNull();
     expect(rejectionSummary({}, 5)).toBeNull();
   });
+
+  it('Mercado Livre: comissão sem "de 1ª compra"', () => {
+    expect(rejectionSummary({ minCommissionPct: 2, minCommissionCents: 1 }, 0, 'MERCADO_LIVRE')!.line).toBe('0 no filtro: 2 por comissão, 1 por comissão em R$');
+  });
 });

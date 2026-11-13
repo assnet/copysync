@@ -2,11 +2,12 @@ import { useId } from 'react';
 import { Alert, Box, ButtonBase, MenuItem, Stack, TextField, Typography } from '@mui/material';
 import { alpha, useTheme } from '@mui/material/styles';
 import { Check } from 'lucide-react';
-import { AppIcon } from '@/components';
-import type { HuntOptions, HuntPreset } from '../../types';
-import { offerHunterStrings as t } from '../../strings';
+import { AppIcon, ToggleOption } from '@/components';
+import type { HuntOptions, HuntPreset, HuntSourceOptions, MlHuntSort } from '../../types';
+import { huntBrandName, offerHunterStrings as t, sourceStatusText } from '../../strings';
+import { capabilitiesOf, hasSourceFilter, providerOf, sortInColumn } from '../../providers';
 import type { FieldErrors, HuntWizardDraft } from './wizardDraft';
-import { FieldHeading, FieldTip } from './fields';
+import { AiHint, FieldHeading, FieldTip } from './fields';
 
 const w = t.wizard.what;
 const tips = t.wizard.tips;
@@ -19,13 +20,25 @@ interface Props {
   onPreset: (key: HuntPreset) => void;
 }
 
-/** Passo 1: nome, predefinição (1 clique), categoria, faixa de comissão e palavra-chave. */
+const mlSortLabel = (sort: string) => t.mlSorts[sort as MlHuntSort] ?? sort;
+
+/**
+ * Passo 1: nome, predefinição (1 clique), categoria, palavra-chave e os filtros da fonte que a loja tiver
+ * (`capabilities.sourceFilters`): no Mercado Livre, ordem da busca, "Só com ganhos extras" e "Só mais vendidos".
+ */
 export function WizardWhatStep({ draft, options, errors, onChange, onPreset }: Props) {
   const theme = useTheme();
   const presetsId = useId();
   const { limits } = options;
+  const provider = providerOf(options);
+  const caps = capabilitiesOf(options, provider);
+  const column = sortInColumn(provider);
+  const hints = draft.ai.hints;
   const noCategories = options.categories.length === 0;
-  const sourceMsg = options.sourceStatus !== 'OK' ? t.sourceStatus[options.sourceStatus] : '';
+  const sourceMsg = options.sourceStatus !== 'OK' ? sourceStatusText(options.sourceStatus, provider) : '';
+  // Mexer na fonte sai da predefinição (ela vira "Personalizada")
+  const setSource = (patch: Partial<HuntSourceOptions>) => onChange({ sourceOptions: { ...draft.sourceOptions, ...patch }, preset: 'CUSTOM' });
+  const sourceSort = draft.sourceOptions.sort ?? caps.defaultSort;
 
   return (
     <Stack spacing={2.5}>
@@ -38,7 +51,10 @@ export function WizardWhatStep({ draft, options, errors, onChange, onPreset }: P
         fullWidth
         error={Boolean(errors.name)}
         helperText={errors.name ?? w.nameHelp(limits.nameMaxLength)}
-        slotProps={{ htmlInput: { maxLength: limits.nameMaxLength + 20 } }}
+        slotProps={{
+          htmlInput: { maxLength: limits.nameMaxLength + 20 },
+          input: hints.name !== undefined ? { endAdornment: <AiHint reason={hints.name} path="name" /> } : undefined,
+        }}
       />
 
       <Box>
@@ -77,10 +93,60 @@ export function WizardWhatStep({ draft, options, errors, onChange, onPreset }: P
             );
           })}
         </Box>
-        <Typography variant="caption" color="text.secondary" component="p" sx={{ mt: 1 }}>
-          {t.wizard.sortHintLabel(t.sorts[draft.sort])}. {w.sortHint}
-        </Typography>
+        {column && (
+          <Typography variant="caption" color="text.secondary" component="p" sx={{ mt: 1 }}>
+            {t.wizard.sortHintLabel(t.sorts[draft.sort], huntBrandName(provider))}. {w.sortHint}
+            <AiHint reason={hints.sort} path="sort" />
+          </Typography>
+        )}
       </Box>
+
+      {!column && hasSourceFilter(caps, 'sort') && (
+        <TextField
+          select
+          label={w.sourceSort}
+          value={caps.sorts.includes(sourceSort) ? sourceSort : caps.defaultSort}
+          onChange={(e) => setSource({ sort: e.target.value })}
+          fullWidth
+          helperText={w.sortHint}
+          error={Boolean(errors['sourceOptions.sort'])}
+          slotProps={{
+            input: {
+              endAdornment: (
+                <Box sx={{ display: 'inline-flex', alignItems: 'center', mr: 3 }}>
+                  <AiHint reason={hints['sourceOptions.sort']} path="sourceOptions.sort" />
+                  <FieldTip title={w.sourceSortTip} field={w.sourceSort} />
+                </Box>
+              ),
+            },
+          }}
+        >
+          {caps.sorts.map((s) => <MenuItem key={s} value={s}>{mlSortLabel(s)}</MenuItem>)}
+        </TextField>
+      )}
+
+      {!column && (hasSourceFilter(caps, 'extraEarningsOnly') || hasSourceFilter(caps, 'bestSellersOnly')) && (
+        <Stack spacing={1}>
+          {hasSourceFilter(caps, 'extraEarningsOnly') && (
+            <ToggleOption
+              checked={draft.sourceOptions.extraEarningsOnly === true}
+              onChange={(v) => setSource({ extraEarningsOnly: v ? true : null })}
+              title={w.extraEarningsOnly}
+              description={w.extraEarningsOnlyHint}
+              badge={<AiHint reason={hints['sourceOptions.extraEarningsOnly']} path="sourceOptions.extraEarningsOnly" />}
+            />
+          )}
+          {hasSourceFilter(caps, 'bestSellersOnly') && (
+            <ToggleOption
+              checked={draft.sourceOptions.bestSellersOnly === true}
+              onChange={(v) => setSource({ bestSellersOnly: v ? true : null })}
+              title={w.bestSellersOnly}
+              description={w.bestSellersOnlyHint}
+              badge={<AiHint reason={hints['sourceOptions.bestSellersOnly']} path="sourceOptions.bestSellersOnly" />}
+            />
+          )}
+        </Stack>
+      )}
 
       {sourceMsg && noCategories && <Alert severity="info">{sourceMsg}</Alert>}
 
@@ -94,7 +160,13 @@ export function WizardWhatStep({ draft, options, errors, onChange, onPreset }: P
           fullWidth
           error={Boolean(errors.categoryId)}
           helperText={errors.categoryId}
-          slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
+          slotProps={{
+            select: { displayEmpty: true },
+            inputLabel: { shrink: true },
+            input: hints.categoryId !== undefined
+              ? { endAdornment: <Box sx={{ display: 'inline-flex', mr: 3 }}><AiHint reason={hints.categoryId} path="categoryId" /></Box> }
+              : undefined,
+          }}
         >
           <MenuItem value="">{w.categoryAll}</MenuItem>
           {options.categories.map((c) => <MenuItem key={c.categoryId} value={c.categoryId}>{c.name}</MenuItem>)}
@@ -116,7 +188,14 @@ export function WizardWhatStep({ draft, options, errors, onChange, onPreset }: P
         helperText={errors.keyword ?? w.keywordHelp}
         slotProps={{
           htmlInput: { maxLength: limits.keywordMaxLength + 20 },
-          input: { endAdornment: <FieldTip title={tips.keyword} field={w.keyword} /> },
+          input: {
+            endAdornment: (
+              <Box sx={{ display: 'inline-flex', alignItems: 'center' }}>
+                <AiHint reason={hints.keyword} path="keyword" />
+                <FieldTip title={tips.keyword} field={w.keyword} />
+              </Box>
+            ),
+          },
         }}
       />
     </Stack>

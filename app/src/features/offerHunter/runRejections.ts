@@ -1,5 +1,5 @@
-import { offerHunterStrings } from './strings';
-import type { HuntRejectionCounts, HuntRejectionKey } from './types';
+import { commissionCopy, offerHunterStrings } from './strings';
+import type { HuntProvider, HuntRejectionCounts, HuntRejectionKey } from './types';
 
 const t = offerHunterStrings.rejections;
 
@@ -21,11 +21,21 @@ export function rejectionParts(rejectedBy: HuntRejectionCounts | null | undefine
  * "0 no filtro: 21 por vendas, 14 por avaliações, 3 por nota". null = nada a mostrar (sem `rejectedBy`, ou nenhum
  * filtro barrou e algo passou). `hint` = dica de afrouxar só quando nada passou e um filtro (não a repetição) barrou.
  */
-export function rejectionSummary(rejectedBy: HuntRejectionCounts | null | undefined, matchedCount: number): { line: string; hint: boolean } | null {
+/** Rótulo da recusa na loja (a comissão muda de nome: "de 1ª compra" só na Shein). */
+export function rejectionLabel(key: HuntRejectionKey, provider: HuntProvider = 'SHEIN'): string {
+  const cc = commissionCopy(provider);
+  if (key === 'minCommissionPct') return cc.rejection;
+  if (key === 'minCommissionCents') return cc.rejectionValue;
+  return t.keys[key];
+}
+
+export function rejectionSummary(
+  rejectedBy: HuntRejectionCounts | null | undefined, matchedCount: number, provider: HuntProvider = 'SHEIN',
+): { line: string; hint: boolean } | null {
   const parts = rejectionParts(rejectedBy);
   if (parts.length === 0) return null;
   return {
-    line: t.line(matchedCount, parts.map((p) => t.item(p.count, t.keys[p.key]))),
+    line: t.line(matchedCount, parts.map((p) => t.item(p.count, rejectionLabel(p.key, provider)))),
     hint: matchedCount === 0 && parts.some((p) => p.key !== 'repeated'),
   };
 }

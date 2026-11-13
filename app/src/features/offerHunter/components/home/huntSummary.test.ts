@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hunt, huntOptions } from '../../test/fixtures';
+import { hunt, huntOptions, mlOptions } from '../../test/fixtures';
 import { huntSummaryChips } from './huntSummary';
 
 // Intl usa espaço não separável em "R$ 10,00"
@@ -37,5 +37,25 @@ describe('huntSummaryChips', () => {
     const h = hunt({ commissionBand: 'ABOVE_15', filters: { ...hunt().filters, minCommissionPct: 15, commissionOperator: 'GTE' } });
     expect(labels(h)).toEqual(['Maior comissão', 'Comissão 1ª compra ≥ 15%']);
     expect(labels(hunt({ filters: { ...hunt().filters, minCommissionPct: 15 } }))).toContain('Comissão 1ª compra ≥ 15%');
+  });
+
+  it('Mercado Livre: ordem e filtros da fonte, comissão sem "1ª compra", opções de outra loja ignoradas', () => {
+    const h = hunt({
+      provider: 'MERCADO_LIVRE', aiConfigured: true,
+      sourceOptions: { sort: 'lowest_price', extraEarningsOnly: true, bestSellersOnly: true },
+      filters: { ...hunt().filters, minCommissionPct: 10, commissionOperator: 'GTE', minCommissionCents: 300 },
+    });
+    expect(huntSummaryChips(h, mlOptions()).map((c) => norm(c.label))).toEqual([
+      'Personalizada', 'Ordem: Menor preço', 'Só com ganhos extras', 'Só mais vendidos', 'Comissão ≥ 10%', 'Comissão ≥ R$ 3,00',
+      'Configurada pela IA',
+    ]);
+    // Opções da SHEIN não nomeiam a predefinição de uma caçada do ML
+    expect(huntSummaryChips(h, huntOptions()).map((c) => c.key)).not.toContain('preset');
+  });
+
+  it('Mercado Livre: predefinição reconhecida pela ordem da fonte', () => {
+    const h = hunt({ provider: 'MERCADO_LIVRE', sourceOptions: { sort: 'relevance', extraEarningsOnly: null, bestSellersOnly: null },
+      filters: { ...hunt().filters, minCommissionPct: 15, commissionOperator: 'GTE' } });
+    expect(huntSummaryChips(h, mlOptions()).map((c) => c.label)[0]).toBe('Maior comissão');
   });
 });

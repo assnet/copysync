@@ -1,13 +1,16 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Alert, Box, Button, Chip, CircularProgress, Collapse, Stack, Tooltip, Typography } from '@mui/material';
 import { Check, ChevronDown, ChevronUp, PackageSearch, RotateCcw, Send, Star, Users, X } from 'lucide-react';
 import { AppIcon, ConfirmDialog, EmptyState } from '@/components';
 import { Blurred, useBlur } from '@/features/privacy';
 import type { HuntFind } from '../../types';
 import { findResendState, findSentAtLabel, findStatusChip } from '../../findDelivery';
-import { offerHunterStrings as t } from '../../strings';
+import { commissionCopy, offerHunterStrings as t } from '../../strings';
 import { formatCents, formatDecimal, formatRating } from '../../format';
+import { providerOf } from '../../providers';
 import { ProductThumb } from '../ProductThumb';
+import { ProviderBadge } from '../ProviderBadge';
+import { EstimatedTag } from '../EstimatedTag';
 import { ScoreBar } from '../ScoreBar';
 
 const f = t.finds;
@@ -142,11 +145,17 @@ function FindItem({ item, open, busy, onToggle, onAsk }: {
     item.reviewsBucket != null ? f.reviews(item.reviewsBucket) : '',
   ].filter(Boolean);
   const detailsId = `find-${item.id}-details`;
+  const provider = providerOf(item);
+  // Shein separa 1ª compra × recompra; no ML a comissão é uma só (às vezes estimada) e não há recompra
+  const twoCommissions = provider === 'SHEIN';
 
   return (
     <Box component="li" data-testid="hunt-find" sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 1.5 }}>
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'auto 1fr', sm: 'auto 1fr 150px' }, columnGap: 1.5, rowGap: 1, alignItems: 'start' }}>
-        <ProductThumb src={item.imageUrl} size={56} />
+        <Box sx={{ position: 'relative' }}>
+          <ProductThumb src={item.imageUrl} size={56} />
+          <Box sx={{ position: 'absolute', right: -6, bottom: -6 }}><ProviderBadge provider={provider} size={22} /></Box>
+        </Box>
         <Box sx={{ minWidth: 0 }}>
           <Blurred when={blur} radius={5}>
             <Typography variant="body2" sx={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
@@ -179,9 +188,13 @@ function FindItem({ item, open, busy, onToggle, onAsk }: {
       </Box>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, minmax(0, 1fr))' }, gap: 1, mt: 1.25 }}>
-        <Fact label={d.newCommission} value={commissionText(item.commissionPercent, item.commissionCents)} />
-        <Fact label={f.returningCommission} value={commissionText(item.returningCommissionPercent, item.returningCommissionCents)} />
-        <Fact label={f.extraCommission} value={formatCents(item.extraCommissionCents) ?? d.noValue} />
+        <Fact
+          label={commissionCopy(provider).detail}
+          value={commissionText(item.commissionPercent, item.commissionCents)}
+          tag={item.commissionEstimated ? <EstimatedTag /> : undefined}
+        />
+        {twoCommissions && <Fact label={f.returningCommission} value={commissionText(item.returningCommissionPercent, item.returningCommissionCents)} />}
+        {(twoCommissions || item.extraCommissionCents != null) && <Fact label={f.extraCommission} value={formatCents(item.extraCommissionCents) ?? d.noValue} />}
       </Box>
 
       <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, mt: 1.25 }}>
@@ -277,14 +290,17 @@ function FindItem({ item, open, busy, onToggle, onAsk }: {
   );
 }
 
-function Fact({ label, value }: { label: string; value: string }) {
+function Fact({ label, value, tag }: { label: string; value: string; tag?: ReactNode }) {
   const blur = useBlur('offerHunter.productText');
   return (
     <Box sx={{ minWidth: 0 }}>
       <Typography variant="caption" color="text.secondary" component="p">{label}</Typography>
-      <Blurred when={blur} radius={5}>
-        <Typography variant="body2" sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{value}</Typography>
-      </Blurred>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
+        <Blurred when={blur} radius={5} inline>
+          <Typography component="span" variant="body2" sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{value}</Typography>
+        </Blurred>
+        {tag}
+      </Box>
     </Box>
   );
 }
