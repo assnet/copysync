@@ -7,6 +7,22 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.95.1] — 2026-11-13 — Sugestão da IA do caçador, config do gerador com sessão excluída e percentual único no Story
+
+### Fixed
+
+#### campaigns
+
+- **`AiHuntConfigSuggester.ts`** / **`SuggestHuntConfigUseCase.ts`** — "Gerar com IA" falhava quando o provedor de IA recusava/caía (visto em produção: `success=false`, sem tokens) e o painel mostrava erro genérico. 1 nova tentativa em indisponibilidade (não em timeout/429), log com motivo/status, qualquer falha devolve a reserva do teto 5/dia; amostra com pausas menores e orçamento de 20 s.
+- **`huntConfigPrompt.ts`** / **`hunterAiLimits.ts`** — `maxOutputTokens` 700 → 1500 (o JSON com motivos passava do limite); JSON cortado é fechado; número/booleano como texto e categoria pelo nome passam a valer (capacidades seguem estritas).
+- **`MercadoLivreHubClient.ts`** — bootstrap reaproveitado por 60 s na mesma sessão (amostra: 7 requisições em vez de 12).
+- **`PrismaOfferGeneratorConfigRepository.ts`** — `find`/`listGroups` ignoram sessão com `deletedAt`: a config do gerador não devolve mais sessão excluída nem os grupos dela (salvar falhava com 404 `NOT_FOUND`); com parte das sessões excluída, a oferta sai pelas vivas.
+
+#### offer-story
+
+- **`storyLayoutModel.ts`** — a arte mostra um único percentual, o do selo (preço cheio → preço final com cupom); o % do cupom só vira rótulo quando não há selo. Antes selo (ex.: 89%) e chip do cupom (-80%) divergiam.
+- **`storyHeadline.ts`** / **`RenderOfferStoryUseCase.ts`** — título de IA com percentual ou número fora do nome do produto é descartado.
+
 ## [0.95.0] — 2026-11-13 — Caçador multimarca (Mercado Livre) e IA de configuração
 
 ### Added

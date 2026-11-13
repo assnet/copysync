@@ -1,6 +1,6 @@
 {
   "name": "CopySync-api",
-  "version": "0.95.0",
+  "version": "0.95.1",
   "description": "CopySync API — Fastify + TypeScript + Prisma + PostgreSQL",
   "private": true,
   "scripts": {
