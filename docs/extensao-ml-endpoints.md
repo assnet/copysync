@@ -353,6 +353,8 @@ POST https://www.mercadolivre.com.br/affiliate-program/api/hub/search?is_affilia
   `available_sorts`; `next_offset` (ausente = última página).
 - Comissão vem por cartão (percentual já com o extra); a tabela oficial por categoria
   (`mercadoLivreCommissionTable.ts`, leitura 2026-11-06) só estima quando o chip falta (`commissionEstimated`).
+  **Sem chip e sem categoria na tabela = cartão descartado** (comissão não avaliável; nunca 0% como dado real); só a
+  contagem (`noCommission`) vai ao log.
 
 ### Sonda da Render (aprovada 2026-11-13)
 
@@ -369,7 +371,11 @@ toma 403 do WAF em `GET /afiliados/hub`.
 - Cliente: `MercadoLivreHubClient` (`IHuntCatalogSource`); mapeador puro `domain/services/hunter/mercadoLivreHubMapper.ts`;
   capacidades `mercadoLivreCapabilities.ts`; adaptador `infrastructure/hunter/providers/mercadoLivreHuntAdapter.ts`
   (URL do produto `https://produto.mercadolivre.com.br/MLB-<dígitos>`).
-- `redirect: 'manual'`, timeout 8 s, corpo ≤ 256 KiB. Erros: redirect para login ou 401 = sessão recusada; **403 sem
+- `redirect: 'manual'`, timeout 8 s, corpo ≤ 256 KiB. Erros no hub: **só** redirect para o login (host
+  `mercadolivre.com` ou caminho com `/jms/`/`/login`, `isMlLoginPage`) ou 401 = sessão recusada; outro 3xx fora de
+  `/afiliados/` (desafio no mesmo host…) = indisponível (`onlyLoginRedirectIsRejected`; o `createLink`/tags mantém
+  todo salto fora do hub = recusada). Bootstrap nunca segue salto que não seja `https:` em host ML (o `ssid` iria em
+  texto plano): indisponível, para todos os chamadores. **403 sem
   redirect (WAF), inclusive no bootstrap do hub, = fonte indisponível** (não pausa a credencial; no `createLink` o
   403 do bootstrap segue = recusada); 429 = rate limit; formato inesperado = indisponível. Foto só https
   `*.mlstatic.com`. Cookie/token nunca em log, erro ou resposta.

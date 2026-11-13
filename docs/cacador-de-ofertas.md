@@ -52,7 +52,7 @@ Nota 0–100 = soma exata dos fatores (visíveis na tela). Pesos em `HUNT_SCORE_
 | Grupo | Fatores (pontos) |
 |---|---|
 | Comissão 40 | `commission` 40: valor esperado 70% cliente novo + 30% retorno, log com teto R$ 30 |
-| Prova social 30 | `sales` 12 · `rating` 8 (3,5→5,0) · `reviews` 6 · `rank` 4 (1º = máx., 0 no 101º) |
+| Prova social 30 | `sales` 12 · `rating` 8 (3,5→5,0) · `reviews` 6 · `rank` 4 (1º = máx., 0 no 101º; só marca com `sourceRank`, ML fora) |
 | Preço 20 | `discount` 12 (até 70%) · `priceBand` 8 (R$ 20–150 = máx.) |
 | Urgência 10 | `extraCommission` 6 (teto R$ 10) · `endingSoon` 4 (≤ 7 dias) |
 
@@ -120,11 +120,15 @@ candidato pode contar em várias chaves.
 - "Deixar a IA decidir os filtros" no assistente. Corpo `{ provider, intent ≤ 120 | null, pickProduct }`; resposta
   `{ draft, reasons, dropped, sourceUsed, remainingToday }`. **Nada é salvo**: o usuário confere e salva (D5); a IA
   não mexe em caçada salva. `draft.filters` em centavos/inteiros do contrato da caçada; `reasons`/`dropped` por
-  caminho do rascunho (`filters.maxPriceCents`, `sourceOptions.sort`…).
+  caminho do rascunho (`filters.maxPriceCents`, `sourceOptions.sort`…). Shein: ordenação em `draft.sort` (top-level,
+  `HUNT_SORTS`) e `sourceOptions` sempre vazio (a validação recusa); ML: `draft.sort` null e ordem em
+  `sourceOptions.sort`. O rascunho de cada marca passa no `validateHuntDefinition` (teste).
 - Portões: `offer_hunter_enabled` + plano da marca (`HUNT_PROVIDER_PLAN_KEY`) sempre. Fonte (categorias; com
   `pickProduct` a amostra larga D6: ≤ 5 consultas de 1 página, ≤ 90 itens, 40 melhores pela nota + resumo por
   categoria) só com aceite `OFFER_HUNTER` + credencial da marca; sem eles, só capacidades + intenção, categoria
-  null, `sourceUsed: false`. Falha da fonte não derruba a sugestão (1º erro encerra as consultas).
+  null, `sourceUsed: false`. Falha da fonte não derruba a sugestão (1º erro encerra as consultas). Entre consultas da
+  amostra, a mesma pausa das páginas da caçada (`HUNT_PAGE_PAUSE_MS`); consulta geral vai com a entrada "Todas" já
+  listada (Shein: `did` sem relistar categorias).
 - Teto técnico **5/dia por conta** (`hunterAiLimits.ts`, tabela `offer_hunt_ai_suggestions`, reserva atômica com
   lock por tenant antes de ler a fonte). Gerador recusa (`AppError`: 409/422/429/503 do `IAiTextGenerator`) →
   reserva devolvida e o código sobe; saída inválida → 422 `OFFER_HUNT_AI_SUGGEST_INVALID_OUTPUT` e conta.
@@ -182,7 +186,9 @@ criada → 422 `provider`). Tudo que muda por marca fica no adaptador (`IHuntPro
 (`IHuntCatalogSource`), `productUrl(productId)` e `imageHosts`; capacidades em `domain/services/hunter/huntCapabilities.ts`
 (constante, nunca banco). `HuntCandidate` genérico: `productId` (Shein = goodsId), `hasSecondaryCommission` (sem
 secundária = 100% da primária), `extraFlag`, `commissionEstimated`. Pontuação tira o fator cujo dado a marca não tem
-(mesma chave do filtro local) e renormaliza para 100; Shein dá exatamente as notas de antes (teste de equivalência).
+(mesma chave do filtro local; `rank` só se `capabilities.sourceRank !== false`) e renormaliza para 100; Shein dá
+exatamente as notas de antes (teste de equivalência). ML: comissão do chip = real; sem chip, pela tabela da categoria
+= estimada; sem os dois o cartão é descartado (nunca 0%).
 Portões por marca: plano só na Shein (`marketplace_shein_enabled`), credencial/aceite `OFFER_HUNTER` da marca, teto e
 guardas somados por conta. Repetição por `provider + productId`; `offer_hunt_finds.productId` é anulável só por linhas
 do código anterior (leitura usa `productId ?? goodsId`; `goodsId` só Shein). Shein ordena por `sort` (coluna); outras

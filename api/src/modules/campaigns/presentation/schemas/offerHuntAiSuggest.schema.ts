@@ -30,6 +30,7 @@ export const aiSuggestResponse = {
             name: nullable('string'),
             categoryId: nullable('string'),
             keyword: nullable('string'),
+            sort: nullable('string'),
             sourceOptions: {
               type: 'object',
               properties: { sort: nullable('string'), extraEarningsOnly: nullable('boolean'), bestSellersOnly: nullable('boolean') },

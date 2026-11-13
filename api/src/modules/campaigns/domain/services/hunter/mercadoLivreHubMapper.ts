@@ -36,6 +36,8 @@ export interface MercadoLivreHubPage {
   hasNextPage: boolean;
   /** Cartões sem `metadata.id` válido. */
   dropped: number;
+  /** Cartões sem chip de comissão e com categoria fora da tabela: comissão não avaliável, descartados. */
+  noCommission: number;
 }
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
@@ -142,11 +144,21 @@ export function buildMercadoLivreImageUrl(card: Obj, ctx: MercadoLivreHubContext
   }
 }
 
-/** Cartão `polycards[]` → candidato; null sem `metadata.id` `MLB\d+` válido. */
+type CardResult = HuntCandidate | 'NO_ID' | 'NO_COMMISSION';
+
+/**
+ * Cartão `polycards[]` → candidato; null sem `metadata.id` `MLB\d+` válido ou sem comissão avaliável (sem chip e
+ * categoria fora da tabela: nunca vira 0% como se fosse dado real).
+ */
 export function mapMercadoLivreHubCard(raw: unknown, ctx: MercadoLivreHubContext): HuntCandidate | null {
-  if (!isObj(raw) || !isObj(raw.metadata)) return null;
+  const out = mapCard(raw, ctx);
+  return typeof out === 'string' ? null : out;
+}
+
+function mapCard(raw: unknown, ctx: MercadoLivreHubContext): CardResult {
+  if (!isObj(raw) || !isObj(raw.metadata)) return 'NO_ID';
   const productId = str(raw.metadata.id);
-  if (!productId || !MERCADO_LIVRE_PRODUCT_ID.test(productId)) return null;
+  if (!productId || !MERCADO_LIVRE_PRODUCT_ID.test(productId)) return 'NO_ID';
 
   const comps = componentsById(raw);
   const titleNode = comps.get('title')?.title;
@@ -161,10 +173,12 @@ export function mapMercadoLivreHubCard(raw: unknown, ctx: MercadoLivreHubContext
   const discountPct =
     priceCents !== null && retailPriceCents !== null ? Math.round((1 - priceCents / retailPriceCents) * 100) : 0;
 
+  // Com chip = real; sem chip, pela tabela da categoria = estimada; sem os dois = descartado
   const chip = parseMercadoLivreCommissionChip(comps.get(COMMISSION_CHIP_ID));
   const estimated = chip ? null : estimateMercadoLivreCommissionPct(ctx.categoryId);
-  const commissionPct = chip?.pct ?? estimated ?? 0;
-  const commissionEstimated = !chip && estimated !== null;
+  if (!chip && estimated === null) return 'NO_COMMISSION';
+  const commissionPct = chip ? chip.pct : (estimated as number);
+  const commissionEstimated = !chip;
   const extraFlag = isTrue(raw.metadata.extra_commission) || chip?.extra === true;
   const { rating, sales } = reviewParts(comps.get('review_compacted'));
 
@@ -215,13 +229,15 @@ export function parseMercadoLivreHubPage(json: unknown, categoryId: string | nul
   const ctx = contextOf(json, categoryId);
   const items: HuntCandidate[] = [];
   let dropped = 0;
+  let noCommission = 0;
   for (const raw of cards) {
-    const c = mapMercadoLivreHubCard(raw, ctx);
-    if (c) items.push(c);
-    else dropped += 1;
+    const c = mapCard(raw, ctx);
+    if (c === 'NO_ID') dropped += 1;
+    else if (c === 'NO_COMMISSION') noCommission += 1;
+    else items.push(c);
   }
   const next = json.next_offset;
-  return { items, hasNextPage: next !== undefined && next !== null, dropped };
+  return { items, hasNextPage: next !== undefined && next !== null, dropped, noCommission };
 }
 
 /** Filtro `category` da resposta → categorias com "Todas" (null) primeiro; null = `filters` fora do formato. */

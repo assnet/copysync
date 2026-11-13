@@ -2,8 +2,8 @@
 // sem log. Entram só marca, capacidades, categorias reais (id+nome), a intenção (DADO NÃO CONFIÁVEL) e a amostra
 // compacta. Id/link de produto, token, memberId e dados do tenant nunca entram no prompt.
 import {
-  HUNT_COMMISSION_OPERATORS, HUNT_COMMISSION_PCT_MAX, type HuntCandidate, type HuntCommissionOperator, type HuntFilterKey,
-  type HuntLocalFilters,
+  HUNT_COMMISSION_OPERATORS, HUNT_COMMISSION_PCT_MAX, HUNT_SORTS, type HuntCandidate, type HuntCommissionOperator, type HuntFilterKey,
+  type HuntLocalFilters, type HuntSort,
 } from '../../hunter/HuntCandidate';
 import type { HuntCapabilities, HuntProvider, HuntSourceCategory, HuntSourceOptions } from '../../hunter/HuntProvider';
 import { HUNTER_LIMITS } from './hunterLimits';
@@ -25,6 +25,9 @@ export interface HuntConfigDraft {
   name: string | null;
   categoryId: string | null;
   keyword: string | null;
+  /** Ordenação na coluna `sort` (Shein, `HUNT_SORTS`); demais marcas = null e ordenam por `sourceOptions.sort`. */
+  sort: HuntSort | null;
+  /** Shein = sempre vazio (`validateHuntDefinition` recusa `sourceOptions` na Shein). */
   sourceOptions: HuntSourceOptions;
   filters: HuntLocalFilters;
   /** Ranking por IA a cada busca ("Escolha com IA"). */
@@ -96,6 +99,9 @@ const localFieldsOf = (caps: HuntCapabilities) =>
   Object.entries(LOCAL_FIELDS).filter(([, spec]) => caps.localFilters.includes(spec.key));
 const hasCommissionFilter = (caps: HuntCapabilities) => caps.localFilters.includes('minCommissionPct');
 const has = (caps: HuntCapabilities, key: string) => (caps.sourceFilters as readonly string[]).includes(key);
+/** Shein guarda a ordenação na coluna `sort` (top-level), não em `sourceOptions` (mesma regra da validação). */
+const sortInColumn = (caps: HuntCapabilities) => caps.provider === 'SHEIN';
+const columnSorts = (caps: HuntCapabilities) => caps.sorts.filter((s): s is HuntSort => (HUNT_SORTS as readonly string[]).includes(s));
 
 // ── Sanitização ─────────────────────────────────────────────────────────────
 
@@ -156,7 +162,10 @@ export function buildHuntConfigPrompt(input: HuntConfigPromptInput): HuntConfigP
   }
   if (has(caps, 'keyword')) fields.push(`"keyword": palavra de busca (até ${HUNTER_LIMITS.keywordMaxLength} caracteres) ou null`);
   const sourceLines: string[] = [];
-  if (caps.sorts.length) sourceLines.push(`"sort": um de ${caps.sorts.join(', ')}`);
+  if (sortInColumn(caps)) {
+    const sorts = columnSorts(caps);
+    if (sorts.length) fields.push(`"sort": um de ${sorts.join(', ')}`);
+  } else if (caps.sorts.length) sourceLines.push(`"sort": um de ${caps.sorts.join(', ')}`);
   for (const key of SOURCE_BOOL_FIELDS) if (has(caps, key)) sourceLines.push(`"${key}": ${SOURCE_BOOL_LABELS[key]}`);
   if (sourceLines.length) fields.push(`"sourceOptions": { ${sourceLines.join('; ')} }`);
   const locals = localFieldsOf(caps);
@@ -229,10 +238,11 @@ const isPlainObject = (v: unknown): v is Record<string, unknown> => !!v && typeo
 const safeKey = (k: string) => (/^[A-Za-z][A-Za-z0-9_]{0,39}$/.test(k) ? k : '?');
 
 /** Chave de `reasons` (como a IA escreveu) → caminho no rascunho. */
-function reasonPath(key: string): string | null {
+function reasonPath(key: string, caps: HuntCapabilities): string | null {
   const k = key.replace(/^(localFilters|sourceOptions|filters)\./, '');
   if (k === 'name' || k === 'keyword' || k === 'topN') return k;
   if (k === 'category' || k === 'categoryId') return 'categoryId';
+  if (k === 'sort' && sortInColumn(caps)) return 'sort';
   if (k === 'sort' || (SOURCE_BOOL_FIELDS as readonly string[]).includes(k)) return `sourceOptions.${k}`;
   if (k === 'commission' || k === 'minCommissionPct') return 'filters.minCommissionPct';
   if (k === 'aiRanking' || k === 'aiEnabled') return 'aiEnabled';
@@ -256,7 +266,7 @@ export function parseHuntConfigOutput(text: string, ctx: HuntConfigParseContext)
   if (!obj) return null;
   const caps = ctx.capabilities;
   const draft: HuntConfigDraft = {
-    name: null, categoryId: null, keyword: null, sourceOptions: {}, filters: {}, aiEnabled: null, topN: null,
+    name: null, categoryId: null, keyword: null, sort: null, sourceOptions: {}, filters: {}, aiEnabled: null, topN: null,
   };
   const dropped: string[] = [];
   const accepted = new Set<string>();
@@ -288,6 +298,13 @@ export function parseHuntConfigOutput(text: string, ctx: HuntConfigParseContext)
         else if (kw) { draft.keyword = kw; accept('keyword'); }
         break;
       }
+      case 'sort': {
+        if (value === null) break;
+        if (sortInColumn(caps) && typeof value === 'string' && (columnSorts(caps) as readonly string[]).includes(value)) {
+          draft.sort = value as HuntSort; accept('sort');
+        } else drop('sort');
+        break;
+      }
       case 'sourceOptions': {
         if (value === null) break;
         if (!isPlainObject(value)) { drop('sourceOptions'); break; }
@@ -295,7 +312,7 @@ export function parseHuntConfigOutput(text: string, ctx: HuntConfigParseContext)
           if (v === null || v === undefined) continue;
           const path = `sourceOptions.${safeKey(k)}`;
           if (k === 'sort') {
-            if (typeof v === 'string' && caps.sorts.includes(v)) { draft.sourceOptions.sort = v; accept(path); } else drop(path);
+            if (!sortInColumn(caps) && typeof v === 'string' && caps.sorts.includes(v)) { draft.sourceOptions.sort = v; accept(path); } else drop(path);
           } else if ((SOURCE_BOOL_FIELDS as readonly string[]).includes(k) && has(caps, k) && typeof v === 'boolean') {
             draft.sourceOptions[k as (typeof SOURCE_BOOL_FIELDS)[number]] = v; accept(path);
           } else drop(path);
@@ -360,7 +377,7 @@ export function parseHuntConfigOutput(text: string, ctx: HuntConfigParseContext)
   const reasons: Record<string, string> = {};
   if (isPlainObject(obj.reasons)) {
     for (const [k, v] of Object.entries(obj.reasons)) {
-      const path = reasonPath(k);
+      const path = reasonPath(k, caps);
       if (!path || !accepted.has(path) || typeof v !== 'string') continue;
       const clean = sanitizeHuntReason(v).slice(0, AL.reasonMaxLength).trim();
       if (clean) reasons[path] = clean;

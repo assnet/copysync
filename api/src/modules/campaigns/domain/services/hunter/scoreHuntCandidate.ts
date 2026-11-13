@@ -66,7 +66,7 @@ export function expectedCommissionCents(
 
 /**
  * Fator que depende de um dado que só existe se a marca o oferece (mesmo dado do filtro local). Marca sem o filtro
- * = fator fora da nota (renormalizada). `rank` não tem filtro: sempre entra (sem rank = 0, como hoje).
+ * = fator fora da nota (renormalizada). `rank` não tem filtro: entra se a marca traz o dado (`sourceRank`).
  */
 const FACTOR_DATA: Readonly<Partial<Record<HuntScoreFactorKey, HuntFilterKey>>> = {
   commission: 'minCommissionPct',
@@ -80,8 +80,9 @@ const FACTOR_DATA: Readonly<Partial<Record<HuntScoreFactorKey, HuntFilterKey>>> 
 };
 
 /** Fatores da nota para a marca, na ordem fixa de `HUNT_SCORE_WEIGHTS`. */
-export function huntScoreFactorsFor(caps: Pick<HuntCapabilities, 'localFilters'>): HuntScoreFactorKey[] {
+export function huntScoreFactorsFor(caps: Pick<HuntCapabilities, 'localFilters' | 'sourceRank'>): HuntScoreFactorKey[] {
   return (Object.keys(HUNT_SCORE_WEIGHTS) as HuntScoreFactorKey[]).filter((k) => {
+    if (k === 'rank') return caps.sourceRank !== false;
     const data = FACTOR_DATA[k];
     return data === undefined || caps.localFilters.includes(data);
   });

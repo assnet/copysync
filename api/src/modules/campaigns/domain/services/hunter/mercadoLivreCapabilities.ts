@@ -26,4 +26,6 @@ export const MERCADO_LIVRE_HUNT_CAPABILITIES: HuntCapabilities = Object.freeze<H
   commissionModel: 'SINGLE_WITH_EXTRA_FLAG',
   imageHosts: ['mlstatic.com'],
   productIdPattern: MERCADO_LIVRE_PRODUCT_ID,
+  // Hub não traz posição no ranking: `rank` fica fora da nota
+  sourceRank: false,
 });

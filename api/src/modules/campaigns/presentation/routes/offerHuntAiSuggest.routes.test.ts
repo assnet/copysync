@@ -26,7 +26,7 @@ vi.mock('../../../../shared/http/hooks/tenantHook', () => ({
 const URL = '/api/offer-hunts/ai-suggest';
 const OUT: SuggestHuntConfigOutput = {
   draft: {
-    provider: 'MERCADO_LIVRE', name: 'Moda barata', categoryId: 'MLB1430', keyword: null,
+    provider: 'MERCADO_LIVRE', name: 'Moda barata', categoryId: 'MLB1430', keyword: null, sort: null,
     sourceOptions: { extraEarningsOnly: true }, filters: { maxPriceCents: 5000, minCommissionPct: 10, commissionOperator: 'GTE' },
     aiEnabled: true, topN: 3,
   },

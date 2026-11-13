@@ -24,6 +24,7 @@ import {
   OfferHuntAiSuggestProviderUnavailableError,
 } from '../../../../../shared/errors/internal/OfferHuntAiErrors';
 import { logger as sharedLogger } from '../../../../../shared/logger/logger';
+import { HUNT_PAGE_PAUSE_MS } from './RunOfferHuntUseCase';
 
 /** Fonte aberta para uma marca: porta do catálogo + sessão já decifrada (nunca sai daqui). */
 interface SourceHandle {
@@ -58,6 +59,9 @@ export interface SuggestHuntConfigDeps {
   suggester: IHuntConfigSuggester;
   counter: IOfferHuntAiSuggestionCounter;
   logger?: { warn(obj: object, msg: string): void };
+  /** Pausa entre consultas à fonte (mesma régua da caçada, `HUNT_PAGE_PAUSE_MS`); injetável nos testes. */
+  sleep?: (ms: number) => Promise<void>;
+  rand?: () => number;
 }
 
 const errorCode = (err: unknown) => (err instanceof AppError ? err.code : 'SOURCE_UNEXPECTED_ERROR');
@@ -70,9 +74,13 @@ const errorCode = (err: unknown) => (err instanceof AppError ? err.code : 'SOURC
  */
 export class SuggestHuntConfigUseCase {
   private readonly logger: { warn(obj: object, msg: string): void };
+  private readonly sleep: (ms: number) => Promise<void>;
+  private readonly rand: () => number;
 
   constructor(private readonly deps: SuggestHuntConfigDeps) {
     this.logger = deps.logger ?? sharedLogger;
+    this.sleep = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+    this.rand = deps.rand ?? Math.random;
   }
 
   async execute(input: SuggestHuntConfigInput): Promise<SuggestHuntConfigOutput> {
@@ -148,7 +156,9 @@ export class SuggestHuntConfigUseCase {
   /**
    * Amostra larga (D6): até 5 consultas de 1 página (mais vendidos, ganhos extras se a marca tiver, geral e as 2
    * categorias de maior comissão média da 1ª leitura), até 90 itens sem repetir, 40 melhores pela nota. 1º erro
-   * da fonte encerra as consultas (sessão recusada ou limite valem para as próximas).
+   * da fonte encerra as consultas (sessão recusada ou limite valem para as próximas). Entre consultas, a mesma pausa
+   * das páginas da caçada (`HUNT_PAGE_PAUSE_MS`). Consulta geral vai com a entrada "Todas" já listada (o adaptador
+   * leva o que precisa dela, ex. `did` Shein, sem relistar categorias).
    */
   private async readSample(
     tenantId: string, handle: SourceHandle, caps: HuntCapabilities, categories: HuntSourceCategory[], now: Date,
@@ -163,8 +173,10 @@ export class SuggestHuntConfigUseCase {
     const pool: HuntCandidate[] = [];
     const seen = new Set<string>();
     let queries = 0;
+    const all = categories.find((c) => c.categoryId === null) ?? null;
     const fetch = async (category: HuntSourceCategory | null, options: HuntSourceOptions): Promise<boolean> => {
       if (queries >= AL.sampleQueriesMax || pool.length >= AL.samplePoolMax) return false;
+      if (queries > 0) await this.sleep(HUNT_PAGE_PAUSE_MS.min + Math.floor(this.rand() * (HUNT_PAGE_PAUSE_MS.max - HUNT_PAGE_PAUSE_MS.min + 1)));
       queries++;
       try {
         const page = await handle.catalog.fetchPage(handle.session, { page: 1, category, keyword: null, options });
@@ -182,7 +194,7 @@ export class SuggestHuntConfigUseCase {
     };
 
     let ok = true;
-    for (const options of broad) if (ok) ok = await fetch(null, options);
+    for (const options of broad) if (ok) ok = await fetch(all, options);
     if (ok && has('category')) {
       const real = new Map(categories.filter((c) => !!c.categoryId).map((c) => [c.categoryId as string, c]));
       const byCat = new Map<string, number[]>();

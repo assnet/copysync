@@ -72,4 +72,6 @@ export interface HuntCapabilities {
   imageHosts: readonly string[];
   /** Id do produto na marca (validação antes de montar URL). */
   productIdPattern: RegExp;
+  /** A fonte traz posição no ranking (`rank`); `false` = fator `rank` fora da nota. Ausente = traz (Shein). */
+  sourceRank?: boolean;
 }

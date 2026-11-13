@@ -18,11 +18,19 @@ export const ML_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 const BOOTSTRAP_MAX_HOPS = 3;
 
+const isMlHubHost = (host: string) => host === 'www.mercadolivre.com.br' || host === 'mercadolivre.com.br';
+
 /** Redirect para fora do hub (login em `mercadolivre.com/jms/...`) = sessão expirada. */
 export function isMlLoginRedirect(location: URL): boolean {
-  const host = location.hostname.toLowerCase();
-  const inHub = (host === 'www.mercadolivre.com.br' || host === 'mercadolivre.com.br') && location.pathname.startsWith('/afiliados/');
+  const inHub = isMlHubHost(location.hostname.toLowerCase()) && location.pathname.startsWith('/afiliados/');
   return !inHub;
+}
+
+/** Página de login de fato: host `mercadolivre.com` (ou subdomínio) ou caminho com `/jms/` ou `/login`. */
+export function isMlLoginPage(location: URL): boolean {
+  const host = location.hostname.toLowerCase();
+  const path = location.pathname.toLowerCase();
+  return host === 'mercadolivre.com' || host.endsWith('.mercadolivre.com') || path.includes('/jms/') || path.includes('/login');
 }
 
 function safeCookieValue(token: string | null | undefined): string | null {
@@ -64,11 +72,16 @@ export interface MlBootstrapOptions {
    * WAF e vira fonte indisponível, sem pausar a credencial (design §3b).
    */
   forbiddenIsRejected?: boolean;
+  /**
+   * Só redirect para o login (`isMlLoginPage`) é sessão recusada; outro salto fora de `/afiliados/` (desafio no mesmo
+   * host…) = indisponível. Padrão `false` (createLink: todo salto fora do hub = recusada). O hub passa `true`.
+   */
+  onlyLoginRedirectIsRejected?: boolean;
 }
 
 export async function bootstrapMercadoLivreSession(
   sessionCookies: Record<string, string>,
-  { log, forbiddenIsRejected = true }: MlBootstrapOptions,
+  { log, forbiddenIsRejected = true, onlyLoginRedirectIsRejected = false }: MlBootstrapOptions,
 ): Promise<MlBootstrapResult> {
   const cookieHeader = buildCookieHeader(sessionCookies);
   if (!cookieHeader) throw new AffiliateCredentialRejectedError(ML_PROVIDER);
@@ -106,8 +119,17 @@ export async function bootstrapMercadoLivreSession(
         throw new AffiliateApiUnavailableError(ML_PROVIDER);
       }
       if (isMlLoginRedirect(next)) {
+        if (onlyLoginRedirectIsRejected && !isMlLoginPage(next)) {
+          log.warn({ status: res.status }, 'ML bootstrap redirecionou para fora do hub');
+          throw new AffiliateApiUnavailableError(ML_PROVIDER);
+        }
         log.warn({ status: res.status }, 'ML bootstrap redirecionou para login');
         throw new AffiliateCredentialRejectedError(ML_PROVIDER);
+      }
+      // Nunca segue salto sem https ou fora do host ML: o `ssid` iria em texto plano ou para terceiros
+      if (next.protocol !== 'https:' || !isMlHubHost(next.hostname.toLowerCase())) {
+        log.warn({ status: res.status }, 'ML bootstrap redirecionou sem https');
+        throw new AffiliateApiUnavailableError(ML_PROVIDER);
       }
       if (hop >= BOOTSTRAP_MAX_HOPS) throw new AffiliateApiUnavailableError(ML_PROVIDER);
       current = next;

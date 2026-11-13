@@ -195,6 +195,23 @@ describe('MercadoLivreHubClient — erros', () => {
     await expect(run()).rejects.toBeInstanceOf(AffiliateCredentialRejectedError);
   });
 
+  it('redirect fora do hub que não é login (desafio no mesmo host) → indisponível, nunca recusada', async () => {
+    stubFetch(() => new Response(null, { status: 302, headers: { location: '/gz/account-verification?go=x' } }));
+    await expect(run()).rejects.toBeInstanceOf(AffiliateApiUnavailableError);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(null, { status: 302, headers: { location: 'https://www.mercadolivre.com.br/gz/challenge' } })),
+    );
+    await expect(run()).rejects.toBeInstanceOf(AffiliateApiUnavailableError);
+  });
+
+  it('bootstrap com redirect sem https nunca é seguido (ssid em texto plano) → indisponível', async () => {
+    const fn = vi.fn(async () => new Response(null, { status: 302, headers: { location: 'http://www.mercadolivre.com.br/afiliados/hub' } }));
+    vi.stubGlobal('fetch', fn);
+    await expect(run()).rejects.toBeInstanceOf(AffiliateApiUnavailableError);
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
   it('429 → rate limit', async () => {
     stubFetch(() => json({}, 429));
     await expect(run()).rejects.toBeInstanceOf(AffiliateApiRateLimitedError);

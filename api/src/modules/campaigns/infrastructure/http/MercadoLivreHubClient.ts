@@ -31,7 +31,7 @@ import {
   ML_USER_AGENT,
   bootstrapMercadoLivreSession,
   buildCookieHeader,
-  isMlLoginRedirect,
+  isMlLoginPage,
 } from './mercadoLivreBootstrap';
 
 const log = logger.child({ module: 'MlHubClient' });
@@ -129,12 +129,17 @@ export class MercadoLivreHubClient implements IHuntCatalogSource {
     const page = parseMercadoLivreHubPage(json, query.category?.categoryId ?? null);
     if (!page) return unavailable({ reason: 'unexpected_page_shape' }, 'ML hub fora do formato');
     if (page.dropped) log.warn({ dropped: page.dropped }, 'ML hub: cartões sem id válido descartados');
+    if (page.noCommission) log.warn({ noCommission: page.noCommission }, 'ML hub: cartões sem comissão avaliável descartados');
     return { items: page.items, hasNextPage: page.hasNextPage };
   }
 
   private async search(cookies: Record<string, string>, body: HubSearchBody): Promise<unknown> {
-    // 403 no bootstrap = WAF (indisponível), não sessão recusada (design §3b)
-    const { cookies: allCookies } = await bootstrapMercadoLivreSession(cookies, { log, forbiddenIsRejected: false });
+    // 403 no bootstrap = WAF; só redirect para o login recusa a sessão (indisponível), não sessão recusada (design §3b)
+    const { cookies: allCookies } = await bootstrapMercadoLivreSession(cookies, {
+      log,
+      forbiddenIsRejected: false,
+      onlyLoginRedirectIsRejected: true,
+    });
     const csrf = allCookies._csrf ?? null;
 
     const headers: Record<string, string> = {
@@ -180,7 +185,8 @@ export class MercadoLivreHubClient implements IHuntCatalogSource {
       } catch {
         next = null;
       }
-      if (next && isMlLoginRedirect(next)) {
+      // Só o login recusa a sessão; outro salto (desafio no mesmo host…) = indisponível
+      if (next && isMlLoginPage(next)) {
         log.warn({ status: res.status }, 'ML hub redirecionou para login');
         throw new AffiliateCredentialRejectedError(ML_PROVIDER);
       }

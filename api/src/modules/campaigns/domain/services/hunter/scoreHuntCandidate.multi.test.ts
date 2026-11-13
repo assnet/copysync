@@ -69,13 +69,15 @@ describe('scoreHuntCandidate — marca sem fatores (ML)', () => {
     commissionReturningPct: 0, commissionReturningCents: 0, campaignEndsAt: null, ...p,
   });
 
-  it('sem reviews/endingSoon; máximos renormalizados somam ~100; nota 0–100', () => {
+  it('sem reviews/endingSoon/rank; máximos renormalizados somam ~100; nota 0–100', () => {
     const s = scoreHuntCandidate(ml(), NOW);
     expect(s.factors.map((f) => f.key)).not.toContain('reviews');
     expect(s.factors.map((f) => f.key)).not.toContain('endingSoon');
+    expect(s.factors.map((f) => f.key)).not.toContain('rank');
     expect(s.factors.reduce((a, f) => a + f.max, 0)).toBeCloseTo(100, 0);
+    // Candidato ideal do hub (sem rank, como a fonte entrega) chega ao teto
     const top = scoreHuntCandidate(ml({
-      priceCents: 5_000, discountPct: 90, commissionNewCents: 100_000, extraFlag: true, sales: 1_000_000, rating: 5, rank: 1,
+      priceCents: 5_000, discountPct: 90, commissionNewCents: 100_000, extraFlag: true, sales: 1_000_000, rating: 5, rank: null,
     }), NOW);
     expect(top.score).toBeGreaterThanOrEqual(99.8);
     expect(top.score).toBeLessThanOrEqual(100);

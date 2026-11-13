@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   AffiliateApiRateLimitedError,
+  AffiliateApiUnavailableError,
   AffiliateCredentialRejectedError,
 } from '../../../../shared/errors/internal/OfferErrors';
 import { MercadoLivreAffiliateClient } from './MercadoLivreAffiliateClient';
@@ -99,6 +100,16 @@ describe('MercadoLivreAffiliateClient.listAccountTags', () => {
   it('403 no bootstrap segue = sessão recusada (helper compartilhado com o hub)', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('x', { status: 403 })));
     await expect(client().listAccountTags(COOKIES)).rejects.toBeInstanceOf(AffiliateCredentialRejectedError);
+  });
+
+  it('bootstrap: salto fora do hub segue = recusada; salto sem https nunca é seguido', async () => {
+    const redirect = (location: string) => vi.fn(async () => new Response(null, { status: 302, headers: { location } }));
+    vi.stubGlobal('fetch', redirect('https://www.mercadolivre.com.br/gz/challenge'));
+    await expect(client().listAccountTags(COOKIES)).rejects.toBeInstanceOf(AffiliateCredentialRejectedError);
+    const fn = redirect('http://www.mercadolivre.com.br/afiliados/linkbuilder');
+    vi.stubGlobal('fetch', fn);
+    await expect(client().listAccountTags(COOKIES)).rejects.toBeInstanceOf(AffiliateApiUnavailableError);
+    expect(fn).toHaveBeenCalledTimes(1);
   });
 });
 

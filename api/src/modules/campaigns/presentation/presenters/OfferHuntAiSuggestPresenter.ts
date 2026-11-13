@@ -10,6 +10,7 @@ export const OfferHuntAiSuggestPresenter = {
         name: draft.name,
         categoryId: draft.categoryId,
         keyword: draft.keyword,
+        sort: draft.sort,
         sourceOptions: { ...draft.sourceOptions },
         filters: { ...draft.filters },
         aiEnabled: draft.aiEnabled,

@@ -100,14 +100,20 @@ describe('mapMercadoLivreHubCard', () => {
     });
   });
 
-  it('sem chip e categoria fora da tabela → 0% sem marcar estimada', () => {
+  it('sem chip e categoria fora da tabela (ou busca sem categoria) → descartado, nunca 0% como dado real', () => {
     const c = cards()[3]!;
     c.components = c.components.filter((x) => x.id !== 'affiliates_commission_chip');
-    expect(mapMercadoLivreHubCard(c, { ...CTX, categoryId: 'MLB5726' })).toMatchObject({
-      commissionNewPct: 0,
-      commissionNewCents: 0,
-      commissionEstimated: false,
-    });
+    expect(mapMercadoLivreHubCard(c, { ...CTX, categoryId: 'MLB5726' })).toBeNull();
+    expect(mapMercadoLivreHubCard(c, CTX)).toBeNull();
+  });
+
+  it('página conta à parte os cartões sem comissão avaliável', () => {
+    const json = clone(fixture);
+    const all = json.polycard_client_model.polycards as unknown as Card[];
+    all[3]!.components = all[3]!.components.filter((x) => x.id !== 'affiliates_commission_chip');
+    const page = parseMercadoLivreHubPage(json, null)!;
+    expect(page.items).toHaveLength(3);
+    expect(page).toMatchObject({ dropped: 0, noCommission: 1 });
   });
 });
 

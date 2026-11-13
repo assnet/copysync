@@ -7,6 +7,8 @@ import { huntCandidate } from '../../../domain/services/hunter/huntTestFixtures'
 import type { HuntConfigSuggestInput } from '../../hunter/contracts/IHuntConfigSuggester';
 import { SuggestHuntConfigUseCase } from './SuggestHuntConfigUseCase';
 import type { IHuntProviderAdapter } from '../../../domain/contracts/hunter/IHuntProviderAdapter';
+import { SheinHuntProviderAdapter } from '../../../infrastructure/hunter/providers/SheinHuntProviderAdapter';
+import { HUNT_PAGE_PAUSE_MS } from './RunOfferHuntUseCase';
 
 const NOW = new Date('2026-11-15T15:00:00.000Z');
 const ML: HuntCapabilities = {
@@ -16,7 +18,7 @@ const ML: HuntCapabilities = {
 };
 const SHEIN: HuntCapabilities = { ...ML, provider: 'SHEIN', sorts: ['RECOMMENDED', 'BEST_SELLING'], sourceFilters: ['keyword', 'category'] };
 const SUGGESTION = {
-  draft: { name: 'X', categoryId: null, keyword: null, sourceOptions: {}, filters: {}, aiEnabled: null, topN: 3 },
+  draft: { name: 'X', categoryId: null, keyword: null, sort: null, sourceOptions: {}, filters: {}, aiEnabled: null, topN: 3 },
   reasons: { topN: 'Três' }, dropped: ['hack'],
 };
 
@@ -69,6 +71,7 @@ function setup(opts: {
   };
   const suggest = vi.fn(async (_i: HuntConfigSuggestInput) => (opts.suggest ? opts.suggest() : SUGGESTION));
   const counter = new Counter();
+  const sleep = vi.fn(async (_ms: number) => undefined);
   const uc = new SuggestHuntConfigUseCase({
     entitlements: { getBoolean: async (_t: string, k: string) => ent[k as keyof typeof ent] ?? null, getNumber: async () => null } as never,
     riskGate: { isAccepted: async () => opts.accepted ?? true },
@@ -78,8 +81,10 @@ function setup(opts: {
     suggester: { suggest },
     counter,
     logger: { warn: vi.fn() },
+    sleep,
+    rand: () => 0.5,
   });
-  return { uc, suggest, counter, catalog, credentials };
+  return { uc, suggest, counter, catalog, credentials, sleep };
 }
 const run = (uc: SuggestHuntConfigUseCase, patch: Partial<Parameters<SuggestHuntConfigUseCase['execute']>[0]> = {}) =>
   uc.execute({ tenantId: 't1', provider: 'MERCADO_LIVRE', intent: 'moda feminina barata', pickProduct: false, now: NOW, ...patch });
@@ -149,9 +154,15 @@ describe('SuggestHuntConfigUseCase', () => {
       const pct = cat === 'A' ? 20 : cat === 'B' ? 12 : 5;
       return huntCandidate({ productId: String(100000 + n), categoryId: cat, commissionNewPct: pct, sales: n });
     }));
-    const { uc, suggest } = setup({ catalog });
+    const { uc, suggest, sleep } = setup({ catalog });
     const out = await run(uc, { intent: null, pickProduct: true });
     expect(out.sourceUsed).toBe(true);
+    // Pausa da caçada entre consultas (não antes da 1ª)
+    expect(sleep.mock.calls.map(([ms]) => ms)).toEqual([1_500, 1_500]);
+    for (const [ms] of sleep.mock.calls) {
+      expect(ms).toBeGreaterThanOrEqual(HUNT_PAGE_PAUSE_MS.min);
+      expect(ms).toBeLessThanOrEqual(HUNT_PAGE_PAUSE_MS.max);
+    }
     expect(catalog.queries.map((q) => [q.category?.categoryId ?? null, q.options])).toEqual([
       [null, { bestSellersOnly: true }], [null, { extraEarningsOnly: true }], [null, {}],
     ]); // pool chegou a 90 nas 3 primeiras: categorias não são lidas
@@ -163,7 +174,7 @@ describe('SuggestHuntConfigUseCase', () => {
   it('amostra pequena lê as 2 categorias de maior comissão média; 1º erro da fonte encerra', async () => {
     const catalog = catalogWith((q) => {
       if (q.category?.categoryId === 'B') return new AppError('AFFILIATE_API_UNAVAILABLE', 'x', 503);
-      if (q.category) return [huntCandidate({ productId: `9${String(q.category.categoryId).charCodeAt(0)}`, categoryId: q.category.categoryId })];
+      if (q.category?.categoryId) return [huntCandidate({ productId: `9${String(q.category.categoryId).charCodeAt(0)}`, categoryId: q.category.categoryId })];
       const o = q.options;
       const tag = o.bestSellersOnly ? 1 : o.extraEarningsOnly ? 2 : 3;
       return [
@@ -183,8 +194,30 @@ describe('SuggestHuntConfigUseCase', () => {
     const catalog = catalogWith(() => new AppError('AFFILIATE_API_UNAVAILABLE', 'x', 503));
     const { uc, suggest } = setup({ catalog });
     const out = await run(uc, { provider: 'SHEIN', pickProduct: true });
-    expect(catalog.queries).toEqual([{ page: 1, category: null, keyword: null, options: { sort: 'BEST_SELLING' } }]);
+    expect(catalog.queries).toEqual([
+      { page: 1, category: { categoryId: null, name: 'Todas' }, keyword: null, options: { sort: 'BEST_SELLING' } },
+    ]);
     expect(suggest.mock.calls[0][0].sample).toBeNull();
     expect(out.sourceUsed).toBe(true); // categorias lidas
+  });
+
+  it('Shein: amostra resolve o `did` de "Todas" uma vez (1 listCategories na leitura toda)', async () => {
+    const client = {
+      listCategories: vi.fn(async () => [
+        { categoryId: null, name: 'All', did: 0 }, { categoryId: '4436', name: 'Vestidos', did: 12 },
+      ]),
+      list: vi.fn(async () => ({ items: [huntCandidate({ productId: '123456', categoryId: '4436' })], hasNextPage: false })),
+      search: vi.fn(),
+    };
+    const adapter = new SheinHuntProviderAdapter(client as never);
+    const base = setup();
+    const uc = new SuggestHuntConfigUseCase({
+      ...(base.uc as unknown as { deps: ConstructorParameters<typeof SuggestHuntConfigUseCase>[0] }).deps,
+      registry: { get: () => adapter } as never,
+      credentials: { resolveState: async () => ({ state: 'ok', cred: { publicIdentifier: 'm1', session: { cookies: { AT: 'tok' } } } }) as never },
+    });
+    await run(uc, { provider: 'SHEIN', pickProduct: true });
+    expect(client.list).toHaveBeenCalledTimes(3); // mais vendidos, geral, categoria 4436
+    expect(client.listCategories).toHaveBeenCalledTimes(1);
   });
 });
