@@ -596,7 +596,7 @@ export const offerHunterStrings = {
     pending: 'Pendente',
     done: 'Pronto',
     askAdmin: 'Peça a um administrador da conta para aceitar o aviso.',
-    superAdminCannot: 'O aceite é do titular da conta: entre como administrador do cliente para aceitar.',
+    superAdminAccepts: 'Você está aceitando como super admin, em nome desta conta. O aceite fica registrado com o seu usuário e vale para toda a conta.',
     staleReloaded: 'O aviso foi atualizado. Recarregamos as opções: recarregue a página para ler o texto novo.',
     aiInfo: 'Aviso informativo: não impede ligar as caçadas.',
   },

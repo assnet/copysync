@@ -228,7 +228,8 @@ Detalhes em [`extensao-navegador.md`](extensao-navegador.md) (seção "Shein") e
 - Não devolver, logar nem pôr em evento o `AT`; não guardar fora de `sessionCiphertext`.
 - Não aceitar `memberId` digitado: o ID vem da sessão.
 - Não apagar nem alterar linha de `marketplace_risk_acceptances`; não marcar aceite por padrão, por seed, por
-  migration nem por super admin em nome do tenant.
+  migration nem por super admin em nome do tenant (exceção: aviso do Caçador de Ofertas, escopo `OFFER_HUNTER`,
+  ver [`cacador-de-ofertas.md`](cacador-de-ofertas.md)).
 - Não suavizar o aviso: precisa citar proibição nos termos, encerramento de conta e perda de comissão.
 - Não mudar o texto do aviso sem subir a versão em `marketplaceRiskNotice.ts` e no espelho do app.
 - Não persistir a caixa de aceite (`usePersistedState`): aceite não sobrevive a reload sem novo clique.

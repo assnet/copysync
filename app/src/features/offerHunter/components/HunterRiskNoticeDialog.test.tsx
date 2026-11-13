@@ -35,10 +35,12 @@ describe('HunterRiskNoticeDialog', () => {
     expect(screen.getByText(t.gatesPanel.askAdmin)).toBeInTheDocument();
   });
 
-  it('super admin não aceita mesmo com papel ADMIN', () => {
+  it('super admin aceita e vê o aviso de que o aceite vale para a conta', () => {
     render(<HunterRiskNoticeDialog open canAccept isSuperAdmin onClose={vi.fn()} onAccepted={vi.fn()} />);
+    expect(screen.getByText(t.gatesPanel.superAdminAccepts)).toBeInTheDocument();
     expect(confirmBtn()).toBeDisabled();
-    expect(screen.getByText(t.gatesPanel.superAdminCannot)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect(confirmBtn()).toBeEnabled();
   });
 
   it('versão desatualizada: recarrega opções e troca o aceite por "Recarregar página"', async () => {

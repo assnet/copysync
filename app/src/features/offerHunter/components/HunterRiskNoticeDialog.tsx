@@ -13,9 +13,9 @@ const g = offerHunterStrings.gatesPanel;
 
 export interface HunterRiskNoticeDialogProps {
   open: boolean;
-  /** Papel ADMIN no tenant ativo (e não super admin, que recebe 403 da API). */
+  /** Papel ADMIN no tenant ativo ou super admin (a API aceita os dois no escopo `OFFER_HUNTER`). */
   canAccept: boolean;
-  /** Super admin: explicação própria (o aceite é do titular da conta). */
+  /** Super admin: aceite registrado com o id dele; texto avisa que vale para a conta inteira. */
   isSuperAdmin?: boolean;
   onClose: () => void;
   /** Aceite gravado: a tela recarrega `useHuntOptions` (portão `riskAccepted`). */
@@ -33,7 +33,7 @@ export function HunterRiskNoticeDialog({ open, canAccept, isSuperAdmin, onClose,
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
   const { accept, accepting, errorCode, stale } = useHunterRiskAcceptance();
   const [checked, setChecked] = useState(false);
-  const allowed = canAccept && !isSuperAdmin;
+  const allowed = canAccept;
 
   useEffect(() => {
     if (open) setChecked(false);
@@ -109,10 +109,15 @@ export function HunterRiskNoticeDialog({ open, canAccept, isSuperAdmin, onClose,
           />
         )}
 
+        {allowed && isSuperAdmin && !stale && (
+          <Alert severity="warning" variant="outlined" sx={{ mt: 1.5 }}>
+            <Typography variant="body2">{g.superAdminAccepts}</Typography>
+          </Alert>
+        )}
         {!allowed && !stale && (
           <Alert severity="info" variant="outlined" sx={{ mt: 1.5 }}>
             <Typography variant="body2" fontWeight={600}>{t.adminOnly}</Typography>
-            <Typography variant="body2">{isSuperAdmin ? g.superAdminCannot : g.askAdmin}</Typography>
+            <Typography variant="body2">{g.askAdmin}</Typography>
           </Alert>
         )}
         {errorText && <Alert severity="error" sx={{ mt: 1.5 }} aria-live="polite">{errorText}</Alert>}

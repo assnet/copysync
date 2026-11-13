@@ -44,7 +44,8 @@ export function OfferHunterPage() {
   const { tenants, activeTenantId } = useTenant();
   // Só ADMIN confirmado aceita o aviso; super admin recebe 403 da API.
   const isSuperAdmin = Boolean(user?.isSuperAdmin);
-  const canAcceptRisk = tenants.find((x) => x.id === activeTenantId)?.role === 'ADMIN' && !isSuperAdmin;
+  // Aviso do caçador: admin do tenant ou super admin (a prévia só aparece para ele; API aceita no escopo OFFER_HUNTER).
+  const canAcceptRisk = isSuperAdmin || tenants.find((x) => x.id === activeTenantId)?.role === 'ADMIN';
 
   const opts = useHuntOptions();
   const usage = useHuntUsage();

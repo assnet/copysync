@@ -122,15 +122,26 @@ describe('POST /:provider/risk-acceptance', () => {
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ scope: 'OFFER_HUNTER', noticeVersion: HUNTER_VERSION }));
   });
 
-  it('scope inválido → 400; OFFER_HUNTER fora da SHEIN → 422; super admin → 403', async () => {
+  it('scope inválido → 400; OFFER_HUNTER fora da SHEIN → 422; super admin → 403 no link', async () => {
     db.members.set('u1:t1', { role: 'ADMIN', tenant: { status: 'ACTIVE' } });
     const create = vi.spyOn(PrismaMarketplaceRiskAcceptanceRepository.prototype, 'create');
     expect((await accept('u1', { noticeVersion: HUNTER_VERSION, locale: 'pt-BR', scope: 'OTHER' })).statusCode).toBe(400);
     const shopee = await accept('u1', { noticeVersion: HUNTER_VERSION, locale: 'pt-BR', scope: 'OFFER_HUNTER' }, 'SHOPEE');
     expect([shopee.statusCode, shopee.json().error.code]).toEqual([422, 'AFFILIATE_CREDENTIAL_INVALID']);
-    const sa = await accept('sa:root', { noticeVersion: HUNTER_VERSION, locale: 'pt-BR', scope: 'OFFER_HUNTER' });
+    const sa = await accept('sa:root', { noticeVersion: VERSION, locale: 'pt-BR' });
     expect(sa.statusCode).toBe(403);
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it('super admin aceita o aviso do caçador (prévia só dele) e grava com o id dele', async () => {
+    const hunterRow = { ...row, scope: 'OFFER_HUNTER' as const, noticeVersion: HUNTER_VERSION, acceptedByUserId: 'root' };
+    const create = vi.spyOn(PrismaMarketplaceRiskAcceptanceRepository.prototype, 'create').mockResolvedValue({ acceptance: hunterRow, created: true });
+    const audit = vi.spyOn(PrismaAuditLogRepository.prototype, 'create').mockResolvedValue(undefined);
+    const sa = await accept('sa:root', { noticeVersion: HUNTER_VERSION, locale: 'pt-BR', scope: 'OFFER_HUNTER' });
+    expect(sa.statusCode).toBe(200);
+    expect(sa.json().data).toMatchObject({ noticeVersion: HUNTER_VERSION, scope: 'OFFER_HUNTER' });
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ acceptedByUserId: 'root', scope: 'OFFER_HUNTER' }));
+    expect(audit).toHaveBeenCalledWith(expect.objectContaining({ meta: expect.objectContaining({ bySuperAdmin: true }) }));
   });
 });
 

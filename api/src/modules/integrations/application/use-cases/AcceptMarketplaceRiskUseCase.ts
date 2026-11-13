@@ -35,17 +35,20 @@ export interface AcceptMarketplaceRiskOutput {
 }
 
 /**
- * Admin do tenant aceita o aviso de risco vigente do marketplace. Super admin nunca aceita por
- * um tenant (recebe `tenantContext` de qualquer um). Repetir a mesma versão devolve o aceite original.
+ * Admin do tenant aceita o aviso de risco vigente do marketplace. Super admin não aceita o aviso do
+ * link de afiliado por um tenant (recebe `tenantContext` de qualquer um). Exceção: o escopo
+ * `OFFER_HUNTER`, cuja prévia só o super admin enxerga (decisão do dono, 2026-11-12) — o aceite fica
+ * registrado com o id dele e `bySuperAdmin` na auditoria. Repetir a mesma versão devolve o aceite original.
  */
 export class AcceptMarketplaceRiskUseCase {
   constructor(private readonly transaction: MarketplaceRiskAcceptTransaction) {}
 
   async execute(input: AcceptMarketplaceRiskInput): Promise<AcceptMarketplaceRiskOutput> {
-    if (input.isSuperAdmin || input.role !== 'ADMIN') {
+    const scope = input.scope ?? DEFAULT_MARKETPLACE_RISK_SCOPE;
+    const superAdminMayAccept = input.isSuperAdmin && scope === 'OFFER_HUNTER';
+    if (!superAdminMayAccept && (input.isSuperAdmin || input.role !== 'ADMIN')) {
       throw new ForbiddenError('Only a tenant admin can accept the marketplace risk notice');
     }
-    const scope = input.scope ?? DEFAULT_MARKETPLACE_RISK_SCOPE;
     const current = currentRiskNoticeVersion(input.provider, scope);
     if (current === null) {
       throw scope === DEFAULT_MARKETPLACE_RISK_SCOPE
@@ -73,7 +76,7 @@ export class AcceptMarketplaceRiskUseCase {
           tenantId: input.tenantId,
           userId: input.userId,
           action: 'MARKETPLACE_RISK_ACCEPTED',
-          meta: { provider: input.provider, scope, noticeVersion: current, locale: input.locale },
+          meta: { provider: input.provider, scope, noticeVersion: current, locale: input.locale, ...(input.isSuperAdmin ? { bySuperAdmin: true } : {}) },
         });
       }
       return { acceptedAt: acceptance.acceptedAt, noticeVersion: acceptance.noticeVersion, scope: acceptance.scope };

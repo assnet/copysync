@@ -9,6 +9,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Changed — app 0.116.1 / api 0.93.1 — Caçador: selo MAX no menu e aceite pelo super admin
+
+#### app
+
+- **`navigation/model.ts`** / **`navigation/strings.ts`** — item volta com selo MAX; rótulo do menu encurtado para "Caçador" (nome completo + selo cortava). Página mantém "Caçador de Ofertas".
+- **`HunterRiskNoticeDialog.tsx`** / **`OfferHunterPage.tsx`** — super admin marca e aceita o aviso do caçador, com alerta de que o aceite vale para a conta inteira.
+
 ### Added — app 0.116.0 / api 0.93.0 — Caçador de Ofertas (Shein, MAX, prévia super admin)
 
 #### app ([`docs/cacador-de-ofertas.md`](docs/cacador-de-ofertas.md))

@@ -96,8 +96,10 @@ desconto, comissão %/R$, nota, vendas, avaliações, "só com extra" e "termina
 - Texto autônomo: busca automática recorrente, link automático pela sessão, envio automático, cláusulas 3.3.2 e
   Anexo 3 §6, encerramento da conta/perda de comissão, risco do titular. **Um só aceite cobre todo o fluxo do
   caçador**; gerador, vitrine, story e monitoramento seguem no escopo padrão.
-- Só `ADMIN` do tenant aceita (super admin é recusado). A rota de aceite não tem portão de audiência, então na
-  prévia um ADMIN do tenant de teste aceita e o super admin opera. Só inclusão. Caixa de aceite nunca persistida.
+- Aceitam o `ADMIN` do tenant **e o super admin** (decisão do dono 2026-11-12: na prévia só ele vê a tela). Aceite do
+  super admin fica com o id dele e `bySuperAdmin: true` na auditoria; o diálogo avisa que vale para a conta inteira.
+  Exceção só do escopo `OFFER_HUNTER`: no aviso Shein do link (`AFFILIATE_LINK`) o super admin segue recusado (403).
+  A rota de aceite não tem portão de audiência. Só inclusão. Caixa de aceite nunca persistida.
 
 ## Job (`OfferHuntSchedulerJob`)
 
@@ -134,7 +136,7 @@ Aceite: `POST /api/integrations/affiliate-credentials/:provider/risk-acceptance`
 ## Painel (`app/src/features/offerHunter/`)
 
 - Rotas `/offer-hunter` e `/offer-hunter/:huntId` sob `OfferHunterRoute`; menu: filho de Afiliados só com
-  `offerHunterVisible` (`useOfferHunterAccess` → `GET /access`). Sem `superAdminOnly`/`SuperAdminRoute`, sem selo.
+  `offerHunterVisible` (`useOfferHunterAccess` → `GET /access`). Sem `superAdminOnly`/`SuperAdminRoute`; selo MAX e rótulo curto "Caçador" no menu (nome completo + selo não cabe).
 - Tela inicial (uso do dia vindo da API, destino, cartões, painel de portões, alerta de pausa), assistente em 3
   passos (O que caçar → Refino → Quando e onde) com "Testar agora", detalhe com achados e execuções.
 - Persistência (`tab`): `offerHunter.wizard*` (limpo ao salvar), `offerHunter.destinationDraft`,

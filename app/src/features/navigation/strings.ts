@@ -28,7 +28,8 @@ export const navigationStrings = {
     broadcastGroups: 'Grupos de disparo',
     storefront: 'Página de Ofertas',
     offerStory: 'Story de Oferta',
-    offerHunter: 'Caçador de Ofertas',
+    /** Curto por causa do selo MAX; a página leva o nome completo "Caçador de Ofertas". */
+    offerHunter: 'Caçador',
     affiliateCredentials: 'Credenciais de afiliado',
     chat: 'Chat',
     settings: 'Configurações',

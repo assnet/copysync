@@ -7,6 +7,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.93.1] — 2026-11-12 — Super admin aceita o aviso do Caçador de Ofertas
+
+### Changed
+
+#### integrations
+
+- **`AcceptMarketplaceRiskUseCase.ts`** — super admin pode aceitar o aviso no escopo `OFFER_HUNTER` (a prévia só aparece para ele); aceite gravado com o id dele e `bySuperAdmin: true` na auditoria. No aviso Shein do link (`AFFILIATE_LINK`) segue 403.
+
 ## [0.93.0] — 2026-11-12 — Caçador de Ofertas (Shein, MAX, prévia super admin)
 
 ### Added

@@ -133,9 +133,20 @@ describe('AcceptMarketplaceRiskUseCase', () => {
     expect(repo.create).not.toHaveBeenCalled();
   });
 
-  it('super admin → 403 também no escopo do caçador', async () => {
+  it.each([
+    ['com papel SUPER_ADMIN', { role: 'SUPER_ADMIN' }],
+    ['com papel ADMIN', {}],
+  ])('super admin %s aceita o escopo do caçador e a auditoria marca bySuperAdmin', async (_n, over) => {
+    const { sut, rows, audit } = makeSut();
+    expect(await sut.execute(input({ ...over, isSuperAdmin: true, userId: 'sa1', scope: 'OFFER_HUNTER', noticeVersion: HUNTER_VERSION })))
+      .toMatchObject({ noticeVersion: HUNTER_VERSION, scope: 'OFFER_HUNTER' });
+    expect(rows[0]).toMatchObject({ acceptedByUserId: 'sa1', scope: 'OFFER_HUNTER' });
+    expect(audit.create).toHaveBeenCalledWith(expect.objectContaining({ userId: 'sa1', meta: expect.objectContaining({ bySuperAdmin: true }) }));
+  });
+
+  it('operador continua sem aceitar o escopo do caçador', async () => {
     const { sut, repo } = makeSut();
-    expect(await errorOf(sut.execute(input({ isSuperAdmin: true, scope: 'OFFER_HUNTER', noticeVersion: HUNTER_VERSION }))))
+    expect(await errorOf(sut.execute(input({ role: 'OPERATOR', scope: 'OFFER_HUNTER', noticeVersion: HUNTER_VERSION }))))
       .toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
     expect(repo.create).not.toHaveBeenCalled();
   });
