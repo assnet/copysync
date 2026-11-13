@@ -23,6 +23,9 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 - Ver `api/CHANGELOG.md` [0.94.0]: `rejectedBy` e `ranking` na execução, `commissionOperator`, faixa da fonte nunca usada, envio real no achado e `POST /finds/:findId/resend`.
 
+- **`HuntRunsTab.tsx`** — execução em andamento mostra "Em andamento"; ranking buscado só ao abrir (`GET /:id/runs/:runId`).
+- **`CommissionFilterField.tsx`** — valor salvo acima de 50% aparece com aviso para ajustar.
+
 ### Changed — app 0.116.2 — "sem limite" no lugar de "sem teto"
 
 #### app

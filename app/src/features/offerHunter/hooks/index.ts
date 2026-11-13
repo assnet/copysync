@@ -4,3 +4,4 @@ export { useHuntOptions, useHuntUsage, useHunterSettings, firstClosedGate, HUNT_
 export { useOfferHunts, useOfferHunt } from './useOfferHunts';
 export { useHuntRuns, useHuntFinds, useHuntPagedList, type HuntPagedList } from './useHuntHistory';
 export { useHunterRiskAcceptance } from './useHunterRiskAcceptance';
+export { useRunRankings, type RunRankings, type RunRankingEntry } from './useRunRankings';

@@ -292,12 +292,39 @@ describe('claimDue — manuais/curadas (gerador e caçador) antes do monitoramen
     expect(got.map((d) => d.id).sort()).toEqual([h.id, m.id].sort());
   });
 
-  it('vaga do tick (limit 1): faixa com caçador na cabeça vence captura mais antiga de outra sessão', async () => {
+  it('vaga do tick (limit 1): faixa com caçador na cabeça vence captura de outra sessão atrasada até o teto (600 s)', async () => {
     await reset();
     await backlog(5);
     const h = await one('HUNTER', spToUtc(8, 55), sessionId, convGen);
-    await one('MONITORING', spToUtc(6, 30), sessionB, convB);
+    await one('MONITORING', spToUtc(8, 51), sessionB, convB);
     expect((await repo.claimDue(spToUtc(9), 1)).map((d) => d.id)).toEqual([h.id]);
+  });
+
+  it('vaga do tick (limit 1): captura de outra sessão atrasada > 600 s vence o caçador (sem fome)', async () => {
+    await reset();
+    const h = await one('HUNTER', spToUtc(8, 55), sessionId, convGen);
+    const m = await one('MONITORING', spToUtc(8, 49), sessionB, convB);
+    expect((await repo.claimDue(spToUtc(9), 1)).map((d) => d.id)).toEqual([m.id]);
+    expect((await repo.claimDue(spToUtc(9), 1)).map((d) => d.id)).toEqual([h.id]);
+  });
+
+  it('fila justa: ≥ limit sessões com manual vencido não tomam todas as vagas; monitoramento atrasado recebe vaga', async () => {
+    await reset();
+    const lanes = await Promise.all(Array.from({ length: 6 }, async (_, i) => {
+      const sid = (await prisma.session.create({ data: { tenantId, name: `M${i}`, status: 'CONNECTED' } })).id;
+      const conv = (await prisma.chatConversation.create({ data: { tenantId, sessionId: sid, isGroup: true, groupJid: `fair-${i}-${Date.now()}` } })).id;
+      return { sid, conv };
+    }));
+    const manual = await Promise.all(lanes.map((l, i) => one(i % 2 ? 'GENERATOR' : 'HUNTER', spToUtc(8, 50 + i), l.sid, l.conv)));
+    const m = await one('MONITORING', spToUtc(7), sessionB, convB);
+    const got = (await repo.claimDue(spToUtc(9), 4)).map((d) => d.id);
+    expect(got).toHaveLength(4);
+    expect(got).toContain(m.id);
+    // as 2 da cota manual são as mais antigas; a 4ª vaga vai por notBefore entre as excedentes
+    expect(got.filter((id) => id !== m.id).sort()).toEqual([manual[0]!.id, manual[1]!.id, manual[2]!.id].sort());
+    await prisma.offerDispatch.deleteMany({ where: { sessionId: { in: lanes.map((l) => l.sid) } } });
+    await prisma.chatConversation.deleteMany({ where: { sessionId: { in: lanes.map((l) => l.sid) } } });
+    await prisma.session.deleteMany({ where: { id: { in: lanes.map((l) => l.sid) } } });
   });
 
   it('dois workers concorrentes: o caçador sai uma vez só e a faixa não abre duas vezes', async () => {

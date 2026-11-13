@@ -1373,9 +1373,11 @@ model OfferHuntFind {
   failureReason              String?
   /// Oferta mais recente (o reenvio troca; as anteriores ficam em `offers`).
   offerId                    String?
-  /// Reenvios pelo painel (não contam no teto do dia).
+  /// Reenvios reivindicados pelo painel (não contam no teto de achados; sobem no claim = número do reenvio).
   resendCount                Int                 @default(0)
   lastResentAt               DateTime?
+  /// Reenvio em voo até aqui (2º clique recusado); vencido sem troca de oferta = retomável com o mesmo número.
+  resendInFlightUntil        DateTime?
   createdAt                  DateTime            @default(now())
   updatedAt                  DateTime            @updatedAt
 
@@ -1399,6 +1401,9 @@ model OfferHunterSettings {
   tenantId       String   @id
   sessionId      String?
   conversationId String?
+  /// Teto diário de reenvios: início do dia (fuso do produto) do contador e reenvios nesse dia.
+  resendDayStart DateTime?
+  resendsInDay   Int      @default(0)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

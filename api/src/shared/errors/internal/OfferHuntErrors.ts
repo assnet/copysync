@@ -40,7 +40,7 @@ export class OfferHuntSourceUnavailableError extends AppError {
 
 /** Caçada ou achado não existe no tenant. */
 export class OfferHuntNotFoundError extends AppError {
-  constructor(resource: 'hunt' | 'find' = 'hunt') {
+  constructor(resource: 'hunt' | 'find' | 'run' = 'hunt') {
     super('OFFER_HUNT_NOT_FOUND', `Offer ${resource} not found`, 404, { resource });
   }
 }
@@ -77,5 +77,12 @@ export class OfferHuntResendNotDeliveredError extends AppError {
 export class OfferHuntResendPendingError extends AppError {
   constructor() {
     super('OFFER_HUNT_RESEND_PENDING', 'Previous send of this find is still pending', 409);
+  }
+}
+
+/** Teto diário de reenvios do tenant (guarda de chamadas à Shein; não é limite de plano). */
+export class OfferHuntResendDailyLimitError extends AppError {
+  constructor(limit: number) {
+    super('OFFER_HUNT_RESEND_DAILY_LIMIT', 'Daily find resends limit reached', 429, { limit });
   }
 }

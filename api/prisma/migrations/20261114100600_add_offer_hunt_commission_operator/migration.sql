@@ -3,9 +3,8 @@ CREATE TYPE "HuntCommissionOperator" AS ENUM ('GT', 'GTE', 'LT');
 
 ALTER TABLE "offer_hunts" ADD COLUMN "commissionOperator" "HuntCommissionOperator";
 
--- Backfill: o mínimo de antes era "igual ou maior que".
-UPDATE "offer_hunts" SET "commissionOperator" = 'GTE' WHERE "minCommissionPercent" IS NOT NULL;
-
--- A faixa da fonte (`commRate`) filtra a comissão de RECOMPRA: o caçador não a usa mais. Grava ANY (5) para
--- refletir o que a execução faz (ela já ignora a coluna).
-UPDATE "offer_hunts" SET "commissionBand" = 5 WHERE "commissionBand" IS DISTINCT FROM 5;
+-- Backfill: o mínimo de antes era "igual ou maior que". O teto do campo caiu de 100 para 50: clamp para a
+-- caçada legada abrir válida no painel. `commissionBand` fica como está (a execução já ignora a coluna).
+UPDATE "offer_hunts"
+   SET "commissionOperator" = 'GTE', "minCommissionPercent" = LEAST("minCommissionPercent", 50)
+ WHERE "minCommissionPercent" IS NOT NULL;

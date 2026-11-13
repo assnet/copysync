@@ -3,6 +3,8 @@ import type {
   IOfferHuntFindRepository,
   NewOfferHuntFind,
   OfferHuntFindTransition,
+  ResendClaim,
+  ResendClaimOptions,
 } from '../../../domain/contracts/hunter/IOfferHuntFindRepository';
 import type { OfferHuntPageCursor } from '../../../domain/contracts/hunter/IOfferHuntRunRepository';
 import type { OfferHuntFind, OfferHuntFindDelivery, OfferHuntFindStatus } from '../../../domain/hunter/OfferHunt';
@@ -17,7 +19,7 @@ const deliveryInclude = (tenantId: string) => ({
         where: { tenantId },
         orderBy: { updatedAt: 'desc' as const },
         take: 1,
-        select: { status: true, updatedAt: true, sessionId: true, conversation: { select: { tenantId: true, groupName: true } } },
+        select: { status: true, failureReason: true, updatedAt: true, sessionId: true, conversation: { select: { tenantId: true, groupName: true } } },
       },
     },
   },
@@ -47,6 +49,8 @@ export class PrismaOfferHuntFindRepository implements IOfferHuntFindRepository {
         sentAt: d.status === 'SENT' ? d.updatedAt : null,
         groupName: d.conversation.tenantId === tenantId ? d.conversation.groupName : null,
         sessionName: d.sessionId ? (sessionName.get(d.sessionId) ?? null) : null,
+        failureReason: d.failureReason,
+        updatedAt: d.updatedAt,
       };
       return { ...find, delivery };
     });
@@ -149,22 +153,51 @@ export class PrismaOfferHuntFindRepository implements IOfferHuntFindRepository {
     return count > 0;
   }
 
-  async claimResend(tenantId: string, id: string, offerId: string, now: Date, cooldownMs: number): Promise<boolean> {
-    const { count } = await this.prisma.offerHuntFind.updateMany({
-      where: {
-        id, tenantId, offerId,
-        OR: [{ lastResentAt: null }, { lastResentAt: { lt: new Date(now.getTime() - cooldownMs) } }],
-      },
-      data: { lastResentAt: now },
+  /**
+   * Lock do tenant (`offer_hunt_resends:<tenant>`, como o teto de achados) serializa claim e contador do dia:
+   * dois cliques/abas nunca passam juntos e o teto não estoura. Contador em `offer_hunter_settings`
+   * (`resendDayStart`/`resendsInDay`): dia novo zera. A linha de configuração existe (o destino é exigido antes).
+   */
+  async claimResend(tenantId: string, id: string, offerId: string, now: Date, opts: ResendClaimOptions): Promise<ResendClaim> {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`offer_hunt_resends:${tenantId}`}::text))`;
+      const f = await tx.offerHuntFind.findFirst({
+        where: { id, tenantId }, select: { offerId: true, resendCount: true, lastResentAt: true, resendInFlightUntil: true },
+      });
+      if (!f || f.offerId !== offerId || (f.resendInFlightUntil && f.resendInFlightUntil > now)) return { kind: 'PENDING' as const };
+      const inFlight = { lastResentAt: now, resendInFlightUntil: new Date(now.getTime() + opts.inFlightMs) };
+      if (f.resendInFlightUntil) {
+        // Reenvio interrompido (oferta não trocada): mesmo número → mesmo sourceKey; não conta de novo
+        await tx.offerHuntFind.updateMany({ where: { id, tenantId }, data: inFlight });
+        return { kind: 'CLAIMED' as const, number: f.resendCount };
+      }
+      if (f.lastResentAt && f.lastResentAt.getTime() >= now.getTime() - opts.cooldownMs) return { kind: 'PENDING' as const };
+      const s = await tx.offerHunterSettings.findUnique({ where: { tenantId }, select: { resendDayStart: true, resendsInDay: true } });
+      const used = s?.resendDayStart?.getTime() === opts.dayStart.getTime() ? s.resendsInDay : 0;
+      if (!s || used >= opts.dailyMax) return { kind: 'DAILY_LIMIT' as const };
+      await tx.offerHunterSettings.update({ where: { tenantId }, data: { resendDayStart: opts.dayStart, resendsInDay: used + 1 } });
+      await tx.offerHuntFind.updateMany({ where: { id, tenantId }, data: { ...inFlight, resendCount: { increment: 1 } } });
+      return { kind: 'CLAIMED' as const, number: f.resendCount + 1 };
     });
-    return count > 0;
   }
 
-  async recordResend(tenantId: string, id: string, offerId: string): Promise<void> {
+  async releaseResend(tenantId: string, id: string, number: number, now: Date): Promise<void> {
     await this.prisma.offerHuntFind.updateMany({
-      where: { id, tenantId },
-      data: { offerId, status: 'SENT', failureReason: null, resendCount: { increment: 1 } },
+      where: { id, tenantId, resendCount: number, resendInFlightUntil: { not: null } },
+      data: { resendInFlightUntil: now },
     });
+  }
+
+  async recordResend(tenantId: string, id: string, offerId: string, number: number): Promise<void> {
+    await this.prisma.offerHuntFind.updateMany({
+      where: { id, tenantId, resendCount: number },
+      data: { offerId, status: 'SENT', failureReason: null, resendInFlightUntil: null },
+    });
+  }
+
+  async countResendsInDay(tenantId: string, dayStart: Date): Promise<number> {
+    const s = await this.prisma.offerHunterSettings.findUnique({ where: { tenantId }, select: { resendDayStart: true, resendsInDay: true } });
+    return s?.resendDayStart?.getTime() === dayStart.getTime() ? s.resendsInDay : 0;
   }
 
   async reclaimStaleApproved(tenantId: string, id: string, before: Date): Promise<boolean> {

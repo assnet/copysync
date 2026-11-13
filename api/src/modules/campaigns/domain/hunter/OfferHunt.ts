@@ -103,6 +103,9 @@ export interface OfferHuntRun extends OfferHuntRunCounters {
   finishedAt: Date | null;
 }
 
+/** Execução na lista do histórico: sem `ranking` (pesa), só se existe (detalhe em `GET /:id/runs/:runId`). */
+export type OfferHuntRunSummary = Omit<OfferHuntRun, 'ranking'> & { hasRanking: boolean };
+
 /** Retrato do item escolhido (só exibição) + pontuação. */
 export interface OfferHuntFindSnapshot {
   goodsId: string;
@@ -141,6 +144,10 @@ export interface OfferHuntFindDelivery {
   sentAt: Date | null;
   groupName: string | null;
   sessionName: string | null;
+  /** Motivo da falha do disparo (`SEND_TIMEOUT` = pode ainda estar saindo). */
+  failureReason: string | null;
+  /** Última mudança do disparo (com FAILED, hora do registro da falha). */
+  updatedAt: Date;
 }
 
 export interface OfferHuntFind extends OfferHuntFindSnapshot {
@@ -155,6 +162,7 @@ export interface OfferHuntFind extends OfferHuntFindSnapshot {
   /** Quantas vezes foi reenviado e quando (null = nunca). */
   resendCount: number;
   lastResentAt: Date | null;
+  resendInFlightUntil: Date | null;
   /** null = sem oferta, ou lido sem o join do disparo. */
   delivery: OfferHuntFindDelivery | null;
   createdAt: Date;

@@ -19,4 +19,6 @@ export const HUNTER_LIMITS = {
   /** Itens enviados à IA por execução (HUNT-06). */
   aiTopCandidates: 15,
   keywordMaxLength: 60,
+  /** Reenvios de achados por tenant/dia (cada um chama a Shein): não conta no teto de achados nem na guarda de execuções. */
+  resendsPerDayMax: 10,
 } as const;

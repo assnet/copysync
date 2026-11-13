@@ -1,4 +1,4 @@
-import type { OfferHunt, OfferHuntFind, OfferHuntRun, OfferHunterSettings } from '../../domain/hunter/OfferHunt';
+import type { OfferHunt, OfferHuntFind, OfferHuntRun, OfferHuntRunSummary, OfferHunterSettings } from '../../domain/hunter/OfferHunt';
 import type { RunOfferHuntOutput, HuntRankingItem } from '../../application/use-cases/hunter/RunOfferHuntUseCase';
 import type { OfferHuntPage } from '../../application/use-cases/hunter/OfferHuntHistoryUseCases';
 import type { ApproveHuntFindOutput } from '../../application/use-cases/hunter/HuntFindDecisionUseCases';
@@ -65,6 +65,14 @@ export const OfferHuntPresenter = {
 
   run(r: OfferHuntRun) {
     return {
+      ...OfferHuntPresenter.runSummary({ ...r, hasRanking: r.ranking !== null }),
+      ranking: r.ranking ? r.ranking.map(OfferHuntPresenter.rankingItem) : null,
+    };
+  },
+
+  /** Item da lista do histórico: sem `ranking`, com `hasRanking`. */
+  runSummary(r: OfferHuntRunSummary) {
+    return {
       id: r.id,
       huntId: r.huntId,
       trigger: r.trigger,
@@ -77,7 +85,7 @@ export const OfferHuntPresenter = {
       aiUsed: r.aiUsed,
       aiFallback: r.aiFallback,
       rejectedBy: r.rejectedBy ? { ...r.rejectedBy } : null,
-      ranking: r.ranking ? r.ranking.map(OfferHuntPresenter.rankingItem) : null,
+      hasRanking: r.hasRanking,
       startedAt: r.startedAt.toISOString(),
       finishedAt: iso(r.finishedAt),
     };
@@ -161,8 +169,8 @@ export const OfferHuntPresenter = {
     };
   },
 
-  runsPage(p: OfferHuntPage<OfferHuntRun>) {
-    return { items: p.items.map(OfferHuntPresenter.run), nextCursor: p.nextCursor };
+  runsPage(p: OfferHuntPage<OfferHuntRunSummary>) {
+    return { items: p.items.map(OfferHuntPresenter.runSummary), nextCursor: p.nextCursor };
   },
 
   findsPage(p: OfferHuntPage<OfferHuntFind>) {

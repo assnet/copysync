@@ -5,7 +5,7 @@ import { Link as RouterLink, useParams } from 'react-router-dom';
 import { AppIcon } from '@/components';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { offerHunterErrorMessage, offerHunterStrings as t } from '@/features/offerHunter/strings';
-import { useHuntFinds, useHuntOptions, useHuntRuns, useHunterSettings, useOfferHunt } from '@/features/offerHunter/hooks';
+import { useHuntFinds, useHuntOptions, useHuntRuns, useHunterSettings, useOfferHunt, useRunRankings } from '@/features/offerHunter/hooks';
 import { HuntDetailHeader } from '@/features/offerHunter/components/detail/HuntDetailHeader';
 import { HuntFindsTab } from '@/features/offerHunter/components/detail/HuntFindsTab';
 import { HuntRunsTab } from '@/features/offerHunter/components/detail/HuntRunsTab';
@@ -35,6 +35,7 @@ export function OfferHunterDetailPage() {
   const { options, blockedBy } = useHuntOptions();
   const finds = useHuntFinds(huntId);
   const runs = useHuntRuns(huntId);
+  const rankings = useRunRankings(huntId);
   const { settings } = useHunterSettings();
   const [runError, setRunError] = useState<unknown>(null);
   const [toggling, setToggling] = useState(false);
@@ -84,7 +85,8 @@ export function OfferHunterDetailPage() {
   };
 
   return (
-    <Box>
+    // Folga no fim: o botão flutuante de suporte não cobre o "Reenviar" do último achado
+    <Box sx={{ pb: 9 }}>
       {back}
       <HuntDetailHeader
         hunt={hunt}
@@ -144,6 +146,7 @@ export function OfferHunterDetailPage() {
             runs={runs}
             openRunId={ui.openRunId ?? null}
             onToggleRun={(id) => setUi((s) => ({ ...s, openRunId: s.openRunId === id ? null : id }))}
+            rankings={rankings}
           />
         </Box>
       )}

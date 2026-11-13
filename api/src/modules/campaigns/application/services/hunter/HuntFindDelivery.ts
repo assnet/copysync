@@ -17,8 +17,11 @@ import { DEFAULT_INTERVAL } from '../../use-cases/OfferGeneratorConfigUseCases';
 export const huntProductUrl = (goodsId: string) => `https://br.shein.com/product-p-${goodsId}.html`;
 /** Idempotência do Enqueue: queda entre enfileirar e gravar `offerId` não reenvia. */
 export const huntSourceKey = (findId: string) => `hunt:${findId}`;
-/** Reenvio: chave nova a cada vez (o Enqueue devolveria a oferta antiga com a chave do achado). */
-export const huntResendSourceKey = (findId: string, at: Date) => `hunt:${findId}:r${at.getTime()}`;
+/**
+ * Reenvio: chave por número do reenvio (o claim dá o número). Retomar o MESMO reenvio reusa a chave e o
+ * Enqueue (idempotente por `sourceKey`) devolve a oferta já criada, sem duplicar.
+ */
+export const huntResendSourceKey = (findId: string, number: number) => `hunt:${findId}:r${number}`;
 
 export interface HuntDestination {
   sessionId: string;
@@ -81,13 +84,13 @@ export class HuntFindDelivery {
 
   /**
    * Reenvio de achado já entregue: mesmo caminho (link do tenant regerado, preço/foto atuais, texto, Enqueue
-   * `HUNTER`) com `sourceKey` novo, para o destino atual. Não mexe no estado do achado: quem grava a oferta
+   * `HUNTER`) com `sourceKey` do número do reenvio, para o destino atual. Não mexe no estado do achado: quem grava a oferta
    * nova é o chamador. Falha antes de enfileirar descarta a foto e lança o erro (código traduzido no painel).
    */
-  async resend(tenantId: string, find: OfferHuntFind, destination: HuntDestination, at: Date): Promise<string> {
+  async resend(tenantId: string, find: OfferHuntFind, destination: HuntDestination, number: number): Promise<string> {
     const image = { stored: null as string | null };
     try {
-      const offerId = await this.enqueue(tenantId, find, destination, huntResendSourceKey(find.id, at), image);
+      const offerId = await this.enqueue(tenantId, find, destination, huntResendSourceKey(find.id, number), image);
       if (!offerId) throw new OfferHuntResendPendingError();
       return offerId;
     } catch (err) {

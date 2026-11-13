@@ -10,8 +10,15 @@ export function RejectionNote({ rejectedBy, matchedCount }: { rejectedBy: HuntRe
   const summary = rejectionSummary(rejectedBy, matchedCount);
   if (!summary) return null;
   return (
-    <Box data-testid="hunt-rejections" sx={{ display: 'flex', gap: 0.75, alignItems: 'flex-start', color: matchedCount === 0 ? 'warning.main' : 'text.secondary' }}>
-      <Box component="span" sx={{ display: 'inline-flex', mt: '2px' }}><AppIcon icon={Filter} size="inline" /></Box>
+    <Box
+      data-testid="hunt-rejections"
+      sx={{
+        display: 'flex', gap: 0.75, alignItems: 'flex-start',
+        // Âmbar sobre branco fica abaixo do contraste mínimo: no claro o alerta é o ícone, o texto fica escuro
+        color: (th) => (matchedCount !== 0 ? th.palette.text.secondary : th.palette.mode === 'dark' ? th.palette.warning.main : th.palette.text.primary),
+      }}
+    >
+      <Box component="span" sx={{ display: 'inline-flex', mt: '2px', color: matchedCount === 0 ? 'warning.main' : undefined }}><AppIcon icon={Filter} size="inline" /></Box>
       <Box sx={{ minWidth: 0 }}>
         <Tooltip title={t.rejections.tooltip} arrow describeChild enterTouchDelay={0} leaveTouchDelay={4000}>
           <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums', overflowWrap: 'anywhere' }}>{summary.line}</Typography>

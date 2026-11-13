@@ -1,11 +1,11 @@
-import type { PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import type {
   FinishOfferHuntRunInput,
   IOfferHuntRunRepository,
   OfferHuntPageCursor,
   StartOfferHuntRunInput,
 } from '../../../domain/contracts/hunter/IOfferHuntRunRepository';
-import type { OfferHuntRun } from '../../../domain/hunter/OfferHunt';
+import type { OfferHuntRun, OfferHuntRunSummary } from '../../../domain/hunter/OfferHunt';
 import { PrismaOfferHuntMapper as Mapper, rankingToData, rejectionsToData } from '../../mappers/PrismaOfferHuntMapper';
 
 const countsTowardGuard = (tenantId: string, since: Date) => ({ tenantId, startedAt: { gte: since }, status: { not: 'SKIPPED' as const } });
@@ -51,7 +51,7 @@ export class PrismaOfferHuntRunRepository implements IOfferHuntRunRepository {
     await this.prisma.offerHuntRun.updateMany({ where: { id, tenantId }, data: { sentCount: { increment: 1 } } });
   }
 
-  async listByHunt(tenantId: string, huntId: string, page: { limit: number; after?: OfferHuntPageCursor }): Promise<OfferHuntRun[]> {
+  async listByHunt(tenantId: string, huntId: string, page: { limit: number; after?: OfferHuntPageCursor }): Promise<OfferHuntRunSummary[]> {
     const after = page.after;
     const rows = await this.prisma.offerHuntRun.findMany({
       where: {
@@ -60,7 +60,26 @@ export class PrismaOfferHuntRunRepository implements IOfferHuntRunRepository {
       },
       orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
       take: page.limit,
+      select: RUN_SUMMARY_SELECT,
     });
-    return rows.map(Mapper.runToDomain);
+    if (rows.length === 0) return [];
+    // Só os ids com ranking (a coluna não vem para a lista)
+    const ranked = await this.prisma.offerHuntRun.findMany({
+      where: { tenantId, id: { in: rows.map((r) => r.id) }, ranking: { not: Prisma.DbNull } },
+      select: { id: true },
+    });
+    const has = new Set(ranked.map((r) => r.id));
+    return rows.map((r) => Mapper.runSummaryToDomain(r, has.has(r.id)));
+  }
+
+  async findById(tenantId: string, huntId: string, id: string): Promise<OfferHuntRun | null> {
+    const raw = await this.prisma.offerHuntRun.findFirst({ where: { id, tenantId, huntId } });
+    return raw ? Mapper.runToDomain(raw) : null;
   }
 }
+
+/** Todas as colunas menos `ranking`. */
+const RUN_SUMMARY_SELECT = {
+  id: true, tenantId: true, huntId: true, trigger: true, status: true, seenCount: true, matchedCount: true, chosenCount: true,
+  sentCount: true, aiUsed: true, aiFallback: true, rejectedBy: true, errorCode: true, startedAt: true, finishedAt: true,
+} satisfies Prisma.OfferHuntRunSelect;

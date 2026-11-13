@@ -18,7 +18,7 @@ import {
   CreateOfferHuntUseCase, DeleteOfferHuntUseCase, GetOfferHuntUseCase, ListOfferHuntsUseCase, PauseOfferHuntUseCase,
   ResumeOfferHuntUseCase, UpdateOfferHuntUseCase, type OfferHuntCrudDeps,
 } from '../application/use-cases/hunter/OfferHuntCrudUseCases';
-import { ListOfferHuntFindsUseCase, ListOfferHuntRunsUseCase } from '../application/use-cases/hunter/OfferHuntHistoryUseCases';
+import { GetOfferHuntRunUseCase, ListOfferHuntFindsUseCase, ListOfferHuntRunsUseCase } from '../application/use-cases/hunter/OfferHuntHistoryUseCases';
 import {
   GetOfferHunterDestinationUseCase, GetOfferHunterOptionsUseCase, GetOfferHunterUsageUseCase,
 } from '../application/use-cases/hunter/OfferHunterInfoUseCases';
@@ -81,6 +81,7 @@ const resumeHunt = lazy(() => new ResumeOfferHuntUseCase(crudDeps()));
 const getHunt    = lazy(() => new GetOfferHuntUseCase(crudDeps()));
 const listHunts  = lazy(() => new ListOfferHuntsUseCase(crudDeps()));
 const listRuns   = lazy(() => new ListOfferHuntRunsUseCase({ hunts: hunts(), runs: runs() }));
+const getRun     = lazy(() => new GetOfferHuntRunUseCase({ runs: runs() }));
 const listFinds  = lazy(() => new ListOfferHuntFindsUseCase({ hunts: hunts(), finds: finds() }));
 const usage      = lazy(() => new GetOfferHunterUsageUseCase({ finds: finds(), runs: runs(), entitlements: offersContainer.entitlements() }));
 const options    = lazy(() => new GetOfferHunterOptionsUseCase({
@@ -112,6 +113,7 @@ export const hunterContainer = {
   getOfferHunt:          getHunt,
   listOfferHunts:        listHunts,
   listOfferHuntRuns:     listRuns,
+  getOfferHuntRun:       getRun,
   listOfferHuntFinds:    listFinds,
   getOfferHunterUsage:   usage,
   getOfferHunterOptions: options,

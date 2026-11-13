@@ -7,6 +7,8 @@ import {
 } from '../offerTestFakes';
 import { InMemoryFinds, InMemoryRuns, InMemorySettings, MAX_ENTITLEMENTS, NOW, TENANT } from './hunterTestFakes';
 import { ENTITLEMENT_KEYS } from '../../../../tenants/domain/entitlementKeys';
+import { HUNTER_LIMITS } from '../../../domain/services/hunter/hunterLimits';
+import { LANE_TIMEOUT_HOLD_SECONDS } from '../../../domain/offerTyping';
 
 function setup(ent: Record<string, unknown> = {}) {
   const finds = new InMemoryFinds();
@@ -31,7 +33,7 @@ function setup(ent: Record<string, unknown> = {}) {
   });
   const uc = new ResendHuntFindUseCase({ finds, entitlements, delivery, now: () => clock });
   const tick = (ms: number) => { clock = new Date(clock.getTime() + ms); };
-  const sent = () => finds.seed({ status: 'SENT', offerId: 'offer-old', delivery: { dispatchStatus: 'SENT', sentAt: NOW, groupName: 'G', sessionName: 'S' } });
+  const sent = () => finds.seed({ status: 'SENT', offerId: 'offer-old', delivery: { dispatchStatus: 'SENT', sentAt: NOW, groupName: 'G', sessionName: 'S', failureReason: null, updatedAt: NOW } });
   return { finds, settings, offers, resolve, uc, tick, sent };
 }
 
@@ -43,7 +45,7 @@ describe('ResendHuntFindUseCase', () => {
     const used = await s.finds.countCreatedSince(TENANT, new Date(0));
     const out = await s.uc.execute({ tenantId: TENANT, findId: find.id });
     const offer = s.offers.items[0]!;
-    expect(offer).toMatchObject({ origin: 'HUNTER', sourceKey: `hunt:${find.id}:r${NOW.getTime()}`, affiliateUrl: 'https://onelink.shein.com/1/tenant-new' });
+    expect(offer).toMatchObject({ origin: 'HUNTER', sourceKey: `hunt:${find.id}:r1`, affiliateUrl: 'https://onelink.shein.com/1/tenant-new' });
     expect(s.resolve).toHaveBeenCalledWith(TENANT, expect.stringContaining(find.goodsId), { riskScope: 'OFFER_HUNTER' });
     expect(out).toMatchObject({ status: 'SENT', offerId: offer.id, resendCount: 1, lastResentAt: NOW });
     expect(await s.finds.countCreatedSince(TENANT, new Date(0))).toBe(used);
@@ -51,7 +53,7 @@ describe('ResendHuntFindUseCase', () => {
 
     // Outro dia: chave diferente, outra oferta
     s.tick(HUNT_FIND_RESEND_COOLDOWN_MS + 1);
-    s.finds.items[0]!.delivery = { dispatchStatus: 'SENT', sentAt: NOW, groupName: 'G', sessionName: 'S' };
+    s.finds.items[0]!.delivery = { dispatchStatus: 'SENT', sentAt: NOW, groupName: 'G', sessionName: 'S', failureReason: null, updatedAt: NOW };
     await s.uc.execute({ tenantId: TENANT, findId: find.id });
     expect(new Set(s.offers.items.map((o) => o.sourceKey)).size).toBe(2);
     expect(s.finds.items[0]!.resendCount).toBe(2);
@@ -61,7 +63,7 @@ describe('ResendHuntFindUseCase', () => {
     const s = setup();
     await s.settings.upsert(TENANT, 'session-1', 'conv-1');
     for (const dispatchStatus of ['QUEUED', 'SENDING'] as const) {
-      const f = s.finds.seed({ status: 'SENT', offerId: 'o1', delivery: { dispatchStatus, sentAt: null, groupName: null, sessionName: null } });
+      const f = s.finds.seed({ status: 'SENT', offerId: 'o1', delivery: { dispatchStatus, sentAt: null, groupName: null, sessionName: null, failureReason: null, updatedAt: NOW } });
       await expect(s.uc.execute({ tenantId: TENANT, findId: f.id })).rejects.toMatchObject({ code: 'OFFER_HUNT_RESEND_PENDING', statusCode: 409 });
     }
     expect(s.resolve).not.toHaveBeenCalled();
@@ -74,6 +76,46 @@ describe('ResendHuntFindUseCase', () => {
     const [a, b] = await Promise.allSettled([s.uc.execute({ tenantId: TENANT, findId: find.id }), s.uc.execute({ tenantId: TENANT, findId: find.id })]);
     expect([a.status, b.status].sort()).toEqual(['fulfilled', 'rejected']);
     expect(s.offers.items).toHaveLength(1);
+  });
+
+  it('disparo anterior em SEND_TIMEOUT dentro do hold da faixa → 409 PENDING; depois do hold passa', async () => {
+    const s = setup();
+    await s.settings.upsert(TENANT, 'session-1', 'conv-1');
+    const f = s.finds.seed({ status: 'SENT', offerId: 'o1', delivery: {
+      dispatchStatus: 'FAILED', sentAt: null, groupName: null, sessionName: null, failureReason: 'SEND_TIMEOUT', updatedAt: NOW,
+    } });
+    s.tick(LANE_TIMEOUT_HOLD_SECONDS * 1000 - 1);
+    await expect(s.uc.execute({ tenantId: TENANT, findId: f.id })).rejects.toMatchObject({ code: 'OFFER_HUNT_RESEND_PENDING', statusCode: 409 });
+    expect(s.resolve).not.toHaveBeenCalled();
+    s.tick(2);
+    await expect(s.uc.execute({ tenantId: TENANT, findId: f.id })).resolves.toMatchObject({ resendCount: 1 });
+  });
+
+  it('teto diário de reenvios (10/tenant): 11º → 429 com o limite; não consome o teto de achados; dia novo libera', async () => {
+    const s = setup();
+    await s.settings.upsert(TENANT, 'session-1', 'conv-1');
+    const finds = Array.from({ length: 11 }, () => s.sent());
+    const used = await s.finds.countCreatedSince(TENANT, new Date(0));
+    for (const f of finds.slice(0, 10)) await s.uc.execute({ tenantId: TENANT, findId: f.id });
+    expect(HUNTER_LIMITS.resendsPerDayMax).toBe(10);
+    await expect(s.uc.execute({ tenantId: TENANT, findId: finds[10]!.id }))
+      .rejects.toMatchObject({ code: 'OFFER_HUNT_RESEND_DAILY_LIMIT', statusCode: 429, meta: { limit: 10 } });
+    expect(s.resolve).toHaveBeenCalledTimes(10);
+    expect(await s.finds.countCreatedSince(TENANT, new Date(0))).toBe(used);
+    s.tick(24 * 3600_000);
+    await expect(s.uc.execute({ tenantId: TENANT, findId: finds[10]!.id })).resolves.toMatchObject({ resendCount: 1 });
+  });
+
+  it('falha no Resolve libera o em voo: o próximo clique retoma o mesmo número sem contar de novo', async () => {
+    const s = setup();
+    await s.settings.upsert(TENANT, 'session-1', 'conv-1');
+    const find = s.sent();
+    s.resolve.mockRejectedValueOnce(Object.assign(new Error('x'), { code: 'SOURCE' }));
+    await expect(s.uc.execute({ tenantId: TENANT, findId: find.id })).rejects.toThrow('x');
+    const out = await s.uc.execute({ tenantId: TENANT, findId: find.id });
+    expect(out.resendCount).toBe(1);
+    expect(s.offers.items.map((o) => o.sourceKey)).toEqual([`hunt:${find.id}:r1`]);
+    expect(s.finds.resendDay?.count).toBe(1);
   });
 
   it('sem oferta (pendente/dispensado) → 409 OFFER_HUNT_RESEND_NOT_DELIVERED', async () => {

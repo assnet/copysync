@@ -130,7 +130,7 @@ const rankingItemSchema = obj({
   rating: { type: ['number', 'null'] }, score: { type: 'number' }, factors, aiReason: nullableStr, chosen: { type: 'boolean' },
 });
 
-const runSchema = obj({
+const runSummaryProps = {
   id: { type: 'string' },
   huntId: nullableStr,
   trigger: { type: 'string', enum: [...OFFER_HUNT_RUN_TRIGGERS] },
@@ -143,11 +143,15 @@ const runSchema = obj({
   aiUsed: { type: 'boolean' },
   aiFallback: { type: 'boolean' },
   rejectedBy,
-  /** null = execução antiga ou sem fonte. */
-  ranking: { type: ['array', 'null'], items: rankingItemSchema },
+  /** A coluna `ranking` não é nula (detalhe em `GET /:id/runs/:runId`). */
+  hasRanking: { type: 'boolean' },
   startedAt: dateTime,
   finishedAt: nullableDateTime,
-});
+};
+/** Item da lista: sem `ranking` (pesa). */
+const runSummarySchema = obj(runSummaryProps);
+/** Detalhe: com `ranking` (null = execução antiga ou sem fonte). */
+const runSchema = obj({ ...runSummaryProps, ranking: { type: ['array', 'null'], items: rankingItemSchema } });
 
 const findSchema = obj({
   id: { type: 'string' },
@@ -185,7 +189,11 @@ const findSchema = obj({
 export const accessResponse = envelope(obj({ visible: { type: 'boolean' } }));
 export const huntResponse = envelope(huntSchema);
 export const huntListResponse = envelope({ type: 'array', items: huntSchema });
-export const runsPageResponse = envelope(obj({ items: { type: 'array', items: runSchema }, nextCursor: nullableStr }));
+export const runsPageResponse = envelope(obj({ items: { type: 'array', items: runSummarySchema }, nextCursor: nullableStr }));
+export const runResponse = envelope(runSchema);
+export const runIdParamSchema = {
+  type: 'object', required: ['id', 'runId'], properties: { id, runId: id }, additionalProperties: false,
+} as const;
 export const findsPageResponse = envelope(obj({ items: { type: 'array', items: findSchema }, nextCursor: nullableStr }));
 export const findResponse = envelope(findSchema);
 export const approveFindResponse = envelope(obj({ find: findSchema, offerId: { type: 'string' } }));
@@ -210,6 +218,7 @@ export const runResultResponse = envelope(obj({
 export const usageResponse = envelope(obj({
   used: { type: 'integer' }, limit: { type: 'integer' }, remaining: { type: 'integer' },
   runsToday: { type: 'integer' }, runsMax: { type: 'integer' },
+  resendsToday: { type: 'integer' }, resendsMax: { type: 'integer' },
 }));
 
 const localFiltersOut = obj(Object.fromEntries(Object.keys(filtersSchema.properties).map((k) => [k, { type: ['number', 'boolean', 'string', 'null'] }])));

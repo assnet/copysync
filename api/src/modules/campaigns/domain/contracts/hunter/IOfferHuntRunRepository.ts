@@ -1,4 +1,4 @@
-import type { OfferHuntRankingItem, OfferHuntRun, OfferHuntRunCounters, OfferHuntRunTrigger } from '../../hunter/OfferHunt';
+import type { OfferHuntRankingItem, OfferHuntRun, OfferHuntRunSummary, OfferHuntRunCounters, OfferHuntRunTrigger } from '../../hunter/OfferHunt';
 
 export interface StartOfferHuntRunInput {
   tenantId: string;
@@ -34,5 +34,8 @@ export interface IOfferHuntRunRepository {
   countStartedSince(tenantId: string, since: Date): Promise<number>;
   incrementSent(tenantId: string, id: string): Promise<void>;
   /** Histórico da caçada, mais nova primeiro; `after` = cursor keyset. */
-  listByHunt(tenantId: string, huntId: string, page: { limit: number; after?: OfferHuntPageCursor }): Promise<OfferHuntRun[]>;
+  /** Sem a coluna `ranking` (só `hasRanking`). */
+  listByHunt(tenantId: string, huntId: string, page: { limit: number; after?: OfferHuntPageCursor }): Promise<OfferHuntRunSummary[]>;
+  /** Execução completa (com `ranking`) da caçada no tenant; null = não existe/outro tenant/outra caçada. */
+  findById(tenantId: string, huntId: string, id: string): Promise<OfferHuntRun | null>;
 }

@@ -33,6 +33,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 - **`PrismaOfferDispatchRepository.ts`/`EnqueueOfferUseCase.ts`/`OfferSendControlUseCases.ts`** — oferta do Caçador (`HUNTER`) tratada como manual igual ao gerador: no claim, vencida sai antes das capturas do monitoramento da sessão, e no LIMIT do tick a faixa com envio manual na cabeça vem antes; no agendamento (`openNotBefore` com `MANUAL_OFFER_ORIGINS`) não fica atrás de captura agendada no futuro; gap, janela e 1 por sessão mantidos (incidente 2026-11-13, 3.465 capturas à frente).
 
+### Fixed (revisão)
+
+- **`ResendHuntFindUseCase.ts`** / **`HuntFindDelivery.ts`** — reenvio não duplica: claim atômico incrementa `resendCount`, `sourceKey` determinístico `hunt:<findId>:r<n>` (retry reusa); bloqueado com `SEND_TIMEOUT` recente; teto de 10 reenvios/dia por conta (429 `OFFER_HUNT_RESEND_DAILY_LIMIT`).
+- **`PrismaOfferDispatchRepository.ts`** — fila justa: até metade das vagas do tick para manuais; com 1 vaga, monitoramento atrasado > 600 s vai antes (sem starvation).
+- **`offerHunt.routes.ts`** — ranking sob demanda: lista de execuções traz `hasRanking`; `GET /:id/runs/:runId` devolve o ranking.
+- **Migration `20261114100600`** — não regrava `commissionBand` (irreversível); `minCommissionPercent` legado limitado a 50.
 
 ## [0.93.2] — 2026-11-12 — Caçador: 1ª busca imediata
 

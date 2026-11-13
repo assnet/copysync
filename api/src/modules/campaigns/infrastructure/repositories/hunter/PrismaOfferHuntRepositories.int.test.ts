@@ -211,19 +211,55 @@ describe('PrismaOfferHuntFindRepository — envio real e reenvio', () => {
     expect(f!.delivery).toBeNull();
     await prisma.offerHuntFind.update({ where: { id: f!.id }, data: { status: 'SENT', offerId: offer.id } });
     await prisma.offerDispatch.create({ data: { tenantId: t, offerId: offer.id, conversationId: g.id, sessionId: s.id, status: 'QUEUED', notBefore: new Date() } });
-    expect((await finds.findById(t, f!.id))!.delivery).toEqual({ dispatchStatus: 'QUEUED', sentAt: null, groupName: 'Ofertas VIP', sessionName: 'Loja' });
+    expect((await finds.findById(t, f!.id))!.delivery).toEqual({ dispatchStatus: 'QUEUED', sentAt: null, groupName: 'Ofertas VIP', sessionName: 'Loja', failureReason: null, updatedAt: expect.any(Date) });
     await prisma.offerDispatch.updateMany({ where: { offerId: offer.id }, data: { status: 'SENT' } });
     const [listed] = await finds.listByHunt(t, h.id, { limit: 5 });
     expect(listed!.delivery).toMatchObject({ dispatchStatus: 'SENT', sentAt: expect.any(Date) });
     expect(await finds.findById('other-tenant', f!.id)).toBeNull();
 
     const now = new Date('2026-11-12T12:00:00.000Z');
-    const r = await Promise.all([finds.claimResend(t, f!.id, offer.id, now, 60_000), findsB.claimResend(t, f!.id, offer.id, now, 60_000)]);
-    expect(r.filter(Boolean)).toHaveLength(1);
-    expect(await finds.claimResend(t, f!.id, 'outra-oferta', new Date(now.getTime() + 120_000), 60_000)).toBe(false);
+    const DAY = new Date('2026-11-12T03:00:00.000Z');
+    const opts = { cooldownMs: 60_000, inFlightMs: 120_000, dayStart: DAY, dailyMax: 10 };
+    await settings.upsert(t, s.id, g.id);
+    const r = await Promise.all([finds.claimResend(t, f!.id, offer.id, now, opts), findsB.claimResend(t, f!.id, offer.id, now, opts)]);
+    expect(r.map((x) => x.kind).sort()).toEqual(['CLAIMED', 'PENDING']);
+    // Em voo: 2º clique 61 s depois (fora do cooldown) segue recusado
+    expect(await finds.claimResend(t, f!.id, offer.id, new Date(now.getTime() + 61_000), opts)).toEqual({ kind: 'PENDING' });
+    expect(await finds.claimResend(t, f!.id, 'outra-oferta', new Date(now.getTime() + 300_000), opts)).toEqual({ kind: 'PENDING' });
+    // Em voo vencido sem troca da oferta: retoma o MESMO número e não conta de novo no dia
+    const later = new Date(now.getTime() + 300_000);
+    expect(await finds.claimResend(t, f!.id, offer.id, later, opts)).toEqual({ kind: 'CLAIMED', number: 1 });
+    expect(await finds.countResendsInDay(t, DAY)).toBe(1);
     const offer2 = await prisma.offer.create({ data: { tenantId: t, provider: 'SHEIN', sourceUrl: 'https://x', affiliateUrl: 'https://y', text: 't', origin: 'HUNTER' } });
-    await finds.recordResend(t, f!.id, offer2.id);
-    expect(await finds.findById(t, f!.id)).toMatchObject({ offerId: offer2.id, status: 'SENT', resendCount: 1, lastResentAt: now, delivery: null });
+    await finds.recordResend(t, f!.id, offer2.id, 1);
+    await finds.recordResend(t, f!.id, offer2.id, 1); // idempotente
+    expect(await finds.findById(t, f!.id)).toMatchObject({ offerId: offer2.id, status: 'SENT', resendCount: 1, lastResentAt: later, resendInFlightUntil: null, delivery: null });
+    expect(await finds.countResendsInDay(t, new Date(DAY.getTime() + 86_400_000))).toBe(0);
+  });
+
+  it('teto diário de reenvios por tenant: concorrência não estoura; dia novo zera; release mantém o número', async () => {
+    const t = await tenant('resend-cap');
+    const h = (await hunts.createWithinLimit(def(t), 5))!;
+    const s = await prisma.session.create({ data: { tenantId: t, name: 'Loja' } });
+    const g = await prisma.chatConversation.create({ data: { tenantId: t, sessionId: s.id, isGroup: true, groupJid: '8', externalChatId: '8@g.us' } });
+    await settings.upsert(t, s.id, g.id);
+    const offer = await prisma.offer.create({ data: { tenantId: t, provider: 'SHEIN', sourceUrl: 'https://x', affiliateUrl: 'https://y', text: 't', origin: 'HUNTER' } });
+    const rows = await finds.insertWithinDailyLimit(t, ['8001', '8002', '8003', '8004'].map((id) => find(id, h.id)), { since: SINCE, limit: 10 });
+    await prisma.offerHuntFind.updateMany({ where: { tenantId: t }, data: { status: 'SENT', offerId: offer.id } });
+    const DAY = new Date('2026-11-12T03:00:00.000Z');
+    const now = new Date('2026-11-12T12:00:00.000Z');
+    const opts = { cooldownMs: 60_000, inFlightMs: 120_000, dayStart: DAY, dailyMax: 3 };
+    const out = await Promise.all(rows.map((f, i) => (i % 2 ? findsB : finds).claimResend(t, f.id, offer.id, now, opts)));
+    expect(out.filter((x) => x.kind === 'CLAIMED')).toHaveLength(3);
+    expect(out.filter((x) => x.kind === 'DAILY_LIMIT')).toHaveLength(1);
+    expect(await finds.countResendsInDay(t, DAY)).toBe(3);
+    const claimed = rows[out.findIndex((x) => x.kind === 'CLAIMED')]!;
+    await finds.releaseResend(t, claimed.id, 1, now);
+    expect(await finds.claimResend(t, claimed.id, offer.id, new Date(now.getTime() + 1000), opts)).toEqual({ kind: 'CLAIMED', number: 1 });
+    const loser = rows[out.findIndex((x) => x.kind === 'DAILY_LIMIT')]!;
+    const tomorrow = { ...opts, dayStart: new Date(DAY.getTime() + 86_400_000) };
+    expect(await finds.claimResend(t, loser.id, offer.id, new Date(now.getTime() + 86_400_000), tomorrow)).toEqual({ kind: 'CLAIMED', number: 1 });
+    expect(await finds.countResendsInDay(t, tomorrow.dayStart)).toBe(1);
   });
 });
 
@@ -247,8 +283,14 @@ describe('PrismaOfferHuntRunRepository — guarda de execuções/dia', () => {
     // rejectedBy: JSON gravado e lido pelo mapper; execução pulada fica null
     const listed = await runs.listByHunt(t, h.id, { limit: 10 });
     expect(listed.find((x) => x.id === first.id)!.rejectedBy).toEqual({ minSales: 21, repeated: 2 });
-    expect(listed.find((x) => x.id === first.id)!.ranking).toEqual([RANK_ITEM]);
-    expect(listed.find((x) => x.status === 'SKIPPED')!.ranking).toBeNull();
+    // Lista sem a coluna ranking (só hasRanking); detalhe traz o ranking, só da caçada/tenant
+    expect(listed.every((x) => !('ranking' in x))).toBe(true);
+    expect(listed.find((x) => x.id === first.id)!.hasRanking).toBe(true);
+    expect(listed.find((x) => x.status === 'SKIPPED')!.hasRanking).toBe(false);
+    expect((await runs.findById(t, h.id, first.id))!.ranking).toEqual([RANK_ITEM]);
+    expect((await runs.findById(t, h.id, listed.find((x) => x.status === 'SKIPPED')!.id))!.ranking).toBeNull();
+    expect(await runs.findById('other-tenant', h.id, first.id)).toBeNull();
+    expect(await runs.findById(t, 'other-hunt', first.id)).toBeNull();
     expect(listed.find((x) => x.status === 'SKIPPED')!.rejectedBy).toBeNull();
   });
 });

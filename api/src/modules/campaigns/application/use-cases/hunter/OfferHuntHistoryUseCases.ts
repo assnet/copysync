@@ -1,7 +1,7 @@
 import type { IOfferHuntRepository } from '../../../domain/contracts/hunter/IOfferHuntRepository';
 import type { IOfferHuntRunRepository, OfferHuntPageCursor } from '../../../domain/contracts/hunter/IOfferHuntRunRepository';
 import type { IOfferHuntFindRepository } from '../../../domain/contracts/hunter/IOfferHuntFindRepository';
-import type { OfferHuntFind, OfferHuntRun } from '../../../domain/hunter/OfferHunt';
+import type { OfferHuntFind, OfferHuntRun, OfferHuntRunSummary } from '../../../domain/hunter/OfferHunt';
 import { OfferHuntCursorInvalidError, OfferHuntNotFoundError } from '../../../../../shared/errors/internal/OfferHuntErrors';
 import { createHuntPageCursor, readHuntPageCursor } from './huntPageCursor';
 
@@ -45,8 +45,19 @@ async function page<T extends { id: string }>(
 export class ListOfferHuntRunsUseCase {
   constructor(private readonly deps: { hunts: Pick<IOfferHuntRepository, 'findById'>; runs: Pick<IOfferHuntRunRepository, 'listByHunt'> }) {}
 
-  execute(input: OfferHuntPageInput): Promise<OfferHuntPage<OfferHuntRun>> {
+  execute(input: OfferHuntPageInput): Promise<OfferHuntPage<OfferHuntRunSummary>> {
     return page(this.deps.hunts, (t, h, p) => this.deps.runs.listByHunt(t, h, p), (r) => r.startedAt, 'runs', input);
+  }
+}
+
+/** Uma execução com o `ranking` (a lista não traz). Outro tenant/caçada → 404 `OFFER_HUNT_NOT_FOUND`. */
+export class GetOfferHuntRunUseCase {
+  constructor(private readonly deps: { runs: Pick<IOfferHuntRunRepository, 'findById'> }) {}
+
+  async execute(input: { tenantId: string; huntId: string; runId: string }): Promise<OfferHuntRun> {
+    const run = await this.deps.runs.findById(input.tenantId, input.huntId, input.runId);
+    if (!run) throw new OfferHuntNotFoundError('run');
+    return run;
   }
 }
 

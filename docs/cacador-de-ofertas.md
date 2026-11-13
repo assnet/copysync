@@ -85,18 +85,23 @@ candidato pode contar em várias chaves.
 
 - **Ranking por execução**: `offer_hunt_runs.ranking` (JSON, até 15, lista fechada: goodsId, título, foto só
   https `*.ltwebstatic.com`, preço, desconto, comissões 1ª compra/recompra/extra, vendas, avaliações, nota,
-  pontuação, fatores, motivo da IA, `chosen`; nunca link/token/memberId). Vai no `Run` da lista (15 itens cabem).
-  Aba Execuções: "Ver ranking" abre o `RankingTable`; antiga: "Ranking não guardado nesta execução."
+  pontuação, fatores, motivo da IA, `chosen`; nunca link/token/memberId). **Sob demanda**: a lista
+  `GET /:id/runs` traz só `hasRanking`; o ranking vem de `GET /:id/runs/:runId` ao abrir "Ver ranking" (cache na
+  tela). `POST /:id/run` devolve o ranking direto. Execução `RUNNING`: "Em andamento"; sem ranking: "Ranking não
+  guardado nesta execução."
 - **Envio real no achado**: `Find.dispatchStatus` (disparo mais recente da oferta atual: QUEUED/SENDING/SENT/FAILED/
   SKIPPED/CANCELLED; null sem oferta), `sentAt` (só SENT) e `destination { groupName, sessionName }` (join
   `offers → offer_dispatches → chat_conversations` + `sessions`, `tenantId` em todo filtro). O `SENT` do achado
   continua = "entregue à fila"; a tela usa o disparo: "Na fila de envio" / "Enviado" (hora) / "Falhou ao enviar" /
   "Não enviado". Grupo e sessão sob `Blurred` (`offerHunter.groupNames`/`sessionName`).
 - **Reenviar** (`POST /finds/:findId/resend`, `ResendHuntFindUseCase`): só achado com `offerId` (sem → 409
-  `OFFER_HUNT_RESEND_NOT_DELIVERED`, o caminho é aprovar); disparo anterior QUEUED/SENDING ou outro reenvio há
-  < 60 s (CAS em `lastResentAt`) → 409 `OFFER_HUNT_RESEND_PENDING`. `HuntFindDelivery.resend`: Resolve
-  `OFFER_HUNTER` (link regerado, preço/foto atuais) → texto → Enqueue `HUNTER` para o destino **atual**, `sourceKey`
-  `hunt:<findId>:r<epochMs>`. Portões: plano Shein + caçador (aqui), credencial e aceite (Resolve). **Não** consome
+  `OFFER_HUNT_RESEND_NOT_DELIVERED`, o caminho é aprovar); disparo anterior QUEUED/SENDING, `SEND_TIMEOUT` há menos
+  de `LANE_TIMEOUT_HOLD_SECONDS` (a mensagem pode ainda estar saindo) ou reenvio em voo → 409
+  `OFFER_HUNT_RESEND_PENDING`. Teto **10 reenvios/dia por conta** (`HUNTER_LIMITS.resendsPerDayMax`, atômico) → 429
+  `OFFER_HUNT_RESEND_DAILY_LIMIT`; `GET /usage` traz `resendsToday`/`resendsMax`. O claim incrementa `resendCount` e o
+  `sourceKey` é determinístico `hunt:<findId>:r<n>`: retry do mesmo reenvio reusa o número e o Enqueue (idempotente pelo
+  `sourceKey`) não duplica. `HuntFindDelivery.resend`: Resolve `OFFER_HUNTER` (link regerado, preço/foto atuais) →
+  texto → Enqueue `HUNTER` para o destino **atual**. Portões: plano Shein + caçador (aqui), credencial e aceite (Resolve). **Não** consome
   `offer_hunter_finds_per_day` nem a guarda de 24; não cria achado: troca `offerId`, `resendCount + 1`. `GET /settings`
   devolve `groupName` (confirmação cita o grupo atual, omitido com a flag de borrar).
 

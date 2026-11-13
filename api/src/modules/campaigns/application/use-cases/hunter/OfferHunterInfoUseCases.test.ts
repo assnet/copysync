@@ -6,7 +6,7 @@ import { ListOfferHuntFindsUseCase, ListOfferHuntRunsUseCase, OFFER_HUNT_PAGE_SI
 import { SetOfferHunterDestinationUseCase } from './SetOfferHunterDestinationUseCase';
 import { OfferHunterAudienceGate } from '../../services/hunter/offerHunterAudience';
 import { AffiliateApiUnavailableError, AffiliateCredentialRejectedError } from '../../../../../shared/errors/internal/OfferErrors';
-import type { OfferHuntRun } from '../../../domain/hunter/OfferHunt';
+import type { OfferHuntRunSummary } from '../../../domain/hunter/OfferHunt';
 import type { OfferHuntPageCursor } from '../../../domain/contracts/hunter/IOfferHuntRunRepository';
 import { ENTITLEMENT_KEYS } from '../../../../tenants/domain/entitlementKeys';
 import {
@@ -21,15 +21,15 @@ const reader = (map: Record<string, unknown>) => ({
 describe('GetOfferHunterUsageUseCase', () => {
   it('teto ausente = 0 (nunca ilimitado); conta do dia', async () => {
     const uc = new GetOfferHunterUsageUseCase({
-      finds: { countCreatedSince: async () => 2 }, runs: { countStartedSince: async () => 5 }, entitlements: reader({}), now: () => NOW,
+      finds: { countCreatedSince: async () => 2, countResendsInDay: async () => 4 }, runs: { countStartedSince: async () => 5 }, entitlements: reader({}), now: () => NOW,
     });
-    expect(await uc.execute(TENANT)).toEqual({ used: 2, limit: 0, remaining: 0, runsToday: 5, runsMax: 24 });
+    expect(await uc.execute(TENANT)).toEqual({ used: 2, limit: 0, remaining: 0, runsToday: 5, runsMax: 24, resendsToday: 4, resendsMax: 10 });
   });
 
   it('MAX 10: saldo = limite − usados, início do dia no fuso', async () => {
     let since: Date | null = null;
     const uc = new GetOfferHunterUsageUseCase({
-      finds: { countCreatedSince: async (_t, s) => { since = s; return 3; } }, runs: { countStartedSince: async () => 1 },
+      finds: { countCreatedSince: async (_t, s) => { since = s; return 3; }, countResendsInDay: async () => 0 }, runs: { countStartedSince: async () => 1 },
       entitlements: reader(MAX_ENTITLEMENTS), now: () => NOW,
     });
     expect(await uc.execute(TENANT)).toMatchObject({ used: 3, limit: 10, remaining: 7 });
@@ -131,9 +131,9 @@ describe('destino', () => {
 });
 
 describe('histórico com cursor keyset assinado', () => {
-  const run = (i: number): OfferHuntRun => ({
+  const run = (i: number): OfferHuntRunSummary => ({
     id: `run-${String(i).padStart(3, '0')}`, tenantId: TENANT, huntId: HUNT, trigger: 'MANUAL', status: 'SUCCEEDED',
-    seenCount: 0, matchedCount: 0, chosenCount: 0, sentCount: 0, aiUsed: false, aiFallback: false, rejectedBy: null, ranking: null, errorCode: null,
+    seenCount: 0, matchedCount: 0, chosenCount: 0, sentCount: 0, aiUsed: false, aiFallback: false, rejectedBy: null, hasRanking: false, errorCode: null,
     startedAt: new Date(NOW.getTime() - i * 60_000), finishedAt: null,
   });
   const all = Array.from({ length: 25 }, (_, i) => run(i));

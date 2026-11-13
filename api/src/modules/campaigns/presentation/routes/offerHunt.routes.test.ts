@@ -41,11 +41,15 @@ vi.mock('../../../../shared/http/hooks/resolveMembership', async () => {
 });
 
 const URL = '/api/offer-hunts';
+const RUN_BASE = {
+  id: 'run-1', tenantId: 'tenant-a', huntId: 'hunt-1', trigger: 'MANUAL' as const, status: 'SUCCEEDED' as const, seenCount: 5, matchedCount: 2,
+  chosenCount: 1, sentCount: 0, aiUsed: false, aiFallback: false, rejectedBy: { minSales: 3 }, errorCode: null, startedAt: NOW, finishedAt: NOW,
+};
 const ID = 'hunt-1';
 /** Toda rota com portão (método, path, corpo). */
 const GATED: [string, string, object?][] = [
   ['GET', '/'], ['POST', '/', { name: 'x' }], ['GET', `/${ID}`], ['PUT', `/${ID}`, { topN: 2 }], ['DELETE', `/${ID}`],
-  ['POST', `/${ID}/pause`], ['POST', `/${ID}/resume`], ['POST', `/${ID}/run`], ['GET', `/${ID}/runs`], ['GET', `/${ID}/finds`],
+  ['POST', `/${ID}/pause`], ['POST', `/${ID}/resume`], ['POST', `/${ID}/run`], ['GET', `/${ID}/runs`], ['GET', `/${ID}/runs/run-1`], ['GET', `/${ID}/finds`],
   ['POST', '/finds/f1/approve'], ['POST', '/finds/f1/dismiss'], ['POST', '/finds/f1/resend'], ['GET', '/usage'], ['GET', '/options'], ['GET', '/settings'],
   ['PUT', '/settings', { sessionId: 's1', conversationId: 'c1' }],
 ];
@@ -67,7 +71,7 @@ const find: OfferHuntFind = {
   activityId: 'act1', title: 'Vestido', imageUrl: 'https://img.ltwebstatic.com/v.jpg', priceCents: 5990, originalPriceCents: 9990, discountPercent: 40, commissionPercent: 15,
   commissionCents: 898, returningCommissionPercent: 5, returningCommissionCents: 300, extraCommissionCents: 0, salesBucket: 1000,
   reviewsBucket: 100, rating: 4.8, score: 81.5, factors: [{ key: 'commission', points: 30, max: 40 }], aiReason: null,
-  failureReason: null, offerId: null, resendCount: 0, lastResentAt: null, delivery: null, createdAt: NOW, updatedAt: NOW,
+  failureReason: null, offerId: null, resendCount: 0, lastResentAt: null, resendInFlightUntil: null, delivery: null, createdAt: NOW, updatedAt: NOW,
 };
 
 beforeEach(async () => {
@@ -135,7 +139,7 @@ describe('audiência entitled', () => {
   });
 
   it('tenant com entitlement → 200 (usuário comum); /access visible true; não membro → false', async () => {
-    const usage = { used: 1, limit: 10, remaining: 9, runsToday: 2, runsMax: 24 };
+    const usage = { used: 1, limit: 10, remaining: 9, runsToday: 2, runsMax: 24, resendsToday: 3, resendsMax: 10 };
     vi.spyOn(GetOfferHunterUsageUseCase.prototype, 'execute').mockResolvedValue(usage);
     const res = await call('GET', '/usage');
     expect(res.statusCode).toBe(200);
@@ -201,6 +205,31 @@ describe('rotas (super admin)', () => {
     expect(list).toHaveBeenCalledWith('tenant-a', ID, { limit: 21, after: undefined });
   });
 
+  it('GET /:id/runs: item sem ranking, com hasRanking e rejectedBy', async () => {
+    vi.spyOn(PrismaOfferHuntRepository.prototype, 'findById').mockResolvedValue(makeHunt({ tenantId: 'tenant-a' }));
+    const { PrismaOfferHuntRunRepository } = await import('../../infrastructure/repositories/hunter/PrismaOfferHuntRunRepository');
+    vi.spyOn(PrismaOfferHuntRunRepository.prototype, 'listByHunt').mockResolvedValue([{ ...RUN_BASE, hasRanking: true }]);
+    const item = (await call('GET', `/${ID}/runs`)).json().data.items[0];
+    expect(item).toMatchObject({ id: 'run-1', hasRanking: true, rejectedBy: { minSales: 3 } });
+    expect(item).not.toHaveProperty('ranking');
+  });
+
+  it('GET /:id/runs/:runId: execução com ranking; outro tenant/caçada → 404 OFFER_HUNT_NOT_FOUND', async () => {
+    const { PrismaOfferHuntRunRepository } = await import('../../infrastructure/repositories/hunter/PrismaOfferHuntRunRepository');
+    const ranking = [{ goodsId: '1', title: 'V', imageUrl: null, priceCents: 100, discountPercent: null, commissionPercent: 10, commissionCents: 10,
+      returningCommissionPercent: null, returningCommissionCents: null, extraCommissionCents: 0, salesBucket: null, reviewsBucket: null,
+      rating: null, score: 50, factors: [], aiReason: null, chosen: true }];
+    const get = vi.spyOn(PrismaOfferHuntRunRepository.prototype, 'findById').mockResolvedValueOnce({ ...RUN_BASE, ranking });
+    const ok = await call('GET', `/${ID}/runs/run-1`);
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().data).toMatchObject({ id: 'run-1', hasRanking: true, ranking: [{ goodsId: '1', chosen: true }] });
+    expect(get).toHaveBeenCalledWith('tenant-a', ID, 'run-1');
+    get.mockResolvedValueOnce(null);
+    const missing = await call('GET', `/${ID}/runs/run-x`);
+    expect(missing.statusCode).toBe(404);
+    expect(JSON.stringify(missing.json())).toContain('OFFER_HUNT_NOT_FOUND');
+  });
+
   it('PUT /settings com grupo de outro tenant → 404, nada gravado', async () => {
     vi.spyOn(PrismaOfferGeneratorConfigRepository.prototype, 'findSession').mockResolvedValue({ id: 's1', engine: 'baileys' } as never);
     vi.spyOn(PrismaOfferGeneratorConfigRepository.prototype, 'filterSessionGroups').mockResolvedValue([]);
@@ -223,7 +252,7 @@ describe('POST /finds/:findId/resend e envio real do achado', () => {
   it('200 com o achado: status do disparo, hora, grupo/sessão e contador de reenvio', async () => {
     const out = {
       ...find, status: 'SENT' as const, offerId: 'offer-2', resendCount: 1, lastResentAt: NOW,
-      delivery: { dispatchStatus: 'QUEUED' as const, sentAt: null, groupName: 'Ofertas VIP', sessionName: 'Loja' },
+      delivery: { dispatchStatus: 'QUEUED' as const, sentAt: null, groupName: 'Ofertas VIP', sessionName: 'Loja', failureReason: null, updatedAt: NOW },
     };
     const exec = vi.spyOn(ResendHuntFindUseCase.prototype, 'execute').mockResolvedValue(out);
     const res = await call('POST', '/finds/f1/resend');
@@ -236,7 +265,7 @@ describe('POST /finds/:findId/resend e envio real do achado', () => {
   });
 
   it('SENT com hora; sem oferta → dispatchStatus/destination null', async () => {
-    const sent = { ...find, status: 'SENT' as const, offerId: 'o1', delivery: { dispatchStatus: 'SENT' as const, sentAt: NOW, groupName: 'G', sessionName: null } };
+    const sent = { ...find, status: 'SENT' as const, offerId: 'o1', delivery: { dispatchStatus: 'SENT' as const, sentAt: NOW, groupName: 'G', sessionName: null, failureReason: null, updatedAt: NOW } };
     vi.spyOn(ResendHuntFindUseCase.prototype, 'execute').mockResolvedValueOnce(sent);
     expect((await call('POST', '/finds/f1/resend')).json().data).toMatchObject({ dispatchStatus: 'SENT', sentAt: NOW.toISOString(), destination: { groupName: 'G', sessionName: null } });
     const { OfferHuntPresenter } = await import('../presenters/OfferHuntPresenter');

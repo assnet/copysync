@@ -156,6 +156,7 @@ export const offerHunterStrings = {
       commissionShortcuts: 'Atalhos de percentual',
       commissionShortcutAria: (n: number) => `Usar ${n}%`,
       commissionAnyHint: 'Escolha uma condição para filtrar pelo percentual.',
+      commissionAboveMax: (saved: string, max: number) => `Valor salvo ${saved}% acima do limite de ${max}%: ajuste para salvar.`,
       minCommissionValue: 'Comissão mínima (R$)',
       minRating: 'Nota mínima',
       minSales: 'Vendas mínimas',
@@ -371,6 +372,9 @@ export const offerHunterStrings = {
     showRanking: 'Ver ranking',
     hideRanking: 'Ocultar ranking',
     rankingMissing: 'Ranking não guardado nesta execução.',
+    rankingLoading: 'Carregando o ranking…',
+    rankingError: 'Não conseguimos carregar o ranking desta execução.',
+    running: 'Em andamento',
   },
 
   runStatus: {

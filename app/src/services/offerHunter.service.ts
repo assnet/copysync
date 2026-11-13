@@ -90,6 +90,12 @@ export const offerHunterService = {
     return res.data.data;
   },
 
+  /** Execução completa com `ranking` (null = não guardado); a lista de execuções não traz o ranking. */
+  async getRun(huntId: string, runId: string): Promise<HuntRun> {
+    const res = await apiClient.get<ApiSuccess<HuntRun>>(`${BASE}/${enc(huntId)}/runs/${enc(runId)}`);
+    return res.data.data;
+  },
+
   async listFinds(id: string, cursor?: string | null): Promise<HuntPage<HuntFind>> {
     const res = await apiClient.get<ApiSuccess<HuntPage<HuntFind>>>(`${BASE}/${enc(id)}/finds`, pageParams(cursor));
     return res.data.data;

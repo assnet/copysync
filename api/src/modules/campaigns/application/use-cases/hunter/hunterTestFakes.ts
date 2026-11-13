@@ -1,7 +1,7 @@
 // Fakes em memória do Caçador de Ofertas — só para testes dos use cases.
 import type { IOfferHuntRepository, OfferHuntPatch } from '../../../domain/contracts/hunter/IOfferHuntRepository';
 import type { IOfferHuntRunRepository, FinishOfferHuntRunInput, StartOfferHuntRunInput } from '../../../domain/contracts/hunter/IOfferHuntRunRepository';
-import type { IOfferHuntFindRepository, NewOfferHuntFind, OfferHuntFindTransition } from '../../../domain/contracts/hunter/IOfferHuntFindRepository';
+import type { IOfferHuntFindRepository, NewOfferHuntFind, OfferHuntFindTransition, ResendClaim, ResendClaimOptions } from '../../../domain/contracts/hunter/IOfferHuntFindRepository';
 import type { IOfferHunterSettingsRepository } from '../../../domain/contracts/hunter/IOfferHunterSettingsRepository';
 import type { ISheinCatalogClient, SheinCatalogPage, SheinCatalogQuery, SheinCatalogSearchQuery, SheinSession } from '../../../domain/contracts/ISheinCatalogClient';
 import type { AffiliateCredentialState } from '../../../domain/contracts/IAffiliateCredentialGateway';
@@ -97,7 +97,7 @@ export class InMemoryRuns implements Pick<IOfferHuntRunRepository, 'startWithinD
 
 export class InMemoryFinds implements Pick<
   IOfferHuntFindRepository, 'insertWithinDailyLimit' | 'countCreatedSince' | 'recentGoodsIds' | 'findById' | 'transition' | 'reclaimStaleApproved'
-  | 'claimResend' | 'recordResend'
+  | 'claimResend' | 'releaseResend' | 'recordResend' | 'countResendsInDay'
 > {
   /** Relógio do `updatedAt` gravado (o Prisma usa o do servidor). */
   clock: () => Date = () => NOW;
@@ -118,7 +118,7 @@ export class InMemoryFinds implements Pick<
     });
     return fresh.slice(0, room).map((f) => {
       const row: OfferHuntFind = { ...f, id: `find-${++this.seq}`, tenantId, failureReason: null, offerId: null,
-        resendCount: 0, lastResentAt: null, delivery: null, createdAt: NOW, updatedAt: NOW };
+        resendCount: 0, lastResentAt: null, resendInFlightUntil: null, delivery: null, createdAt: NOW, updatedAt: NOW };
       this.items.push(row);
       return row;
     });
@@ -144,15 +144,30 @@ export class InMemoryFinds implements Pick<
     if (extra.failureReason !== undefined) f.failureReason = extra.failureReason;
     return true;
   }
-  async claimResend(tenantId: string, id: string, offerId: string, now: Date, cooldownMs: number) {
+  /** Contador do teto diário de reenvios (espelho de `offer_hunter_settings.resendDayStart/resendsInDay`). */
+  resendDay: { start: number; count: number } | null = null;
+  async claimResend(tenantId: string, id: string, offerId: string, now: Date, opts: ResendClaimOptions): Promise<ResendClaim> {
     const f = await this.findById(tenantId, id);
-    if (!f || f.offerId !== offerId || (f.lastResentAt && f.lastResentAt.getTime() >= now.getTime() - cooldownMs)) return false;
-    f.lastResentAt = now;
-    return true;
+    if (!f || f.offerId !== offerId || (f.resendInFlightUntil && f.resendInFlightUntil > now)) return { kind: 'PENDING' };
+    const inFlight = { lastResentAt: now, resendInFlightUntil: new Date(now.getTime() + opts.inFlightMs) };
+    if (f.resendInFlightUntil) { Object.assign(f, inFlight); return { kind: 'CLAIMED', number: f.resendCount }; }
+    if (f.lastResentAt && f.lastResentAt.getTime() >= now.getTime() - opts.cooldownMs) return { kind: 'PENDING' };
+    const used = this.resendDay?.start === opts.dayStart.getTime() ? this.resendDay.count : 0;
+    if (used >= opts.dailyMax) return { kind: 'DAILY_LIMIT' };
+    this.resendDay = { start: opts.dayStart.getTime(), count: used + 1 };
+    Object.assign(f, inFlight, { resendCount: f.resendCount + 1 });
+    return { kind: 'CLAIMED', number: f.resendCount };
   }
-  async recordResend(tenantId: string, id: string, offerId: string) {
+  async releaseResend(tenantId: string, id: string, number: number, now: Date) {
     const f = await this.findById(tenantId, id);
-    if (f) Object.assign(f, { offerId, status: 'SENT', failureReason: null, resendCount: f.resendCount + 1 });
+    if (f && f.resendCount === number && f.resendInFlightUntil) f.resendInFlightUntil = now;
+  }
+  async recordResend(tenantId: string, id: string, offerId: string, number: number) {
+    const f = await this.findById(tenantId, id);
+    if (f && f.resendCount === number) Object.assign(f, { offerId, status: 'SENT', failureReason: null, resendInFlightUntil: null });
+  }
+  async countResendsInDay(_tenantId: string, dayStart: Date) {
+    return this.resendDay?.start === dayStart.getTime() ? this.resendDay.count : 0;
   }
   /** Achado já gravado (ex.: dias atrás). */
   seed(patch: Partial<OfferHuntFind>): OfferHuntFind {
@@ -163,7 +178,7 @@ export class InMemoryFinds implements Pick<
       commissionPercent: c.commissionNewPct, commissionCents: c.commissionNewCents, returningCommissionPercent: null,
       returningCommissionCents: null, extraCommissionCents: 0, salesBucket: c.sales, reviewsBucket: c.reviews, rating: c.rating,
       score: 50, factors: [], aiReason: null, status: 'PENDING_REVIEW', failureReason: null, offerId: null,
-      resendCount: 0, lastResentAt: null, delivery: null, createdAt: NOW, updatedAt: NOW, ...patch,
+      resendCount: 0, lastResentAt: null, resendInFlightUntil: null, delivery: null, createdAt: NOW, updatedAt: NOW, ...patch,
     };
     this.items.push(row);
     return row;

@@ -9,3 +9,6 @@ export const OFFER_TYPING_SECONDS_MAX = 30;
 export function isValidTypingSeconds(value: number): boolean {
   return Number.isInteger(value) && value >= OFFER_TYPING_SECONDS_MIN && value <= OFFER_TYPING_SECONDS_MAX;
 }
+
+/** Envio em SEND_TIMEOUT pode ainda estar saindo: segura a faixa (e o reenvio do caçador) ao menos isso — timeout (60 s) + digitação (até 30 s), com folga. */
+export const LANE_TIMEOUT_HOLD_SECONDS = 120;

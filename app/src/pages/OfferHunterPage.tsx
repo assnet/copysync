@@ -130,7 +130,8 @@ export function OfferHunterPage() {
   );
 
   return (
-    <Box>
+    // Folga no fim: o botão flutuante de suporte não cobre as ações do último cartão
+    <Box sx={{ pb: 9 }}>
       <PageHeader title={t.page.title} subtitle={t.page.subtitle} action={createButton} />
 
       {opts.errorCode && !options && (

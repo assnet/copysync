@@ -27,6 +27,9 @@ export function CommissionFilterField({ filters, error, onChange }: Props) {
   const helpId = useId();
   const op = filters.minCommissionPct == null ? null : (filters.commissionOperator ?? 'GTE');
   const pct = filters.minCommissionPct ?? DEFAULT_PCT;
+  /** Valor legado salvo acima do teto: rótulo mostra o real, a barra fica presa no teto com aviso. */
+  const aboveMax = op !== null && pct > HUNT_COMMISSION_PCT_MAX;
+  const sliderPct = Math.min(Math.max(pct, 0), HUNT_COMMISSION_PCT_MAX);
   const setOp = (value: string) => {
     if (value === ANY) onChange({ minCommissionPct: null, commissionOperator: null });
     else onChange({ minCommissionPct: filters.minCommissionPct ?? DEFAULT_PCT, commissionOperator: value as HuntCommissionOperator });
@@ -51,14 +54,14 @@ export function CommissionFilterField({ filters, error, onChange }: Props) {
           value={op ?? ANY}
           onChange={(e) => setOp(e.target.value)}
           fullWidth
-          error={Boolean(error)}
+          error={Boolean(error) || aboveMax}
         >
           <MenuItem value={ANY}>{r.commissionAny}</MenuItem>
           {HUNT_COMMISSION_OPERATORS.map((o) => <MenuItem key={o} value={o}>{opLabel(o)}</MenuItem>)}
         </TextField>
         <Box sx={{ px: 1 }}>
           <Slider
-            value={pct}
+            value={sliderPct}
             min={0}
             max={HUNT_COMMISSION_PCT_MAX}
             step={1}
@@ -84,8 +87,10 @@ export function CommissionFilterField({ filters, error, onChange }: Props) {
             />
           ))}
         </Box>
-        <Typography id={helpId} variant="caption" color={error ? 'error' : 'text.secondary'} component="p">
-          {error ?? (op ? t.wizard.validation.range(0, HUNT_COMMISSION_PCT_MAX) : r.commissionAnyHint)}
+        <Typography id={helpId} variant="caption" color={error || aboveMax ? 'error' : 'text.secondary'} component="p" data-testid="commission-help">
+          {aboveMax
+            ? r.commissionAboveMax(formatDecimal(pct), HUNT_COMMISSION_PCT_MAX)
+            : error ?? (op ? t.wizard.validation.range(0, HUNT_COMMISSION_PCT_MAX) : r.commissionAnyHint)}
         </Typography>
       </Stack>
     </Box>

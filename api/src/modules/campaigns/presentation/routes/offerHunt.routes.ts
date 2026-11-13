@@ -10,7 +10,7 @@ import { OfferHuntPresenter as P } from '../presenters/OfferHuntPresenter';
 import {
   accessResponse, approveFindResponse, createHuntBodySchema, findIdParamSchema, findResponse, findsPageResponse,
   huntIdParamSchema, huntListResponse, huntResponse, optionsResponse, pageQuerySchema, runResultResponse,
-  runsPageResponse, settingsBodySchema, settingsResponse, updateHuntBodySchema, usageResponse,
+  runIdParamSchema, runResponse, runsPageResponse, settingsBodySchema, settingsResponse, updateHuntBodySchema, usageResponse,
 } from '../schemas/offerHunt.schema';
 
 const preHandler = [authHook, tenantHook, offerHunterAudienceHook];
@@ -18,6 +18,7 @@ const tags = ['Offer Hunter'];
 
 type IdParams = { Params: { id: string } };
 type FindParams = { Params: { findId: string } };
+type RunParams = { Params: { id: string; runId: string } };
 type PageQuery = { Querystring: { cursor?: string } };
 
 /**
@@ -182,6 +183,15 @@ export async function offerHuntRoutes(app: FastifyInstance): Promise<void> {
     async (request, reply) => {
       const page = await c.listOfferHuntRuns().execute({ tenantId: request.tenantContext.tenantId, huntId: request.params.id, cursor: request.query.cursor });
       httpResponse.ok(reply, P.runsPage(page));
+    },
+  );
+
+  app.get<RunParams>(
+    '/:id/runs/:runId',
+    { preHandler, schema: { tags, summary: 'Uma execução com o ranking', params: runIdParamSchema, response: { 200: runResponse } } },
+    async (request, reply) => {
+      const run = await c.getOfferHuntRun().execute({ tenantId: request.tenantContext.tenantId, huntId: request.params.id, runId: request.params.runId });
+      httpResponse.ok(reply, P.run(run));
     },
   );
 

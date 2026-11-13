@@ -1,7 +1,8 @@
 import { Alert, Box, Button, Chip, CircularProgress, Collapse, Stack, Typography } from '@mui/material';
 import { ChevronDown, ChevronUp, History } from 'lucide-react';
 import { AppIcon, EmptyState } from '@/components';
-import type { HuntPagedList } from '../../hooks';
+import { useEffect } from 'react';
+import type { HuntPagedList, RunRankings } from '../../hooks';
 import type { HuntRun, OfferHuntRunStatus } from '../../types';
 import { offerHunterStrings as t } from '../../strings';
 import { formatDateTime } from '../../format';
@@ -20,10 +21,38 @@ interface Props {
   /** Execução com o ranking aberto (persistido pela página). */
   openRunId: string | null;
   onToggleRun: (runId: string) => void;
+  /** Ranking sob demanda (cache por execução na página). */
+  rankings: RunRankings;
+}
+
+/** Conteúdo do ranking aberto: busca ao montar (Collapse com `unmountOnExit`), com carregando e erro com retry. */
+function RunRankingPanel({ run, rankings }: { run: HuntRun; rankings: RunRankings }) {
+  const inline = run.ranking !== undefined ? run.ranking : undefined;
+  const need = inline === undefined && run.hasRanking;
+  useEffect(() => { if (need) rankings.load(run.id); }, [need, rankings, run.id]);
+  if (inline) return <RankingTable items={inline} />;
+  if (!need) return <Typography variant="body2" color="text.secondary">{r.rankingMissing}</Typography>;
+  const entry = rankings.get(run.id);
+  if (!entry || entry.state === 'loading') {
+    return (
+      <Box role="status" sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 1 }}>
+        <CircularProgress size={18} aria-hidden />
+        <Typography variant="body2" color="text.secondary">{r.rankingLoading}</Typography>
+      </Box>
+    );
+  }
+  if (entry.state === 'error') {
+    return (
+      <Alert severity="error" action={<Button color="inherit" size="small" onClick={() => rankings.retry(run.id)}>{t.page.retry}</Button>}>
+        {r.rankingError}
+      </Alert>
+    );
+  }
+  return entry.items ? <RankingTable items={entry.items} /> : <Typography variant="body2" color="text.secondary">{r.rankingMissing}</Typography>;
 }
 
 /** Histórico de execuções por cursor: gatilho, estado, contadores, recusas por filtro, IA, horários e ranking guardado. */
-export function HuntRunsTab({ runs, openRunId, onToggleRun }: Props) {
+export function HuntRunsTab({ runs, openRunId, onToggleRun, rankings }: Props) {
   if (runs.loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={28} /></Box>;
   if (runs.errorCode && runs.items.length === 0) {
     return <Alert severity="error" action={<Button color="inherit" size="small" onClick={() => void runs.reload()}>{t.page.retry}</Button>}>{d.listError}</Alert>;
@@ -58,7 +87,10 @@ export function HuntRunsTab({ runs, openRunId, onToggleRun }: Props) {
                   {`${r.error}: ${t.errors[run.errorCode] ?? d.unknownError(run.errorCode)}`}
                 </Typography>
               )}
-              {run.status !== 'SKIPPED' && (
+              {run.status === 'RUNNING' && (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }} data-testid="hunt-run-running">{r.running}</Typography>
+              )}
+              {run.status !== 'SKIPPED' && run.status !== 'RUNNING' && (
                 <>
                   <Button
                     size="small"
@@ -73,9 +105,7 @@ export function HuntRunsTab({ runs, openRunId, onToggleRun }: Props) {
                   </Button>
                   <Collapse in={open} unmountOnExit>
                     <Box id={rankingId} sx={{ mt: 1 }}>
-                      {run.ranking ? <RankingTable items={run.ranking} /> : (
-                        <Typography variant="body2" color="text.secondary">{r.rankingMissing}</Typography>
-                      )}
+                      <RunRankingPanel run={run} rankings={rankings} />
                     </Box>
                   </Collapse>
                 </>

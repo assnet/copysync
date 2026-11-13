@@ -124,8 +124,10 @@ export interface HuntRun {
   aiFallback: boolean;
   /** null = execução antiga ou que não chegou à fonte. */
   rejectedBy: HuntRejectionCounts | null;
-  /** Até 15 melhores da execução; null = execução antiga (ranking não guardado). */
-  ranking: HuntRankingItem[] | null;
+  /** A execução guardou ranking (a lista não traz o ranking: vem de `getRun` ao abrir). */
+  hasRanking: boolean;
+  /** Só no detalhe (`GET /:id/runs/:runId`): até 15 melhores; null = não guardado. Ausente na lista. */
+  ranking?: HuntRankingItem[] | null;
   startedAt: string;
   finishedAt: string | null;
 }

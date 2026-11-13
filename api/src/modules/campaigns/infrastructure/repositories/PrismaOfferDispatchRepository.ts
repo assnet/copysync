@@ -11,13 +11,19 @@ import type { OfferOrigin } from '../../domain/enums/OfferOrigin';
 import { OFFER_DISPATCH_STATUSES, type OfferDispatchStatus } from '../../domain/enums/OfferDispatchStatus';
 import { PrismaOfferDispatchMapper as Mapper, type OfferDispatchRawRow } from '../mappers/PrismaOfferDispatchMapper';
 import { POSTING_TIME_ZONE, weekdayInZone } from '../../domain/services/postingWindow';
+import { LANE_TIMEOUT_HOLD_SECONDS } from '../../domain/offerTyping';
 
 /** Folga (s) no intervalo mínimo da faixa: o claim acontece até um tick depois do `notBefore`. */
 export const LANE_GAP_TOLERANCE_SECONDS = 5;
 /** Fuso do horário de postagem (mesmo de `postingWindow`/`operatingWindow`). */
 const WINDOW_TIME_ZONE = POSTING_TIME_ZONE;
-/** Envio em SEND_TIMEOUT segura a faixa ao menos isso: timeout (60 s) + digitação (até 30 s), com folga. */
-export const LANE_TIMEOUT_HOLD_SECONDS = 120;
+/** Envio em SEND_TIMEOUT segura a faixa ao menos isso (constante do domínio, reusada no reenvio do caçador). */
+export { LANE_TIMEOUT_HOLD_SECONDS };
+/**
+ * Claim com 1 vaga (sem como alternar): manual/curada vai antes só se a cabeça do monitoramento mais antiga
+ * não estiver atrasada mais que isto; senão sai a do monitoramento (anti-starvation).
+ */
+export const MANUAL_PRIORITY_MAX_STARVE_SECONDS = 600;
 
 /**
  * SQL de "a janela da linha `alias` está aberta agora", espelho de `isWithinPostingWindow`
@@ -117,8 +123,10 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
    * cabeça da faixa ser o próximo elegível (o gerador não fica preso atrás de uma captura fora da janela).
    *
    * Prioridade na faixa: envio vencido manual/curado (gerador e caçador) sai antes de qualquer captura
-   * do monitoramento da mesma sessão, mesmo com milhares de capturas acumuladas mais antigas, e a
-   * faixa com cabeça manual vem antes das outras no LIMIT do tick. O intervalo da sessão
+   * do monitoramento da mesma sessão, mesmo com milhares de capturas acumuladas mais antigas. Entre
+   * sessões, fila justa no LIMIT do tick: até ceil(limit/2) cabeças manuais (por notBefore) e o resto
+   * por notBefore entre as demais; com limit 1, manual antes só se nenhuma cabeça do monitoramento estiver
+   * atrasada mais que MANUAL_PRIORITY_MAX_STARVE_SECONDS (monitoramento nunca morre de fome). O intervalo da sessão
    * (gapSeconds/SENT recente) continua valendo: só muda quem é a cabeça.
    *
    * Dono da sessão (docs/arquitetura-escala.md §3.3): envio cuja sessão tem lease vivo de OUTRO
@@ -143,6 +151,8 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
     const prevWeekday = (zoneWeekday + 6) % 7;
     const monitorOpen = postingWindowOpenSql('g', zoneMinute, 1 << zoneWeekday, 1 << prevWeekday);
     const generatorOpen = postingWindowOpenSql('c', zoneMinute, 1 << zoneWeekday, 1 << prevWeekday);
+    const manualQuota = Math.ceil(limit / 2);
+    const starveBefore = new Date(now.getTime() - MANUAL_PRIORITY_MAX_STARVE_SECONDS * 1000);
     return this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('offer_dispatch_claim'))`;
       const rows = await tx.$queryRaw<OfferDispatchRawRow[]>`
@@ -151,7 +161,15 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
                "claimToken" = gen_random_uuid()::text, "updatedAt" = now()
          WHERE "status" = 'QUEUED'::"OfferDispatchStatus"
            AND "id" IN (
-             SELECT "id" FROM (
+             -- Fila justa entre sessões: até ceil(limit/2) vagas para cabeças manuais/curadas (por notBefore);
+             -- o resto por notBefore entre as demais (manuais excedentes ou monitoramento). Com limit 1, manual
+             -- só vai antes se nenhuma cabeça do monitoramento estiver atrasada mais que MANUAL_PRIORITY_MAX_STARVE_SECONDS
+             SELECT r."id" FROM (
+             SELECT e."id", e."notBefore", e."monitoring",
+                    row_number() OVER (PARTITION BY e."monitoring" ORDER BY e."notBefore", e."id") AS "rank",
+                    bool_or(e."monitoring" AND e."notBefore" < ${starveBefore}) OVER () AS "monitoringStarved"
+               FROM (
+             SELECT heads.* FROM (
                SELECT DISTINCT ON (COALESCE(d."sessionId", d."id"))
                       d."id", d."notBefore", d."sessionId", d."gapSeconds",
                       (od."origin" NOT IN ('GENERATOR'::"OfferOrigin", 'HUNTER'::"OfferOrigin")) AS "monitoring"
@@ -205,9 +223,13 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
                         OR (o."status" = 'FAILED'::"OfferDispatchStatus" AND o."failureReason" = 'SEND_TIMEOUT'
                             AND o."claimedAt" + make_interval(secs => GREATEST(heads."gapSeconds" - ${LANE_GAP_TOLERANCE_SECONDS}, ${LANE_TIMEOUT_HOLD_SECONDS})) > ${now}))
               )
-              -- Entre sessões, cabeça manual/curada antes (senão a faixa que acabou de ganhar um envio manual,
-              -- com notBefore mais novo, perderia a vaga do tick para capturas velhas de outras sessões)
-              ORDER BY heads."monitoring", heads."notBefore", heads."id"
+             ) e
+             ) r
+              -- Entre sessões, cabeça manual/curada na cota antes (senão a faixa que acabou de ganhar um envio
+              -- manual, com notBefore mais novo, perderia a vaga do tick para capturas velhas de outras sessões);
+              -- a cota nunca toma todas as vagas, então o monitoramento não morre de fome
+              ORDER BY (NOT r."monitoring" AND r."rank" <= ${manualQuota} AND NOT (${limit === 1} AND r."monitoringStarved")) DESC,
+                       r."notBefore", r."id"
               LIMIT ${limit}
            )
         RETURNING *`;

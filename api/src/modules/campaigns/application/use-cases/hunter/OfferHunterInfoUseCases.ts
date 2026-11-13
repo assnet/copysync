@@ -28,11 +28,14 @@ export interface OfferHunterUsage {
   /** Execuções abertas hoje (guarda técnica). */
   runsToday: number;
   runsMax: number;
+  /** Reenvios de achados hoje frente ao teto técnico (`HUNTER_LIMITS.resendsPerDayMax`). */
+  resendsToday: number;
+  resendsMax: number;
 }
 
 export class GetOfferHunterUsageUseCase {
   constructor(private readonly deps: {
-    finds: Pick<IOfferHuntFindRepository, 'countCreatedSince'>;
+    finds: Pick<IOfferHuntFindRepository, 'countCreatedSince' | 'countResendsInDay'>;
     runs: Pick<IOfferHuntRunRepository, 'countStartedSince'>;
     entitlements: IEntitlementReader;
     now?: () => Date;
@@ -40,13 +43,17 @@ export class GetOfferHunterUsageUseCase {
 
   async execute(tenantId: string): Promise<OfferHunterUsage> {
     const since = startOfDayInZone((this.deps.now ?? (() => new Date()))());
-    const [limitRaw, used, runsToday] = await Promise.all([
+    const [limitRaw, used, runsToday, resendsToday] = await Promise.all([
       this.deps.entitlements.getNumber(tenantId, ENTITLEMENT_KEYS.OFFER_HUNTER_FINDS_PER_DAY),
       this.deps.finds.countCreatedSince(tenantId, since),
       this.deps.runs.countStartedSince(tenantId, since),
+      this.deps.finds.countResendsInDay(tenantId, since),
     ]);
     const limit = limitRaw ?? 0;
-    return { used, limit, remaining: Math.max(0, limit - used), runsToday, runsMax: HUNTER_LIMITS.runsPerDayMax };
+    return {
+      used, limit, remaining: Math.max(0, limit - used), runsToday, runsMax: HUNTER_LIMITS.runsPerDayMax,
+      resendsToday, resendsMax: HUNTER_LIMITS.resendsPerDayMax,
+    };
   }
 }
 

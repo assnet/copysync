@@ -124,6 +124,10 @@ capturas por sessão, ~250 envios/h, oferta manual esperaria ~16 h). Dentro da m
 o `DISTINCT ON` sobre todos os vencidos, igual antes (EXPLAIN no descartável, 13 mil `QUEUED` sendo
 10 mil numa sessão + 50 mil `SENT`: ~50–65 ms, `offer_dispatches_status_notBefore_idx`).
 
+**Fila justa** (revisão 2026-11-13): no `LIMIT` do tick, no máximo `ceil(limit/2)` vagas vão para cabeças manuais
+(por `notBefore`); o resto por `notBefore` entre as demais. Com `limit = 1`, a manual só vai antes se nenhuma cabeça do
+monitoramento estiver atrasada mais que `MANUAL_PRIORITY_MAX_STARVE_SECONDS` (600 s): o monitoramento nunca morre de fome.
+
 - O intervalo da sessão não muda: `gapSeconds`/`SENT` recente/`SENDING` seguram o gerador como antes.
 - Gerador com `notBefore` futuro (agendado, ou entre um grupo e outro) não fura: só o vencido.
 - Previsão honesta: `SendOfferUseCase` e a retomada de oferta do gerador chamam

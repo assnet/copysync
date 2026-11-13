@@ -6,7 +6,7 @@ import type {
   OfferHunterSettings as PrismaOfferHunterSettings,
 } from '@prisma/client';
 import { HUNT_REJECTION_KEYS, type HuntCommissionBand, type HuntRejectionCounts, type HuntRejectionKey, type HuntScoreFactor, type HuntSort } from '../../domain/hunter/HuntCandidate';
-import type { OfferHunt, OfferHuntDefinition, OfferHuntFind, OfferHuntFindSnapshot, OfferHunterSettings, OfferHuntRankingItem, OfferHuntRun } from '../../domain/hunter/OfferHunt';
+import type { OfferHunt, OfferHuntDefinition, OfferHuntFind, OfferHuntFindSnapshot, OfferHunterSettings, OfferHuntRankingItem, OfferHuntRun, OfferHuntRunSummary } from '../../domain/hunter/OfferHunt';
 import { COMM_RATE, SORT_CODE } from '../http/SheinCatalogClient';
 
 // O banco guarda os códigos da própria fonte (sort 0/7/9…, commRate 1–5); o domínio usa os nomes.
@@ -169,6 +169,12 @@ export class PrismaOfferHuntMapper {
     };
   }
 
+  /** Linha da lista (sem a coluna `ranking`). */
+  static runSummaryToDomain(raw: Omit<PrismaOfferHuntRun, 'ranking'>, hasRanking: boolean): OfferHuntRunSummary {
+    const { ranking: _omit, ...run } = PrismaOfferHuntMapper.runToDomain({ ...raw, ranking: null });
+    return { ...run, hasRanking };
+  }
+
   static findToDomain(raw: PrismaOfferHuntFind): OfferHuntFind {
     return {
       id: raw.id,
@@ -199,6 +205,7 @@ export class PrismaOfferHuntMapper {
       offerId: raw.offerId,
       resendCount: raw.resendCount,
       lastResentAt: raw.lastResentAt,
+      resendInFlightUntil: raw.resendInFlightUntil,
       delivery: null,
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
