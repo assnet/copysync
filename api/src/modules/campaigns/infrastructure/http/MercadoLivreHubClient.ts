@@ -42,6 +42,12 @@ export const ML_HUB_REFERER = `${ML_BASE}/afiliados/hub?is_affiliate=true`;
 /** Cartões por página observados (offset anda de 18 em 18). */
 export const ML_HUB_PAGE_SIZE = 18;
 const MAX_PAGE = 50;
+/**
+ * Validade do bootstrap (`_csrf`) reaproveitado entre consultas da MESMA sessão aberta (objeto `HuntSourceSession`
+ * de uma execução/sugestão): como o navegador, que carrega a página uma vez e faz várias buscas. Sem isto cada
+ * consulta custava 2 requisições (a amostra da IA: 12 em vez de 7).
+ */
+export const ML_HUB_BOOTSTRAP_TTL_MS = 60_000;
 const MAX_BYTES = 256 * 1024;
 
 type HubFilter = { id: 'best_seller' | 'extra_commission'; value: true } | { id: 'category'; value: string };
@@ -114,6 +120,23 @@ export function buildHubSearchBody(query: HuntSourceQuery): HubSearchBody {
 
 export class MercadoLivreHubClient implements IHuntCatalogSource {
   readonly provider = 'MERCADO_LIVRE' as const;
+  /** Por objeto de sessão (some com ele): nunca atravessa requisições, tenants nem processos. */
+  private readonly bootstraps = new WeakMap<object, { at: number; cookies: Record<string, string> }>();
+
+  constructor(private readonly clock: () => number = Date.now) {}
+
+  private async bootstrap(cookies: Record<string, string>): Promise<Record<string, string>> {
+    const hit = this.bootstraps.get(cookies);
+    if (hit && this.clock() - hit.at < ML_HUB_BOOTSTRAP_TTL_MS) return hit.cookies;
+    // 403 no bootstrap = WAF; só redirect para o login recusa a sessão (indisponível), não sessão recusada (design §3b)
+    const { cookies: all } = await bootstrapMercadoLivreSession(cookies, {
+      log,
+      forbiddenIsRejected: false,
+      onlyLoginRedirectIsRejected: true,
+    });
+    this.bootstraps.set(cookies, { at: this.clock(), cookies: all });
+    return all;
+  }
 
   async listCategories(session: HuntSourceSession): Promise<HuntSourceCategory[]> {
     const json = await this.search(sessionCookies(session), { search: '', sort: 'relevance', filters: [], offset: 0 });
@@ -134,12 +157,7 @@ export class MercadoLivreHubClient implements IHuntCatalogSource {
   }
 
   private async search(cookies: Record<string, string>, body: HubSearchBody): Promise<unknown> {
-    // 403 no bootstrap = WAF; só redirect para o login recusa a sessão (indisponível), não sessão recusada (design §3b)
-    const { cookies: allCookies } = await bootstrapMercadoLivreSession(cookies, {
-      log,
-      forbiddenIsRejected: false,
-      onlyLoginRedirectIsRejected: true,
-    });
+    const allCookies = await this.bootstrap(cookies);
     const csrf = allCookies._csrf ?? null;
 
     const headers: Record<string, string> = {
@@ -166,6 +184,8 @@ export class MercadoLivreHubClient implements IHuntCatalogSource {
       return unavailable({ reason: (err as Error)?.name }, 'ML hub sem resposta');
     }
 
+    // Qualquer resposta que não seja 200 descarta o bootstrap guardado: a próxima consulta refaz o `_csrf`
+    if (!res.ok) this.bootstraps.delete(cookies);
     if (res.status === 401) {
       await res.body?.cancel().catch(() => undefined);
       log.warn({ status: res.status }, 'ML hub recusou a sessão');

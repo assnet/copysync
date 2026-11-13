@@ -24,9 +24,9 @@ export interface SaveOfferGeneratorConfigInput {
 }
 
 export interface IOfferGeneratorConfigRepository {
-  /** null = tenant nunca configurou. */
+  /** null = tenant nunca configurou. `sessionIds` só com sessões não apagadas (pode vir vazio). */
   find(tenantId: string): Promise<OfferGeneratorConfig | null>;
-  /** Grupos selecionados (`OfferDestination`), só conversas do tenant, na ordem de envio (`position`). */
+  /** Grupos selecionados (`OfferDestination`), só conversas do tenant em sessão não apagada, na ordem de envio (`position`). */
   listGroups(tenantId: string): Promise<OfferDestinationView[]>;
   /** Upsert da configuração + troca dos destinos na mesma transação. */
   save(input: SaveOfferGeneratorConfigInput): Promise<void>;

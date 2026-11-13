@@ -9,6 +9,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — app 0.118.1 / api 0.95.1 — IA do caçador, salvar config do gerador e percentual do Story
+
+#### app
+
+- **`OfferConfigWizard.tsx`** — o assistente do gerador enviava grupos de sessão excluída/desconectada que não apareciam na revisão e a API recusava tudo ("Não foi possível concluir a ação"). Agora só vão os grupos das sessões conectadas escolhidas; 404 ganha texto próprio.
+- **`offerHunter/strings.ts`** / **`useHuntInfo.ts`** / **`offerHunter.service.ts`** — "Gerar com IA" com mensagem por causa (IA indisponível, limite da IA, recusada, tempo esgotado) e timeout de 95 s nessa rota; só sugestão entregue conta no limite do dia.
+- **`offerStory/strings.ts`** + miniaturas dos templates — arte com um percentual só (desconto total).
+
 ### Added — app 0.118.0 / api 0.95.0 — Caçador multimarca (Mercado Livre) e IA de configuração
 
 #### app

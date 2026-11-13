@@ -68,7 +68,6 @@ export function OfferConfigWizard({
     postingWindow: postingWindowFromConfig(config),
   }), { version: 2, scope: 'device' });
   const { step, sessionIds, intervalMin, intervalMax, dispatchOrder, postingWindow } = draft;
-  const selected = useMemo(() => new Map(draft.selected), [draft.selected]);
   const setStep = (fn: (s: number) => number) => setDraft((d) => ({ ...d, step: fn(d.step) }));
   const setSessionIds = (fn: (ids: string[]) => string[]) => setDraft((d) => ({ ...d, sessionIds: fn(d.sessionIds) }));
   const setSelected = (fn: (m: Map<string, SelectedGroup>) => Map<string, SelectedGroup>) =>
@@ -86,6 +85,10 @@ export function OfferConfigWizard({
     () => sessionIds.flatMap((id) => connected.find((s) => s.id === id) ?? []),
     [sessionIds, connected],
   );
+  // Só grupos das sessões que vão enviar: os de sessão apagada/desconectada (configuração antiga ou rascunho)
+  // não aparecem na revisão e, enviados, fariam o servidor recusar tudo com 404. Ficam no rascunho: voltam se a sessão voltar
+  const sending = useMemo(() => new Set(chosen.map((s) => s.id)), [chosen]);
+  const selected = useMemo(() => new Map(draft.selected.filter(([, g]) => sending.has(g.sessionId))), [draft.selected, sending]);
   // Canal da sessão = engine; o do grupo = o da sessão dona (limites do plano são por canal)
   const channelOfSession = (id: string): LimitChannel => channelOf(sessions.find((s) => s.id === id)?.engine);
   const sessionCount = countByChannel(chosen.map((s) => channelOf(s.engine)));
@@ -131,7 +134,8 @@ export function OfferConfigWizard({
         const limit = limits[ch].broadcastGroups;
         // Grupo já em uso (monitoramento ou gerador) não ocupa vaga nova
         const inUse = catalog?.items.some((i) => i.conversationId === id) ?? false;
-        if (limit == null || inUse || unionOf(next)[ch] < limit) next.set(id, group);
+        const counted = new Map([...next].filter(([, g]) => sending.has(g.sessionId)));
+        if (limit == null || inUse || unionOf(counted)[ch] < limit) next.set(id, group);
       }
       return next;
     });
@@ -168,7 +172,8 @@ export function OfferConfigWizard({
       onSaved();
     } catch (err) {
       const view = err as OfferErrorView;
-      setError(view.message ?? offerStrings.errors.generic);
+      // 404 = sessão ou grupo sumiu entre a escolha e o salvar: texto próprio, com o que fazer
+      setError(view.code === 'NOT_FOUND' ? t.saveNotFound : view.message ?? offerStrings.errors.generic);
       if (view.planLimit) setPlanLimit(view.planLimit);
     } finally {
       setSaving(false);

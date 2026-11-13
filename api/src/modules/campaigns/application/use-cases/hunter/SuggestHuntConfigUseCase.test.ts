@@ -8,7 +8,7 @@ import type { HuntConfigSuggestInput } from '../../hunter/contracts/IHuntConfigS
 import { SuggestHuntConfigUseCase } from './SuggestHuntConfigUseCase';
 import type { IHuntProviderAdapter } from '../../../domain/contracts/hunter/IHuntProviderAdapter';
 import { SheinHuntProviderAdapter } from '../../../infrastructure/hunter/providers/SheinHuntProviderAdapter';
-import { HUNT_PAGE_PAUSE_MS } from './RunOfferHuntUseCase';
+import { HUNTER_AI_LIMITS } from '../../../domain/services/hunter/hunterAiLimits';
 
 const NOW = new Date('2026-11-15T15:00:00.000Z');
 const ML: HuntCapabilities = {
@@ -51,7 +51,7 @@ function catalogWith(pages: (q: HuntSourceQuery) => HuntCandidate[] | Error): IH
 
 function setup(opts: {
   ent?: Record<string, boolean>; accepted?: boolean; credential?: boolean; caps?: HuntCapabilities | null; aiAvailable?: boolean;
-  catalog?: ReturnType<typeof catalogWith>; suggest?: () => Promise<typeof SUGGESTION | null>;
+  catalog?: ReturnType<typeof catalogWith>; suggest?: () => Promise<typeof SUGGESTION | null>; clock?: () => number;
 } = {}) {
   const ent = { offer_hunter_enabled: true, marketplace_shein_enabled: true, ...opts.ent };
   const catalog = opts.catalog ?? catalogWith(() => [huntCandidate()]);
@@ -83,6 +83,7 @@ function setup(opts: {
     logger: { warn: vi.fn() },
     sleep,
     rand: () => 0.5,
+    clock: opts.clock ?? (() => 0),
   });
   return { uc, suggest, counter, catalog, credentials, sleep };
 }
@@ -130,7 +131,7 @@ describe('SuggestHuntConfigUseCase', () => {
     expect(b.counter.used).toBe(0);
   });
 
-  it('teto 5/dia → 429; erro do gerador devolve a reserva; saída inválida gasta', async () => {
+  it('teto 5/dia → 429; erro do gerador e saída inválida devolvem a reserva (só sugestão entregue conta)', async () => {
     const { uc, counter } = setup();
     for (let i = 0; i < 5; i++) await run(uc);
     await expect(run(uc)).rejects.toMatchObject({ code: 'OFFER_HUNT_AI_SUGGEST_DAILY_LIMIT', statusCode: 429 });
@@ -142,8 +143,21 @@ describe('SuggestHuntConfigUseCase', () => {
 
     const invalid = setup({ suggest: async () => null });
     await expect(run(invalid.uc)).rejects.toMatchObject({ code: 'OFFER_HUNT_AI_SUGGEST_INVALID_OUTPUT' });
-    expect(invalid.counter.used).toBe(1);
+    expect(invalid.counter.released).toEqual(['s1']);
+    expect(invalid.counter.used).toBe(0);
     expect(counter.used).toBe(5);
+  });
+
+  it('amostra: passado o orçamento de tempo não abre consulta nova e a sugestão segue com o que leu', async () => {
+    let t = 0;
+    const catalog = catalogWith(() => [huntCandidate({ productId: String(++t) })]);
+    // cada leitura do relógio avança 12 s: a 3ª consulta já encontra o orçamento (20 s) estourado
+    let now = 0;
+    const { uc, suggest } = setup({ catalog, clock: () => (now += 12_000) });
+    const out = await run(uc, { intent: null, pickProduct: true });
+    expect(catalog.queries).toHaveLength(2);
+    expect(suggest.mock.calls[0][0].sample!.pool).toHaveLength(2);
+    expect(out.sourceUsed).toBe(true);
   });
 
   it('IA escolhe o produto (ML): 5 consultas (mais vendidos, extras, geral, 2 categorias de maior comissão), 40 melhores', async () => {
@@ -157,11 +171,11 @@ describe('SuggestHuntConfigUseCase', () => {
     const { uc, suggest, sleep } = setup({ catalog });
     const out = await run(uc, { intent: null, pickProduct: true });
     expect(out.sourceUsed).toBe(true);
-    // Pausa da caçada entre consultas (não antes da 1ª)
-    expect(sleep.mock.calls.map(([ms]) => ms)).toEqual([1_500, 1_500]);
+    // Pausa curta da amostra entre consultas (não antes da 1ª): requisição interativa
+    expect(sleep.mock.calls.map(([ms]) => ms)).toEqual([650, 650]);
     for (const [ms] of sleep.mock.calls) {
-      expect(ms).toBeGreaterThanOrEqual(HUNT_PAGE_PAUSE_MS.min);
-      expect(ms).toBeLessThanOrEqual(HUNT_PAGE_PAUSE_MS.max);
+      expect(ms).toBeGreaterThanOrEqual(HUNTER_AI_LIMITS.samplePauseMs.min);
+      expect(ms).toBeLessThanOrEqual(HUNTER_AI_LIMITS.samplePauseMs.max);
     }
     expect(catalog.queries.map((q) => [q.category?.categoryId ?? null, q.options])).toEqual([
       [null, { bestSellersOnly: true }], [null, { extraEarningsOnly: true }], [null, {}],

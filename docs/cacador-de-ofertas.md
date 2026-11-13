@@ -126,18 +126,24 @@ candidato pode contar em várias chaves.
 - Portões: `offer_hunter_enabled` + plano da marca (`HUNT_PROVIDER_PLAN_KEY`) sempre. Fonte (categorias; com
   `pickProduct` a amostra larga D6: ≤ 5 consultas de 1 página, ≤ 90 itens, 40 melhores pela nota + resumo por
   categoria) só com aceite `OFFER_HUNTER` + credencial da marca; sem eles, só capacidades + intenção, categoria
-  null, `sourceUsed: false`. Falha da fonte não derruba a sugestão (1º erro encerra as consultas). Entre consultas da
-  amostra, a mesma pausa das páginas da caçada (`HUNT_PAGE_PAUSE_MS`); consulta geral vai com a entrada "Todas" já
-  listada (Shein: `did` sem relistar categorias).
+  null, `sourceUsed: false`. Falha da fonte não derruba a sugestão (1º erro encerra as consultas). Requisição
+  interativa atrás de proxy com limite de 100 s: entre consultas da amostra a pausa é curta (`samplePauseMs`
+  400–900 ms, não a da caçada), passado `sampleBudgetMs` (20 s) não abre consulta nova, e o cliente ML reaproveita o
+  bootstrap (`_csrf`) por objeto de sessão por 60 s (`ML_HUB_BOOTSTRAP_TTL_MS`: 7 requisições na amostra, não 12;
+  resposta ≠ 200 descarta). Consulta geral vai com a entrada "Todas" já listada (Shein: `did` sem relistar).
 - Teto técnico **5/dia por conta** (`hunterAiLimits.ts`, tabela `offer_hunt_ai_suggestions`, reserva atômica com
-  lock por tenant antes de ler a fonte). Gerador recusa (`AppError`: 409/422/429/503 do `IAiTextGenerator`) →
-  reserva devolvida e o código sobe; saída inválida → 422 `OFFER_HUNT_AI_SUGGEST_INVALID_OUTPUT` e conta.
+  lock por tenant antes de ler a fonte). **Só sugestão entregue conta**: gerador recusa (`AppError`: 409/422/429/503
+  do `IAiTextGenerator`) ou saída inválida (422 `OFFER_HUNT_AI_SUGGEST_INVALID_OUTPUT`) devolvem a reserva.
+  `AI_PROVIDER_UNAVAILABLE` que não seja timeout ganha 1 nova tentativa (`aiRetryMax`, pausa 800 ms; cada tentativa
+  conta em `ai_requests_per_day`); o log leva `reason`/`status` do erro do provedor (códigos, nunca conteúdo).
   Teto → 429 `OFFER_HUNT_AI_SUGGEST_DAILY_LIMIT`; sem intenção e sem `pickProduct` → 422; sem IA → 409
   `AI_NOT_CONFIGURED` (sem gastar). Conta também em `ai_requests_per_day` (`purpose: 'offer_hunt_config'`).
 - Prompt (`huntConfigPrompt.ts`, puro): marca, só filtros/ordenações da marca, categorias reais (id+nome), intenção
   sanitizada em `<intencao>` como DADO NÃO CONFIÁVEL, amostra sem id/link de produto, token, memberId nem tenant.
-  Parse estrito: 1º objeto JSON; campo fora das capacidades/categorias/limites é descartado e listado em `dropped`;
-  nenhum campo aproveitável → null. Nunca logar prompt, intenção ou resposta (só códigos e contagens).
+  Saída até `maxOutputTokens` 1500 (700 cortava o JSON completo com motivos). Parse estrito nas capacidades e
+  limites, tolerante no formato: 1º objeto JSON; resposta cortada é fechada na última vírgula fora de string;
+  número/booleano como texto e categoria pelo nome listado (único) valem; campo fora das
+  capacidades/categorias/limites é descartado e listado em `dropped`; nenhum campo aproveitável → null. Nunca logar prompt, intenção ou resposta (só códigos e contagens).
 
 ## Entrega
 
@@ -252,7 +258,10 @@ Aceite: `POST /api/integrations/affiliate-credentials/:provider/risk-acceptance`
 - "Deixar a IA decidir os filtros" (passo 0, desligado por padrão, `BrainCircuit`): intenção ≤ 120 + "Deixar a IA
   escolher o produto" → `suggestConfig` → `applyAiSuggestion` troca os filtros pelos da IA, aplica `draft.sort` (Shein)
   e marca cada campo com `AiHint` (motivo no Tooltip, borrável). Mexer no campo tira a marca. `dropped` vira aviso;
-  "X de 5 sugestões restantes hoje". `AI_NOT_CONFIGURED`/gate sem IA travam o interruptor. Salvar manda
+  "X de 5 sugestões restantes hoje". Erro da sugestão tem mensagem por código em `strings.ts`
+  (`aiSuggest.errors`: `AI_PROVIDER_*`, `AI_DAILY_LIMIT_REACHED`, `REQUEST_TIMEOUT`, `SERVICE_UNAVAILABLE`…;
+  `huntAiSuggestErrorCode` traduz erro sem código da API; cliente corta em 95 s). Código novo da rota sem texto
+  ali cai no genérico: não deixar. `AI_NOT_CONFIGURED`/gate sem IA travam o interruptor. Salvar manda
   `aiConfigured`/`aiIntent`. Não confundir com "Escolha com IA" (Refino, ranking a cada busca).
 - Rascunho do assistente em `usePersistedState` **version 3** (`WIZARD_DRAFT_VERSION`; v2 é descartado).
 - Persistência (`tab`): `offerHunter.wizard*` (limpo ao salvar), `offerHunter.destinationDraft`,

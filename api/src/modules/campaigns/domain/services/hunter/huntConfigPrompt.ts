@@ -57,6 +57,8 @@ export interface HuntConfigPrompt {
   prompt: string;
   /** Ids de categoria aceitos na resposta (os listados no prompt). */
   categoryIds: ReadonlySet<string>;
+  /** Nome listado (minúsculo) → id, só nomes únicos: resposta com o nome no lugar do id ainda vale. */
+  categoryNames: ReadonlyMap<string, string>;
 }
 
 // ── Filtros locais em unidades amigáveis à IA ───────────────────────────────
@@ -151,6 +153,13 @@ export function buildHuntConfigPrompt(input: HuntConfigPromptInput): HuntConfigP
     ? input.categories.filter((c): c is HuntSourceCategory & { categoryId: string } => !!c.categoryId).slice(0, AL.promptCategoriesMax)
     : [];
   const categoryIds = new Set(categories.map((c) => c.categoryId));
+  const categoryNames = new Map<string, string>();
+  const repeated = new Set<string>();
+  for (const c of categories) {
+    const name = cleanLabel(c.name, 40).toLowerCase();
+    if (!name || repeated.has(name)) continue;
+    if (categoryNames.has(name)) { categoryNames.delete(name); repeated.add(name); } else categoryNames.set(name, c.categoryId);
+  }
   const intent = sanitizeHuntIntent(input.intent);
   const commissionLabel = caps.commissionModel === 'NEW_RETURNING' ? 'comissão de 1ª compra' : 'comissão';
 
@@ -209,12 +218,46 @@ export function buildHuntConfigPrompt(input: HuntConfigPromptInput): HuntConfigP
       ].join('|'));
     lines.push('Colunas: categoria|n|comissao_media_%|vendidos_medios|%_com_extra', '<resumo>', ...summary, '</resumo>');
   }
-  return { system: system(brand), prompt: lines.join('\n'), categoryIds };
+  return { system: system(brand), prompt: lines.join('\n'), categoryIds, categoryNames };
 }
 
 // ── Leitura da resposta ─────────────────────────────────────────────────────
 
-/** Primeiro objeto JSON do texto (tolera cercas ```json e texto em volta). */
+/**
+ * Resposta cortada pelo teto de saída: fecha o JSON na última vírgula fora de string (tudo antes dela está
+ * completo) e repõe os fechamentos pendentes. Sem vírgula no objeto raiz = nada aproveitável.
+ */
+function repairTruncatedJsonObject(body: string): Record<string, unknown> | null {
+  const stack: string[] = [];
+  let inString = false;
+  let escaped = false;
+  let cut: { at: number; closers: string } | null = null;
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === '{') stack.push('}');
+    else if (ch === '[') stack.push(']');
+    else if (ch === '}' || ch === ']') {
+      if (stack.pop() !== ch) return null;
+      if (!stack.length) return null; // fechou inteiro: não é corte, é JSON inválido
+    } else if (ch === ',' && stack.length) cut = { at: i, closers: [...stack].reverse().join('') };
+  }
+  if (!cut) return null;
+  try {
+    const parsed: unknown = JSON.parse(body.slice(0, cut.at) + cut.closers);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Primeiro objeto JSON do texto (tolera cercas ```json, texto em volta e resposta cortada no fim). */
 function extractFirstJsonObject(text: string): Record<string, unknown> | null {
   const body = text.replace(/```(?:json)?/gi, '');
   const start = body.indexOf('{');
@@ -230,7 +273,22 @@ function extractFirstJsonObject(text: string): Record<string, unknown> | null {
       // objeto ainda não fechou: tenta o próximo '}'
     }
   }
-  return null;
+  return repairTruncatedJsonObject(body.slice(start));
+}
+
+/** Número como a IA às vezes escreve: `300`, `"300"`, `"4,5"`. Qualquer outra coisa = NaN (campo descartado). */
+function looseNumber(v: unknown): number {
+  if (typeof v === 'number') return v;
+  if (typeof v !== 'string' || !/^\s*-?\d+(?:[.,]\d+)?\s*$/.test(v)) return NaN;
+  return Number(v.trim().replace(',', '.'));
+}
+
+/** Booleano como a IA às vezes escreve: `true`, `"true"`, `"false"`. Outro valor = null (campo descartado). */
+function looseBoolean(v: unknown): boolean | null {
+  if (typeof v === 'boolean') return v;
+  if (typeof v !== 'string') return null;
+  const s = v.trim().toLowerCase();
+  return s === 'true' ? true : s === 'false' ? false : null;
 }
 
 const isPlainObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -255,6 +313,8 @@ function reasonPath(key: string, caps: HuntCapabilities): string | null {
 export interface HuntConfigParseContext {
   capabilities: HuntCapabilities;
   categoryIds: ReadonlySet<string>;
+  /** Nome (minúsculo, como foi ao prompt) → id: a IA às vezes devolve o nome em vez do id. Só nomes sem repetição. */
+  categoryNames?: ReadonlyMap<string, string>;
 }
 
 /**
@@ -284,8 +344,10 @@ export function parseHuntConfigOutput(text: string, ctx: HuntConfigParseContext)
       }
       case 'category': {
         if (value === null) break;
-        if (has(caps, 'category') && typeof value === 'string' && ctx.categoryIds.has(value)) {
-          draft.categoryId = value; accept('categoryId');
+        const raw = typeof value === 'string' ? value.trim() : '';
+        const id = ctx.categoryIds.has(raw) ? raw : ctx.categoryNames?.get(raw.toLowerCase());
+        if (has(caps, 'category') && id && ctx.categoryIds.has(id)) {
+          draft.categoryId = id; accept('categoryId');
         } else drop('categoryId');
         break;
       }
@@ -313,8 +375,8 @@ export function parseHuntConfigOutput(text: string, ctx: HuntConfigParseContext)
           const path = `sourceOptions.${safeKey(k)}`;
           if (k === 'sort') {
             if (!sortInColumn(caps) && typeof v === 'string' && caps.sorts.includes(v)) { draft.sourceOptions.sort = v; accept(path); } else drop(path);
-          } else if ((SOURCE_BOOL_FIELDS as readonly string[]).includes(k) && has(caps, k) && typeof v === 'boolean') {
-            draft.sourceOptions[k as (typeof SOURCE_BOOL_FIELDS)[number]] = v; accept(path);
+          } else if ((SOURCE_BOOL_FIELDS as readonly string[]).includes(k) && has(caps, k) && looseBoolean(v) !== null) {
+            draft.sourceOptions[k as (typeof SOURCE_BOOL_FIELDS)[number]] = looseBoolean(v)!; accept(path);
           } else drop(path);
         }
         break;
@@ -328,12 +390,14 @@ export function parseHuntConfigOutput(text: string, ctx: HuntConfigParseContext)
           if (!spec || !caps.localFilters.includes(spec.key)) { drop(spec ? `filters.${spec.key}` : `filters.${safeKey(k)}`); continue; }
           const path = `filters.${spec.key}`;
           if (spec.kind === 'boolean') {
-            if (typeof v === 'boolean') { (draft.filters as Record<string, unknown>)[spec.key] = v; accept(path); } else drop(path);
+            const b = looseBoolean(v);
+            if (b !== null) { (draft.filters as Record<string, unknown>)[spec.key] = b; accept(path); } else drop(path);
             continue;
           }
-          const ok = typeof v === 'number' && Number.isFinite(v) && v >= spec.min! && v <= spec.max! && (!spec.integer || Number.isInteger(v));
+          const n = looseNumber(v);
+          const ok = Number.isFinite(n) && n >= spec.min! && n <= spec.max! && (!spec.integer || Number.isInteger(n));
           if (!ok) { drop(path); continue; }
-          (draft.filters as Record<string, unknown>)[spec.key] = spec.scale ? Math.round((v as number) * spec.scale) : v;
+          (draft.filters as Record<string, unknown>)[spec.key] = spec.scale ? Math.round(n * spec.scale) : n;
           accept(path);
         }
         const f = draft.filters;
@@ -346,11 +410,11 @@ export function parseHuntConfigOutput(text: string, ctx: HuntConfigParseContext)
         if (value === null) break;
         const c = isPlainObject(value) ? value : null;
         const op = c?.operator;
-        const pct = c?.pct;
+        const pct = looseNumber(c?.pct);
         const ok = hasCommissionFilter(caps) && typeof op === 'string' && (HUNT_COMMISSION_OPERATORS as readonly string[]).includes(op)
-          && typeof pct === 'number' && Number.isFinite(pct) && pct >= 0 && pct <= HUNT_COMMISSION_PCT_MAX;
+          && Number.isFinite(pct) && pct >= 0 && pct <= HUNT_COMMISSION_PCT_MAX;
         if (ok) {
-          draft.filters.minCommissionPct = pct as number;
+          draft.filters.minCommissionPct = pct;
           draft.filters.commissionOperator = op as HuntCommissionOperator;
           accept('filters.minCommissionPct');
         } else drop('filters.minCommissionPct');
@@ -358,13 +422,15 @@ export function parseHuntConfigOutput(text: string, ctx: HuntConfigParseContext)
       }
       case 'aiRanking': {
         if (value === null) break;
-        if (typeof value === 'boolean') { draft.aiEnabled = value; accept('aiEnabled'); } else drop('aiEnabled');
+        const b = looseBoolean(value);
+        if (b !== null) { draft.aiEnabled = b; accept('aiEnabled'); } else drop('aiEnabled');
         break;
       }
       case 'topN': {
         if (value === null) break;
-        if (Number.isInteger(value) && (value as number) >= 1 && (value as number) <= HUNTER_LIMITS.topNMax) {
-          draft.topN = value as number; accept('topN');
+        const n = looseNumber(value);
+        if (Number.isInteger(n) && n >= 1 && n <= HUNTER_LIMITS.topNMax) {
+          draft.topN = n; accept('topN');
         } else drop('topN');
         break;
       }

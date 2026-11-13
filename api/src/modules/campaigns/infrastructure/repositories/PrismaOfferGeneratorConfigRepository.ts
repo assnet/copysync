@@ -15,7 +15,8 @@ export class PrismaOfferGeneratorConfigRepository implements IOfferGeneratorConf
   async find(tenantId: string): Promise<OfferGeneratorConfig | null> {
     const row = await this.prisma.offerGeneratorConfig.findUnique({
       where: { tenantId },
-      include: { sessions: { orderBy: { position: 'asc' }, select: { sessionId: true } } },
+      // Sessão apagada (soft delete) segue na tabela até o próximo salvar: não faz parte da configuração lida
+      include: { sessions: { where: { session: { tenantId, deletedAt: null } }, orderBy: { position: 'asc' }, select: { sessionId: true } } },
     });
     return row
       ? {
@@ -34,8 +35,9 @@ export class PrismaOfferGeneratorConfigRepository implements IOfferGeneratorConf
 
   async listGroups(tenantId: string): Promise<OfferDestinationView[]> {
     const rows = await this.prisma.offerDestination.findMany({
-      // conversa também filtrada por tenant: defesa extra contra linha inconsistente
-      where: { tenantId, conversation: { tenantId } },
+      // conversa também filtrada por tenant: defesa extra contra linha inconsistente.
+      // Grupo de sessão apagada não é destino (a linha fica até o próximo salvar)
+      where: { tenantId, conversation: { tenantId, session: { tenantId, deletedAt: null } } },
       // Ordem de envio escolhida no assistente; desempate estável para linhas antigas
       orderBy: [{ position: 'asc' }, { createdAt: 'asc' }, { conversationId: 'asc' }],
       select: {

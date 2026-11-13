@@ -156,6 +156,31 @@ describe('Offer generator config', () => {
   });
 });
 
+describe('Offer generator config — sessão apagada', () => {
+  it('GET não devolve a sessão apagada nem os grupos dela; a outra sessão segue', async () => {
+    const { configs, get, save } = setup({ cross_session_dispatch: true });
+    await save.execute({ ...base, sessionIds: ['s1', 's2'], conversationIds: ['g1', 'g3'] });
+    configs.sessions = configs.sessions.filter((x) => x.id !== 's1');
+    const dto = await get.execute(TENANT);
+    expect(dto.sessionIds).toEqual(['s2']);
+    expect(dto.groups.map((g) => g.id)).toEqual(['g3']);
+    expect(dto.usage.whatsapp.sessions).toBe(1);
+    expect(dto.configured).toBe(true);
+  });
+
+  it('todas apagadas: sem sessão nem grupo, intervalo salvo mantido; salvar com a sessão nova troca tudo', async () => {
+    const { configs, get, save } = setup();
+    await save.execute({ ...base, intervalMinSeconds: 60, intervalMaxSeconds: 120, conversationIds: ['g1', 'g2'] });
+    configs.sessions = configs.sessions.filter((x) => x.id !== 's1');
+    const dto = await get.execute(TENANT);
+    expect(dto).toMatchObject({ sessionIds: [], groups: [], intervalMinSeconds: 60, intervalMaxSeconds: 120 });
+    const saved = await save.execute({ ...base, sessionIds: ['s2'], conversationIds: ['g3'] });
+    expect(saved.sessionIds).toEqual(['s2']);
+    expect(saved.groups.map((g) => g.id)).toEqual(['g3']);
+    expect(configs.selected.get(TENANT)).toEqual(['g3']);
+  });
+});
+
 describe('Offer generator config — sessão cruzada', () => {
   it('2+ sessões sem cross_session_dispatch → PLAN_FEATURE_UNAVAILABLE; com a feature passa', async () => {
     const s = setup();

@@ -17,7 +17,7 @@ export class OfferHuntAiSuggestInputRequiredError extends AppError {
   }
 }
 
-/** A IA respondeu fora do formato ou sem nenhum campo aproveitável (conta como sugestão usada). */
+/** A IA respondeu fora do formato ou sem nenhum campo aproveitável (a reserva do teto diário é devolvida: não conta). */
 export class OfferHuntAiSuggestInvalidOutputError extends AppError {
   constructor() {
     super('OFFER_HUNT_AI_SUGGEST_INVALID_OUTPUT', 'AI suggestion could not be used, configure the hunt manually', 422);

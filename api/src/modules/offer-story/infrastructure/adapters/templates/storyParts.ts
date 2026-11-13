@@ -250,7 +250,7 @@ function scissors(color: string): StoryNode {
   return image(svgDataUri(svg(body, 60, 60)), 40, 40, { marginRight: 18 });
 }
 
-/** Ticket recortável "CUPOM OFERTA10 | -10%": código em destaque, cabe 20 caracteres. */
+/** Ticket recortável "CUPOM OFERTA10": código em destaque, cabe 20 caracteres. "-10%" só sem selo (ver modelo). */
 export function couponTicket(m: StoryLayoutModel, o: CouponOptions): StoryNode | null {
   if (!m.coupon) return null;
   const long = m.coupon.code.length > 12;

@@ -238,13 +238,18 @@ export class InMemoryOfferGeneratorConfigRepository implements IOfferGeneratorCo
     public conversations: FakeConversation[] = [],
   ) {}
 
+  /** Como no Prisma: sessão fora de `sessions` = apagada; não entra em `sessionIds` nem traz grupos. */
+  private live(tenantId: string, sessionId: string | null) {
+    return this.sessions.some((x) => x.id === sessionId && x.tenantId === tenantId);
+  }
   async find(tenantId: string) {
-    return this.configs.get(tenantId) ?? null;
+    const c = this.configs.get(tenantId);
+    return c ? { ...c, sessionIds: c.sessionIds.filter((id) => this.live(tenantId, id)) } : null;
   }
   async listGroups(tenantId: string) {
     return (this.selected.get(tenantId) ?? [])
       .map((id) => this.conversations.find((c) => c.id === id && c.tenantId === tenantId))
-      .filter((c): c is FakeConversation => !!c)
+      .filter((c): c is FakeConversation => !!c && this.live(tenantId, c.sessionId))
       .map((c) => ({ conversationId: c.id, title: c.title ?? c.id, avatarUrl: null, isGroup: c.isGroup, sessionId: c.sessionId, groupJid: c.groupJid ?? null }));
   }
   async save(input: SaveOfferGeneratorConfigInput) {
