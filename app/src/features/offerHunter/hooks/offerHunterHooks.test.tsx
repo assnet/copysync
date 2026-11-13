@@ -16,7 +16,8 @@ vi.mock('@/contexts/TenantContext', () => ({ useTenant: () => ({ activeTenantId:
 import { resetOfferHunterAccessCache, useOfferHunterAccess } from './useOfferHunterAccess';
 import { useHuntFinds, useHuntRuns } from './useHuntHistory';
 import { useOfferHunts } from './useOfferHunts';
-import { firstClosedGate } from './useHuntInfo';
+import { firstClosedGate, huntAiSuggestErrorCode } from './useHuntInfo';
+import { aiSuggestErrorMessage, offerHunterStrings } from '../strings';
 import { useHunterRiskAcceptance } from './useHunterRiskAcceptance';
 import { OfferHunterRoute } from '../components/OfferHunterRoute';
 
@@ -179,5 +180,29 @@ describe('portões e aceite', () => {
     rerender({ p: 'SHEIN' });
     await act(async () => { await result.current.accept(); });
     expect(risk.acceptRisk).toHaveBeenLastCalledWith('SHEIN', { noticeVersion: '2026-11-12', locale: 'pt-BR', scope: 'OFFER_HUNTER' });
+  });
+});
+
+describe('erro da sugestão da IA: mensagem própria por causa', () => {
+  const generic = offerHunterStrings.wizard.aiSuggest.genericError;
+
+  // Produção 2026-11-13: o provedor de IA falhou (503 `AI_PROVIDER_UNAVAILABLE`) e a tela só dizia o texto genérico
+  it('erros do provedor de IA e do limite de uso têm texto próprio', () => {
+    for (const code of ['AI_PROVIDER_UNAVAILABLE', 'AI_PROVIDER_RATE_LIMITED', 'AI_PROVIDER_REJECTED', 'AI_DAILY_LIMIT_REACHED', 'OFFER_HUNT_AI_SUGGEST_INVALID_OUTPUT']) {
+      expect(aiSuggestErrorMessage(huntAiSuggestErrorCode({ status: 503, code })), code).not.toBe(generic);
+    }
+  });
+
+  it('sem código da API: tempo esgotado × sistema atualizando × desconhecido', () => {
+    expect(huntAiSuggestErrorCode({ status: undefined, code: undefined, serviceUnavailable: false })).toBe('REQUEST_TIMEOUT');
+    expect(huntAiSuggestErrorCode({ status: 524, serviceUnavailable: false })).toBe('REQUEST_TIMEOUT');
+    expect(huntAiSuggestErrorCode({ status: 504, serviceUnavailable: true })).toBe('REQUEST_TIMEOUT');
+    expect(huntAiSuggestErrorCode({ status: 502, serviceUnavailable: true })).toBe('SERVICE_UNAVAILABLE');
+    expect(huntAiSuggestErrorCode({ status: undefined, serviceUnavailable: true })).toBe('SERVICE_UNAVAILABLE');
+    expect(huntAiSuggestErrorCode({ status: 500, serviceUnavailable: false })).toBe('UNKNOWN');
+    expect(huntAiSuggestErrorCode(new Error('x'))).toBe('UNKNOWN');
+    expect(aiSuggestErrorMessage('REQUEST_TIMEOUT')).not.toBe(generic);
+    expect(aiSuggestErrorMessage('SERVICE_UNAVAILABLE')).not.toBe(generic);
+    expect(aiSuggestErrorMessage('UNKNOWN')).toBe(generic);
   });
 });

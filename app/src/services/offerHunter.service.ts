@@ -6,6 +6,11 @@ import type {
 } from '@/features/offerHunter/types';
 
 const BASE = '/offer-hunts';
+/**
+ * A sugestão da IA lê a loja e chama o provedor: pode levar dezenas de segundos. Corta antes dos 100 s do proxy
+ * da API (que devolveria erro sem código) para a tela dizer "demorou" em vez de erro genérico.
+ */
+export const HUNT_AI_SUGGEST_TIMEOUT_MS = 95_000;
 
 const enc = encodeURIComponent;
 /** Só o cursor opaco vai na query (tamanho da página é do servidor). */
@@ -41,10 +46,11 @@ export const offerHunterService = {
 
   /**
    * IA sugere a configuração (nada salvo). 429 `OFFER_HUNT_AI_SUGGEST_DAILY_LIMIT`, 409 `AI_NOT_CONFIGURED`,
-   * 422 `OFFER_HUNT_AI_SUGGEST_INPUT_REQUIRED`/`_INVALID_OUTPUT`, 503 `_PROVIDER_UNAVAILABLE`, 403 plano.
+   * 422 `OFFER_HUNT_AI_SUGGEST_INPUT_REQUIRED`/`_INVALID_OUTPUT`, 503 `_PROVIDER_UNAVAILABLE`, 403 plano; do gerador de
+   * IA: 503 `AI_PROVIDER_UNAVAILABLE`, 429 `AI_PROVIDER_RATE_LIMITED`/`AI_DAILY_LIMIT_REACHED`, 422 `AI_PROVIDER_REJECTED`.
    */
   async suggestConfig(body: HuntAiSuggestInput): Promise<HuntAiSuggestion> {
-    const res = await apiClient.post<ApiSuccess<HuntAiSuggestion>>(`${BASE}/ai-suggest`, body);
+    const res = await apiClient.post<ApiSuccess<HuntAiSuggestion>>(`${BASE}/ai-suggest`, body, { timeout: HUNT_AI_SUGGEST_TIMEOUT_MS });
     return res.data.data;
   },
 

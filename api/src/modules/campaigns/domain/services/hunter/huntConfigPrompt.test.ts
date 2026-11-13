@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { HuntCapabilities } from '../../hunter/HuntProvider';
 import { huntCandidate } from './huntTestFixtures';
-import { buildHuntConfigPrompt, parseHuntConfigOutput, sanitizeHuntIntent, type HuntConfigDraft } from './huntConfigPrompt';
+import {
+  buildHuntConfigPrompt, HUNT_CONFIG_MAX_OUTPUT_TOKENS, parseHuntConfigOutput, sanitizeHuntIntent, type HuntConfigDraft,
+} from './huntConfigPrompt';
 import { SHEIN_HUNT_CAPABILITIES } from './sheinCapabilities';
 import { MERCADO_LIVRE_HUNT_CAPABILITIES } from './mercadoLivreCapabilities';
 import { validateHuntDefinition } from './validateHuntDefinition';
@@ -133,6 +135,56 @@ describe('parseHuntConfigOutput', () => {
     expect(out!.dropped).toEqual(['filters.onlyWithExtra']);
     // `sort` top-level é só da Shein
     expect(parseHuntConfigOutput('{"name":"x","sort":"BEST_SELLING"}', ctx(ML))!.dropped).toEqual(['sort']);
+  });
+
+  it('JSON cortado no meio (teto de saída) aproveita o que veio completo; sem nada completo → null', () => {
+    const full = '{"name":"Moda","category":"4436","sort":"BEST_SELLING","localFilters":{"maxPrice":80,"minDiscountPct":20},"topN":3,"reasons":{"category":"Combina com o pedido","maxPrice":"Teto do pedido"}}';
+    for (let cut = full.indexOf('"category"') + 20; cut < full.length - 1; cut += 7) {
+      const out = parseHuntConfigOutput(full.slice(0, cut), ctx());
+      expect(out?.draft.name, `corte em ${cut}`).toBe('Moda');
+    }
+    const out = parseHuntConfigOutput(full.slice(0, full.indexOf('"minDiscountPct"') + 5), ctx());
+    expect(out?.draft).toMatchObject({ name: 'Moda', categoryId: '4436', sort: 'BEST_SELLING', filters: { maxPriceCents: 8000 } });
+    expect(out?.draft.filters.minDiscountPct).toBeUndefined();
+    expect(parseHuntConfigOutput('{"name":"Mod', ctx())).toBeNull();
+    // vírgula e chaves dentro de string não contam como ponto de corte
+    expect(parseHuntConfigOutput('{"name":"a, {b","keyword":"x, y', ctx())?.draft).toMatchObject({ name: 'a, {b', keyword: null });
+    // JSON fechado e inválido não é "reparado"
+    expect(parseHuntConfigOutput('{"name":"Moda",}', ctx())).toBeNull();
+  });
+
+  it('tolera número/booleano como texto e categoria pelo nome, sem afrouxar limites nem capacidades', () => {
+    const { categoryIds, categoryNames } = buildHuntConfigPrompt({
+      capabilities: ML, categories: [...CATS, { categoryId: '9', name: 'Repetida' }, { categoryId: '8', name: 'repetida' }], intent: 'x',
+    });
+    const c = { capabilities: ML, categoryIds, categoryNames };
+    const out = parseHuntConfigOutput(JSON.stringify({
+      category: ' vestidos ', topN: '3', aiRanking: 'true',
+      sourceOptions: { bestSellersOnly: 'true' },
+      localFilters: { minPrice: '10', maxPrice: '99,90', minSales: '50' },
+      commission: { operator: 'GTE', pct: '12.5' },
+    }), c)!;
+    expect(out.draft).toMatchObject({
+      categoryId: '4436', topN: 3, aiEnabled: true, sourceOptions: { bestSellersOnly: true },
+      filters: { minPriceCents: 1000, maxPriceCents: 9990, minCommissionPct: 12.5 },
+    });
+    expect(out.dropped).toEqual(['filters.minSales']); // fora das capacidades desta marca: continua descartado
+    const bad = parseHuntConfigOutput('{"name":"n","category":"Repetida","topN":"3 itens","aiRanking":"sim","localFilters":{"maxPrice":"barato"}}', c)!;
+    expect(bad.draft).toMatchObject({ categoryId: null, topN: null, aiEnabled: null, filters: {} });
+    expect(bad.dropped).toEqual(['categoryId', 'topN', 'aiEnabled', 'filters.maxPriceCents']);
+  });
+
+  it('a resposta completa de uma marca cheia de filtros cabe no teto de saída (~4 caracteres por token, folga 2×)', () => {
+    const reason = 'r'.repeat(120);
+    const full = {
+      name: 'n'.repeat(60), category: '4436', keyword: 'k'.repeat(60), sort: 'BEST_SELLING',
+      localFilters: { minPrice: 10, maxPrice: 300, minDiscountPct: 20, minCommissionValue: 5, minRating: 4.5, minSales: 100, minReviews: 50, onlyWithExtra: true, endsWithinDays: 7 },
+      commission: { operator: 'GTE', pct: 12 }, aiRanking: true, topN: 3,
+      reasons: Object.fromEntries(['name', 'category', 'keyword', 'sort', 'minPrice', 'maxPrice', 'minDiscountPct', 'minCommissionValue', 'minRating', 'minSales', 'minReviews', 'onlyWithExtra', 'endsWithinDays', 'commission', 'aiRanking', 'topN'].map((k) => [k, reason])),
+    };
+    const tokens = JSON.stringify(full, null, 2).length / 4;
+    expect(tokens).toBeGreaterThan(700); // o teto antigo cortava esta resposta
+    expect(tokens * 2).toBeLessThanOrEqual(HUNT_CONFIG_MAX_OUTPUT_TOKENS);
   });
 
   it('não-JSON, array ou nada aproveitável → null', () => {

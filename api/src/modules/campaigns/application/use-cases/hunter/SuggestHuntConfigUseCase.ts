@@ -24,7 +24,6 @@ import {
   OfferHuntAiSuggestProviderUnavailableError,
 } from '../../../../../shared/errors/internal/OfferHuntAiErrors';
 import { logger as sharedLogger } from '../../../../../shared/logger/logger';
-import { HUNT_PAGE_PAUSE_MS } from './RunOfferHuntUseCase';
 
 /** Fonte aberta para uma marca: porta do catálogo + sessão já decifrada (nunca sai daqui). */
 interface SourceHandle {
@@ -59,9 +58,11 @@ export interface SuggestHuntConfigDeps {
   suggester: IHuntConfigSuggester;
   counter: IOfferHuntAiSuggestionCounter;
   logger?: { warn(obj: object, msg: string): void };
-  /** Pausa entre consultas à fonte (mesma régua da caçada, `HUNT_PAGE_PAUSE_MS`); injetável nos testes. */
+  /** Pausa entre consultas da amostra (`HUNTER_AI_LIMITS.samplePauseMs`); injetável nos testes. */
   sleep?: (ms: number) => Promise<void>;
   rand?: () => number;
+  /** Relógio do orçamento de tempo da amostra (`sampleBudgetMs`); injetável nos testes. */
+  clock?: () => number;
 }
 
 const errorCode = (err: unknown) => (err instanceof AppError ? err.code : 'SOURCE_UNEXPECTED_ERROR');
@@ -70,17 +71,20 @@ const errorCode = (err: unknown) => (err instanceof AppError ? err.code : 'SOURC
  * "Deixar a IA decidir os filtros" (AI-01..06). Portões: caçador + plano da marca sempre. A fonte (categorias e,
  * com `pickProduct`, a amostra larga) só é lida com aceite `OFFER_HUNTER` da marca e credencial; sem eles a IA
  * trabalha só com capacidades + intenção (`sourceUsed: false`, categoria null). Teto técnico 5/dia por conta
- * (reserva atômica antes de ler a fonte; devolvida se o gerador recusar sem gerar). Nada é salvo: devolve rascunho.
+ * (reserva atômica antes de ler a fonte; devolvida em qualquer falha: só sugestão entregue conta). Nada é salvo:
+ * devolve rascunho.
  */
 export class SuggestHuntConfigUseCase {
   private readonly logger: { warn(obj: object, msg: string): void };
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly rand: () => number;
+  private readonly clock: () => number;
 
   constructor(private readonly deps: SuggestHuntConfigDeps) {
     this.logger = deps.logger ?? sharedLogger;
     this.sleep = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
     this.rand = deps.rand ?? Math.random;
+    this.clock = deps.clock ?? Date.now;
   }
 
   async execute(input: SuggestHuntConfigInput): Promise<SuggestHuntConfigOutput> {
@@ -106,18 +110,19 @@ export class SuggestHuntConfigUseCase {
     const claim = await counter.claim(tenantId, startOfDayInZone(now), AL.aiSuggestionsPerDayMax, now);
     if (claim.kind === 'DAILY_LIMIT') throw new OfferHuntAiSuggestDailyLimitError(AL.aiSuggestionsPerDayMax);
 
-    const source = await this.readSource(tenantId, adapter, input.pickProduct, now);
+    // Só sugestão entregue gasta o teto: erro do gerador, da fonte ou saída inaproveitável devolvem a reserva
+    let source;
     let out;
     try {
+      source = await this.readSource(tenantId, adapter, input.pickProduct, now);
       out = await this.deps.suggester.suggest({
         tenantId, capabilities, categories: source.categories, intent, sample: source.sample,
       });
+      if (!out) throw new OfferHuntAiSuggestInvalidOutputError();
     } catch (err) {
-      // O gerador recusou antes de gerar (não configurado, limite, provedor fora): a sugestão não conta
       await counter.release(tenantId, claim.id).catch(() => undefined);
       throw err;
     }
-    if (!out) throw new OfferHuntAiSuggestInvalidOutputError();
     return {
       draft: { provider, ...out.draft },
       reasons: out.reasons,
@@ -156,9 +161,10 @@ export class SuggestHuntConfigUseCase {
   /**
    * Amostra larga (D6): até 5 consultas de 1 página (mais vendidos, ganhos extras se a marca tiver, geral e as 2
    * categorias de maior comissão média da 1ª leitura), até 90 itens sem repetir, 40 melhores pela nota. 1º erro
-   * da fonte encerra as consultas (sessão recusada ou limite valem para as próximas). Entre consultas, a mesma pausa
-   * das páginas da caçada (`HUNT_PAGE_PAUSE_MS`). Consulta geral vai com a entrada "Todas" já listada (o adaptador
-   * leva o que precisa dela, ex. `did` Shein, sem relistar categorias).
+   * da fonte encerra as consultas (sessão recusada ou limite valem para as próximas). Entre consultas, pausa curta
+   * (`samplePauseMs`); passado `sampleBudgetMs` não abre consulta nova (a requisição é interativa e passa por proxy
+   * com tempo limite). Consulta geral vai com a entrada "Todas" já listada (o adaptador leva o que precisa dela,
+   * ex. `did` Shein, sem relistar categorias).
    */
   private async readSample(
     tenantId: string, handle: SourceHandle, caps: HuntCapabilities, categories: HuntSourceCategory[], now: Date,
@@ -173,10 +179,18 @@ export class SuggestHuntConfigUseCase {
     const pool: HuntCandidate[] = [];
     const seen = new Set<string>();
     let queries = 0;
+    const startedAt = this.clock();
+    const pause = AL.samplePauseMs;
     const all = categories.find((c) => c.categoryId === null) ?? null;
     const fetch = async (category: HuntSourceCategory | null, options: HuntSourceOptions): Promise<boolean> => {
       if (queries >= AL.sampleQueriesMax || pool.length >= AL.samplePoolMax) return false;
-      if (queries > 0) await this.sleep(HUNT_PAGE_PAUSE_MS.min + Math.floor(this.rand() * (HUNT_PAGE_PAUSE_MS.max - HUNT_PAGE_PAUSE_MS.min + 1)));
+      if (queries > 0) {
+        if (this.clock() - startedAt >= AL.sampleBudgetMs) {
+          this.logger.warn({ tenantId, provider: caps.provider, code: 'SAMPLE_BUDGET_EXHAUSTED', queries }, 'offer hunt AI suggest sample stopped');
+          return false;
+        }
+        await this.sleep(pause.min + Math.floor(this.rand() * (pause.max - pause.min + 1)));
+      }
       queries++;
       try {
         const page = await handle.catalog.fetchPage(handle.session, { page: 1, category, keyword: null, options });

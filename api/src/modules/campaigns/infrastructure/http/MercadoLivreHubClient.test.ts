@@ -253,6 +253,37 @@ describe('MercadoLivreHubClient.listCategories', () => {
   });
 });
 
+describe('MercadoLivreHubClient — bootstrap por sessão', () => {
+  it('consultas seguidas da mesma sessão fazem 1 bootstrap só (amostra da IA: 7 requisições, não 12)', async () => {
+    const fn = stubFetch(...Array.from({ length: 6 }, () => () => json(fixture)));
+    const client = new MercadoLivreHubClient();
+    await client.listCategories(SESSION);
+    for (let i = 0; i < 5; i++) await client.fetchPage(SESSION, q());
+    expect(fn).toHaveBeenCalledTimes(7);
+    expect((fn.mock.calls as unknown as Array<[string]>).filter(([url]) => String(url).includes('/afiliados/linkbuilder'))).toHaveLength(1);
+    const headers = (fn.mock.calls[6] as unknown as [string, RequestInit])[1].headers as Record<string, string>;
+    expect(headers['X-Csrf-Token']).toBe(CSRF);
+  });
+
+  it('outra sessão, bootstrap vencido ou resposta de erro refazem o bootstrap', async () => {
+    let now = 0;
+    const client = new MercadoLivreHubClient(() => now);
+    const calls = () => vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/afiliados/linkbuilder')).length;
+    const fn = vi.fn(async (url: unknown) => (String(url).includes('/afiliados/linkbuilder') ? bootstrapOk() : json(fixture)));
+    vi.stubGlobal('fetch', fn);
+    await client.fetchPage(SESSION, q());
+    await client.fetchPage({ provider: 'MERCADO_LIVRE', cookies: { ssid: SSID } }, q());
+    expect(calls()).toBe(2);
+    now = 61_000;
+    await client.fetchPage(SESSION, q());
+    expect(calls()).toBe(3);
+    fn.mockImplementationOnce(async () => json({}, 403));
+    await expect(client.fetchPage(SESSION, q())).rejects.toBeInstanceOf(AffiliateApiUnavailableError);
+    await client.fetchPage(SESSION, q());
+    expect(calls()).toBe(4);
+  });
+});
+
 describe('mercadoLivreHuntAdapter', () => {
   it('sessionFrom exige ssid', () => {
     expect(mercadoLivreSessionFrom({ session: { cookies: { ssid: 'x' } } })).toEqual({ provider: 'MERCADO_LIVRE', cookies: { ssid: 'x' } });

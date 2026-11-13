@@ -17,5 +17,16 @@ export const HUNTER_AI_LIMITS = {
   promptCategoriesMax: 80,
   /** Frase de motivo por campo. */
   reasonMaxLength: 120,
-  maxOutputTokens: 700,
+  /**
+   * Teto de saída. O JSON completo (campos + um motivo ≤ 120 por campo) passa de 700 tokens nas marcas com mais
+   * filtros; teto curto cortava a resposta no meio. Corte que ainda ocorra é reparado no parse.
+   */
+  maxOutputTokens: 1_500,
+  /** Pausa entre consultas da amostra (requisição interativa: menor que a das páginas da caçada). */
+  samplePauseMs: { min: 400, max: 900 },
+  /** Depois deste tempo lendo a amostra, não abre consulta nova (a resposta precisa caber no limite do proxy). */
+  sampleBudgetMs: 20_000,
+  /** Nova tentativa quando o provedor de IA falha de forma passageira (5xx/rede; nunca após timeout). */
+  aiRetryMax: 1,
+  aiRetryPauseMs: 800,
 } as const;

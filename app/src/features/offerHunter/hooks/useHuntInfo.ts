@@ -55,6 +55,26 @@ export function useHuntProviders(enabled = true) {
   return { ...r, providers: r.data };
 }
 
+/** Status de tempo esgotado: 408, 504 e 524 (proxy cortou a resposta longa; vem sem código da API). */
+const TIMEOUT_STATUSES: ReadonlySet<number> = new Set([408, 504, 524]);
+
+/**
+ * Código do erro da sugestão. Sem código da API (proxy, rede, tempo esgotado no cliente) vira um código de tela:
+ * `REQUEST_TIMEOUT`, `SERVICE_UNAVAILABLE` ou `UNKNOWN` — cada um com mensagem própria em `strings.ts`.
+ */
+export function huntAiSuggestErrorCode(err: unknown): string {
+  const code = huntErrorCode(err);
+  if (code) return code;
+  const e = (err ?? {}) as { status?: unknown; serviceUnavailable?: unknown };
+  if (typeof e.status === 'number') {
+    if (TIMEOUT_STATUSES.has(e.status)) return 'REQUEST_TIMEOUT';
+    return e.serviceUnavailable === true ? 'SERVICE_UNAVAILABLE' : 'UNKNOWN';
+  }
+  // Sem resposta: `apiClient` marca rede/proxy como indisponível; o que sobra é timeout/cancelamento
+  if (e.serviceUnavailable === true) return 'SERVICE_UNAVAILABLE';
+  return e.serviceUnavailable === false ? 'REQUEST_TIMEOUT' : 'UNKNOWN';
+}
+
 /** `POST /ai-suggest`: rascunho da IA. `suggest` nunca rejeita: devolve `{ data }` ou `{ errorCode }`. */
 export function useHuntAiSuggest() {
   const [loading, setLoading] = useState(false);
@@ -65,7 +85,7 @@ export function useHuntAiSuggest() {
     try {
       return { data: await offerHunterService.suggestConfig(body), errorCode: null };
     } catch (err) {
-      const code = huntErrorCode(err) ?? 'UNKNOWN';
+      const code = huntAiSuggestErrorCode(err);
       setErrorCode(code);
       return { data: null, errorCode: code };
     } finally {
