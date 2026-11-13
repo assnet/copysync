@@ -23,7 +23,7 @@ Conta, IA e Extensão. Assinatura é do tenant (um `planSlug`), por isso fica aq
 | | | Gestor de Links | `/link-rotation` | |
 | | | Página de Ofertas | `/storefront` | PRO |
 | | | Story de Oferta | `/offer-story` | MAX |
-| | | Caçador (só com `offerHunterVisible`) | `/offer-hunter` | MAX |
+| | | Caçador de Ofertas (só com `offerHunterVisible`) | `/offer-hunter` | MAX |
 | | | Credenciais de afiliado | `/affiliates/credentials` | |
 | | | Planos | `/affiliates/plans` | |
 | CRM & Automação | `soon` | Chat (só super admin) | `/chat` | |
@@ -35,8 +35,8 @@ Conta, IA e Extensão. Assinatura é do tenant (um `planSlug`), por isso fica aq
 Produto `soon` sem filho visível fica desabilitado (sem acordeão, `aria-disabled`, selo "Em breve").
 Produto `soon` com filho visível para o usuário atual (CRM para super admin) abre normalmente.
 Caçador de Ofertas: visibilidade vem da API (`GET /offer-hunts/access` → `useOfferHunterAccess` →
-`buildNavigation({ offerHunterVisible })`, mesma consulta do guard `OfferHunterRoute`). Selo MAX; rótulo curto "Caçador"
-(nome completo + selo não cabe na largura). Sem `superAdminOnly`: abrir ao público é só trocar `OFFER_HUNTER_AUDIENCE` ([`cacador-de-ofertas.md`](cacador-de-ofertas.md)).
+`buildNavigation({ offerHunterVisible })`, mesma consulta do guard `OfferHunterRoute`). Selo MAX; item com selo que não cabe
+numa linha quebra em 2 (`ProductNavItem`), nunca encurtar o nome. Sem `superAdminOnly`: abrir ao público é só trocar `OFFER_HUNTER_AUDIENCE` ([`cacador-de-ofertas.md`](cacador-de-ofertas.md)).
 
 ## Onde fica cada coisa
 

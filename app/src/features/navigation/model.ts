@@ -100,7 +100,7 @@ export function buildNavigation({ isSuperAdmin, offerHunterVisible }: BuildNavig
       { key: 'link-rotation', label: linkRotationStrings.menuLabel, path: '/link-rotation', icon: Link2 },
       { key: 'storefront', label: s.links.storefront, path: '/storefront', icon: MODULE_ICONS.storefront, badge: plansStrings.badgeProfessional },
       { key: 'offer-story', label: s.links.offerStory, path: '/offer-story', icon: MODULE_ICONS.offerStory, badge: plansStrings.badgeBusiness },
-      // Selo MAX (exclusivo do plano). Rótulo curto no menu: "Caçador de Ofertas" + selo não cabe na largura.
+      // Selo MAX (exclusivo do plano). Nome + selo não cabem numa linha: o item quebra em 2 (ProductNavItem).
       ...(offerHunterVisible
         ? [{ key: 'offer-hunter', label: s.links.offerHunter, path: '/offer-hunter', icon: MODULE_ICONS.offerHunter, badge: plansStrings.badgeBusiness, matchPrefix: '/offer-hunter' }]
         : []),

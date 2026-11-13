@@ -136,7 +136,7 @@ Aceite: `POST /api/integrations/affiliate-credentials/:provider/risk-acceptance`
 ## Painel (`app/src/features/offerHunter/`)
 
 - Rotas `/offer-hunter` e `/offer-hunter/:huntId` sob `OfferHunterRoute`; menu: filho de Afiliados só com
-  `offerHunterVisible` (`useOfferHunterAccess` → `GET /access`). Sem `superAdminOnly`/`SuperAdminRoute`; selo MAX e rótulo curto "Caçador" no menu (nome completo + selo não cabe).
+  `offerHunterVisible` (`useOfferHunterAccess` → `GET /access`). Sem `superAdminOnly`/`SuperAdminRoute`; selo MAX; nome + selo quebram em 2 linhas no menu.
 - Tela inicial (uso do dia vindo da API, destino, cartões, painel de portões, alerta de pausa), assistente em 3
   passos (O que caçar → Refino → Quando e onde) com "Testar agora", detalhe com achados e execuções.
 - Persistência (`tab`): `offerHunter.wizard*` (limpo ao salvar), `offerHunter.destinationDraft`,

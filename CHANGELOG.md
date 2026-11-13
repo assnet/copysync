@@ -13,7 +13,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 #### app
 
-- **`navigation/model.ts`** / **`navigation/strings.ts`** — item volta com selo MAX; rótulo do menu encurtado para "Caçador" (nome completo + selo cortava). Página mantém "Caçador de Ofertas".
+- **`navigation/model.ts`** / **`navigation/strings.ts`** — item volta com selo MAX, nome "Caçador de Ofertas". **`ProductNavItem.tsx`** — item com selo quebra em 2 linhas quando não cabe, em vez de cortar o nome.
 - **`HunterRiskNoticeDialog.tsx`** / **`OfferHunterPage.tsx`** — super admin marca e aceita o aviso do caçador, com alerta de que o aceite vale para a conta inteira.
 
 ### Added — app 0.116.0 / api 0.93.0 — Caçador de Ofertas (Shein, MAX, prévia super admin)

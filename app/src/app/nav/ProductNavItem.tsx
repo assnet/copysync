@@ -118,9 +118,10 @@ export function ProductNavItem({ product, expanded, activeChildKey, idPrefix, on
                   <ListItemIcon sx={navChildIconSx}>
                     <AppIcon icon={child.icon} size="md" />
                   </ListItemIcon>
+                  {/* Com selo, o nome pode quebrar em 2 linhas em vez de ser cortado (ex.: "Caçador de Ofertas" + MAX). */}
                   <ListItemText
                     primary={child.label}
-                    primaryTypographyProps={{ variant: 'body2', fontWeight: active ? 600 : 500, noWrap: true }}
+                    primaryTypographyProps={{ variant: 'body2', fontWeight: active ? 600 : 500, noWrap: !child.badge, sx: child.badge ? { lineHeight: 1.25 } : undefined }}
                   />
                   {child.badge && <NavItemBadge badge={child.badge} />}
                 </ListItemButton>
