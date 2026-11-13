@@ -10,8 +10,10 @@ Cada tarefa: commit atômico, `tsc --noEmit` na `api/` e no `app/`, testes da á
   `docs/afiliado-shein.md`. **Reprovou → parar: o recurso não é construído (D6), avisar o dono.**
   **Aprovado em 2026-11-12**: triagem do Mac e sonda do Shell da Render, 6 chamadas, todas 200 `code 0` com
   10 itens por página (ver design §1). Anotado em `docs/afiliado-shein.md` (T5).
-- **T0b** ~~Página 2, `pageSize`, categoria, busca~~ feito na triagem. **Aberto (não bloqueia)**: resta confirmar na tela da Shein o
-  rótulo de `commRate` 1, 2, 3 e 5 (só o 4 está confirmado) e por que `sort` não muda a resposta.
+- **T0b** ~~Página 2, `pageSize`, categoria, busca~~ feito na triagem. ~~Rótulo de `commRate` 1, 2, 3 e 5~~ **resolvido em
+  2026-11-12** (dado real do dono): `commRate` filtra a comissão de RECOMPRA, não a de 1ª compra; o caçador deixou de
+  usá-lo (busca sempre sem faixa, comissão de 1ª compra só como filtro local com operador). Segue aberto, sem bloquear:
+  por que `sort` não muda a resposta.
 - **T0c** ~~Dono responde D1–D6~~ feito em 2026-11-12 (ver spec).
 - **T0d** ~~feito~~ (`ff774025`) `docs/produto-roadmap.md` antes de codar, 4 edições: funcionalidade nº 17 na tabela, nº 17 na linha do
   produto Afiliados, limite "ofertas garimpadas/dia" (MAX 10) na tabela de planos, chaves `offer_hunter_*` na

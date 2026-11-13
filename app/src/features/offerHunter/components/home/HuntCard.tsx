@@ -6,7 +6,8 @@ import { Bot, CalendarClock, ChevronRight, Clock, History, Pencil, Send, ShieldC
 import { AppIcon, OverflowTooltipText } from '@/components';
 import { offerHunterStrings } from '../../strings';
 import type { Hunt, HuntOptions } from '../../types';
-import { huntSummaryChips, isAutoPaused, lastRunLabel, nextRunLabel } from './huntSummary';
+import { isAutoPaused, lastRunLabel, nextRunLabel } from './huntSummary';
+import { HuntSummaryChips } from './HuntSummaryChips';
 
 const t = offerHunterStrings;
 
@@ -25,7 +26,6 @@ export interface HuntCardProps {
 export function HuntCard({ hunt, options, nowMs, busy, blockedReason, onToggle, onEdit, onRemove }: HuntCardProps) {
   const active = hunt.status === 'ACTIVE';
   const autoPaused = isAutoPaused(hunt);
-  const chips = huntSummaryChips(hunt, options);
   const cannotTurnOn = !active && blockedReason !== null;
   const switchTip = cannotTurnOn ? t.home.createBlocked(blockedReason!) : active ? t.list.pauseTooltip : t.list.resumeTooltip;
   const titleId = `hunt-${hunt.id}-title`;
@@ -74,13 +74,7 @@ export function HuntCard({ hunt, options, nowMs, busy, blockedReason, onToggle, 
         </Alert>
       )}
 
-      <Box component="ul" aria-label={t.home.filtersLabel} sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, p: 0, m: 0, listStyle: 'none' }}>
-        {(chips.length > 0 ? chips : [t.home.noFilters]).map((c) => (
-          <Box component="li" key={c} sx={{ maxWidth: '100%' }}>
-            <Chip size="small" variant="outlined" label={c} sx={{ maxWidth: '100%' }} />
-          </Box>
-        ))}
-      </Box>
+      <HuntSummaryChips hunt={hunt} options={options} />
 
       <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
         <Tooltip title={t.deliveryModes[hunt.deliveryMode].hint} describeChild enterTouchDelay={0}>

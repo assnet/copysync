@@ -5,11 +5,11 @@ import type { ISheinCatalogClient, SheinCatalogPage, SheinSession } from '../../
 import type { IAffiliateCredentialGateway } from '../../../domain/contracts/IAffiliateCredentialGateway';
 import type { IEntitlementReader } from '../../../domain/contracts/IEntitlementReader';
 import type { IMarketplaceRiskGate } from '../../../domain/contracts/IMarketplaceRiskGate';
-import type { HuntCandidate, HuntScore, HuntScoreFactor } from '../../../domain/hunter/HuntCandidate';
-import type { OfferHunt, OfferHuntFind, OfferHuntPauseReason, OfferHuntRunTrigger } from '../../../domain/hunter/OfferHunt';
+import type { HuntCandidate, HuntRejectionCounts, HuntScore, HuntScoreFactor } from '../../../domain/hunter/HuntCandidate';
+import type { OfferHunt, OfferHuntFind, OfferHuntPauseReason, OfferHuntRankingItem, OfferHuntRunTrigger } from '../../../domain/hunter/OfferHunt';
 import type { IHuntCandidateRanker } from '../../hunter/contracts/IHuntCandidateRanker';
 import { HUNTER_LIMITS } from '../../../domain/services/hunter/hunterLimits';
-import { matchHuntFilters } from '../../../domain/services/hunter/matchHuntFilters';
+import { countHuntRejections, huntFilterRejections } from '../../../domain/services/hunter/matchHuntFilters';
 import { scoreHuntCandidate } from '../../../domain/services/hunter/scoreHuntCandidate';
 import { startOfDayInZone } from '../../../domain/services/startOfDayInZone';
 import { ENTITLEMENT_KEYS } from '../../../../tenants/domain/entitlementKeys';
@@ -46,17 +46,8 @@ export interface RunOfferHuntInput {
   now: Date;
 }
 
-/** Item do ranking da execução (o "Testar agora" mostra). Sem link nem token. */
-export interface HuntRankingItem {
-  goodsId: string;
-  title: string | null;
-  imageUrl: string | null;
-  priceCents: number | null;
-  score: number;
-  factors: HuntScoreFactor[];
-  aiReason: string | null;
-  chosen: boolean;
-}
+/** Item do ranking da execução (o "Testar agora" mostra e a execução grava). Sem link nem token. */
+export type HuntRankingItem = OfferHuntRankingItem;
 
 export interface RunOfferHuntOutput {
   /** null só quando pulada sem registro (não acontece hoje: toda pulada grava a execução). */
@@ -70,7 +61,9 @@ export interface RunOfferHuntOutput {
   sentCount: number;
   aiUsed: boolean;
   aiFallback: boolean;
-  /** Até `HUNTER_LIMITS.aiTopCandidates` melhores, na ordem final. */
+  /** Candidatos barrados por filtro local (chave = campo do filtro) e `repeated`; null = não chegou à fonte. */
+  rejectedBy: HuntRejectionCounts | null;
+  /** Até `HUNTER_LIMITS.aiTopCandidates` melhores, na ordem final (também gravado na execução). */
   ranking: HuntRankingItem[];
   finds: OfferHuntFind[];
   /** Saldo do teto do dia depois da execução. */
@@ -149,16 +142,31 @@ export class RunOfferHuntUseCase {
     const run = await this.deps.runs.startWithinDailyLimit(base, { since, limit: HUNTER_LIMITS.runsPerDayMax });
     if (!run) return this.refuse(input, hunt, new GateRefusal(new OfferHuntRunThrottledError(HUNTER_LIMITS.runsPerDayMax)));
 
-    const counters = { seenCount: 0, matchedCount: 0, chosenCount: 0, sentCount: 0, aiUsed: false, aiFallback: false };
+    const counters = {
+      seenCount: 0, matchedCount: 0, chosenCount: 0, sentCount: 0, aiUsed: false, aiFallback: false,
+      rejectedBy: null as HuntRejectionCounts | null,
+    };
+    let ranking: HuntRankingItem[] | null = null;
     try {
       const items = await this.fetchCandidates(hunt, session);
       counters.seenCount = items.length;
-      const matched = items.filter((c) => matchHuntFilters(c, hunt.filters, now));
+      // Toda chave que barrou conta (o painel explica "0 no filtro"); passa/não passa = matchHuntFilters
+      const rejectedBy: HuntRejectionCounts = {};
+      counters.rejectedBy = rejectedBy;
+      const matched = items.filter((c) => {
+        const keys = huntFilterRejections(c, hunt.filters, now);
+        countHuntRejections(rejectedBy, keys);
+        return keys.length === 0;
+      });
       counters.matchedCount = matched.length;
       const repeatSince = new Date(now.getTime() - hunt.repeatAfterDays * DAY_MS);
       const recent = await this.deps.finds.recentGoodsIds(tenantId, hunt.id, repeatSince);
       const fresh: Scored[] = matched
-        .filter((c) => !recent.has(c.goodsId))
+        .filter((c) => {
+          if (!recent.has(c.goodsId)) return true;
+          countHuntRejections(rejectedBy, ['repeated']);
+          return false;
+        })
         .map((candidate) => ({ candidate, score: scoreHuntCandidate(candidate, now), aiReason: null }))
         .sort((a, b) => b.score.score - a.score.score);
 
@@ -189,18 +197,19 @@ export class RunOfferHuntUseCase {
         }
       }
 
-      await this.deps.runs.finish(tenantId, run.id, { ...counters, status: 'SUCCEEDED', errorCode: null, finishedAt: now });
-      await this.deps.hunts.recordSuccess(tenantId, hunt.id, now);
       const chosenIds = new Set(inserted.map((f) => f.goodsId));
+      ranking = ordered.map((s) => toRankingItem(s, chosenIds.has(s.candidate.goodsId)));
+      await this.deps.runs.finish(tenantId, run.id, { ...counters, ranking, status: 'SUCCEEDED', errorCode: null, finishedAt: now });
+      await this.deps.hunts.recordSuccess(tenantId, hunt.id, now);
       return {
         runId: run.id, status: 'SUCCEEDED', errorCode: null, ...counters,
-        ranking: ordered.map((s) => toRankingItem(s, chosenIds.has(s.candidate.goodsId))),
+        ranking,
         finds: inserted,
         remainingToday: Math.max(0, balance - inserted.length),
         pausedReason: null,
       };
     } catch (err) {
-      return this.failRun(input, hunt, run.id, counters, err, balance);
+      return this.failRun(input, hunt, run.id, counters, ranking, err, balance);
     }
   }
 
@@ -230,24 +239,23 @@ export class RunOfferHuntUseCase {
     return { session: { token, memberId: state.cred.publicIdentifier }, limit, balance };
   }
 
-  /** ≤ 1 faixa + ≤ 1 categorias + ≤ 3 páginas; para em `hasNextPage = false`; sem item repetido. */
+  /**
+   * ≤ 1 categorias + ≤ 3 páginas; para em `hasNextPage = false`; sem item repetido. A faixa da fonte
+   * (`categoryRate`/`commRate`) filtra a comissão de RECOMPRA, não a de 1ª compra: o caçador nunca a usa
+   * (sempre "sem faixa"), nem em caçada antiga com `commissionBand` gravada. Comissão é filtro local.
+   */
   private async fetchCandidates(hunt: OfferHunt, session: SheinSession): Promise<HuntCandidate[]> {
     const { catalog } = this.deps;
-    const bandDid = hunt.commissionBand ? await catalog.resolveCommissionBand(session, hunt.commissionBand) : null;
-    let category: { categoryId: string; name: string } | null = null;
-    let did = bandDid;
-    if (hunt.categoryId || did === null) {
-      const categories = await catalog.listCategories(session);
-      const match = hunt.categoryId ? categories.find((c) => c.categoryId === hunt.categoryId) : categories.find((c) => c.categoryId === null);
-      // Categoria sumiu da fonte (ou lista sem "All"): mesma régua de fonte indisponível
-      if (!match) throw new AffiliateApiUnavailableError(PROVIDER);
-      if (match.categoryId) category = { categoryId: match.categoryId, name: match.name };
-      did ??= match.did;
-    }
+    const categories = await catalog.listCategories(session);
+    const match = hunt.categoryId ? categories.find((c) => c.categoryId === hunt.categoryId) : categories.find((c) => c.categoryId === null);
+    // Categoria sumiu da fonte (ou lista sem "All"): mesma régua de fonte indisponível
+    if (!match) throw new AffiliateApiUnavailableError(PROVIDER);
+    const category = match.categoryId ? { categoryId: match.categoryId, name: match.name } : null;
+    const did = match.did;
     const seen = new Map<string, HuntCandidate>();
     for (let page = 1; page <= HUNTER_LIMITS.pagesPerRunMax; page++) {
       if (page > 1) await this.sleep(HUNT_PAGE_PAUSE_MS.min + Math.floor(this.rand() * (HUNT_PAGE_PAUSE_MS.max - HUNT_PAGE_PAUSE_MS.min + 1)));
-      const query = { page, did: did!, category, sort: hunt.sort };
+      const query = { page, did, category, sort: hunt.sort };
       const res: SheinCatalogPage = hunt.keyword
         ? await catalog.search(session, { ...query, keyword: hunt.keyword })
         : await catalog.list(session, query);
@@ -294,7 +302,7 @@ export class RunOfferHuntUseCase {
   private async failRun(
     input: RunOfferHuntInput, hunt: OfferHunt, runId: string,
     counters: Omit<RunOfferHuntOutput, 'runId' | 'status' | 'errorCode' | 'ranking' | 'finds' | 'remainingToday' | 'pausedReason'>,
-    err: unknown, balance: number,
+    ranking: HuntRankingItem[] | null, err: unknown, balance: number,
   ): Promise<RunOfferHuntOutput> {
     const { tenantId, now } = input;
     const code = err instanceof AppError ? err.code : 'UNEXPECTED';
@@ -309,16 +317,17 @@ export class RunOfferHuntUseCase {
       if (r.paused) paused = 'SOURCE_UNAVAILABLE';
       thrown = new OfferHuntSourceUnavailableError(r.paused);
     }
-    await this.deps.runs.finish(tenantId, runId, { ...counters, status: 'FAILED', errorCode: code, finishedAt: now });
+    await this.deps.runs.finish(tenantId, runId, { ...counters, ranking, status: 'FAILED', errorCode: code, finishedAt: now });
     logger.warn({ tenantId, huntId: hunt.id, runId, code, paused }, 'offer hunt run failed');
     if (input.trigger === 'MANUAL') throw thrown;
-    return { ...emptyOutput(runId, 'FAILED', code, paused), ...counters, remainingToday: balance };
+    return { ...emptyOutput(runId, 'FAILED', code, paused), ...counters, ranking: ranking ?? [], remainingToday: balance };
   }
 }
 
 function emptyOutput(runId: string, status: 'FAILED' | 'SKIPPED', errorCode: string, pausedReason: OfferHuntPauseReason | null): RunOfferHuntOutput {
   return {
     runId, status, errorCode, seenCount: 0, matchedCount: 0, chosenCount: 0, sentCount: 0, aiUsed: false, aiFallback: false,
+    rejectedBy: null,
     ranking: [], finds: [], remainingToday: 0, pausedReason,
   };
 }
@@ -326,7 +335,10 @@ function emptyOutput(runId: string, status: 'FAILED' | 'SKIPPED', errorCode: str
 function toRankingItem(s: Scored, chosen: boolean): HuntRankingItem {
   const c = s.candidate;
   return {
-    goodsId: c.goodsId, title: c.title, imageUrl: c.imageUrl, priceCents: c.priceCents,
+    goodsId: c.goodsId, title: c.title, imageUrl: c.imageUrl, priceCents: c.priceCents, discountPercent: c.discountPct,
+    commissionPercent: c.commissionNewPct, commissionCents: c.commissionNewCents,
+    returningCommissionPercent: c.commissionReturningPct, returningCommissionCents: c.commissionReturningCents,
+    extraCommissionCents: c.extraCommissionCents, salesBucket: c.sales, reviewsBucket: c.reviews, rating: c.rating,
     score: s.score.score, factors: s.score.factors, aiReason: s.aiReason, chosen,
   };
 }

@@ -1236,6 +1236,13 @@ enum OfferHuntRunTrigger {
   SCHEDULED
 }
 
+/// Operador do filtro de comissão % (cliente novo): GT >, GTE ≥, LT <.
+enum HuntCommissionOperator {
+  GT
+  GTE
+  LT
+}
+
 enum OfferHuntFindStatus {
   PENDING_REVIEW
   APPROVED
@@ -1245,48 +1252,50 @@ enum OfferHuntFindStatus {
 }
 
 model OfferHunt {
-  id                   String                @id @default(cuid())
+  id                   String                  @id @default(cuid())
   tenantId             String
   name                 String
-  status               OfferHuntStatus       @default(ACTIVE)
+  status               OfferHuntStatus         @default(ACTIVE)
   /// Preenchido só com status PAUSED.
   pauseReason          OfferHuntPauseReason?
   // Filtros da fonte (enviados à Shein)
   /// Código de ordenação da fonte (0 recomendado, 7, 9, 10, 11, 12): dica, a ordem final é a pontuação.
-  sort                 Int                   @default(0)
+  sort                 Int                     @default(0)
   categoryId           String?
-  /// Faixa de comissão da fonte (`commRate`); null = sem filtro.
+  /// Faixa de comissão da fonte (`commRate`, filtra a RECOMPRA): legado, gravada 5 (ANY) e ignorada pela execução.
   commissionBand       Int?
   keyword              String?
   // Filtros locais (aplicados por nós na resposta); null = sem filtro
   minPriceCents        Int?
   maxPriceCents        Int?
   minDiscountPercent   Int?
-  minCommissionPercent Decimal?              @db.Decimal(5, 2)
+  minCommissionPercent Decimal?                @db.Decimal(5, 2)
+  /// Como comparar `minCommissionPercent` (0–50); null = sem filtro de comissão %.
+  commissionOperator   HuntCommissionOperator?
   minCommissionCents   Int?
-  minRating            Decimal?              @db.Decimal(3, 2)
+  minRating            Decimal?                @db.Decimal(3, 2)
   minSalesBucket       Int?
   minReviewsBucket     Int?
-  extraCommissionOnly  Boolean               @default(false)
+  extraCommissionOnly  Boolean                 @default(false)
   endsWithinDays       Int?
   // Seleção e entrega
-  aiEnabled            Boolean               @default(false)
-  topN                 Int                   @default(3)
-  repeatAfterDays      Int                   @default(7)
-  deliveryMode         OfferHuntDeliveryMode @default(REVIEW)
+  aiEnabled            Boolean                 @default(false)
+  topN                 Int                     @default(3)
+  repeatAfterDays      Int                     @default(7)
+  deliveryMode         OfferHuntDeliveryMode   @default(REVIEW)
   // Agenda (mesmo modelo do gerador: 0..1440, weekdaysMask bit 0 = domingo, fuso America/Sao_Paulo)
-  intervalMinutes      Int                   @default(60)
-  windowStartMinute    Int                   @default(0)
-  windowEndMinute      Int                   @default(1440)
-  weekdaysMask         Int                   @default(127)
+  intervalMinutes      Int                     @default(60)
+  windowStartMinute    Int                     @default(0)
+  windowEndMinute      Int                     @default(1440)
+  weekdaysMask         Int                     @default(127)
   nextRunAt            DateTime?
   lastRunAt            DateTime?
-  consecutiveFailures  Int                   @default(0)
+  consecutiveFailures  Int                     @default(0)
   /// Posse do job: novo uuid a cada claim; resultado só grava com o token da posse.
   claimToken           String?
   claimedUntil         DateTime?
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
 
   tenant Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   runs   OfferHuntRun[]
@@ -1312,6 +1321,10 @@ model OfferHuntRun {
   aiUsed       Boolean             @default(false)
   aiFallback   Boolean             @default(false)
   errorCode    String?
+  /// Candidatos barrados por filtro local `{ minSales: 21, repeated: 2 }`; null = execução antiga ou sem fonte.
+  rejectedBy   Json?
+  /// Até 15 melhores da execução (só exibição: sem link/token); null = execução antiga ou sem fonte.
+  ranking      Json?
   startedAt    DateTime            @default(now())
   finishedAt   DateTime?
 
@@ -1358,7 +1371,11 @@ model OfferHuntFind {
   status                     OfferHuntFindStatus @default(PENDING_REVIEW)
   /// Código interno do motivo de FAILED.
   failureReason              String?
+  /// Oferta mais recente (o reenvio troca; as anteriores ficam em `offers`).
   offerId                    String?
+  /// Reenvios pelo painel (não contam no teto do dia).
+  resendCount                Int                 @default(0)
+  lastResentAt               DateTime?
   createdAt                  DateTime            @default(now())
   updatedAt                  DateTime            @updatedAt
 

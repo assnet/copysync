@@ -87,6 +87,20 @@ export async function offerHuntRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
+  app.post<FindParams>(
+    '/finds/:findId/resend',
+    {
+      // Array próprio (o rate-limit anexa o hook ao `preHandler` da rota)
+      preHandler: [...preHandler],
+      config: { rateLimit: perTenantRateLimit(rateLimitPresets.offerHuntRun) },
+      schema: { tags, summary: 'Reenviar achado já entregue ao grupo de destino atual (não conta no teto)', params: findIdParamSchema, response: { 200: findResponse } },
+    },
+    async (request, reply) => {
+      const find = await c.resendHuntFind().execute({ tenantId: request.tenantContext.tenantId, findId: request.params.findId });
+      httpResponse.ok(reply, P.find(find));
+    },
+  );
+
   app.get(
     '/',
     { preHandler, schema: { tags, summary: 'Caçadas do tenant', response: { 200: huntListResponse } } },

@@ -107,14 +107,16 @@ describe('destino', () => {
     findSession: async (t: string, s: string) => (t === TENANT && s === 's1' ? { id: 's1', engine: 'baileys' } as never : null),
     filterSessionGroups: async (t: string, _s: string[], ids: string[]) =>
       ids.filter((id) => (groupsOf[t] ?? []).includes(id)).map((conversationId) => ({ conversationId, sessionId: 's1', groupJid: `${conversationId}@g.us` })),
+    listSessionGroupConversations: async (t: string) =>
+      (groupsOf[t] ?? []).map((conversationId) => ({ conversationId, groupJid: `${conversationId}@g.us`, title: `Grupo ${conversationId}`, avatarUrl: null })),
   });
 
   it('GET: não escolhido → valid false; grupo ainda da sessão → true; sumiu → false', async () => {
     const settings = new InMemorySettings();
     const uc = (g: Record<string, string[]>) => new GetOfferHunterDestinationUseCase({ settings, configs: configs(g) });
-    expect(await uc({}).execute(TENANT)).toEqual({ sessionId: null, conversationId: null, valid: false });
+    expect(await uc({}).execute(TENANT)).toEqual({ sessionId: null, conversationId: null, valid: false, groupName: null });
     await settings.upsert(TENANT, 's1', 'c1');
-    expect((await uc({ [TENANT]: ['c1'] }).execute(TENANT)).valid).toBe(true);
+    expect(await uc({ [TENANT]: ['c1'] }).execute(TENANT)).toMatchObject({ valid: true, groupName: 'Grupo c1' });
     expect((await uc({}).execute(TENANT)).valid).toBe(false);
   });
 
@@ -131,7 +133,7 @@ describe('destino', () => {
 describe('histórico com cursor keyset assinado', () => {
   const run = (i: number): OfferHuntRun => ({
     id: `run-${String(i).padStart(3, '0')}`, tenantId: TENANT, huntId: HUNT, trigger: 'MANUAL', status: 'SUCCEEDED',
-    seenCount: 0, matchedCount: 0, chosenCount: 0, sentCount: 0, aiUsed: false, aiFallback: false, errorCode: null,
+    seenCount: 0, matchedCount: 0, chosenCount: 0, sentCount: 0, aiUsed: false, aiFallback: false, rejectedBy: null, ranking: null, errorCode: null,
     startedAt: new Date(NOW.getTime() - i * 60_000), finishedAt: null,
   });
   const all = Array.from({ length: 25 }, (_, i) => run(i));

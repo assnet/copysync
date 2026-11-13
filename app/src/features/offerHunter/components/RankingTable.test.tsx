@@ -5,7 +5,9 @@ import type { HuntRankingItem } from '../types';
 import { RankingTable } from './RankingTable';
 
 const item = (over: Partial<HuntRankingItem> = {}): HuntRankingItem => ({
-  goodsId: 'g1', title: 'Vestido midi', imageUrl: 'https://img.example/1.jpg', priceCents: 4990, score: 81.25,
+  goodsId: 'g1', title: 'Vestido midi', imageUrl: 'https://img.example/1.jpg', priceCents: 4990, discountPercent: 30,
+  commissionPercent: 20, commissionCents: 998, returningCommissionPercent: 4.9, returningCommissionCents: 245, extraCommissionCents: 0,
+  salesBucket: 1000, reviewsBucket: 500, rating: 4.8, score: 81.25,
   factors: [{ key: 'commission', points: 25, max: 30 }, { key: 'discount', points: 12.5, max: 15 }],
   aiReason: 'Combina com o público', chosen: true, ...over,
 });

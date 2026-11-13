@@ -3,7 +3,7 @@ import { Alert, Box, ButtonBase, MenuItem, Stack, TextField, Typography } from '
 import { alpha, useTheme } from '@mui/material/styles';
 import { Check } from 'lucide-react';
 import { AppIcon } from '@/components';
-import type { HuntCommissionBand, HuntOptions, HuntPreset } from '../../types';
+import type { HuntOptions, HuntPreset } from '../../types';
 import { offerHunterStrings as t } from '../../strings';
 import type { FieldErrors, HuntWizardDraft } from './wizardDraft';
 import { FieldHeading, FieldTip } from './fields';
@@ -84,7 +84,7 @@ export function WizardWhatStep({ draft, options, errors, onChange, onPreset }: P
 
       {sourceMsg && noCategories && <Alert severity="info">{sourceMsg}</Alert>}
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+      <Box>
         <TextField
           select
           label={w.category}
@@ -104,17 +104,6 @@ export function WizardWhatStep({ draft, options, errors, onChange, onPreset }: P
           )}
         </TextField>
 
-        <TextField
-          select
-          label={w.commissionBand}
-          value={draft.commissionBand}
-          onChange={(e) => onChange({ commissionBand: e.target.value as HuntCommissionBand, preset: 'CUSTOM' })}
-          fullWidth
-          error={Boolean(errors.commissionBand)}
-          helperText={errors.commissionBand}
-        >
-          {options.commissionBands.map((b) => <MenuItem key={b} value={b}>{t.commissionBands[b]}</MenuItem>)}
-        </TextField>
       </Box>
 
       <TextField

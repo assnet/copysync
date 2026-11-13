@@ -182,12 +182,12 @@ describe('RunOfferHuntUseCase — busca, seleção e gravação', () => {
     expect(out.seenCount).toBe(6);
   });
 
-  it('para em hasNextPage = false; palavra-chave usa search; faixa e categoria resolvem o did', async () => {
+  it('para em hasNextPage = false; palavra-chave usa search; faixa antiga gravada é ignorada (filtra recompra)', async () => {
     const s = setup({ hunt: { keyword: 'vestido', commissionBand: 'ABOVE_15', categoryId: '4436' } });
     s.catalog.pages = [{ items: items('1001'), hasNextPage: false, total: 1 }];
     await s.run();
-    expect(s.catalog.calls.map((c) => c.method)).toEqual(['resolveCommissionBand', 'listCategories', 'search']);
-    expect(s.catalog.calls[2]!.query).toMatchObject({ page: 1, did: 900, keyword: 'vestido', category: { categoryId: '4436', name: 'Women Apparel' } });
+    expect(s.catalog.calls.map((c) => c.method)).toEqual(['listCategories', 'search']);
+    expect(s.catalog.calls[1]!.query).toMatchObject({ page: 1, keyword: 'vestido', category: { categoryId: '4436', name: 'Women Apparel' } });
     expect(s.sleeps).toHaveLength(0);
   });
 
@@ -205,6 +205,34 @@ describe('RunOfferHuntUseCase — busca, seleção e gravação', () => {
     const out = await s.run();
     expect(out.matchedCount).toBe(3); // 1004 tem 700 de comissão
     expect(out.finds.map((f) => f.goodsId)).toEqual(['1002', '1003']);
+  });
+
+  it('rejectedBy: conta cada filtro que barrou (todas as chaves) e os repetidos; grava na execução', async () => {
+    const s = setup({ hunt: { filters: { minSales: 301, minReviews: 1001, minRating: 4.5 }, repeatAfterDays: 7 } });
+    s.finds.seed({ goodsId: '1001', createdAt: new Date(NOW.getTime() - 86_400_000) });
+    s.catalog.pages = [{
+      items: [
+        huntCandidate({ goodsId: '1001', sales: 1000, reviews: 2000 }),
+        huntCandidate({ goodsId: '1002', sales: 1000, reviews: 2000 }),
+        huntCandidate({ goodsId: '1003', sales: 100, reviews: 2000, rating: null }),
+        huntCandidate({ goodsId: '1004', sales: 100, reviews: 10 }),
+      ],
+      hasNextPage: false, total: 4,
+    }];
+    const out = await s.run();
+    expect(out.matchedCount).toBe(2);
+    expect(out.rejectedBy).toEqual({ minSales: 2, minReviews: 1, minRating: 1, repeated: 1 });
+    expect(s.runs.items[0]!.rejectedBy).toEqual(out.rejectedBy);
+    // Ranking gravado na execução = o devolvido, com comissões 1ª compra/recompra e marca de escolhido
+    expect(s.runs.items[0]!.ranking).toEqual(out.ranking);
+    expect(out.ranking.map((r) => [r.goodsId, r.chosen])).toEqual([['1002', true]]);
+    expect(out.ranking[0]).toMatchObject({ salesBucket: 1000, reviewsBucket: 2000, commissionPercent: expect.any(Number), returningCommissionPercent: expect.any(Number) });
+    expect(JSON.stringify(s.runs.items[0]!.ranking)).not.toContain('SECRET');
+  });
+
+  it('rejectedBy null quando a execução não chega à fonte', async () => {
+    const s = setup({ hunt: { status: 'PAUSED' } });
+    expect((await s.run({ trigger: 'SCHEDULED' })).rejectedBy).toBeNull();
   });
 
   it('duas execuções simultâneas da mesma caçada não gravam o mesmo item (repetição rechecada na gravação)', async () => {

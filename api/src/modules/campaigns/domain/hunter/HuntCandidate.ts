@@ -31,13 +31,21 @@ export type HuntSort = (typeof HUNT_SORTS)[number];
 export const HUNT_COMMISSION_BANDS = ['BELOW_5', 'FROM_5_TO_10', 'FROM_10_TO_15', 'ABOVE_15', 'ANY'] as const;
 export type HuntCommissionBand = (typeof HUNT_COMMISSION_BANDS)[number];
 
+/** Operador da comissão mínima: maior que, igual ou maior que, menor que (sobre a comissão de cliente novo). */
+export const HUNT_COMMISSION_OPERATORS = ['GT', 'GTE', 'LT'] as const;
+export type HuntCommissionOperator = (typeof HUNT_COMMISSION_OPERATORS)[number];
+/** Teto do percentual do filtro de comissão (controle do painel 0–50). */
+export const HUNT_COMMISSION_PCT_MAX = 50;
+
 /** Filtros aplicados por nós na resposta (HUNT-03). Campo ausente/null = não filtra. */
 export interface HuntLocalFilters {
   minPriceCents?: number | null;
   maxPriceCents?: number | null;
   minDiscountPct?: number | null;
-  /** Comissão de cliente novo (a principal do painel Shein). */
+  /** Percentual da comissão de cliente novo (a principal do painel Shein), 0–50; comparado por `commissionOperator`. */
   minCommissionPct?: number | null;
+  /** null = sem filtro de comissão %. Sempre junto com `minCommissionPct` (normalizado na validação). */
+  commissionOperator?: HuntCommissionOperator | null;
   /** Comissão de cliente novo em centavos. */
   minCommissionCents?: number | null;
   minRating?: number | null;
@@ -47,6 +55,23 @@ export interface HuntLocalFilters {
   /** Campanha termina em até N dias a partir de `now` (sem data = fora). */
   endsWithinDays?: number | null;
 }
+
+/** Chave de filtro local que pode recusar um candidato (mesmo nome do campo em `HuntLocalFilters`). */
+export type HuntFilterKey = Exclude<keyof HuntLocalFilters, 'commissionOperator'>;
+
+/**
+ * Motivo de descarte gravado na execução: filtro local que barrou ou `repeated` (escolhido dentro da
+ * janela `repeatAfterDays`). Um candidato barrado por 2 filtros conta nos 2.
+ */
+export const HUNT_REJECTION_KEYS = [
+  'minPriceCents', 'maxPriceCents', 'minDiscountPct', 'minCommissionPct', 'minCommissionCents', 'minRating',
+  'minSales', 'minReviews', 'onlyWithExtra', 'endsWithinDays', 'repeated',
+] as const satisfies readonly (HuntFilterKey | 'repeated')[];
+export type HuntRejectionKey = (typeof HUNT_REJECTION_KEYS)[number];
+// Toda chave de filtro local está na lista (falha de compilação se um filtro novo ficar de fora)
+const _allFilterKeysListed: Exclude<HuntFilterKey, HuntRejectionKey> extends never ? true : never = true;
+void _allFilterKeysListed;
+export type HuntRejectionCounts = Partial<Record<HuntRejectionKey, number>>;
 
 /** Filtros enviados à fonte (HUNT-02); categoria e palavra são escolha do usuário, fora do preset. */
 export interface HuntSourceFilters {

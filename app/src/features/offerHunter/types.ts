@@ -43,6 +43,21 @@ export type HuntScoreFactorKey = (typeof HUNT_SCORE_FACTOR_KEYS)[number];
 /** Estado da fonte de categorias em `/options` (falha da fonte nunca é erro HTTP). */
 export type HuntCategorySourceStatus = 'OK' | 'LOCKED' | 'NO_CREDENTIAL' | 'CREDENTIAL_REJECTED' | 'UNAVAILABLE';
 
+/** Operador do filtro de comissão % (cliente novo): GT >, GTE ≥, LT <. */
+export const HUNT_COMMISSION_OPERATORS = ['GT', 'GTE', 'LT'] as const;
+export type HuntCommissionOperator = (typeof HUNT_COMMISSION_OPERATORS)[number];
+/** Teto do percentual do filtro de comissão (barra 0–50). */
+export const HUNT_COMMISSION_PCT_MAX = 50;
+
+/** Motivo de descarte contado por execução: filtro local que barrou ou `repeated`. */
+export const HUNT_REJECTION_KEYS = [
+  'minPriceCents', 'maxPriceCents', 'minDiscountPct', 'minCommissionPct', 'minCommissionCents', 'minRating',
+  'minSales', 'minReviews', 'onlyWithExtra', 'endsWithinDays', 'repeated',
+] as const;
+export type HuntRejectionKey = (typeof HUNT_REJECTION_KEYS)[number];
+/** Quantos candidatos cada chave barrou (um candidato pode contar em várias). */
+export type HuntRejectionCounts = Partial<Record<HuntRejectionKey, number>>;
+
 export interface HuntScoreFactor {
   key: HuntScoreFactorKey;
   points: number;
@@ -54,7 +69,10 @@ export interface HuntFilters {
   minPriceCents: number | null;
   maxPriceCents: number | null;
   minDiscountPct: number | null;
+  /** 0–50, comparado por `commissionOperator`. */
   minCommissionPct: number | null;
+  /** null = qualquer comissão (sem filtro %). */
+  commissionOperator: HuntCommissionOperator | null;
   minCommissionCents: number | null;
   minRating: number | null;
   minSales: number | null;
@@ -70,6 +88,7 @@ export interface Hunt {
   pauseReason: OfferHuntPauseReason | null;
   sort: HuntSort;
   categoryId: string | null;
+  /** Faixa da fonte derivada pelo servidor do filtro de comissão (só leitura). */
   commissionBand: HuntCommissionBand | null;
   keyword: string | null;
   filters: HuntFilters;
@@ -103,9 +122,17 @@ export interface HuntRun {
   sentCount: number;
   aiUsed: boolean;
   aiFallback: boolean;
+  /** null = execução antiga ou que não chegou à fonte. */
+  rejectedBy: HuntRejectionCounts | null;
+  /** Até 15 melhores da execução; null = execução antiga (ranking não guardado). */
+  ranking: HuntRankingItem[] | null;
   startedAt: string;
   finishedAt: string | null;
 }
+
+/** Status do disparo da oferta do achado (o `SENT` do achado só quer dizer "entregue à fila"). */
+export const HUNT_FIND_DISPATCH_STATUSES = ['QUEUED', 'SENDING', 'SENT', 'FAILED', 'SKIPPED', 'CANCELLED'] as const;
+export type HuntFindDispatchStatus = (typeof HUNT_FIND_DISPATCH_STATUSES)[number];
 
 export interface HuntFind {
   id: string;
@@ -134,7 +161,16 @@ export interface HuntFind {
   aiReason: string | null;
   /** Código do erro do envio quando `FAILED`. */
   failureReason: string | null;
+  /** Oferta mais recente (o reenvio troca). */
   offerId: string | null;
+  /** Envio real do disparo; null = sem oferta. A tela usa isto no lugar do `SENT` do achado. */
+  dispatchStatus: HuntFindDispatchStatus | null;
+  /** ISO; só com `dispatchStatus` SENT. */
+  sentAt: string | null;
+  /** Grupo e sessão do último envio (dado sensível: `Blurred`). */
+  destination: { groupName: string | null; sessionName: string | null } | null;
+  resendCount: number;
+  lastResentAt: string | null;
   createdAt: string;
 }
 
@@ -144,6 +180,17 @@ export interface HuntRankingItem {
   title: string | null;
   imageUrl: string | null;
   priceCents: number | null;
+  discountPercent: number | null;
+  /** 1ª compra (cliente novo). */
+  commissionPercent: number | null;
+  commissionCents: number | null;
+  /** Recompra (cliente que retorna). */
+  returningCommissionPercent: number | null;
+  returningCommissionCents: number | null;
+  extraCommissionCents: number | null;
+  salesBucket: number | null;
+  reviewsBucket: number | null;
+  rating: number | null;
   score: number;
   factors: HuntScoreFactor[];
   aiReason: string | null;
@@ -160,6 +207,7 @@ export interface HuntRunResult {
   sentCount: number;
   aiUsed: boolean;
   aiFallback: boolean;
+  rejectedBy: HuntRejectionCounts | null;
   ranking: HuntRankingItem[];
   finds: HuntFind[];
   remainingToday: number;
@@ -230,6 +278,7 @@ export interface HuntOptions {
   categories: HuntCategory[];
   sourceStatus: HuntCategorySourceStatus;
   sorts: HuntSort[];
+  /** Vazio desde a faixa derivada no servidor (mantido por compatibilidade). */
   commissionBands: HuntCommissionBand[];
   presets: HuntPresetOption[];
   limits: HuntLimits;
@@ -241,6 +290,8 @@ export interface HunterSettings {
   sessionId: string | null;
   conversationId: string | null;
   valid: boolean;
+  /** Nome do grupo no chat (confirmação do reenvio); null = sem nome. */
+  groupName?: string | null;
 }
 
 export interface SaveHunterSettingsInput {
@@ -253,7 +304,6 @@ export interface CreateHuntInput {
   name: string;
   sort?: HuntSort;
   categoryId?: string | null;
-  commissionBand?: HuntCommissionBand | null;
   keyword?: string | null;
   filters?: Partial<HuntFilters>;
   aiEnabled?: boolean;

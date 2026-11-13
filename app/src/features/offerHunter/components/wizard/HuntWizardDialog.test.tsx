@@ -22,16 +22,16 @@ beforeEach(() => {
 });
 
 describe('HuntWizardDialog', () => {
-  it('predefinição preenche faixa de comissão e filtros', () => {
+  it('predefinição preenche filtros (comissão de 1ª compra inclusa)', () => {
     render(<HuntWizardDialog open options={huntOptions()} onClose={vi.fn()} onSaved={vi.fn()} />);
     // 1ª predefinição já vem aplicada
     expect(screen.getByRole('radio', { name: /Maior comissão/ })).toHaveAttribute('aria-checked', 'true');
     fireEvent.click(screen.getByRole('radio', { name: /Mais vendidos/ }));
     expect(screen.getByRole('radio', { name: /Mais vendidos/ })).toHaveAttribute('aria-checked', 'true');
     const d = stored(wizardDraftKey());
-    expect(d.commissionBand).toBe('ANY');
+    expect(d.commissionBand).toBeUndefined();
     expect(d.sort).toBe('BEST_SELLING');
-    expect(d.filters).toMatchObject({ minSales: 100, minRating: 4, minCommissionPct: null });
+    expect(d.filters).toMatchObject({ minSales: 100, minRating: 4, minCommissionPct: null, commissionOperator: null });
   });
 
   it('validação bloqueia avançar sem nome', () => {
@@ -59,10 +59,11 @@ describe('HuntWizardDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Salvar caçada' }));
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith(saved));
     expect(svc.create).toHaveBeenCalledWith(expect.objectContaining({
-      name: 'Moda verão', keyword: 'vestido', commissionBand: 'ABOVE_15', sort: 'RECOMMENDED', aiEnabled: true, topN: 3,
+      name: 'Moda verão', keyword: 'vestido', sort: 'RECOMMENDED', aiEnabled: true, topN: 3,
       repeatAfterDays: 7, deliveryMode: 'AUTO', intervalMinutes: 60, windowStartMinute: 0, windowEndMinute: 1440, weekdaysMask: 127,
-      filters: expect.objectContaining({ minCommissionPct: 15, minDiscountPct: 30, minPriceCents: null, onlyWithExtra: null }),
+      filters: expect.objectContaining({ minCommissionPct: 15, commissionOperator: 'GTE', minDiscountPct: 30, minPriceCents: null, onlyWithExtra: null }),
     }));
+    expect(svc.create.mock.calls[0]![0]).not.toHaveProperty('commissionBand');
     expect(stored(wizardDraftKey())).toBeUndefined();
   });
 
@@ -120,5 +121,38 @@ describe('HuntWizardDialog', () => {
     expect(await screen.findByText('Vestido')).toBeInTheDocument();
     expect(svc.run).toHaveBeenCalledWith('h1');
     expect(screen.getByText('10 ofertas vistas, 4 no filtro, 1 escolhida')).toBeInTheDocument();
+  });
+
+  it('comissão de 1ª compra: condição + atalho gravam o corpo; "qualquer comissão" limpa', async () => {
+    svc.create.mockResolvedValue(hunt({ id: 'new' }));
+    render(<HuntWizardDialog open options={huntOptions()} onClose={vi.fn()} onSaved={vi.fn()} />);
+    fireEvent.change(field(/Nome da caçada/), { target: { value: 'Comissão' } });
+    next();
+    // Predefinição "Maior comissão": ≥ 15%
+    expect(screen.getByRole('slider', { name: /Percentual da comissão de 1ª compra/ })).toHaveValue('15');
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: /Condição da comissão de 1ª compra/ }));
+    fireEvent.click(screen.getByRole('option', { name: /Maior que \(>\)/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Usar 20%' }));
+    expect(screen.getByRole('slider', { name: /Percentual/ })).toHaveValue('20');
+    next();
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar caçada' }));
+    await waitFor(() => expect(svc.create).toHaveBeenCalled());
+    expect(svc.create.mock.calls[0]![0].filters).toMatchObject({ minCommissionPct: 20, commissionOperator: 'GT' });
+  });
+
+  it('edição carrega condição e percentual; "qualquer comissão" desliga a barra e manda null', async () => {
+    svc.update.mockResolvedValue(hunt());
+    const h = hunt({ filters: { ...hunt().filters, minCommissionPct: 5, commissionOperator: 'LT' } });
+    render(<HuntWizardDialog open options={huntOptions()} hunt={h} onClose={vi.fn()} onSaved={vi.fn()} />);
+    next();
+    expect(screen.getByRole('combobox', { name: /Condição da comissão/ })).toHaveTextContent('Menor que (<)');
+    expect(screen.getByRole('slider', { name: /Percentual/ })).toHaveValue('5');
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: /Condição da comissão/ }));
+    fireEvent.click(screen.getByRole('option', { name: 'Qualquer comissão' }));
+    expect(screen.getByRole('slider', { name: /Percentual/ })).toBeDisabled();
+    next();
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar caçada' }));
+    await waitFor(() => expect(svc.update).toHaveBeenCalled());
+    expect(svc.update.mock.calls[0]![1].filters).toMatchObject({ minCommissionPct: null, commissionOperator: null });
   });
 });

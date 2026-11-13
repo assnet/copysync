@@ -22,7 +22,8 @@ describe('validateHuntDefinition', () => {
     [{ name: '  ' }, 'name'],
     [{ name: 'a'.repeat(81) }, 'name'],
     [{ sort: 'X' as never }, 'sort'],
-    [{ commissionBand: 'X' as never }, 'commissionBand'],
+    [{ filters: { minCommissionPct: 51 } }, 'filters.minCommissionPct'],
+    [{ filters: { minCommissionPct: 10, commissionOperator: 'EQ' as never } }, 'filters.commissionOperator'],
     [{ categoryId: 'a b' }, 'categoryId'],
     [{ keyword: 'x'.repeat(61) }, 'keyword'],
     [{ keyword: 'a\u0007b' }, 'keyword'],
@@ -45,6 +46,17 @@ describe('validateHuntDefinition', () => {
 
   it('filtros: só os conhecidos, null some', () => {
     const r = validateHuntDefinition({ ...BASE, filters: { minCommissionPct: 12.5, minSales: null, onlyWithExtra: true, extra: 1 } as never });
-    expect(r.ok && r.value.filters).toEqual({ minCommissionPct: 12.5, onlyWithExtra: true });
+    expect(r.ok && r.value.filters).toEqual({ minCommissionPct: 12.5, commissionOperator: 'GTE', onlyWithExtra: true });
+  });
+
+  it('comissão: operador só com %, faixa da fonte sempre ANY (a do corpo é ignorada)', () => {
+    const v = (filters: object, commissionBand: unknown = 'BELOW_5') => {
+      const r = validateHuntDefinition({ ...BASE, commissionBand: commissionBand as never, filters });
+      return r.ok ? r.value : null;
+    };
+    expect(v({ minCommissionPct: 20, commissionOperator: 'GT' })).toMatchObject({ commissionBand: 'ANY', filters: { commissionOperator: 'GT' } });
+    expect(v({ minCommissionPct: 5, commissionOperator: 'LT' }, 'ABOVE_15')!.commissionBand).toBe('ANY');
+    expect(v({ commissionOperator: 'GT' })).toMatchObject({ commissionBand: 'ANY', filters: {} });
+    expect(v({ minCommissionPct: 50, commissionOperator: 'GTE' })!.filters.minCommissionPct).toBe(50);
   });
 });

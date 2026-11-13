@@ -7,6 +7,33 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.94.0] — 2026-11-12 — Caçador: recusas por filtro, comissão de 1ª compra, ranking guardado, envio real e reenvio
+
+### Added
+
+#### campaigns ([`docs/cacador-de-ofertas.md`](../docs/cacador-de-ofertas.md))
+
+- **`matchHuntFilters.ts`** (`huntFilterRejections`, `countHuntRejections`) / **`RunOfferHuntUseCase.ts`** — cada execução grava em `offer_hunt_runs.rejectedBy` quantos candidatos cada filtro local barrou (todas as chaves, dado ausente conta) + `repeated`; sai no `Run` e no `POST /:id/run`. Explica o "0 no filtro" sem mudar o passa/não passa.
+- **`RunOfferHuntUseCase.ts`** / **`PrismaOfferHuntMapper.ts`** (`rankingOf`/`rankingToData`) — ranking da execução (até 15, lista fechada, sem link/token) gravado em `offer_hunt_runs.ranking` e exposto no `Run`; o item ganhou desconto, comissões 1ª compra/recompra/extra, vendas, avaliações e nota.
+- **`PrismaOfferHuntFindRepository.ts`** / **`OfferHuntPresenter.ts`** — `Find` ganha `dispatchStatus`, `sentAt` e `destination { groupName, sessionName }` (disparo mais recente da oferta, `tenantId` em todo filtro), `resendCount` e `lastResentAt`. O `SENT` do achado segue = "entregue à fila".
+- **`ResendHuntFindUseCase.ts`** / **`HuntFindDelivery.resend`** / rota `POST /api/offer-hunts/finds/:findId/resend` — reenvio de achado já entregue para o destino atual, link/preço/foto atuais, `sourceKey` `hunt:<findId>:r<ms>`; não conta no teto do dia nem na guarda de 24. 409 `OFFER_HUNT_RESEND_NOT_DELIVERED` (sem oferta) e `OFFER_HUNT_RESEND_PENDING` (disparo na fila ou reenvio há < 60 s, CAS em `lastResentAt`).
+- **`OfferHunterInfoUseCases.ts`** — `GET /settings` devolve `groupName` do grupo de destino.
+
+### Changed
+
+- **`HuntCandidate.ts`** / **`matchHuntFilters.ts`** / **`validateHuntDefinition.ts`** — filtro de comissão de 1ª compra com operador (`commissionOperator` `GT`/`GTE`/`LT`, enum `HuntCommissionOperator`) sobre `minCommissionPercent` 0–50 (acima = 422). Sem % → operador null; % sem operador → `GTE`.
+- **`RunOfferHuntUseCase.ts`** / **`validateHuntDefinition.ts`** / **`huntPresets.ts`** / **`OfferHunterInfoUseCases.ts`** — a faixa da Shein (`commRate`/`categoryRate`) filtra a comissão de **recompra**: o caçador não chama mais `categoryRate`, ignora `commissionBand` gravada (inclusive em caçada antiga), grava sempre `ANY` e `GET /options` devolve `commissionBands: []`. "Maior comissão" = `GTE 15` local.
+
+### Breaking Changes
+
+- Nenhum contrato removido: `commissionBand` no corpo é aceito e ignorado; campos novos são aditivos.
+- Migrations: `20261114100500_add_offer_hunt_run_rejections`, `20261114100600_add_offer_hunt_commission_operator` (enum + backfill `GTE` onde havia % e faixa → ANY), `20261114100700_add_offer_hunt_run_ranking`, `20261114100800_add_offer_hunt_find_resend`. Só na Render (boot do container).
+
+### Fixed
+
+- **`PrismaOfferDispatchRepository.ts`/`EnqueueOfferUseCase.ts`/`OfferSendControlUseCases.ts`** — oferta do Caçador (`HUNTER`) tratada como manual igual ao gerador: no claim, vencida sai antes das capturas do monitoramento da sessão, e no LIMIT do tick a faixa com envio manual na cabeça vem antes; no agendamento (`openNotBefore` com `MANUAL_OFFER_ORIGINS`) não fica atrás de captura agendada no futuro; gap, janela e 1 por sessão mantidos (incidente 2026-11-13, 3.465 capturas à frente).
+
+
 ## [0.93.2] — 2026-11-12 — Caçador: 1ª busca imediata
 
 ### Fixed

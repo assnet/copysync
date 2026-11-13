@@ -6,6 +6,7 @@ import { offerHunterStrings as t } from '../../strings';
 import { formatCentsWhole } from '../../format';
 import { PRICE_MAX_CENTS, PRICE_STEP_CENTS, type FieldErrors, type HuntWizardDraft } from './wizardDraft';
 import { FieldHeading, NumberField } from './fields';
+import { CommissionFilterField } from './CommissionFilterField';
 
 const r = t.wizard.refine;
 const tips = t.wizard.tips;
@@ -18,7 +19,7 @@ interface Props {
   onChange: (patch: Partial<HuntWizardDraft>) => void;
 }
 
-/** Passo 2: faixa de preço, mínimos, comissão extra, IA, ofertas por busca e repetição. */
+/** Passo 2: faixa de preço, comissão % (condição + barra), mínimos, comissão extra, IA, ofertas por busca e repetição. */
 export function WizardRefineStep({ draft, options, errors, onChange }: Props) {
   const priceHelpId = useId();
   const { limits, gates } = options;
@@ -66,9 +67,10 @@ export function WizardRefineStep({ draft, options, errors, onChange }: Props) {
         </Typography>
       </Box>
 
+      <CommissionFilterField filters={f} error={err('minCommissionPct') ?? err('commissionOperator')} onChange={setFilter} />
+
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
         <NumberField label={r.minDiscount} value={f.minDiscountPct} onChange={(v) => setFilter({ minDiscountPct: v })} tip={tips.minDiscount} suffix={wz.percentUnit} placeholder={r.noFilter} error={err('minDiscountPct')} />
-        <NumberField label={r.minCommissionPct} value={f.minCommissionPct} onChange={(v) => setFilter({ minCommissionPct: v })} tip={tips.minCommissionPct} suffix={wz.percentUnit} decimals placeholder={r.noFilter} error={err('minCommissionPct')} />
         <NumberField label={r.minCommissionValue} value={f.minCommissionCents} onChange={(v) => setFilter({ minCommissionCents: v == null ? null : Math.round(v) })} tip={tips.minCommissionValue} scale={100} decimals prefix={wz.currencyUnit} placeholder={r.noFilter} error={err('minCommissionCents')} />
         <NumberField label={r.minRating} value={f.minRating} onChange={(v) => setFilter({ minRating: v })} tip={tips.minRating} decimals suffix={wz.ratingUnit} placeholder={r.noFilter} error={err('minRating')} />
         <NumberField label={r.minSales} value={f.minSales} onChange={(v) => setFilter({ minSales: v })} tip={tips.minSales} placeholder={r.noFilter} error={err('minSales')} />

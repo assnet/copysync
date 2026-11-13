@@ -5,8 +5,8 @@ import type {
   OfferHuntRun as PrismaOfferHuntRun,
   OfferHunterSettings as PrismaOfferHunterSettings,
 } from '@prisma/client';
-import type { HuntCommissionBand, HuntScoreFactor, HuntSort } from '../../domain/hunter/HuntCandidate';
-import type { OfferHunt, OfferHuntDefinition, OfferHuntFind, OfferHuntFindSnapshot, OfferHunterSettings, OfferHuntRun } from '../../domain/hunter/OfferHunt';
+import { HUNT_REJECTION_KEYS, type HuntCommissionBand, type HuntRejectionCounts, type HuntRejectionKey, type HuntScoreFactor, type HuntSort } from '../../domain/hunter/HuntCandidate';
+import type { OfferHunt, OfferHuntDefinition, OfferHuntFind, OfferHuntFindSnapshot, OfferHunterSettings, OfferHuntRankingItem, OfferHuntRun } from '../../domain/hunter/OfferHunt';
 import { COMM_RATE, SORT_CODE } from '../http/SheinCatalogClient';
 
 // O banco guarda os códigos da própria fonte (sort 0/7/9…, commRate 1–5); o domínio usa os nomes.
@@ -29,6 +29,56 @@ function factorsOf(raw: Prisma.JsonValue): HuntScoreFactor[] {
   });
 }
 
+const REJECTION_KEYS: ReadonlySet<string> = new Set(HUNT_REJECTION_KEYS);
+
+/** Lê `rejectedBy`: só chaves conhecidas com inteiro > 0; coluna nula ou não-objeto = null (`{}` = nada barrou). */
+export function rejectionsOf(raw: Prisma.JsonValue | null | undefined): HuntRejectionCounts | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const out: HuntRejectionCounts = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (REJECTION_KEYS.has(k) && typeof v === 'number' && Number.isInteger(v) && v > 0) out[k as HuntRejectionKey] = v;
+  }
+  return out;
+}
+
+const numOrNull = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+const strOrNull = (v: unknown): string | null => (typeof v === 'string' ? v : null);
+
+/** Lê o ranking gravado; item sem `goodsId`/`score` some; coluna nula ou não-lista = null. */
+export function rankingOf(raw: Prisma.JsonValue | null | undefined): OfferHuntRankingItem[] | null {
+  if (!Array.isArray(raw)) return null;
+  return raw.flatMap((x) => {
+    if (!x || typeof x !== 'object' || Array.isArray(x)) return [];
+    const o = x as Record<string, unknown>;
+    if (typeof o.goodsId !== 'string' || typeof o.score !== 'number') return [];
+    return [{
+      goodsId: o.goodsId, title: strOrNull(o.title), imageUrl: strOrNull(o.imageUrl), priceCents: numOrNull(o.priceCents),
+      discountPercent: numOrNull(o.discountPercent), commissionPercent: numOrNull(o.commissionPercent),
+      commissionCents: numOrNull(o.commissionCents), returningCommissionPercent: numOrNull(o.returningCommissionPercent),
+      returningCommissionCents: numOrNull(o.returningCommissionCents), extraCommissionCents: numOrNull(o.extraCommissionCents),
+      salesBucket: numOrNull(o.salesBucket), reviewsBucket: numOrNull(o.reviewsBucket), rating: numOrNull(o.rating),
+      score: o.score, factors: factorsOf((o.factors ?? null) as Prisma.JsonValue), aiReason: strOrNull(o.aiReason), chosen: o.chosen === true,
+    }];
+  });
+}
+
+/** Grava o ranking só com a lista fechada de campos (nada além do que a tela mostra). */
+export function rankingToData(r: OfferHuntRankingItem[] | null): Prisma.InputJsonValue | typeof Prisma.DbNull {
+  if (r === null) return Prisma.DbNull;
+  return r.map((i) => ({
+    goodsId: i.goodsId, title: i.title, imageUrl: i.imageUrl, priceCents: i.priceCents, discountPercent: i.discountPercent,
+    commissionPercent: i.commissionPercent, commissionCents: i.commissionCents, returningCommissionPercent: i.returningCommissionPercent,
+    returningCommissionCents: i.returningCommissionCents, extraCommissionCents: i.extraCommissionCents, salesBucket: i.salesBucket,
+    reviewsBucket: i.reviewsBucket, rating: i.rating, score: i.score,
+    factors: i.factors.map((f) => ({ key: f.key, points: f.points, max: f.max })), aiReason: i.aiReason, chosen: i.chosen,
+  })) as Prisma.InputJsonValue;
+}
+
+/** Grava `rejectedBy`: objeto vazio também vira `{}` (execução contou e nada barrou); null = SQL NULL. */
+export function rejectionsToData(r: HuntRejectionCounts | null): Prisma.InputJsonValue | typeof Prisma.DbNull {
+  return r === null ? Prisma.DbNull : ({ ...r } as Prisma.InputJsonValue);
+}
+
 export class PrismaOfferHuntMapper {
   static huntToDomain(raw: PrismaOfferHunt): OfferHunt {
     return {
@@ -46,6 +96,7 @@ export class PrismaOfferHuntMapper {
         maxPriceCents: raw.maxPriceCents,
         minDiscountPct: raw.minDiscountPercent,
         minCommissionPct: num(raw.minCommissionPercent),
+        commissionOperator: raw.minCommissionPercent === null ? null : (raw.commissionOperator ?? 'GTE'),
         minCommissionCents: raw.minCommissionCents,
         minRating: num(raw.minRating),
         minSales: raw.minSalesBucket,
@@ -83,6 +134,7 @@ export class PrismaOfferHuntMapper {
       out.maxPriceCents = f.maxPriceCents ?? null;
       out.minDiscountPercent = f.minDiscountPct ?? null;
       out.minCommissionPercent = dec(f.minCommissionPct);
+      out.commissionOperator = f.minCommissionPct == null ? null : (f.commissionOperator ?? 'GTE');
       out.minCommissionCents = f.minCommissionCents ?? null;
       out.minRating = dec(f.minRating);
       out.minSalesBucket = f.minSales ?? null;
@@ -109,6 +161,8 @@ export class PrismaOfferHuntMapper {
       sentCount: raw.sentCount,
       aiUsed: raw.aiUsed,
       aiFallback: raw.aiFallback,
+      rejectedBy: rejectionsOf(raw.rejectedBy),
+      ranking: rankingOf(raw.ranking),
       errorCode: raw.errorCode,
       startedAt: raw.startedAt,
       finishedAt: raw.finishedAt,
@@ -143,6 +197,9 @@ export class PrismaOfferHuntMapper {
       status: raw.status,
       failureReason: raw.failureReason,
       offerId: raw.offerId,
+      resendCount: raw.resendCount,
+      lastResentAt: raw.lastResentAt,
+      delivery: null,
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
     };

@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Alert, Box, Button, Chip, CircularProgress, Collapse, Stack, Tooltip, Typography } from '@mui/material';
-import { Check, ChevronDown, ChevronUp, PackageSearch, RotateCcw, Star, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, PackageSearch, RotateCcw, Send, Star, Users, X } from 'lucide-react';
 import { AppIcon, ConfirmDialog, EmptyState } from '@/components';
 import { Blurred, useBlur } from '@/features/privacy';
-import type { HuntFind, OfferHuntFindStatus } from '../../types';
+import type { HuntFind } from '../../types';
+import { findResendState, findSentAtLabel, findStatusChip } from '../../findDelivery';
 import { offerHunterStrings as t } from '../../strings';
 import { formatCents, formatDecimal, formatRating } from '../../format';
 import { ProductThumb } from '../ProductThumb';
@@ -12,11 +13,8 @@ import { ScoreBar } from '../ScoreBar';
 const f = t.finds;
 const d = t.detail;
 
-type Decision = 'approve' | 'dismiss' | 'resend';
-
-const STATUS_COLOR: Record<OfferHuntFindStatus, 'default' | 'success' | 'error' | 'warning' | 'info'> = {
-  PENDING_REVIEW: 'warning', APPROVED: 'info', DISMISSED: 'default', SENT: 'success', FAILED: 'error',
-};
+/** `resend` = nova tentativa de achado FAILED sem oferta (aprovar de novo); `redeliver` = reenvio de achado já entregue. */
+type Decision = 'approve' | 'dismiss' | 'resend' | 'redeliver';
 
 export interface HuntFindsTabProps {
   items: HuntFind[];
@@ -32,14 +30,25 @@ export interface HuntFindsTabProps {
   /** Aprovar (PENDING_REVIEW) ou reenviar (FAILED): o servidor usa o mesmo caminho. */
   onApprove: (findId: string) => Promise<unknown>;
   onDismiss: (findId: string) => Promise<unknown>;
+  /** Reenvio de achado já entregue (`POST /finds/:id/resend`). */
+  onRedeliver: (findId: string) => Promise<unknown>;
+  /** Nome do grupo de destino atual (texto da confirmação do reenvio); null = desconhecido. */
+  destinationGroupName: string | null;
 }
 
 const pct = (n: number | null) => (n == null ? null : `${formatDecimal(n)}%`);
 const commissionText = (p: number | null, c: number | null) => [pct(p), formatCents(c)].filter(Boolean).join(' · ') || d.noValue;
 
-/** Achados com aprovar/dispensar (modo revisão), reenviar quando falhou e "carregar mais" pelo cursor. */
+/**
+ * Achados com aprovar/dispensar (modo revisão), nova tentativa quando falhou, reenvio do já entregue, envio real
+ * (status do disparo, grupo e sessão) e "carregar mais" pelo cursor.
+ */
 export function HuntFindsTab(props: HuntFindsTabProps) {
-  const { items, loading, loadingMore, hasMore, errorCode, busyFindId, openFindId, onToggleOpen, onLoadMore, onReload, onApprove, onDismiss } = props;
+  const {
+    items, loading, loadingMore, hasMore, errorCode, busyFindId, openFindId, onToggleOpen, onLoadMore, onReload, onApprove, onDismiss,
+    onRedeliver, destinationGroupName,
+  } = props;
+  const blurGroup = useBlur('offerHunter.groupNames');
   const [confirm, setConfirm] = useState<{ id: string; action: Decision } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -60,12 +69,13 @@ export function HuntFindsTab(props: HuntFindsTabProps) {
     setNotice(null);
     try {
       if (action === 'dismiss') await onDismiss(id);
+      else if (action === 'redeliver') await onRedeliver(id);
       else await onApprove(id);
-      setNotice(action === 'dismiss' ? f.dismissed : f.approved);
+      setNotice(action === 'dismiss' ? f.dismissed : action === 'redeliver' ? f.resent : f.approved);
     } catch (err) {
       const code = (err as { code?: unknown } | null)?.code;
       setActionError((typeof code === 'string' && t.errors[code]) || t.errors.generic);
-      if (code === 'OFFER_HUNT_FIND_INVALID_STATE') onReload();
+      if (code === 'OFFER_HUNT_FIND_INVALID_STATE' || code === 'OFFER_HUNT_RESEND_PENDING') onReload();
     }
   };
 
@@ -73,6 +83,8 @@ export function HuntFindsTab(props: HuntFindsTabProps) {
     approve: { title: d.approveTitle, text: d.approveText, label: f.approve },
     resend: { title: d.resendTitle, text: d.approveText, label: d.resend },
     dismiss: { title: d.dismissTitle, text: d.dismissText, label: f.dismiss },
+    // Nome do grupo só sai no texto sem a flag de borrar
+    redeliver: { title: f.resendTitle, text: f.resendText(blurGroup ? null : destinationGroupName), label: f.resend },
   }[confirm.action];
 
   return (
@@ -118,6 +130,11 @@ function FindItem({ item, open, busy, onToggle, onAsk }: {
   item: HuntFind; open: boolean; busy: boolean; onToggle: () => void; onAsk: (a: Decision) => void;
 }) {
   const blur = useBlur('offerHunter.productText');
+  const blurGroup = useBlur('offerHunter.groupNames');
+  const blurSession = useBlur('offerHunter.sessionName');
+  const chip = findStatusChip(item);
+  const sentAt = findSentAtLabel(item);
+  const resendState = findResendState(item);
   const price = formatCents(item.priceCents);
   const original = item.originalPriceCents != null && item.originalPriceCents > (item.priceCents ?? 0) ? formatCents(item.originalPriceCents) : null;
   const facts: string[] = [
@@ -168,7 +185,13 @@ function FindItem({ item, open, busy, onToggle, onAsk }: {
       </Box>
 
       <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, mt: 1.25 }}>
-        <Chip size="small" color={STATUS_COLOR[item.status]} label={t.findStatus[item.status]} />
+        <Chip size="small" color={chip.color} label={chip.label} />
+        {item.destination?.groupName && (
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
+            <AppIcon icon={Users} size="inline" />
+            <Blurred when={blurGroup} radius={5} inline>{item.destination.groupName}</Blurred>
+          </Typography>
+        )}
         <Button
           size="small"
           color="inherit"
@@ -191,9 +214,18 @@ function FindItem({ item, open, busy, onToggle, onAsk }: {
             </Tooltip>
           </>
         )}
-        {item.status === 'FAILED' && (
+        {item.status === 'FAILED' && !item.offerId && (
           <Tooltip title={d.resendTooltip} arrow describeChild>
             <Button size="small" variant="outlined" disabled={busy} onClick={() => onAsk('resend')} startIcon={<AppIcon icon={RotateCcw} size="sm" />}>{d.resend}</Button>
+          </Tooltip>
+        )}
+        {resendState !== 'hidden' && (
+          <Tooltip title={resendState === 'pending' ? f.resendPendingTooltip : f.resendTooltip} arrow describeChild enterTouchDelay={0}>
+            <span>
+              <Button size="small" variant="outlined" disabled={busy || resendState === 'pending'} onClick={() => onAsk('redeliver')} startIcon={<AppIcon icon={Send} size="sm" />}>
+                {f.resend}
+              </Button>
+            </span>
           </Tooltip>
         )}
       </Box>
@@ -205,6 +237,24 @@ function FindItem({ item, open, busy, onToggle, onAsk }: {
               <Box component="span" sx={{ fontWeight: 600 }}>{`${f.aiReason}: `}</Box>
               <Blurred when={blur} radius={5} inline>{item.aiReason}</Blurred>
             </Typography>
+          )}
+          {(item.destination || sentAt || item.resendCount > 0) && (
+            <Box sx={{ mb: 1, display: 'flex', flexWrap: 'wrap', columnGap: 1.5, rowGap: 0.25 }} data-testid="find-delivery">
+              {item.destination?.groupName && (
+                <Typography variant="body2">
+                  <Box component="span" sx={{ fontWeight: 600 }}>{`${f.destinationGroup}: `}</Box>
+                  <Blurred when={blurGroup} radius={5} inline>{item.destination.groupName}</Blurred>
+                </Typography>
+              )}
+              {item.destination?.sessionName && (
+                <Typography variant="body2">
+                  <Box component="span" sx={{ fontWeight: 600 }}>{`${f.destinationSession}: `}</Box>
+                  <Blurred when={blurSession} radius={5} inline>{item.destination.sessionName}</Blurred>
+                </Typography>
+              )}
+              {sentAt && <Typography variant="body2" color="text.secondary">{sentAt}</Typography>}
+              {item.resendCount > 0 && <Typography variant="body2" color="text.secondary">{f.resendCount(item.resendCount)}</Typography>}
+            </Box>
           )}
           {item.status === 'FAILED' && item.failureReason && (
             <Typography variant="body2" color="error" sx={{ mb: 1 }}>

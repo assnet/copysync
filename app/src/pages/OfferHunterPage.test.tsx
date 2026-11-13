@@ -29,7 +29,7 @@ const options = (gates: Partial<HuntGates> = {}): HuntOptions => ({
 const hunt = (id: string, over: Partial<Hunt> = {}): Hunt => ({
   id, name: `Caçada ${id}`, status: 'ACTIVE', pauseReason: null, sort: 'RECOMMENDED', categoryId: null, commissionBand: null,
   keyword: null, filters: {
-    minPriceCents: null, maxPriceCents: null, minDiscountPct: null, minCommissionPct: null, minCommissionCents: null,
+    minPriceCents: null, maxPriceCents: null, minDiscountPct: null, minCommissionPct: null, commissionOperator: null, minCommissionCents: null,
     minRating: null, minSales: null, minReviews: null, onlyWithExtra: null, endsWithinDays: null,
   },
   aiEnabled: true, topN: 3, repeatAfterDays: 7, deliveryMode: 'REVIEW', intervalMinutes: 60, windowStartMinute: 0,

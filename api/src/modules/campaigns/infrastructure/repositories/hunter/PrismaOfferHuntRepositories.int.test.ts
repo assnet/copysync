@@ -30,6 +30,13 @@ const def = (tenantId: string, patch: Partial<CreateOfferHuntInput> = {}): Creat
   nextRunAt: new Date('2026-11-12T10:00:00.000Z'), ...patch,
 });
 
+const RANK_ITEM = {
+  goodsId: '123456', title: 'Vestido', imageUrl: 'https://img.ltwebstatic.com/a.jpg', priceCents: 5990, discountPercent: 40,
+  commissionPercent: 15.5, commissionCents: 928, returningCommissionPercent: 4.9, returningCommissionCents: 293,
+  extraCommissionCents: 0, salesBucket: 1000, reviewsBucket: 500, rating: 4.8, score: 81.5,
+  factors: [{ key: 'commission' as const, points: 30, max: 40 }], aiReason: null, chosen: true,
+};
+
 const find = (goodsId: string, huntId: string | null): NewOfferHuntFind => ({
   huntId, runId: null, status: 'PENDING_REVIEW', goodsId, skcCode: null, activityId: null, title: 'Item', imageUrl: 'https://img.ltwebstatic.com/i.jpg', priceCents: 1000,
   originalPriceCents: null, discountPercent: 10, commissionPercent: 15.25, commissionCents: 150, returningCommissionPercent: null,
@@ -57,6 +64,11 @@ describe('PrismaOfferHuntRepository', () => {
     expect(h).toMatchObject({ sort: 'BEST_SELLING', commissionBand: 'ABOVE_15', filters: { minCommissionPct: 15.5, minRating: 4.2, onlyWithExtra: true } });
     const raw = await prisma.offerHunt.findUniqueOrThrow({ where: { id: h.id } });
     expect([raw.sort, raw.commissionBand]).toEqual([12, 4]);
+    // Operador da comissão: ausente grava GTE; GT/LT ida e volta; sem % → null
+    expect(raw.commissionOperator).toBe('GTE');
+    expect((await hunts.update(t, h.id, { filters: { minCommissionPct: 20, commissionOperator: 'GT' } }))!.filters).toMatchObject({ minCommissionPct: 20, commissionOperator: 'GT' });
+    expect((await hunts.update(t, h.id, { filters: {} }))!.filters.commissionOperator).toBeNull();
+    expect((await prisma.offerHunt.findUniqueOrThrow({ where: { id: h.id } })).commissionOperator).toBeNull();
     await hunts.createWithinLimit(def(t), 2);
     expect(await hunts.createWithinLimit(def(t), 2)).toBeNull();
     expect(await hunts.update('other-tenant', h.id, { name: 'x' })).toBeNull();
@@ -188,6 +200,33 @@ describe('PrismaOfferHuntFindRepository — teto diário atômico', () => {
   });
 });
 
+describe('PrismaOfferHuntFindRepository — envio real e reenvio', () => {
+  it('findById/listByHunt trazem status do disparo, hora, grupo e sessão (só do tenant); claimResend é CAS', async () => {
+    const t = await tenant('delivery');
+    const h = (await hunts.createWithinLimit(def(t), 5))!;
+    const s = await prisma.session.create({ data: { tenantId: t, name: 'Loja' } });
+    const g = await prisma.chatConversation.create({ data: { tenantId: t, sessionId: s.id, isGroup: true, groupJid: '9', groupName: 'Ofertas VIP', externalChatId: '9@g.us' } });
+    const offer = await prisma.offer.create({ data: { tenantId: t, provider: 'SHEIN', sourceUrl: 'https://x', affiliateUrl: 'https://y', text: 't', origin: 'HUNTER' } });
+    const [f] = await finds.insertWithinDailyLimit(t, [find('7001', h.id)], { since: SINCE, limit: 10 });
+    expect(f!.delivery).toBeNull();
+    await prisma.offerHuntFind.update({ where: { id: f!.id }, data: { status: 'SENT', offerId: offer.id } });
+    await prisma.offerDispatch.create({ data: { tenantId: t, offerId: offer.id, conversationId: g.id, sessionId: s.id, status: 'QUEUED', notBefore: new Date() } });
+    expect((await finds.findById(t, f!.id))!.delivery).toEqual({ dispatchStatus: 'QUEUED', sentAt: null, groupName: 'Ofertas VIP', sessionName: 'Loja' });
+    await prisma.offerDispatch.updateMany({ where: { offerId: offer.id }, data: { status: 'SENT' } });
+    const [listed] = await finds.listByHunt(t, h.id, { limit: 5 });
+    expect(listed!.delivery).toMatchObject({ dispatchStatus: 'SENT', sentAt: expect.any(Date) });
+    expect(await finds.findById('other-tenant', f!.id)).toBeNull();
+
+    const now = new Date('2026-11-12T12:00:00.000Z');
+    const r = await Promise.all([finds.claimResend(t, f!.id, offer.id, now, 60_000), findsB.claimResend(t, f!.id, offer.id, now, 60_000)]);
+    expect(r.filter(Boolean)).toHaveLength(1);
+    expect(await finds.claimResend(t, f!.id, 'outra-oferta', new Date(now.getTime() + 120_000), 60_000)).toBe(false);
+    const offer2 = await prisma.offer.create({ data: { tenantId: t, provider: 'SHEIN', sourceUrl: 'https://x', affiliateUrl: 'https://y', text: 't', origin: 'HUNTER' } });
+    await finds.recordResend(t, f!.id, offer2.id);
+    expect(await finds.findById(t, f!.id)).toMatchObject({ offerId: offer2.id, status: 'SENT', resendCount: 1, lastResentAt: now, delivery: null });
+  });
+});
+
 describe('PrismaOfferHuntRunRepository — guarda de execuções/dia', () => {
   it('SKIPPED não conta; 2 aberturas simultâneas com 1 vaga → 1 passa; fecha só RUNNING', async () => {
     const t = await tenant('runs');
@@ -199,11 +238,18 @@ describe('PrismaOfferHuntRunRepository — guarda de execuções/dia', () => {
     const r = await Promise.all([runs.startWithinDailyLimit(base, { since: SINCE, limit: 2 }), runsB.startWithinDailyLimit(base, { since: SINCE, limit: 2 })]);
     expect(r.filter(Boolean)).toHaveLength(1);
     expect(await runs.countStartedSince(t, SINCE)).toBe(2);
-    const counters = { seenCount: 30, matchedCount: 5, chosenCount: 2, sentCount: 0, aiUsed: true, aiFallback: false };
+    const counters = { seenCount: 30, matchedCount: 5, chosenCount: 2, sentCount: 0, aiUsed: true, aiFallback: false, rejectedBy: { minSales: 21, repeated: 2 },
+      ranking: [{ ...RANK_ITEM }] };
     await runs.finish(t, first.id, { ...counters, status: 'SUCCEEDED', errorCode: null, finishedAt: new Date() });
     await runs.finish(t, first.id, { ...counters, status: 'FAILED', errorCode: 'X', finishedAt: new Date() });
     await runs.incrementSent(t, first.id);
     expect(await prisma.offerHuntRun.findUniqueOrThrow({ where: { id: first.id } })).toMatchObject({ status: 'SUCCEEDED', seenCount: 30, sentCount: 1 });
+    // rejectedBy: JSON gravado e lido pelo mapper; execução pulada fica null
+    const listed = await runs.listByHunt(t, h.id, { limit: 10 });
+    expect(listed.find((x) => x.id === first.id)!.rejectedBy).toEqual({ minSales: 21, repeated: 2 });
+    expect(listed.find((x) => x.id === first.id)!.ranking).toEqual([RANK_ITEM]);
+    expect(listed.find((x) => x.status === 'SKIPPED')!.ranking).toBeNull();
+    expect(listed.find((x) => x.status === 'SKIPPED')!.rejectedBy).toBeNull();
   });
 });
 

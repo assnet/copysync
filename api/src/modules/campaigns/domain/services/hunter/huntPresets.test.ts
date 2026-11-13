@@ -13,8 +13,8 @@ describe('huntPresets', () => {
 
   it('valores esperados', () => {
     expect(huntPreset('TOP_COMMISSION')).toEqual({
-      source: { sort: 'RECOMMENDED', commissionBand: 'ABOVE_15' },
-      local: { minCommissionPct: 15 },
+      source: { sort: 'RECOMMENDED', commissionBand: 'ANY' },
+      local: { minCommissionPct: 15, commissionOperator: 'GTE' },
     });
     expect(huntPreset('BEST_SELLERS').source.sort).toBe('BEST_SELLING');
     expect(huntPreset('BIGGEST_DISCOUNT').local.minDiscountPct).toBe(40);

@@ -1,7 +1,8 @@
 import { Alert, Box, Button, Chip, CircularProgress, FormControlLabel, Stack, Switch, Tooltip, Typography } from '@mui/material';
 import { Pencil, Play } from 'lucide-react';
 import { AppIcon } from '@/components';
-import type { Hunt, HuntGateKey } from '../../types';
+import type { Hunt, HuntGateKey, HuntOptions } from '../../types';
+import { HuntSummaryChips } from '../home/HuntSummaryChips';
 import { offerHunterStrings as t } from '../../strings';
 import { formatDateTime } from '../../format';
 
@@ -9,6 +10,8 @@ const d = t.detail;
 
 interface Props {
   hunt: Hunt;
+  /** Para o nome da predefinição/categoria nos chips; null = ainda carregando. */
+  options: HuntOptions | null;
   /** Primeiro portão fechado (sem plano, sem credencial…): trava ligar e rodar. */
   blockedBy: HuntGateKey | null;
   running: boolean;
@@ -18,8 +21,8 @@ interface Props {
   onEdit: () => void;
 }
 
-/** Nome, estado, liga/desliga, "Rodar agora" e "Editar". Pausa automática vira alerta. */
-export function HuntDetailHeader({ hunt, blockedBy, running, toggling, onToggle, onRun, onEdit }: Props) {
+/** Nome, estado, filtros ligados (chips), liga/desliga, "Rodar agora" e "Editar". Pausa automática vira alerta. */
+export function HuntDetailHeader({ hunt, options, blockedBy, running, toggling, onToggle, onRun, onEdit }: Props) {
   const active = hunt.status === 'ACTIVE';
   const gateText = blockedBy ? d.gatedTooltip(t.gates[blockedBy].title) : null;
   const autoPaused = hunt.status === 'PAUSED' && hunt.pauseReason && hunt.pauseReason !== 'USER';
@@ -50,6 +53,7 @@ export function HuntDetailHeader({ hunt, blockedBy, running, toggling, onToggle,
               lastRun ? `${t.list.lastRun}: ${lastRun}` : t.list.lastRunNever,
             ].join(' · ')}
           </Typography>
+          <Box sx={{ mt: 1 }}><HuntSummaryChips hunt={hunt} options={options} /></Box>
         </Box>
         <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
           {/* No celular o liga/desliga fica sozinho na linha e os dois botões juntos embaixo */}

@@ -12,11 +12,12 @@ Regras gerais da Shein (credencial `AT`, endpoints, aviso): [`afiliado-shein.md`
 OfferHuntSchedulerJob (worker, lease, flag) ─┐
 POST /api/offer-hunts/:id/run (manual) ──────┼─▶ RunOfferHuntUseCase
                                              │  1 portões (abaixo) ─ recusa manual = erro HTTP; agendada = pula/pausa
-                                             │  2 ISheinCatalogClient: ≤1 categoryRate + ≤3 páginas list/search
-                                             │  3 normaliza → HuntCandidate · filtros locais · scoreHuntCandidate
+                                             │  2 ISheinCatalogClient: ≤3 páginas list/search (sem categoryRate)
+                                             │  3 normaliza → HuntCandidate · filtros locais (conta recusas) · score
                                              │  4 tira repetidos (offer_hunt_finds, janela repeatAfterDays)
                                              │  5 IA opcional: top 15 → ids + motivo (falha → aiFallback)
                                              │  6 min(topN, saldo) → grava achados sob o teto (atômico)
+                                             │    + execução grava rejectedBy e ranking (até 15)
                                              │  7 REVIEW: PENDING_REVIEW · AUTO: APPROVED → HuntFindDelivery
                                              ▼
 HuntFindDelivery: Resolve(riskScope OFFER_HUNTER) → OfferTextComposer → EnqueueOffer(origin HUNTER)
@@ -56,7 +57,48 @@ Nota 0–100 = soma exata dos fatores (visíveis na tela). Pesos em `HUNT_SCORE_
 | Urgência 10 | `extraCommission` 6 (teto R$ 10) · `endingSoon` 4 (≤ 7 dias) |
 
 `sort` da Shein é só dica; a ordem que vale é esta nota. Filtros locais (`matchHuntFilters`) garantem preço,
-desconto, comissão %/R$, nota, vendas, avaliações, "só com extra" e "termina em até N dias".
+desconto, comissão de 1ª compra %/R$, nota, vendas, avaliações, "só com extra" e "termina em até N dias".
+
+## Filtro de comissão (1ª compra) e faixa da fonte
+
+- Um controle só: `filters.commissionOperator` (`GT` maior que · `GTE` igual ou maior que · `LT` menor que; enum
+  `HuntCommissionOperator`, coluna `commissionOperator`) + `filters.minCommissionPct` 0–50 (acima = 422 de campo).
+  Compara a comissão de **1ª compra** (cliente novo). Sem % → operador `null` ("qualquer comissão"); % sem operador →
+  `GTE` (compatível com cliente antigo). Painel: condição por extenso com símbolo + barra 0–50 com atalhos 5/10/15/20/30.
+- **Faixa da fonte nunca é usada**: `commRate`/`categoryRate` ("Taxa de Comissão Ret.") filtra a comissão de
+  **recompra** (ver [`afiliado-shein.md`](afiliado-shein.md)). `validateHuntDefinition` grava `commissionBand = ANY`
+  (o do corpo é ignorado), `RunOfferHuntUseCase` ignora a coluna até em caçada antiga e `GET /options` devolve
+  `commissionBands: []`. Migration `…100600` fez o backfill (`GTE` onde havia %, faixa → ANY).
+- Predefinição "Maior comissão" = `GTE 15` local, faixa ANY.
+
+## Por que "0 no filtro" (`rejectedBy`)
+
+`huntFilterRejections` (pura, ao lado de `matchHuntFilters`, mesmo passa/não passa) devolve **todas** as chaves que
+recusaram o candidato (dado ausente conta para a chave). A execução soma `{ chave: n }` + `repeated` e grava em
+`offer_hunt_runs.rejectedBy` (JSON, chaves = campos do filtro: `minSales`, `minReviews`, `minRating`,
+`minCommissionPct`…). Sai no `Run` e no `POST /:id/run`; `null` = execução antiga/sem fonte (painel não mostra
+nada). Painel (aba Execuções e resultado de "Rodar agora"): "0 no filtro: 21 por vendas, 14 por avaliações, 3 por
+nota" + "Afrouxe o filtro que mais barrou em Editar → Refino" (só quando nada passou e um filtro barrou). Um
+candidato pode contar em várias chaves.
+
+## Ranking, envio real e reenvio
+
+- **Ranking por execução**: `offer_hunt_runs.ranking` (JSON, até 15, lista fechada: goodsId, título, foto só
+  https `*.ltwebstatic.com`, preço, desconto, comissões 1ª compra/recompra/extra, vendas, avaliações, nota,
+  pontuação, fatores, motivo da IA, `chosen`; nunca link/token/memberId). Vai no `Run` da lista (15 itens cabem).
+  Aba Execuções: "Ver ranking" abre o `RankingTable`; antiga: "Ranking não guardado nesta execução."
+- **Envio real no achado**: `Find.dispatchStatus` (disparo mais recente da oferta atual: QUEUED/SENDING/SENT/FAILED/
+  SKIPPED/CANCELLED; null sem oferta), `sentAt` (só SENT) e `destination { groupName, sessionName }` (join
+  `offers → offer_dispatches → chat_conversations` + `sessions`, `tenantId` em todo filtro). O `SENT` do achado
+  continua = "entregue à fila"; a tela usa o disparo: "Na fila de envio" / "Enviado" (hora) / "Falhou ao enviar" /
+  "Não enviado". Grupo e sessão sob `Blurred` (`offerHunter.groupNames`/`sessionName`).
+- **Reenviar** (`POST /finds/:findId/resend`, `ResendHuntFindUseCase`): só achado com `offerId` (sem → 409
+  `OFFER_HUNT_RESEND_NOT_DELIVERED`, o caminho é aprovar); disparo anterior QUEUED/SENDING ou outro reenvio há
+  < 60 s (CAS em `lastResentAt`) → 409 `OFFER_HUNT_RESEND_PENDING`. `HuntFindDelivery.resend`: Resolve
+  `OFFER_HUNTER` (link regerado, preço/foto atuais) → texto → Enqueue `HUNTER` para o destino **atual**, `sourceKey`
+  `hunt:<findId>:r<epochMs>`. Portões: plano Shein + caçador (aqui), credencial e aceite (Resolve). **Não** consome
+  `offer_hunter_finds_per_day` nem a guarda de 24; não cria achado: troca `offerId`, `resendCount + 1`. `GET /settings`
+  devolve `groupName` (confirmação cita o grupo atual, omitido com a flag de borrar).
 
 ## IA (opcional por caçada)
 
@@ -131,6 +173,7 @@ Abrir ao público = **trocar a env**, sem deploy. O job roda toda caçada ativa 
 | `POST /:id/pause` · `/:id/resume` · `/:id/run` | pausa, retomada, "Testar agora" |
 | `GET /:id/runs` · `/:id/finds` | histórico com cursor assinado |
 | `POST /finds/:findId/approve` · `/dismiss` | aprovar (envia) ou dispensar |
+| `POST /finds/:findId/resend` | reenviar achado já entregue (preset `offerHuntRun`; não conta no teto) |
 
 Aceite: `POST /api/integrations/affiliate-credentials/:provider/risk-acceptance` com `scope: 'OFFER_HUNTER'`. Erros em
 `OfferHuntErrors.ts` (inclui `OFFER_HUNT_SOURCE_UNAVAILABLE` 503).
@@ -163,7 +206,9 @@ IP, o recurso para e volta ao dono.
 `20261114100000_add_offer_hunter_entitlements` (backfill `ON CONFLICT DO NOTHING`) ·
 `20261114100100_add_offer_origin_hunter` · `20261114100200_create_offer_hunter_tables` (`offer_hunts`,
 `offer_hunt_runs`, `offer_hunt_finds`, `offer_hunter_settings`, todas com `tenantId`) ·
-`20261114100300_add_risk_acceptance_scope` · `20261114100400_add_offer_hunt_find_image`. Só rodam na Render.
+`20261114100300_add_risk_acceptance_scope` · `20261114100400_add_offer_hunt_find_image` ·
+`20261114100500_add_offer_hunt_run_rejections` · `20261114100600_add_offer_hunt_commission_operator` (backfill) ·
+`20261114100700_add_offer_hunt_run_ranking` · `20261114100800_add_offer_hunt_find_resend`. Só rodam na Render.
 
 ## O que não fazer
 
@@ -177,6 +222,8 @@ IP, o recurso para e volta ao dono.
 - Mandar `AT`, link, `goodsId` ou dado do tenant à IA, ou logar `AT`/link/título.
 - Criar `Offer` fora do `EnqueueOfferUseCase`, devolver link colado ou usar `imageUrl` do achado na mensagem.
 - Mais de 1 grupo, `superAdminOnly` no menu, ou ligar o job fora da Render.
+- Usar `commRate`/`categoryRate` (filtra recompra) ou mostrar "faixa" na tela; reenviar com o `sourceKey` do achado
+  (o Enqueue devolveria a oferta antiga); contar reenvio no teto; tratar o `SENT` do achado como "enviado".
 
 ## Smoke manual (T20, pendente do dono)
 

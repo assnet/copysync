@@ -4,11 +4,11 @@
  * sem nome de marca (white label). O marketplace (SHEIN) é citado por ser a fonte das ofertas.
  */
 import type {
-  HuntCategorySourceStatus, HuntCommissionBand, HuntGateKey, HuntPreset, HuntScoreFactorKey, HuntSort,
+  HuntCategorySourceStatus, HuntCommissionOperator, HuntRejectionKey, HuntGateKey, HuntPreset, HuntScoreFactorKey, HuntSort,
   OfferHuntDeliveryMode, OfferHuntFindStatus, OfferHuntPauseReason, OfferHuntRunStatus, OfferHuntRunTrigger,
   OfferHuntStatus,
 } from './types';
-import { formatDecimal } from './format';
+import { formatDecimal, formatInteger, formatRating } from './format';
 
 /** Espelho de `OFFER_HUNTER_RISK_NOTICE_VERSION.SHEIN` (api/.../marketplaceRiskNotice.ts). Mudou o texto → sobe nos dois. */
 export const OFFER_HUNTER_RISK_NOTICE_VERSION = '2026-11-12';
@@ -130,7 +130,6 @@ export const offerHunterStrings = {
       category: 'Categoria',
       categoryAll: 'Todas as categorias',
       categoryLoading: 'Carregando categorias…',
-      commissionBand: 'Faixa de comissão',
       sort: 'Ordem da busca',
       sortHint: 'É uma preferência: a pontuação decide quais ofertas são escolhidas.',
       keyword: 'Palavra-chave',
@@ -145,6 +144,18 @@ export const offerHunterStrings = {
       priceAny: 'Qualquer preço',
       minDiscount: 'Desconto mínimo',
       minCommissionPct: 'Comissão mínima (%)',
+      commission: 'Comissão de 1ª compra',
+      commissionCondition: 'Condição da comissão de 1ª compra',
+      commissionAny: 'Qualquer comissão',
+      commissionOperators: {
+        GT: { label: 'Maior que', symbol: '>' },
+        GTE: { label: 'Igual ou maior que', symbol: '≥' },
+        LT: { label: 'Menor que', symbol: '<' },
+      } satisfies Record<HuntCommissionOperator, { label: string; symbol: string }>,
+      commissionPercent: 'Percentual da comissão de 1ª compra',
+      commissionShortcuts: 'Atalhos de percentual',
+      commissionShortcutAria: (n: number) => `Usar ${n}%`,
+      commissionAnyHint: 'Escolha uma condição para filtrar pelo percentual.',
       minCommissionValue: 'Comissão mínima (R$)',
       minRating: 'Nota mínima',
       minSales: 'Vendas mínimas',
@@ -200,14 +211,14 @@ export const offerHunterStrings = {
     /** Explicação curta dos campos (Tooltip do ícone de ajuda). */
     tips: {
       name: 'Um nome para você reconhecer a caçada na lista.',
-      preset: 'Um ponto de partida: preenche a faixa de comissão e os filtros. Você pode ajustar depois.',
+      preset: 'Um ponto de partida: preenche os filtros (como a comissão de 1ª compra). Você pode ajustar depois.',
       category: 'Só ofertas desta categoria da SHEIN. Vazio = todas.',
-      commissionBand: 'Faixa de comissão pedida à SHEIN na busca.',
       keyword: 'Palavra que precisa aparecer no título da oferta.',
       price: 'Ofertas fora da faixa ficam de fora. Nas pontas da barra, sem limite.',
       minDiscount: 'Desconto mínimo sobre o preço cheio.',
       minCommissionPct: 'Percentual mínimo de comissão por venda.',
-      minCommissionValue: 'Valor mínimo que você ganha por venda.',
+      commission: 'Percentual de comissão de 1ª compra (cliente novo na SHEIN). A condição decide se vale maior, igual ou menor. "Qualquer comissão" não filtra.',
+      minCommissionValue: 'Valor mínimo que você ganha na 1ª compra do cliente.',
       minRating: 'Nota média mínima, de 0 a 5.',
       minSales: 'A SHEIN informa vendas por faixa (ex.: 100+).',
       minReviews: 'Quantidade mínima de avaliações.',
@@ -254,7 +265,7 @@ export const offerHunterStrings = {
 
   /** Predefinições (`HUNT_PRESETS`). */
   presets: {
-    TOP_COMMISSION: { label: 'Maior comissão', hint: 'Comissão a partir de 15%.' },
+    TOP_COMMISSION: { label: 'Maior comissão', hint: 'Comissão de 1ª compra a partir de 15%.' },
     BEST_SELLERS: { label: 'Mais vendidos', hint: 'Pelo menos 100 vendas e nota 4 ou mais.' },
     BIGGEST_DISCOUNT: { label: 'Maior desconto', hint: 'Desconto a partir de 40%.' },
     NEW_ARRIVALS: { label: 'Novidades', hint: 'Os lançamentos mais recentes.' },
@@ -269,14 +280,6 @@ export const offerHunterStrings = {
     PRICE_DESC: 'Maior preço',
     BEST_SELLING: 'Mais vendidos',
   } satisfies Record<HuntSort, string>,
-
-  commissionBands: {
-    BELOW_5: '<5%',
-    FROM_5_TO_10: '5–10%',
-    FROM_10_TO_15: '10–15%',
-    ABOVE_15: '>15%',
-    ANY: 'Qualquer comissão',
-  } satisfies Record<HuntCommissionBand, string>,
 
   deliveryModes: {
     REVIEW: { label: 'Revisar antes', hint: 'As ofertas esperam a sua aprovação para ir ao grupo.' },
@@ -321,6 +324,24 @@ export const offerHunterStrings = {
     score: 'Pontuação',
     aiReason: 'Motivo da IA',
     failure: 'Motivo da falha',
+    /** Envio real (status do disparo da oferta). */
+    dispatch: {
+      queued: 'Na fila de envio',
+      sent: 'Enviado',
+      sentAt: (when: string) => `Enviado em ${when}`,
+      failed: 'Falhou ao enviar',
+      notSent: 'Não enviado',
+    },
+    destinationGroup: 'Grupo',
+    destinationSession: 'Sessão',
+    resend: 'Reenviar',
+    resendTooltip: 'Envia de novo ao grupo de destino atual, com link e preço atualizados. Não conta no limite do dia.',
+    resendPendingTooltip: 'Aguarde: o envio anterior desta oferta ainda está na fila.',
+    resendTitle: 'Reenviar esta oferta?',
+    resendText: (group: string | null) =>
+      `A oferta vai de novo para o grupo de destino atual${group ? ` "${group}"` : ''}, com link e preço atualizados. Não conta no limite do dia.`,
+    resent: 'Oferta reenviada: está na fila de envio.',
+    resendCount: (n: number) => `Reenviada ${n} ${plural(n, 'vez', 'vezes')}`,
   },
 
   findStatus: {
@@ -347,6 +368,9 @@ export const offerHunterStrings = {
     aiUsed: 'Com IA',
     aiFallback: 'IA indisponível, só pontuação',
     error: 'Motivo',
+    showRanking: 'Ver ranking',
+    hideRanking: 'Ocultar ranking',
+    rankingMissing: 'Ranking não guardado nesta execução.',
   },
 
   runStatus: {
@@ -397,6 +421,27 @@ export const offerHunterStrings = {
     duration: 'Duração',
     stillRunning: 'Em andamento',
     unknownError: (code: string) => `Código ${code}`,
+  },
+
+  /** Por que "0 no filtro": recusas por filtro gravadas em cada execução (`rejectedBy`). */
+  rejections: {
+    keys: {
+      minPriceCents: 'preço mínimo',
+      maxPriceCents: 'preço máximo',
+      minDiscountPct: 'desconto',
+      minCommissionPct: 'comissão de 1ª compra',
+      minCommissionCents: 'comissão de 1ª compra em R$',
+      minRating: 'nota',
+      minSales: 'vendas',
+      minReviews: 'avaliações',
+      onlyWithExtra: 'sem comissão extra',
+      endsWithinDays: 'prazo da campanha',
+      repeated: 'repetição',
+    } satisfies Record<HuntRejectionKey, string>,
+    item: (n: number, label: string) => `${n} por ${label}`,
+    line: (matched: number, parts: string[]) => `${matched} no filtro: ${parts.join(', ')}`,
+    hint: 'Afrouxe o filtro que mais barrou em Editar → Refino.',
+    tooltip: 'Uma oferta pode ser barrada por mais de um filtro, então a soma pode passar do total visto.',
   },
 
   /** Estados travados (`options.gates`), na ordem em que a tela deve cobrar. */
@@ -466,6 +511,8 @@ export const offerHunterStrings = {
     OFFER_HUNT_FIND_INVALID_STATE: 'Esse achado já foi revisado.',
     OFFER_HUNT_CURSOR_INVALID: 'A lista mudou. Recarregamos do início.',
     OFFER_HUNT_PAUSED: 'A caçada está pausada.',
+    OFFER_HUNT_RESEND_PENDING: 'O envio anterior desta oferta ainda está na fila. Tente de novo depois que ele sair.',
+    OFFER_HUNT_RESEND_NOT_DELIVERED: 'Esta oferta ainda não foi enviada. Use "Aprovar e enviar".',
     OFFER_HUNTER_UNAVAILABLE: 'O caçador não está disponível para a sua conta.',
     PLAN_FEATURE_UNAVAILABLE: 'O caçador não está liberado no seu plano.',
     MARKETPLACE_RISK_NOT_ACCEPTED: 'Aceite o aviso de risco do caçador para continuar.',
@@ -526,7 +573,7 @@ export const offerHunterStrings = {
     listLabel: 'Lista de caçadas',
     emptyCta: 'Criar a primeira caçada',
     emptySteps: [
-      'Você escolhe o que caçar: categoria, faixa de comissão, preço e desconto.',
+      'Você escolhe o que caçar: categoria, comissão de 1ª compra, preço e desconto.',
       'No horário definido, o caçador busca e dá uma pontuação a cada oferta.',
       'As melhores vão para o grupo de destino, com o seu link de afiliado.',
     ] as readonly string[],
@@ -545,6 +592,18 @@ export const offerHunterStrings = {
       (min && max ? `${min} a ${max}` : min ? `A partir de ${min}` : `Até ${max ?? ''}`),
     keyword: (k: string) => `"${k}"`,
     filtersLabel: 'Filtros da caçada',
+    /** Chips do resumo (cartão e cabeçalho do detalhe): curtos, explicação no Tooltip. */
+    chips: {
+      discount: (n: number) => `Desconto ≥ ${n}%`,
+      commission: (symbol: string, n: number) => `Comissão 1ª compra ${symbol} ${formatDecimal(n)}%`,
+      commissionTip: (label: string, n: number) => `Comissão de 1ª compra ${label.toLowerCase()} ${formatDecimal(n)}%.`,
+      commissionValue: (brl: string) => `Comissão 1ª compra ≥ ${brl}`,
+      rating: (n: number) => `Nota ≥ ${formatRating(n)}`,
+      sales: (n: number) => `Vendas ≥ ${formatInteger(n)}`,
+      reviews: (n: number) => `Avaliações ≥ ${formatInteger(n)}`,
+      onlyWithExtra: 'Só com extra',
+      endsWithin: (n: number) => `Termina em até ${n} ${plural(n, 'dia', 'dias')}`,
+    },
     nextRunOverdue: 'Próxima busca em instantes',
     /** `diffMs` = horário − agora no servidor (negativo = passado): "em 25 minutos", "há 2 horas". */
     relative: (diffMs: number) => {

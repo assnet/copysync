@@ -95,6 +95,7 @@ não contrato. `detailNew` é endpoint interno do painel de afiliados, sem docum
 | `pageSize` ignorado: sempre 10; página 2 não repete a 1; ≈ 30–34 KB por página | Mac e Render |
 | `sort` não muda o resultado (`12` = mesma ordem de `0`): é só dica, a ordem que vale é a pontuação local | curl do Mac |
 | `commRate` 1–5 → `did` distintos; **4 = ">15%" confirmado** na tela; 1 "<5%", 2 "5–10%", 3 "10–15%", 5 sem filtro **inferidos** pela ordem | tela do painel + curl |
+| `commRate`/`categoryRate` (rótulo "Taxa de Comissão Ret." na Shein) filtra a comissão de **RECOMPRA** (`percentPlatformCommissionOfOld`), não a de 1ª compra: faixa "5–10%" trouxe item com 1ª compra 20% e recompra 4,9%. **O caçador não usa** (sempre sem faixa); comissão é filtro local | dado real conferido pelo dono, 2026-11-12 |
 | Categoria (`cateId`) muda o resultado; busca por termo devolve itens com o termo | curl do Mac |
 
 **Não verificado**: duração real do `AT` além do cookie; se novo login/logout mata o token antigo; `detailNew` com

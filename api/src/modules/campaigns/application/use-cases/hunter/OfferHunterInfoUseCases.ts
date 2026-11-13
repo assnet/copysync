@@ -142,7 +142,8 @@ export class GetOfferHunterOptionsUseCase {
       categories,
       sourceStatus,
       sorts: HUNT_SORTS,
-      commissionBands: HUNT_COMMISSION_BANDS,
+      // Faixa da fonte agora é derivada do filtro de comissão: campo mantido vazio por compatibilidade
+      commissionBands: [],
       presets: HUNT_PRESETS.map((key) => ({ key, definition: huntPreset(key) })),
       limits: {
         huntsMax: HUNTER_LIMITS.huntsPerTenantMax,
@@ -169,21 +170,25 @@ export interface OfferHunterDestination {
   conversationId: string | null;
   /** Sessão ainda do tenant e grupo ainda da sessão (falso também quando não escolhido). */
   valid: boolean;
+  /** Nome do grupo conhecido pelo chat (confirmação do reenvio); null = sem nome ou inválido. */
+  groupName: string | null;
 }
 
 export class GetOfferHunterDestinationUseCase {
   constructor(private readonly deps: {
     settings: Pick<IOfferHunterSettingsRepository, 'get'>;
-    configs: Pick<IOfferGeneratorConfigRepository, 'findSession' | 'filterSessionGroups'>;
+    configs: Pick<IOfferGeneratorConfigRepository, 'findSession' | 'filterSessionGroups' | 'listSessionGroupConversations'>;
   }) {}
 
   async execute(tenantId: string): Promise<OfferHunterDestination> {
     const s = await this.deps.settings.get(tenantId);
     const sessionId = s?.sessionId ?? null;
     const conversationId = s?.conversationId ?? null;
-    if (!sessionId || !conversationId) return { sessionId, conversationId, valid: false };
+    if (!sessionId || !conversationId) return { sessionId, conversationId, valid: false, groupName: null };
     const session = await this.deps.configs.findSession(tenantId, sessionId);
     const groups = session ? await this.deps.configs.filterSessionGroups(tenantId, [sessionId], [conversationId]) : [];
-    return { sessionId, conversationId, valid: groups.length > 0 };
+    if (groups.length === 0) return { sessionId, conversationId, valid: false, groupName: null };
+    const known = await this.deps.configs.listSessionGroupConversations(tenantId, sessionId);
+    return { sessionId, conversationId, valid: true, groupName: known.find((g) => g.conversationId === conversationId)?.title ?? null };
   }
 }

@@ -5,7 +5,7 @@ import { Link as RouterLink, useParams } from 'react-router-dom';
 import { AppIcon } from '@/components';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { offerHunterErrorMessage, offerHunterStrings as t } from '@/features/offerHunter/strings';
-import { useHuntFinds, useHuntOptions, useHuntRuns, useOfferHunt } from '@/features/offerHunter/hooks';
+import { useHuntFinds, useHuntOptions, useHuntRuns, useHunterSettings, useOfferHunt } from '@/features/offerHunter/hooks';
 import { HuntDetailHeader } from '@/features/offerHunter/components/detail/HuntDetailHeader';
 import { HuntFindsTab } from '@/features/offerHunter/components/detail/HuntFindsTab';
 import { HuntRunsTab } from '@/features/offerHunter/components/detail/HuntRunsTab';
@@ -18,6 +18,8 @@ type DetailTab = 'finds' | 'runs';
 interface DetailUiState {
   tab: DetailTab;
   openFindId: string | null;
+  /** Execução com o ranking aberto (ausente em estado salvo antes = nenhuma). */
+  openRunId?: string | null;
   editing: boolean;
 }
 
@@ -33,6 +35,7 @@ export function OfferHunterDetailPage() {
   const { options, blockedBy } = useHuntOptions();
   const finds = useHuntFinds(huntId);
   const runs = useHuntRuns(huntId);
+  const { settings } = useHunterSettings();
   const [runError, setRunError] = useState<unknown>(null);
   const [toggling, setToggling] = useState(false);
   const [toast, setToast] = useState<{ text: string; error?: boolean } | null>(null);
@@ -85,6 +88,7 @@ export function OfferHunterDetailPage() {
       {back}
       <HuntDetailHeader
         hunt={hunt}
+        options={options}
         blockedBy={blockedBy}
         running={running}
         toggling={toggling}
@@ -130,11 +134,17 @@ export function OfferHunterDetailPage() {
             onReload={() => void finds.reload()}
             onApprove={finds.approve}
             onDismiss={finds.dismiss}
+            onRedeliver={finds.resend}
+            destinationGroupName={settings?.groupName ?? null}
           />
         </Box>
       ) : (
         <Box role="tabpanel" id="hunt-panel-runs" aria-labelledby="hunt-tab-runs">
-          <HuntRunsTab runs={runs} />
+          <HuntRunsTab
+            runs={runs}
+            openRunId={ui.openRunId ?? null}
+            onToggleRun={(id) => setUi((s) => ({ ...s, openRunId: s.openRunId === id ? null : id }))}
+          />
         </Box>
       )}
 

@@ -4,9 +4,9 @@ export const huntOptions = (over: Partial<HuntOptions> = {}): HuntOptions => ({
   categories: [{ categoryId: 'c1', name: 'Vestidos' }],
   sourceStatus: 'OK',
   sorts: ['RECOMMENDED', 'BEST_SELLING'],
-  commissionBands: ['BELOW_5', 'FROM_5_TO_10', 'FROM_10_TO_15', 'ABOVE_15', 'ANY'],
+  commissionBands: [],
   presets: [
-    { key: 'TOP_COMMISSION', definition: { source: { sort: 'RECOMMENDED', commissionBand: 'ABOVE_15' }, local: { minCommissionPct: 15 } } },
+    { key: 'TOP_COMMISSION', definition: { source: { sort: 'RECOMMENDED', commissionBand: 'ANY' }, local: { minCommissionPct: 15, commissionOperator: 'GTE' } } },
     { key: 'BEST_SELLERS', definition: { source: { sort: 'BEST_SELLING', commissionBand: 'ANY' }, local: { minSales: 100, minRating: 4 } } },
     { key: 'CUSTOM', definition: { source: { sort: 'RECOMMENDED', commissionBand: 'ANY' }, local: {} } },
   ],
@@ -22,7 +22,7 @@ export const hunt = (over: Partial<Hunt> = {}): Hunt => ({
   id: 'h1', name: 'Moda', status: 'ACTIVE', pauseReason: null, sort: 'RECOMMENDED', categoryId: null, commissionBand: 'ANY',
   keyword: null,
   filters: {
-    minPriceCents: null, maxPriceCents: null, minDiscountPct: null, minCommissionPct: null, minCommissionCents: null,
+    minPriceCents: null, maxPriceCents: null, minDiscountPct: null, minCommissionPct: null, commissionOperator: null, minCommissionCents: null,
     minRating: null, minSales: null, minReviews: null, onlyWithExtra: null, endsWithinDays: null,
   },
   aiEnabled: false, topN: 2, repeatAfterDays: 7, deliveryMode: 'REVIEW', intervalMinutes: 60, windowStartMinute: 0,
@@ -35,5 +35,6 @@ export const huntFind = (id: string, over: Partial<HuntFind> = {}): HuntFind => 
   originalPriceCents: 3990, discountPercent: 50, commissionPercent: 10, commissionCents: 199,
   returningCommissionPercent: 5, returningCommissionCents: 99, extraCommissionCents: null, salesBucket: 100,
   reviewsBucket: null, rating: 4.5, score: 72.5, factors: [{ key: 'commission', points: 20, max: 30 }], aiReason: null,
-  failureReason: null, offerId: null, createdAt: '2026-11-12T10:00:00.000Z', ...over,
+  failureReason: null, offerId: null, dispatchStatus: null, sentAt: null, destination: null, resendCount: 0, lastResentAt: null,
+  createdAt: '2026-11-12T10:00:00.000Z', ...over,
 });

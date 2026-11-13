@@ -1,10 +1,12 @@
-import { Alert, Box, Button, Chip, CircularProgress, Stack, Typography } from '@mui/material';
-import { History } from 'lucide-react';
+import { Alert, Box, Button, Chip, CircularProgress, Collapse, Stack, Typography } from '@mui/material';
+import { ChevronDown, ChevronUp, History } from 'lucide-react';
 import { AppIcon, EmptyState } from '@/components';
 import type { HuntPagedList } from '../../hooks';
 import type { HuntRun, OfferHuntRunStatus } from '../../types';
 import { offerHunterStrings as t } from '../../strings';
 import { formatDateTime } from '../../format';
+import { RejectionNote } from '../RejectionNote';
+import { RankingTable } from '../RankingTable';
 
 const r = t.runs;
 const d = t.detail;
@@ -13,8 +15,15 @@ const STATUS_COLOR: Record<OfferHuntRunStatus, 'default' | 'success' | 'error' |
   RUNNING: 'info', SUCCEEDED: 'success', FAILED: 'error', SKIPPED: 'default',
 };
 
-/** Histórico de execuções por cursor: gatilho, estado, contadores, IA e horários. */
-export function HuntRunsTab({ runs }: { runs: HuntPagedList<HuntRun> }) {
+interface Props {
+  runs: HuntPagedList<HuntRun>;
+  /** Execução com o ranking aberto (persistido pela página). */
+  openRunId: string | null;
+  onToggleRun: (runId: string) => void;
+}
+
+/** Histórico de execuções por cursor: gatilho, estado, contadores, recusas por filtro, IA, horários e ranking guardado. */
+export function HuntRunsTab({ runs, openRunId, onToggleRun }: Props) {
   if (runs.loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={28} /></Box>;
   if (runs.errorCode && runs.items.length === 0) {
     return <Alert severity="error" action={<Button color="inherit" size="small" onClick={() => void runs.reload()}>{t.page.retry}</Button>}>{d.listError}</Alert>;
@@ -26,6 +35,8 @@ export function HuntRunsTab({ runs }: { runs: HuntPagedList<HuntRun> }) {
       <Stack component="ul" aria-label={d.runsListLabel} spacing={1} sx={{ m: 0, p: 0, listStyle: 'none' }}>
         {runs.items.map((run) => {
           const started = formatDateTime(run.startedAt);
+          const open = openRunId === run.id;
+          const rankingId = `run-${run.id}-ranking`;
           const finished = formatDateTime(run.finishedAt);
           return (
             <Box component="li" key={run.id} data-testid="hunt-run" sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 1.5 }}>
@@ -41,10 +52,33 @@ export function HuntRunsTab({ runs }: { runs: HuntPagedList<HuntRun> }) {
               <Typography variant="body2" sx={{ mt: 1, fontVariantNumeric: 'tabular-nums' }}>
                 {r.counts(run.seenCount, run.matchedCount, run.chosenCount, run.sentCount)}
               </Typography>
+              <Box sx={{ mt: 0.5 }}><RejectionNote rejectedBy={run.rejectedBy} matchedCount={run.matchedCount} /></Box>
               {run.errorCode && (
                 <Typography variant="caption" color="error" component="p" sx={{ mt: 0.5 }}>
                   {`${r.error}: ${t.errors[run.errorCode] ?? d.unknownError(run.errorCode)}`}
                 </Typography>
+              )}
+              {run.status !== 'SKIPPED' && (
+                <>
+                  <Button
+                    size="small"
+                    color="inherit"
+                    onClick={() => onToggleRun(run.id)}
+                    aria-expanded={open}
+                    aria-controls={rankingId}
+                    endIcon={<AppIcon icon={open ? ChevronUp : ChevronDown} size="sm" />}
+                    sx={{ mt: 0.5, ml: -0.5 }}
+                  >
+                    {open ? r.hideRanking : r.showRanking}
+                  </Button>
+                  <Collapse in={open} unmountOnExit>
+                    <Box id={rankingId} sx={{ mt: 1 }}>
+                      {run.ranking ? <RankingTable items={run.ranking} /> : (
+                        <Typography variant="body2" color="text.secondary">{r.rankingMissing}</Typography>
+                      )}
+                    </Box>
+                  </Collapse>
+                </>
               )}
             </Box>
           );

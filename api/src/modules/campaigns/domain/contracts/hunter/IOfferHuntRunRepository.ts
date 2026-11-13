@@ -1,4 +1,4 @@
-import type { OfferHuntRun, OfferHuntRunCounters, OfferHuntRunTrigger } from '../../hunter/OfferHunt';
+import type { OfferHuntRankingItem, OfferHuntRun, OfferHuntRunCounters, OfferHuntRunTrigger } from '../../hunter/OfferHunt';
 
 export interface StartOfferHuntRunInput {
   tenantId: string;
@@ -7,7 +7,9 @@ export interface StartOfferHuntRunInput {
   startedAt: Date;
 }
 
-export interface FinishOfferHuntRunInput extends OfferHuntRunCounters {
+export interface FinishOfferHuntRunInput extends Omit<OfferHuntRunCounters, 'ranking'> {
+  /** Ranking da execução (até 15); null = não chegou a montar. */
+  ranking: OfferHuntRankingItem[] | null;
   status: 'SUCCEEDED' | 'FAILED';
   errorCode: string | null;
   finishedAt: Date;

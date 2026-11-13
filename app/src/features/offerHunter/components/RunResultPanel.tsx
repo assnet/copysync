@@ -4,6 +4,7 @@ import { AppIcon } from '@/components';
 import type { HuntRunResult } from '../types';
 import { offerHunterErrorMessage, offerHunterStrings as t } from '../strings';
 import { RankingTable } from './RankingTable';
+import { RejectionNote } from './RejectionNote';
 
 interface Props {
   title: string;
@@ -59,6 +60,7 @@ export function RunResultPanel({ title, running, result, error, onClose }: Props
             <Chip size="small" variant="outlined" label={test.remainingToday(result.remainingToday)} />
             {result.aiUsed && !result.aiFallback && <Chip size="small" variant="outlined" color="primary" label={test.aiUsed} />}
           </Box>
+          <RejectionNote rejectedBy={result.rejectedBy} matchedCount={result.matchedCount} />
           {result.aiFallback && <Alert severity="info">{test.aiFallback}</Alert>}
           <RankingTable items={result.ranking} />
         </Stack>

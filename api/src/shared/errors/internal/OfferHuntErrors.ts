@@ -65,3 +65,17 @@ export class OfferHuntCursorInvalidError extends AppError {
     super('OFFER_HUNT_CURSOR_INVALID', 'Offer hunt page cursor is invalid or expired, reload the list', 400, { field: 'cursor' });
   }
 }
+
+/** Reenvio de achado que nunca teve oferta (pendente/dispensado): o caminho é aprovar. */
+export class OfferHuntResendNotDeliveredError extends AppError {
+  constructor(status: string) {
+    super('OFFER_HUNT_RESEND_NOT_DELIVERED', 'Offer hunt find was never delivered, approve it instead', 409, { status });
+  }
+}
+
+/** Reenvio com o disparo anterior ainda na fila/enviando (ou outro reenvio agora mesmo): evita duplicar. */
+export class OfferHuntResendPendingError extends AppError {
+  constructor() {
+    super('OFFER_HUNT_RESEND_PENDING', 'Previous send of this find is still pending', 409);
+  }
+}

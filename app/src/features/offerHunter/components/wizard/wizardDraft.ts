@@ -2,8 +2,9 @@ import type { PostingWindowValue } from '@/components';
 import { DAY_MINUTES, windowFromSettings, windowToSettings } from '@/features/monitoring/utils/operatingWindow';
 import { postingWindowValid } from '@/features/offers/utils/offerConfig';
 import type {
-  CreateHuntInput, Hunt, HuntCommissionBand, HuntFilters, HuntLimits, HuntOptions, HuntPreset, HuntSort, OfferHuntDeliveryMode,
+  CreateHuntInput, Hunt, HuntFilters, HuntLimits, HuntOptions, HuntPreset, HuntSort, OfferHuntDeliveryMode,
 } from '../../types';
+import { HUNT_COMMISSION_PCT_MAX } from '../../types';
 import { offerHunterStrings } from '../../strings';
 
 const v = offerHunterStrings.wizard.validation;
@@ -22,7 +23,6 @@ export interface HuntWizardDraft {
   name: string;
   sort: HuntSort;
   categoryId: string | null;
-  commissionBand: HuntCommissionBand;
   keyword: string;
   filters: HuntFilters;
   aiEnabled: boolean;
@@ -34,7 +34,7 @@ export interface HuntWizardDraft {
 }
 
 export const EMPTY_FILTERS: HuntFilters = {
-  minPriceCents: null, maxPriceCents: null, minDiscountPct: null, minCommissionPct: null, minCommissionCents: null,
+  minPriceCents: null, maxPriceCents: null, minDiscountPct: null, minCommissionPct: null, commissionOperator: null, minCommissionCents: null,
   minRating: null, minSales: null, minReviews: null, onlyWithExtra: null, endsWithinDays: null,
 };
 
@@ -50,7 +50,7 @@ export function intervalChoices(limits: HuntLimits, current?: number): number[] 
   return list.sort((a, b) => a - b);
 }
 
-/** Aplica a predefinição: comissão, ordem e filtros dela (o resto do rascunho fica). `CUSTOM` não mexe. */
+/** Aplica a predefinição: ordem e filtros dela (comissão inclusa) (o resto do rascunho fica). `CUSTOM` não mexe. */
 export function applyPreset(draft: HuntWizardDraft, key: HuntPreset, options: HuntOptions): HuntWizardDraft {
   const preset = options.presets.find((p) => p.key === key);
   if (!preset || key === 'CUSTOM') return { ...draft, preset: key };
@@ -58,7 +58,6 @@ export function applyPreset(draft: HuntWizardDraft, key: HuntPreset, options: Hu
     ...draft,
     preset: key,
     sort: preset.definition.source.sort,
-    commissionBand: preset.definition.source.commissionBand,
     filters: { ...EMPTY_FILTERS, ...preset.definition.local },
   };
 }
@@ -72,7 +71,6 @@ export function initialDraft(options: HuntOptions, hunt?: Hunt): HuntWizardDraft
       name: hunt.name,
       sort: hunt.sort,
       categoryId: hunt.categoryId,
-      commissionBand: hunt.commissionBand ?? 'ANY',
       keyword: hunt.keyword ?? '',
       filters: { ...EMPTY_FILTERS, ...hunt.filters },
       aiEnabled: hunt.aiEnabled,
@@ -89,7 +87,6 @@ export function initialDraft(options: HuntOptions, hunt?: Hunt): HuntWizardDraft
     name: '',
     sort: 'RECOMMENDED',
     categoryId: null,
-    commissionBand: 'ANY',
     keyword: '',
     filters: { ...EMPTY_FILTERS },
     aiEnabled: gates.aiAvailable,
@@ -107,7 +104,7 @@ export type FieldErrors = Partial<Record<string, string>>;
 
 /** Passo em que cada campo da API aparece (erro 422 `{ field }` leva de volta a ele). */
 export function stepOfField(field: string): number {
-  if (['name', 'keyword', 'categoryId', 'commissionBand', 'sort'].includes(field)) return 0;
+  if (['name', 'keyword', 'categoryId', 'sort'].includes(field)) return 0;
   if (field.startsWith('filters.') || ['aiEnabled', 'topN', 'repeatAfterDays'].includes(field)) return 1;
   return 2;
 }
@@ -127,7 +124,7 @@ export function validateStep(step: number, d: HuntWizardDraft, limits: HuntLimit
   if (step === 1) {
     const f = d.filters;
     if (outside(f.minDiscountPct, 0, 100)) e['filters.minDiscountPct'] = v.range(0, 100);
-    if (outside(f.minCommissionPct, 0, 100, false)) e['filters.minCommissionPct'] = v.range(0, 100);
+    if (outside(f.minCommissionPct, 0, HUNT_COMMISSION_PCT_MAX, false)) e['filters.minCommissionPct'] = v.range(0, HUNT_COMMISSION_PCT_MAX);
     if (outside(f.minCommissionCents, 0, 1_000_000_000)) e['filters.minCommissionCents'] = v.range(0, 10_000_000);
     if (outside(f.minRating, 0, 5, false)) e['filters.minRating'] = v.range(0, 5);
     if (outside(f.minSales, 0, 1_000_000_000)) e['filters.minSales'] = v.range(0, 1_000_000_000);
@@ -155,15 +152,21 @@ export function firstInvalidStep(d: HuntWizardDraft, limits: HuntLimits): number
   return null;
 }
 
-/** Corpo completo de criar/editar (filtro sem valor vai como null = sem filtro). */
+/**
+ * Corpo completo de criar/editar (filtro sem valor vai como null = sem filtro). Sem `commissionBand`: o servidor
+ * deriva a faixa da fonte do filtro de comissão. Operador só vai com percentual (sem % → null).
+ */
 export function draftToBody(d: HuntWizardDraft): CreateHuntInput {
   return {
     name: d.name.trim(),
     sort: d.sort,
     categoryId: d.categoryId,
-    commissionBand: d.commissionBand,
     keyword: d.keyword.trim() || null,
-    filters: { ...d.filters, onlyWithExtra: d.filters.onlyWithExtra ? true : null },
+    filters: {
+      ...d.filters,
+      commissionOperator: d.filters.minCommissionPct == null ? null : (d.filters.commissionOperator ?? 'GTE'),
+      onlyWithExtra: d.filters.onlyWithExtra ? true : null,
+    },
     aiEnabled: d.aiEnabled,
     topN: d.topN ?? undefined,
     repeatAfterDays: d.repeatAfterDays ?? undefined,

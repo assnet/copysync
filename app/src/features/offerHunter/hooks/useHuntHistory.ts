@@ -104,7 +104,7 @@ export function useHuntRuns(huntId: string | null | undefined): HuntPagedList<Hu
 }
 
 /**
- * `GET /:id/finds` + aprovar/dispensar (modo `REVIEW`). As mutações trocam o item local e rejeitam
+ * `GET /:id/finds` + aprovar/dispensar (modo `REVIEW`) e reenviar achado já entregue. As mutações trocam o item local e rejeitam
  * com o erro do `apiClient` (409 `OFFER_HUNT_FIND_INVALID_STATE` = já decidido: recarregar).
  */
 export function useHuntFinds(huntId: string | null | undefined) {
@@ -128,6 +128,8 @@ export function useHuntFinds(huntId: string | null | undefined) {
     [decide],
   );
   const dismiss = useCallback((findId: string) => decide(findId, () => offerHunterService.dismissFind(findId)), [decide]);
+  /** Reenvio de achado já entregue: o item volta com o disparo novo ("Na fila de envio"). */
+  const resend = useCallback((findId: string) => decide(findId, () => offerHunterService.resendFind(findId)), [decide]);
 
-  return { ...list, busyFindId, approve, dismiss };
+  return { ...list, busyFindId, approve, dismiss, resend };
 }

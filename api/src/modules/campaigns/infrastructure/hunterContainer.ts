@@ -12,6 +12,7 @@ import { AiHuntCandidateRanker } from '../application/services/hunter/AiHuntCand
 import { HuntFindDelivery } from '../application/services/hunter/HuntFindDelivery';
 import { RunOfferHuntUseCase } from '../application/use-cases/hunter/RunOfferHuntUseCase';
 import { ApproveHuntFindUseCase, DismissHuntFindUseCase } from '../application/use-cases/hunter/HuntFindDecisionUseCases';
+import { ResendHuntFindUseCase } from '../application/use-cases/hunter/ResendHuntFindUseCase';
 import { SetOfferHunterDestinationUseCase } from '../application/use-cases/hunter/SetOfferHunterDestinationUseCase';
 import {
   CreateOfferHuntUseCase, DeleteOfferHuntUseCase, GetOfferHuntUseCase, ListOfferHuntsUseCase, PauseOfferHuntUseCase,
@@ -65,6 +66,7 @@ const runHunt = lazy(() => new RunOfferHuntUseCase({
   delivery: delivery(),
 }));
 const approveFind = lazy(() => new ApproveHuntFindUseCase({ finds: finds(), entitlements: offersContainer.entitlements(), delivery: delivery() }));
+const resendFind = lazy(() => new ResendHuntFindUseCase({ finds: finds(), entitlements: offersContainer.entitlements(), delivery: delivery() }));
 const dismissFind = lazy(() => new DismissHuntFindUseCase({ finds: finds() }));
 const setDestination = lazy(() => new SetOfferHunterDestinationUseCase({
   settings: settings(), configs: configs(), groupUsage: groupUsage(), entitlements: offersContainer.entitlements(),
@@ -100,6 +102,7 @@ export const hunterContainer = {
   runOfferHunt:          runHunt,
   approveHuntFind:       approveFind,
   dismissHuntFind:       dismissFind,
+  resendHuntFind:        resendFind,
   setOfferHunterDestination: setDestination,
   createOfferHunt:       createHunt,
   updateOfferHunt:       updateHunt,

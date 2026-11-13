@@ -45,7 +45,7 @@ function HuntWizardBody({ options, hunt, onClose, onSaved }: HuntWizardDialogPro
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
   const initial = useMemo(() => initialDraft(options, hunt), [options, hunt]);
-  const [draft, setDraft, clearDraft] = usePersistedState<HuntWizardDraft>(wizardDraftKey(hunt?.id), initial, { scope: 'tab', version: 1 });
+  const [draft, setDraft, clearDraft] = usePersistedState<HuntWizardDraft>(wizardDraftKey(hunt?.id), initial, { scope: 'tab', version: 2 });
   const { create, update } = useOfferHunts();
   const [errors, setErrors] = useState<FieldErrors>({});
   const [saveError, setSaveError] = useState<string | null>(null);

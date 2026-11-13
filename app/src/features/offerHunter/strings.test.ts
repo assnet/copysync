@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { settingsStrings } from '@/features/settings/strings';
-import { HUNT_COMMISSION_BANDS, HUNT_PRESETS, HUNT_SCORE_FACTOR_KEYS, HUNT_SORTS } from './types';
+import { HUNT_COMMISSION_OPERATORS, HUNT_PRESETS, HUNT_SCORE_FACTOR_KEYS, HUNT_SORTS } from './types';
 import { OFFER_HUNTER_RISK_NOTICE_VERSION, offerHunterErrorMessage, offerHunterStrings as t } from './strings';
 
 const notice = t.riskNotice;
@@ -56,10 +56,9 @@ describe('strings do caçador', () => {
   it('cobre predefinições, ordenações, faixas e fatores da API', () => {
     for (const k of HUNT_PRESETS) expect(t.presets[k].label).toBeTruthy();
     for (const k of HUNT_SORTS) expect(t.sorts[k]).toBeTruthy();
-    for (const k of HUNT_COMMISSION_BANDS) expect(t.commissionBands[k]).toBeTruthy();
+    for (const k of HUNT_COMMISSION_OPERATORS) expect(t.wizard.refine.commissionOperators[k].label).toBeTruthy();
     for (const k of HUNT_SCORE_FACTOR_KEYS) expect(t.factors[k].hint).toBeTruthy();
-    expect([t.commissionBands.BELOW_5, t.commissionBands.FROM_5_TO_10, t.commissionBands.FROM_10_TO_15, t.commissionBands.ABOVE_15])
-      .toEqual(['<5%', '5–10%', '10–15%', '>15%']);
+    expect(['GT', 'GTE', 'LT'].map((k) => t.wizard.refine.commissionOperators[k as 'GT'].symbol)).toEqual(['>', '≥', '<']);
   });
 
   it('uso do dia, assistente e erro por código', () => {

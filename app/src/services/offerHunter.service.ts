@@ -101,6 +101,12 @@ export const offerHunterService = {
     return res.data.data;
   },
 
+  /** Reenvio de achado já entregue (não conta no teto do dia). */
+  async resendFind(findId: string): Promise<HuntFind> {
+    const res = await apiClient.post<ApiSuccess<HuntFind>>(`${BASE}/finds/${enc(findId)}/resend`);
+    return res.data.data;
+  },
+
   async dismissFind(findId: string): Promise<HuntFind> {
     const res = await apiClient.post<ApiSuccess<HuntFind>>(`${BASE}/finds/${enc(findId)}/dismiss`);
     return res.data.data;

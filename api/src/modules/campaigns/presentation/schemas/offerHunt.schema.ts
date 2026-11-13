@@ -1,6 +1,6 @@
-import { HUNT_COMMISSION_BANDS, HUNT_SORTS } from '../../domain/hunter/HuntCandidate';
+import { HUNT_COMMISSION_BANDS, HUNT_COMMISSION_OPERATORS, HUNT_REJECTION_KEYS, HUNT_SORTS } from '../../domain/hunter/HuntCandidate';
 import {
-  OFFER_HUNT_DELIVERY_MODES, OFFER_HUNT_FIND_STATUSES, OFFER_HUNT_PAUSE_REASONS, OFFER_HUNT_RUN_STATUSES, OFFER_HUNT_RUN_TRIGGERS,
+  HUNT_FIND_DISPATCH_STATUSES, OFFER_HUNT_DELIVERY_MODES, OFFER_HUNT_FIND_STATUSES, OFFER_HUNT_PAUSE_REASONS, OFFER_HUNT_RUN_STATUSES, OFFER_HUNT_RUN_TRIGGERS,
   OFFER_HUNT_STATUSES,
 } from '../../domain/hunter/OfferHunt';
 import { HUNTER_LIMITS as L } from '../../domain/services/hunter/hunterLimits';
@@ -34,6 +34,7 @@ const filtersSchema = {
     maxPriceCents: nullableInt,
     minDiscountPct: { type: ['integer', 'null'], minimum: 0, maximum: 100 },
     minCommissionPct: { type: ['number', 'null'], minimum: 0, maximum: 100 },
+    commissionOperator: { type: ['string', 'null'], enum: [...HUNT_COMMISSION_OPERATORS, null] },
     minCommissionCents: nullableInt,
     minRating: { type: ['number', 'null'], minimum: 0, maximum: 5 },
     minSales: nullableInt,
@@ -95,7 +96,7 @@ const huntSchema = obj({
   keyword: nullableStr,
   filters: obj({
     minPriceCents: nullableInteger, maxPriceCents: nullableInteger, minDiscountPct: nullableNumber,
-    minCommissionPct: nullableNumber, minCommissionCents: nullableInteger, minRating: nullableNumber,
+    minCommissionPct: nullableNumber, commissionOperator: nullableStr, minCommissionCents: nullableInteger, minRating: nullableNumber,
     minSales: nullableInteger, minReviews: nullableInteger, onlyWithExtra: { type: ['boolean', 'null'] },
     endsWithinDays: nullableInteger,
   }),
@@ -114,6 +115,21 @@ const huntSchema = obj({
   updatedAt: dateTime,
 });
 
+/** Recusas por filtro local da execução (lista fechada de chaves); null = execução antiga ou sem fonte. */
+const rejectedBy = {
+  type: ['object', 'null'],
+  properties: Object.fromEntries(HUNT_REJECTION_KEYS.map((k) => [k, { type: 'integer' }])),
+  additionalProperties: false,
+} as const;
+
+const rankingItemSchema = obj({
+  goodsId: { type: 'string' }, title: nullableStr, imageUrl: nullableStr, priceCents: nullableInteger,
+  discountPercent: { type: ['number', 'null'] }, commissionPercent: { type: ['number', 'null'] }, commissionCents: nullableInteger,
+  returningCommissionPercent: { type: ['number', 'null'] }, returningCommissionCents: nullableInteger,
+  extraCommissionCents: nullableInteger, salesBucket: nullableInteger, reviewsBucket: nullableInteger,
+  rating: { type: ['number', 'null'] }, score: { type: 'number' }, factors, aiReason: nullableStr, chosen: { type: 'boolean' },
+});
+
 const runSchema = obj({
   id: { type: 'string' },
   huntId: nullableStr,
@@ -126,6 +142,9 @@ const runSchema = obj({
   sentCount: { type: 'integer' },
   aiUsed: { type: 'boolean' },
   aiFallback: { type: 'boolean' },
+  rejectedBy,
+  /** null = execução antiga ou sem fonte. */
+  ranking: { type: ['array', 'null'], items: rankingItemSchema },
   startedAt: dateTime,
   finishedAt: nullableDateTime,
 });
@@ -154,6 +173,12 @@ const findSchema = obj({
   aiReason: nullableStr,
   failureReason: nullableStr,
   offerId: nullableStr,
+  /** Status do disparo da oferta (QUEUED/SENDING/SENT/FAILED/SKIPPED/CANCELLED); null = sem oferta. */
+  dispatchStatus: { type: ['string', 'null'], enum: [...HUNT_FIND_DISPATCH_STATUSES, null] },
+  sentAt: nullableDateTime,
+  destination: { type: ['object', 'null'], properties: { groupName: nullableStr, sessionName: nullableStr } },
+  resendCount: { type: 'integer' },
+  lastResentAt: nullableDateTime,
   createdAt: dateTime,
 });
 
@@ -175,13 +200,8 @@ export const runResultResponse = envelope(obj({
   sentCount: { type: 'integer' },
   aiUsed: { type: 'boolean' },
   aiFallback: { type: 'boolean' },
-  ranking: {
-    type: 'array',
-    items: obj({
-      goodsId: { type: 'string' }, title: nullableStr, imageUrl: nullableStr, priceCents: nullableInteger,
-      score: { type: 'number' }, factors, aiReason: nullableStr, chosen: { type: 'boolean' },
-    }),
-  },
+  rejectedBy,
+  ranking: { type: 'array', items: rankingItemSchema },
   finds: { type: 'array', items: findSchema },
   remainingToday: { type: 'integer' },
   pausedReason: nullableStr,
@@ -192,7 +212,7 @@ export const usageResponse = envelope(obj({
   runsToday: { type: 'integer' }, runsMax: { type: 'integer' },
 }));
 
-const localFiltersOut = obj(Object.fromEntries(Object.keys(filtersSchema.properties).map((k) => [k, { type: ['number', 'boolean', 'null'] }])));
+const localFiltersOut = obj(Object.fromEntries(Object.keys(filtersSchema.properties).map((k) => [k, { type: ['number', 'boolean', 'string', 'null'] }])));
 
 export const optionsResponse = envelope(obj({
   categories: { type: 'array', items: obj({ categoryId: { type: 'string' }, name: { type: 'string' } }) },
@@ -213,4 +233,4 @@ export const optionsResponse = envelope(obj({
   gates: obj(Object.fromEntries(['plan', 'hunterEntitlement', 'credential', 'riskAccepted', 'aiAvailable', 'destination'].map((k) => [k, { type: 'boolean' }]))),
 }));
 
-export const settingsResponse = envelope(obj({ sessionId: nullableStr, conversationId: nullableStr, valid: { type: 'boolean' } }));
+export const settingsResponse = envelope(obj({ sessionId: nullableStr, conversationId: nullableStr, valid: { type: 'boolean' }, groupName: nullableStr }));

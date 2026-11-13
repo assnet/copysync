@@ -1,4 +1,4 @@
-import { HUNT_COMMISSION_BANDS, HUNT_SORTS, type HuntLocalFilters } from '../../hunter/HuntCandidate';
+import { HUNT_COMMISSION_OPERATORS, HUNT_COMMISSION_PCT_MAX, HUNT_SORTS, type HuntLocalFilters } from '../../hunter/HuntCandidate';
 import { OFFER_HUNT_DELIVERY_MODES, type OfferHuntDefinition } from '../../hunter/OfferHunt';
 import { MINUTES_PER_DAY, isValidWeekdaysMask, normalizeWindowStartMinute } from '../postingWindow';
 import { HUNTER_LIMITS as L } from './hunterLimits';
@@ -20,7 +20,7 @@ const FILTER_RANGES: [keyof HuntLocalFilters, number, number, boolean][] = [
   ['minPriceCents', 0, 1_000_000_000, true],
   ['maxPriceCents', 0, 1_000_000_000, true],
   ['minDiscountPct', 0, 100, true],
-  ['minCommissionPct', 0, 100, false],
+  ['minCommissionPct', 0, HUNT_COMMISSION_PCT_MAX, false],
   ['minCommissionCents', 0, 1_000_000_000, true],
   ['minRating', 0, 5, false],
   ['minSales', 0, 1_000_000_000, true],
@@ -30,14 +30,14 @@ const FILTER_RANGES: [keyof HuntLocalFilters, number, number, boolean][] = [
 
 /**
  * Valida e normaliza a definição de uma caçada (criação e edição). Puro: devolve o primeiro campo inválido
- * (o use case traduz para 422 com o campo). Normaliza: nome aparado, palavra vazia → null, início 1440 → 0.
+ * (o use case traduz para 422 com o campo). Normaliza: nome aparado, palavra vazia → null, início 1440 → 0,
+ * comissão % sem operador → GTE (sem % → operador null) e `commissionBand` sempre `ANY` (a do corpo é ignorada).
  */
 export function validateHuntDefinition(d: OfferHuntDefinition): HuntDefinitionCheck {
   const fail = (field: string, reason: string): HuntDefinitionCheck => ({ ok: false, field, reason });
   const name = typeof d.name === 'string' ? d.name.trim() : '';
   if (!name || name.length > L.nameMaxLength || CONTROL.test(name)) return fail('name', 'Invalid name');
   if (!HUNT_SORTS.includes(d.sort)) return fail('sort', 'Invalid sort');
-  if (!unset(d.commissionBand) && !HUNT_COMMISSION_BANDS.includes(d.commissionBand!)) return fail('commissionBand', 'Invalid commission band');
   if (!unset(d.categoryId) && !CATEGORY_ID.test(d.categoryId!)) return fail('categoryId', 'Invalid category');
   const keyword = typeof d.keyword === 'string' ? d.keyword.trim() : null;
   if (keyword && (keyword.length > L.keywordMaxLength || CONTROL.test(keyword))) return fail('keyword', 'Invalid keyword');
@@ -66,6 +66,10 @@ export function validateHuntDefinition(d: OfferHuntDefinition): HuntDefinitionCh
     if (typeof f.onlyWithExtra !== 'boolean') return fail('filters.onlyWithExtra', 'Invalid filter');
     filters.onlyWithExtra = f.onlyWithExtra;
   }
+  if (!unset(f.commissionOperator) && !HUNT_COMMISSION_OPERATORS.includes(f.commissionOperator!)) {
+    return fail('filters.commissionOperator', 'Invalid filter');
+  }
+  if (filters.minCommissionPct != null) filters.commissionOperator = f.commissionOperator ?? 'GTE';
   if (filters.minPriceCents != null && filters.maxPriceCents != null && filters.minPriceCents > filters.maxPriceCents) {
     return fail('filters.maxPriceCents', 'Max price below min price');
   }
@@ -76,7 +80,8 @@ export function validateHuntDefinition(d: OfferHuntDefinition): HuntDefinitionCh
       name,
       sort: d.sort,
       categoryId: d.categoryId ?? null,
-      commissionBand: d.commissionBand ?? null,
+      // Faixa da fonte filtra a recompra: nunca usada (sempre ANY); a do corpo é ignorada
+      commissionBand: 'ANY',
       keyword: keyword || null,
       filters,
       aiEnabled: d.aiEnabled,

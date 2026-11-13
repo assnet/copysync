@@ -5,11 +5,52 @@ import type {
   OfferHuntFindTransition,
 } from '../../../domain/contracts/hunter/IOfferHuntFindRepository';
 import type { OfferHuntPageCursor } from '../../../domain/contracts/hunter/IOfferHuntRunRepository';
-import type { OfferHuntFind, OfferHuntFindStatus } from '../../../domain/hunter/OfferHunt';
+import type { OfferHuntFind, OfferHuntFindDelivery, OfferHuntFindStatus } from '../../../domain/hunter/OfferHunt';
 import { PrismaOfferHuntMapper as Mapper } from '../../mappers/PrismaOfferHuntMapper';
+
+/** Disparo mais recente da oferta atual + nome do grupo (tenant em todo filtro). */
+const deliveryInclude = (tenantId: string) => ({
+  offer: {
+    select: {
+      tenantId: true,
+      dispatches: {
+        where: { tenantId },
+        orderBy: { updatedAt: 'desc' as const },
+        take: 1,
+        select: { status: true, updatedAt: true, sessionId: true, conversation: { select: { tenantId: true, groupName: true } } },
+      },
+    },
+  },
+});
+type FindWithDelivery = Prisma.OfferHuntFindGetPayload<{ include: ReturnType<typeof deliveryInclude> }>;
 
 export class PrismaOfferHuntFindRepository implements IOfferHuntFindRepository {
   constructor(private readonly prisma: PrismaClient) {}
+
+  /** Achados + envio real (status do disparo, grupo e sessão). Nome da sessão numa consulta só, do tenant. */
+  private async withDelivery(tenantId: string, rows: FindWithDelivery[]): Promise<OfferHuntFind[]> {
+    const sessionIds = [...new Set(rows.flatMap((r) => {
+      const d = r.offer?.tenantId === tenantId ? r.offer.dispatches[0] : undefined;
+      return d?.sessionId ? [d.sessionId] : [];
+    }))];
+    const sessions = sessionIds.length === 0 ? [] : await this.prisma.session.findMany({
+      where: { tenantId, id: { in: sessionIds } }, select: { id: true, name: true },
+    });
+    const sessionName = new Map(sessions.map((s) => [s.id, s.name]));
+    return rows.map((r) => {
+      const { offer, ...raw } = r;
+      const find = Mapper.findToDomain(raw);
+      const d = offer?.tenantId === tenantId ? offer.dispatches[0] : undefined;
+      if (!d) return find;
+      const delivery: OfferHuntFindDelivery = {
+        dispatchStatus: d.status,
+        sentAt: d.status === 'SENT' ? d.updatedAt : null,
+        groupName: d.conversation.tenantId === tenantId ? d.conversation.groupName : null,
+        sessionName: d.sessionId ? (sessionName.get(d.sessionId) ?? null) : null,
+      };
+      return { ...find, delivery };
+    });
+  }
 
   /**
    * Desenho do `PrismaOfferRepository.createWithinDailyLimit`: `pg_advisory_xact_lock(hashtext(...))` por
@@ -75,8 +116,8 @@ export class PrismaOfferHuntFindRepository implements IOfferHuntFindRepository {
   }
 
   async findById(tenantId: string, id: string): Promise<OfferHuntFind | null> {
-    const raw = await this.prisma.offerHuntFind.findFirst({ where: { id, tenantId } });
-    return raw ? Mapper.findToDomain(raw) : null;
+    const raw = await this.prisma.offerHuntFind.findFirst({ where: { id, tenantId }, include: deliveryInclude(tenantId) });
+    return raw ? (await this.withDelivery(tenantId, [raw]))[0]! : null;
   }
 
   async listByHunt(tenantId: string, huntId: string, page: { limit: number; after?: OfferHuntPageCursor }): Promise<OfferHuntFind[]> {
@@ -88,8 +129,9 @@ export class PrismaOfferHuntFindRepository implements IOfferHuntFindRepository {
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: page.limit,
+      include: deliveryInclude(tenantId),
     });
-    return rows.map(Mapper.findToDomain);
+    return this.withDelivery(tenantId, rows);
   }
 
   async transition(
@@ -105,6 +147,24 @@ export class PrismaOfferHuntFindRepository implements IOfferHuntFindRepository {
       },
     });
     return count > 0;
+  }
+
+  async claimResend(tenantId: string, id: string, offerId: string, now: Date, cooldownMs: number): Promise<boolean> {
+    const { count } = await this.prisma.offerHuntFind.updateMany({
+      where: {
+        id, tenantId, offerId,
+        OR: [{ lastResentAt: null }, { lastResentAt: { lt: new Date(now.getTime() - cooldownMs) } }],
+      },
+      data: { lastResentAt: now },
+    });
+    return count > 0;
+  }
+
+  async recordResend(tenantId: string, id: string, offerId: string): Promise<void> {
+    await this.prisma.offerHuntFind.updateMany({
+      where: { id, tenantId },
+      data: { offerId, status: 'SENT', failureReason: null, resendCount: { increment: 1 } },
+    });
   }
 
   async reclaimStaleApproved(tenantId: string, id: string, before: Date): Promise<boolean> {

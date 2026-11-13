@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { matchHuntFilters } from './matchHuntFilters';
+import { countHuntRejections, huntFilterRejections, matchHuntFilters } from './matchHuntFilters';
 import { huntCandidate } from './huntTestFixtures';
 
 const NOW = new Date('2026-11-12T15:00:00Z');
@@ -50,5 +50,51 @@ describe('matchHuntFilters', () => {
     expect(matchHuntFilters(at(3 * DAY + 1), { endsWithinDays: 3 }, NOW)).toBe(false);
     expect(matchHuntFilters(at(-1), { endsWithinDays: 3 }, NOW)).toBe(false);
     expect(matchHuntFilters(c, { endsWithinDays: 3 }, NOW)).toBe(false);
+  });
+});
+
+describe('huntFilterRejections', () => {
+  it('sem filtro → nenhuma recusa', () => expect(huntFilterRejections(c, {}, NOW)).toEqual([]));
+
+  it('devolve todas as chaves que falharam, na ordem dos campos', () => {
+    const f = { minRating: 4.9, minSales: 301, minReviews: 1001, minPriceCents: 1, maxPriceCents: 1_000_000 };
+    expect(huntFilterRejections(c, f, NOW)).toEqual(['minRating', 'minSales', 'minReviews']);
+  });
+
+  it('dado ausente conta para a chave do filtro ligado', () => {
+    const empty = huntCandidate({ priceCents: null, rating: null, campaignEndsAt: null });
+    expect(huntFilterRejections(empty, { minPriceCents: 1, maxPriceCents: 9, minRating: 1, endsWithinDays: 3 }, NOW))
+      .toEqual(['minPriceCents', 'maxPriceCents', 'minRating', 'endsWithinDays']);
+  });
+
+  it('passa/não passa igual a matchHuntFilters', () => {
+    const cases = [{}, { minSales: 301 }, { onlyWithExtra: true }, { minCommissionPct: 15 }, { endsWithinDays: 3 }];
+    for (const f of cases) expect(huntFilterRejections(c, f, NOW).length === 0).toBe(matchHuntFilters(c, f, NOW));
+  });
+
+  it('countHuntRejections soma por chave', () => {
+    const counts = {};
+    countHuntRejections(counts, ['minSales', 'minReviews']);
+    countHuntRejections(counts, ['minSales']);
+    countHuntRejections(counts, ['repeated']);
+    expect(counts).toEqual({ minSales: 2, minReviews: 1, repeated: 1 });
+  });
+});
+
+describe('comissão com operador (cliente novo)', () => {
+  const at = (pct: number) => huntCandidate({ commissionNewPct: pct });
+  it('borda 15: GT não passa, GTE passa, LT não passa', () => {
+    expect(matchHuntFilters(at(15), { minCommissionPct: 15, commissionOperator: 'GT' }, NOW)).toBe(false);
+    expect(matchHuntFilters(at(15), { minCommissionPct: 15, commissionOperator: 'GTE' }, NOW)).toBe(true);
+    expect(matchHuntFilters(at(15), { minCommissionPct: 15, commissionOperator: 'LT' }, NOW)).toBe(false);
+  });
+  it('GT/LT fora da borda e operador ausente = GTE', () => {
+    expect(matchHuntFilters(at(16), { minCommissionPct: 15, commissionOperator: 'GT' }, NOW)).toBe(true);
+    expect(matchHuntFilters(at(14), { minCommissionPct: 15, commissionOperator: 'LT' }, NOW)).toBe(true);
+    expect(matchHuntFilters(at(15), { minCommissionPct: 15 }, NOW)).toBe(true);
+  });
+  it('dado ausente com filtro ligado não passa e conta em minCommissionPct', () => {
+    const c0 = huntCandidate({ commissionNewPct: Number.NaN });
+    expect(huntFilterRejections(c0, { minCommissionPct: 50, commissionOperator: 'LT' }, NOW)).toEqual(['minCommissionPct']);
   });
 });

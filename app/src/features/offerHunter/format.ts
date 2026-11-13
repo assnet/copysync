@@ -27,6 +27,13 @@ export function formatDecimal(n: number): string {
   return decimal1.format(n);
 }
 
+const integer = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 });
+
+/** Inteiro com separador de milhar: 1000 → "1.000". */
+export function formatInteger(n: number): string {
+  return integer.format(n);
+}
+
 /** Nota sempre com 1 casa: 4 → "4,0". */
 export function formatRating(n: number): string {
   return fixed1.format(n);

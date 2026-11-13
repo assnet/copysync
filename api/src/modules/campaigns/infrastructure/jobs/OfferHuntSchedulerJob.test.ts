@@ -19,7 +19,7 @@ const hunt = (tenantId: string, patch: Partial<OfferHunt> = {}): OfferHunt => ({
 
 const out = (patch: Partial<RunOfferHuntOutput> = {}): RunOfferHuntOutput => ({
   runId: 'r', status: 'SUCCEEDED', errorCode: null, seenCount: 0, matchedCount: 0, chosenCount: 1, sentCount: 0,
-  aiUsed: false, aiFallback: false, ranking: [], finds: [], remainingToday: 5, pausedReason: null, ...patch,
+  aiUsed: false, aiFallback: false, rejectedBy: null, ranking: [], finds: [], remainingToday: 5, pausedReason: null, ...patch,
 });
 
 const schedule = (h: OfferHunt) => ({ intervalMinutes: h.intervalMinutes, startMinute: h.windowStartMinute, endMinute: h.windowEndMinute, weekdaysMask: h.weekdaysMask });

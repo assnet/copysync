@@ -39,6 +39,7 @@ export const OfferHuntPresenter = {
         maxPriceCents: h.filters.maxPriceCents ?? null,
         minDiscountPct: h.filters.minDiscountPct ?? null,
         minCommissionPct: h.filters.minCommissionPct ?? null,
+        commissionOperator: h.filters.minCommissionPct == null ? null : (h.filters.commissionOperator ?? 'GTE'),
         minCommissionCents: h.filters.minCommissionCents ?? null,
         minRating: h.filters.minRating ?? null,
         minSales: h.filters.minSales ?? null,
@@ -75,6 +76,8 @@ export const OfferHuntPresenter = {
       sentCount: r.sentCount,
       aiUsed: r.aiUsed,
       aiFallback: r.aiFallback,
+      rejectedBy: r.rejectedBy ? { ...r.rejectedBy } : null,
+      ranking: r.ranking ? r.ranking.map(OfferHuntPresenter.rankingItem) : null,
       startedAt: r.startedAt.toISOString(),
       finishedAt: iso(r.finishedAt),
     };
@@ -105,6 +108,14 @@ export const OfferHuntPresenter = {
       aiReason: f.aiReason,
       failureReason: f.failureReason,
       offerId: f.offerId,
+      // Envio real (o estado SENT do achado só diz "entregue à fila")
+      dispatchStatus: f.delivery?.dispatchStatus ?? null,
+      sentAt: f.delivery?.dispatchStatus === 'SENT' ? iso(f.delivery.sentAt) : null,
+      destination: f.delivery && (f.delivery.groupName || f.delivery.sessionName)
+        ? { groupName: f.delivery.groupName, sessionName: f.delivery.sessionName }
+        : null,
+      resendCount: f.resendCount,
+      lastResentAt: iso(f.lastResentAt),
       createdAt: f.createdAt.toISOString(),
     };
   },
@@ -113,8 +124,17 @@ export const OfferHuntPresenter = {
     return {
       goodsId: i.goodsId,
       title: i.title,
-      imageUrl: i.imageUrl,
+      imageUrl: safeFindImageUrl(i.imageUrl),
       priceCents: i.priceCents,
+      discountPercent: i.discountPercent,
+      commissionPercent: i.commissionPercent,
+      commissionCents: i.commissionCents,
+      returningCommissionPercent: i.returningCommissionPercent,
+      returningCommissionCents: i.returningCommissionCents,
+      extraCommissionCents: i.extraCommissionCents,
+      salesBucket: i.salesBucket,
+      reviewsBucket: i.reviewsBucket,
+      rating: i.rating,
       score: i.score,
       factors: i.factors.map((x) => ({ key: x.key, points: x.points, max: x.max })),
       aiReason: i.aiReason,
@@ -133,6 +153,7 @@ export const OfferHuntPresenter = {
       sentCount: o.sentCount,
       aiUsed: o.aiUsed,
       aiFallback: o.aiFallback,
+      rejectedBy: o.rejectedBy ? { ...o.rejectedBy } : null,
       ranking: o.ranking.map(OfferHuntPresenter.rankingItem),
       finds: o.finds.map(OfferHuntPresenter.find),
       remainingToday: o.remainingToday,
@@ -153,6 +174,7 @@ export const OfferHuntPresenter = {
   },
 
   settings(s: OfferHunterSettings) {
-    return { sessionId: s.sessionId, conversationId: s.conversationId, valid: !!(s.sessionId && s.conversationId) };
+    // Logo após salvar: o painel já tem o nome do grupo escolhido; o GET devolve o nome do chat
+    return { sessionId: s.sessionId, conversationId: s.conversationId, valid: !!(s.sessionId && s.conversationId), groupName: null };
   },
 };

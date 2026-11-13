@@ -6,7 +6,7 @@ import type {
   StartOfferHuntRunInput,
 } from '../../../domain/contracts/hunter/IOfferHuntRunRepository';
 import type { OfferHuntRun } from '../../../domain/hunter/OfferHunt';
-import { PrismaOfferHuntMapper as Mapper } from '../../mappers/PrismaOfferHuntMapper';
+import { PrismaOfferHuntMapper as Mapper, rankingToData, rejectionsToData } from '../../mappers/PrismaOfferHuntMapper';
 
 const countsTowardGuard = (tenantId: string, since: Date) => ({ tenantId, startedAt: { gte: since }, status: { not: 'SKIPPED' as const } });
 
@@ -36,7 +36,11 @@ export class PrismaOfferHuntRunRepository implements IOfferHuntRunRepository {
   }
 
   async finish(tenantId: string, id: string, input: FinishOfferHuntRunInput): Promise<void> {
-    await this.prisma.offerHuntRun.updateMany({ where: { id, tenantId, status: 'RUNNING' }, data: input });
+    const { rejectedBy, ranking, ...rest } = input;
+    await this.prisma.offerHuntRun.updateMany({
+      where: { id, tenantId, status: 'RUNNING' },
+      data: { ...rest, rejectedBy: rejectionsToData(rejectedBy), ranking: rankingToData(ranking) },
+    });
   }
 
   countStartedSince(tenantId: string, since: Date): Promise<number> {

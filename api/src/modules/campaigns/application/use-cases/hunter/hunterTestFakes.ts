@@ -69,7 +69,7 @@ export class InMemoryRuns implements Pick<IOfferHuntRunRepository, 'startWithinD
   private make(input: StartOfferHuntRunInput, patch: Partial<OfferHuntRun>): OfferHuntRun {
     const run: OfferHuntRun = {
       id: `run-${++this.seq}`, tenantId: input.tenantId, huntId: input.huntId, trigger: input.trigger, status: 'RUNNING',
-      seenCount: 0, matchedCount: 0, chosenCount: 0, sentCount: 0, aiUsed: false, aiFallback: false,
+      seenCount: 0, matchedCount: 0, chosenCount: 0, sentCount: 0, aiUsed: false, aiFallback: false, rejectedBy: null, ranking: null,
       errorCode: null, startedAt: input.startedAt, finishedAt: null, ...patch,
     };
     this.items.push(run);
@@ -97,6 +97,7 @@ export class InMemoryRuns implements Pick<IOfferHuntRunRepository, 'startWithinD
 
 export class InMemoryFinds implements Pick<
   IOfferHuntFindRepository, 'insertWithinDailyLimit' | 'countCreatedSince' | 'recentGoodsIds' | 'findById' | 'transition' | 'reclaimStaleApproved'
+  | 'claimResend' | 'recordResend'
 > {
   /** Relógio do `updatedAt` gravado (o Prisma usa o do servidor). */
   clock: () => Date = () => NOW;
@@ -116,7 +117,8 @@ export class InMemoryFinds implements Pick<
       return true;
     });
     return fresh.slice(0, room).map((f) => {
-      const row: OfferHuntFind = { ...f, id: `find-${++this.seq}`, tenantId, failureReason: null, offerId: null, createdAt: NOW, updatedAt: NOW };
+      const row: OfferHuntFind = { ...f, id: `find-${++this.seq}`, tenantId, failureReason: null, offerId: null,
+        resendCount: 0, lastResentAt: null, delivery: null, createdAt: NOW, updatedAt: NOW };
       this.items.push(row);
       return row;
     });
@@ -142,6 +144,16 @@ export class InMemoryFinds implements Pick<
     if (extra.failureReason !== undefined) f.failureReason = extra.failureReason;
     return true;
   }
+  async claimResend(tenantId: string, id: string, offerId: string, now: Date, cooldownMs: number) {
+    const f = await this.findById(tenantId, id);
+    if (!f || f.offerId !== offerId || (f.lastResentAt && f.lastResentAt.getTime() >= now.getTime() - cooldownMs)) return false;
+    f.lastResentAt = now;
+    return true;
+  }
+  async recordResend(tenantId: string, id: string, offerId: string) {
+    const f = await this.findById(tenantId, id);
+    if (f) Object.assign(f, { offerId, status: 'SENT', failureReason: null, resendCount: f.resendCount + 1 });
+  }
   /** Achado já gravado (ex.: dias atrás). */
   seed(patch: Partial<OfferHuntFind>): OfferHuntFind {
     const c = huntCandidate();
@@ -151,7 +163,7 @@ export class InMemoryFinds implements Pick<
       commissionPercent: c.commissionNewPct, commissionCents: c.commissionNewCents, returningCommissionPercent: null,
       returningCommissionCents: null, extraCommissionCents: 0, salesBucket: c.sales, reviewsBucket: c.reviews, rating: c.rating,
       score: 50, factors: [], aiReason: null, status: 'PENDING_REVIEW', failureReason: null, offerId: null,
-      createdAt: NOW, updatedAt: NOW, ...patch,
+      resendCount: 0, lastResentAt: null, delivery: null, createdAt: NOW, updatedAt: NOW, ...patch,
     };
     this.items.push(row);
     return row;

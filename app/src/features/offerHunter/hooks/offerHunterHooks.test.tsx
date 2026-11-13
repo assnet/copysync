@@ -25,6 +25,7 @@ const find = (id: string, over: Partial<HuntFind> = {}): HuntFind => ({
   originalPriceCents: null, discountPercent: null, commissionPercent: 10, commissionCents: 100,
   returningCommissionPercent: null, returningCommissionCents: null, extraCommissionCents: null, salesBucket: null,
   reviewsBucket: null, rating: null, score: 50, factors: [], aiReason: null, failureReason: null, offerId: null,
+  dispatchStatus: null, sentAt: null, destination: null, resendCount: 0, lastResentAt: null,
   createdAt: '2026-11-12T10:00:00.000Z', ...over,
 });
 

@@ -5,7 +5,7 @@ import { hunt, huntFind, huntOptions } from '@/features/offerHunter/test/fixture
 
 const svc = vi.hoisted(() => ({
   get: vi.fn(), getOptions: vi.fn(), listFinds: vi.fn(), listRuns: vi.fn(), approveFind: vi.fn(), dismissFind: vi.fn(),
-  run: vi.fn(), pause: vi.fn(), resume: vi.fn(), list: vi.fn(),
+  run: vi.fn(), pause: vi.fn(), resume: vi.fn(), list: vi.fn(), getSettings: vi.fn(), resendFind: vi.fn(),
 }));
 vi.mock('@/services/offerHunter.service', () => ({ offerHunterService: svc }));
 
@@ -24,6 +24,7 @@ beforeEach(() => {
   svc.getOptions.mockResolvedValue(huntOptions());
   svc.listFinds.mockResolvedValue({ items: [huntFind('f1'), huntFind('f2', { status: 'FAILED', failureReason: 'SESSION_NOT_CONNECTED' })], nextCursor: 'c2' });
   svc.listRuns.mockResolvedValue({ items: [], nextCursor: null });
+  svc.getSettings.mockResolvedValue({ sessionId: 's1', conversationId: 'c1', valid: true, groupName: 'Ofertas VIP' });
 });
 
 describe('OfferHunterDetailPage', () => {
@@ -85,5 +86,18 @@ describe('OfferHunterDetailPage', () => {
     unmount();
     renderPage();
     expect(await screen.findByRole('tab', { name: 'Execuções' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('reenviar achado entregue: confirma citando o grupo atual, chama a API e mostra "Na fila de envio"', async () => {
+    svc.listFinds.mockResolvedValue({ items: [huntFind('f3', { status: 'SENT', offerId: 'o1', dispatchStatus: 'SENT', sentAt: '2026-11-12T15:00:00.000Z' })], nextCursor: null });
+    svc.resendFind.mockResolvedValue(huntFind('f3', { status: 'SENT', offerId: 'o2', dispatchStatus: 'QUEUED', resendCount: 1 }));
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Reenviar' }));
+    expect(await screen.findByText(/"Ofertas VIP"/)).toBeInTheDocument();
+    const buttons = screen.getAllByRole('button', { name: 'Reenviar' });
+    fireEvent.click(buttons[buttons.length - 1]!);
+    await waitFor(() => expect(svc.resendFind).toHaveBeenCalledWith('f3'));
+    expect(await screen.findByText('Na fila de envio')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Reenviar' })).toBeDisabled());
   });
 });

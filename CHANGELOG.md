@@ -9,6 +9,20 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added / Changed — app 0.117.0 / api 0.94.0 — Caçador: filtros visíveis, "por que 0 no filtro", comissão de 1ª compra, ranking guardado, envio real e reenvio
+
+#### app ([`docs/cacador-de-ofertas.md`](docs/cacador-de-ofertas.md))
+
+- **`home/huntSummary.ts`** / **`home/HuntSummaryChips.tsx`** / **`HuntCard.tsx`** / **`HuntDetailHeader.tsx`** — cartão e cabeçalho mostram todo filtro ligado (preço, desconto, comissão 1ª compra % e R$, nota, vendas, avaliações, só com extra, prazo, palavra) em chips com Tooltip; antes nota/vendas/avaliações ficavam escondidas e a caçada parecia "quebrada" com 0 no filtro.
+- **`runRejections.ts`** / **`RejectionNote.tsx`** / **`HuntRunsTab.tsx`** / **`RunResultPanel.tsx`** — "0 no filtro: 21 por vendas, 14 por avaliações, 3 por nota" + dica de afrouxar o refino; execução antiga não mostra nada novo.
+- **`wizard/CommissionFilterField.tsx`** / **`WizardRefineStep.tsx`** / **`WizardWhatStep.tsx`** / **`wizardDraft.ts`** — filtro único de comissão de 1ª compra (condição por extenso + barra 0–50 com atalhos); sai o seletor de faixa da Shein (ela filtra recompra). Rascunho persistido sobe para a versão 2.
+- **`HuntRunsTab.tsx`** — "Ver ranking" em cada execução (ranking guardado); antiga avisa que não foi guardado.
+- **`findDelivery.ts`** / **`HuntFindsTab.tsx`** — achado mostra o envio real ("Na fila de envio", "Enviado" com hora, "Falhou ao enviar", "Não enviado"), grupo e sessão sob `Blurred`, e botão "Reenviar" (travado com envio na fila; confirmação cita o grupo atual).
+
+#### api
+
+- Ver `api/CHANGELOG.md` [0.94.0]: `rejectedBy` e `ranking` na execução, `commissionOperator`, faixa da fonte nunca usada, envio real no achado e `POST /finds/:findId/resend`.
+
 ### Changed — app 0.116.2 — "sem limite" no lugar de "sem teto"
 
 #### app

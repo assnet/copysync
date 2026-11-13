@@ -9,6 +9,8 @@ import { PrismaOfferHuntRepository } from '../../infrastructure/repositories/hun
 import { PrismaOfferGeneratorConfigRepository } from '../../infrastructure/repositories/PrismaOfferGeneratorConfigRepository';
 import { RunOfferHuntUseCase, type RunOfferHuntOutput } from '../../application/use-cases/hunter/RunOfferHuntUseCase';
 import { ListOfferHuntsUseCase } from '../../application/use-cases/hunter/OfferHuntCrudUseCases';
+import { ResendHuntFindUseCase } from '../../application/use-cases/hunter/ResendHuntFindUseCase';
+import { OfferHuntResendPendingError } from '../../../../shared/errors/internal/OfferHuntErrors';
 import { GetOfferHunterUsageUseCase } from '../../application/use-cases/hunter/OfferHunterInfoUseCases';
 import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
 import { AT_TOKEN, MEMBER, NOW, makeHunt } from '../../application/use-cases/hunter/hunterTestFakes';
@@ -44,7 +46,7 @@ const ID = 'hunt-1';
 const GATED: [string, string, object?][] = [
   ['GET', '/'], ['POST', '/', { name: 'x' }], ['GET', `/${ID}`], ['PUT', `/${ID}`, { topN: 2 }], ['DELETE', `/${ID}`],
   ['POST', `/${ID}/pause`], ['POST', `/${ID}/resume`], ['POST', `/${ID}/run`], ['GET', `/${ID}/runs`], ['GET', `/${ID}/finds`],
-  ['POST', '/finds/f1/approve'], ['POST', '/finds/f1/dismiss'], ['GET', '/usage'], ['GET', '/options'], ['GET', '/settings'],
+  ['POST', '/finds/f1/approve'], ['POST', '/finds/f1/dismiss'], ['POST', '/finds/f1/resend'], ['GET', '/usage'], ['GET', '/options'], ['GET', '/settings'],
   ['PUT', '/settings', { sessionId: 's1', conversationId: 'c1' }],
 ];
 
@@ -65,7 +67,7 @@ const find: OfferHuntFind = {
   activityId: 'act1', title: 'Vestido', imageUrl: 'https://img.ltwebstatic.com/v.jpg', priceCents: 5990, originalPriceCents: 9990, discountPercent: 40, commissionPercent: 15,
   commissionCents: 898, returningCommissionPercent: 5, returningCommissionCents: 300, extraCommissionCents: 0, salesBucket: 1000,
   reviewsBucket: 100, rating: 4.8, score: 81.5, factors: [{ key: 'commission', points: 30, max: 40 }], aiReason: null,
-  failureReason: null, offerId: null, createdAt: NOW, updatedAt: NOW,
+  failureReason: null, offerId: null, resendCount: 0, lastResentAt: null, delivery: null, createdAt: NOW, updatedAt: NOW,
 };
 
 beforeEach(async () => {
@@ -162,8 +164,10 @@ describe('rotas (super admin)', () => {
   it('POST /:id/run devolve ranking com pontuação e fatores (MANUAL, tenant do contexto)', async () => {
     const out: RunOfferHuntOutput = {
       runId: 'run-1', status: 'SUCCEEDED', errorCode: null, seenCount: 30, matchedCount: 12, chosenCount: 1, sentCount: 0,
-      aiUsed: true, aiFallback: false,
-      ranking: [{ goodsId: '12345678', title: 'Vestido', imageUrl: 'https://img.ltwebstatic.com/a.jpg', priceCents: 5990, score: 81.5,
+      aiUsed: true, aiFallback: false, rejectedBy: { minSales: 21, minReviews: 14, repeated: 2 },
+      ranking: [{ goodsId: '12345678', title: 'Vestido', imageUrl: 'https://img.ltwebstatic.com/a.jpg', priceCents: 5990,
+        discountPercent: 40, commissionPercent: 20, commissionCents: 1198, returningCommissionPercent: 4.9, returningCommissionCents: 293,
+        extraCommissionCents: 0, salesBucket: 1000, reviewsBucket: 500, rating: 4.8, score: 81.5,
         factors: [{ key: 'commission', points: 30, max: 40 }], aiReason: 'Boa comissão', chosen: true }],
       finds: [find], remainingToday: 9, pausedReason: null,
     };
@@ -171,6 +175,7 @@ describe('rotas (super admin)', () => {
     const res = await call('POST', `/${ID}/run`);
     expect(res.statusCode).toBe(200);
     const data = res.json().data;
+    expect(data.rejectedBy).toEqual({ minSales: 21, minReviews: 14, repeated: 2 });
     expect(data.ranking[0]).toEqual(out.ranking[0]);
     expect(data.finds[0]).toMatchObject({ id: 'f1', score: 81.5, factors: [{ key: 'commission', points: 30, max: 40 }] });
     expect(data.finds[0].imageUrl).toBe('https://img.ltwebstatic.com/v.jpg');
@@ -209,5 +214,39 @@ describe('rotas (super admin)', () => {
   it('DELETE /:id → 204', async () => {
     vi.spyOn(PrismaOfferHuntRepository.prototype, 'delete').mockResolvedValue(true);
     expect((await call('DELETE', `/${ID}`)).statusCode).toBe(204);
+  });
+});
+
+describe('POST /finds/:findId/resend e envio real do achado', () => {
+  beforeEach(() => { auth.isSuperAdmin = true; });
+
+  it('200 com o achado: status do disparo, hora, grupo/sessão e contador de reenvio', async () => {
+    const out = {
+      ...find, status: 'SENT' as const, offerId: 'offer-2', resendCount: 1, lastResentAt: NOW,
+      delivery: { dispatchStatus: 'QUEUED' as const, sentAt: null, groupName: 'Ofertas VIP', sessionName: 'Loja' },
+    };
+    const exec = vi.spyOn(ResendHuntFindUseCase.prototype, 'execute').mockResolvedValue(out);
+    const res = await call('POST', '/finds/f1/resend');
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toMatchObject({
+      id: 'f1', status: 'SENT', offerId: 'offer-2', dispatchStatus: 'QUEUED', sentAt: null,
+      destination: { groupName: 'Ofertas VIP', sessionName: 'Loja' }, resendCount: 1, lastResentAt: NOW.toISOString(),
+    });
+    expect(exec).toHaveBeenCalledWith({ tenantId: 'tenant-a', findId: 'f1' });
+  });
+
+  it('SENT com hora; sem oferta → dispatchStatus/destination null', async () => {
+    const sent = { ...find, status: 'SENT' as const, offerId: 'o1', delivery: { dispatchStatus: 'SENT' as const, sentAt: NOW, groupName: 'G', sessionName: null } };
+    vi.spyOn(ResendHuntFindUseCase.prototype, 'execute').mockResolvedValueOnce(sent);
+    expect((await call('POST', '/finds/f1/resend')).json().data).toMatchObject({ dispatchStatus: 'SENT', sentAt: NOW.toISOString(), destination: { groupName: 'G', sessionName: null } });
+    const { OfferHuntPresenter } = await import('../presenters/OfferHuntPresenter');
+    expect(OfferHuntPresenter.find(find)).toMatchObject({ dispatchStatus: null, sentAt: null, destination: null });
+  });
+
+  it('pendente → 409 OFFER_HUNT_RESEND_PENDING', async () => {
+    vi.spyOn(ResendHuntFindUseCase.prototype, 'execute').mockRejectedValue(new OfferHuntResendPendingError());
+    const res = await call('POST', '/finds/f1/resend');
+    expect(res.statusCode).toBe(409);
+    expect(JSON.stringify(res.json())).toContain('OFFER_HUNT_RESEND_PENDING');
   });
 });

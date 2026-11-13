@@ -1,5 +1,5 @@
 // Entidades e enums do Caçador de Ofertas (espelham os enums Prisma, sem importá-los). Puro.
-import type { HuntCommissionBand, HuntLocalFilters, HuntScoreFactor, HuntSort } from './HuntCandidate';
+import type { HuntCommissionBand, HuntLocalFilters, HuntRejectionCounts, HuntScoreFactor, HuntSort } from './HuntCandidate';
 
 export const OFFER_HUNT_STATUSES = ['ACTIVE', 'PAUSED'] as const;
 export type OfferHuntStatus = (typeof OFFER_HUNT_STATUSES)[number];
@@ -60,6 +60,34 @@ export interface OfferHuntRunCounters {
   sentCount: number;
   aiUsed: boolean;
   aiFallback: boolean;
+  /** Quantos candidatos cada filtro local barrou + `repeated`; null = execução sem contagem (antiga/pulada). */
+  rejectedBy: HuntRejectionCounts | null;
+  /** Até 15 melhores da execução na ordem final; null = execução antiga ou sem fonte. */
+  ranking: OfferHuntRankingItem[] | null;
+}
+
+/** Item do ranking de uma execução (só exibição; sem link, token nem id de afiliado). */
+export interface OfferHuntRankingItem {
+  goodsId: string;
+  title: string | null;
+  /** https em *.ltwebstatic.com (o presenter confere de novo). */
+  imageUrl: string | null;
+  priceCents: number | null;
+  discountPercent: number | null;
+  /** Comissão de 1ª compra (cliente novo). */
+  commissionPercent: number | null;
+  commissionCents: number | null;
+  /** Comissão de recompra (cliente que retorna). */
+  returningCommissionPercent: number | null;
+  returningCommissionCents: number | null;
+  extraCommissionCents: number | null;
+  salesBucket: number | null;
+  reviewsBucket: number | null;
+  rating: number | null;
+  score: number;
+  factors: HuntScoreFactor[];
+  aiReason: string | null;
+  chosen: boolean;
 }
 
 export interface OfferHuntRun extends OfferHuntRunCounters {
@@ -99,6 +127,22 @@ export interface OfferHuntFindSnapshot {
   aiReason: string | null;
 }
 
+/** Estado do disparo da oferta do achado (espelha `OfferDispatchStatus`, sem importar o Prisma). */
+export const HUNT_FIND_DISPATCH_STATUSES = ['QUEUED', 'SENDING', 'SENT', 'FAILED', 'SKIPPED', 'CANCELLED'] as const;
+export type HuntFindDispatchStatus = (typeof HUNT_FIND_DISPATCH_STATUSES)[number];
+
+/**
+ * Envio real da oferta do achado (disparo mais recente da `offerId` atual). O estado `SENT` do achado só
+ * quer dizer "entregue à fila"; quem diz se saiu é `dispatchStatus`.
+ */
+export interface OfferHuntFindDelivery {
+  dispatchStatus: HuntFindDispatchStatus;
+  /** Hora do envio (só com `SENT`). */
+  sentAt: Date | null;
+  groupName: string | null;
+  sessionName: string | null;
+}
+
 export interface OfferHuntFind extends OfferHuntFindSnapshot {
   id: string;
   tenantId: string;
@@ -106,7 +150,13 @@ export interface OfferHuntFind extends OfferHuntFindSnapshot {
   runId: string | null;
   status: OfferHuntFindStatus;
   failureReason: string | null;
+  /** Oferta mais recente (o reenvio troca; as anteriores ficam no histórico de ofertas). */
   offerId: string | null;
+  /** Quantas vezes foi reenviado e quando (null = nunca). */
+  resendCount: number;
+  lastResentAt: Date | null;
+  /** null = sem oferta, ou lido sem o join do disparo. */
+  delivery: OfferHuntFindDelivery | null;
   createdAt: Date;
   updatedAt: Date;
 }

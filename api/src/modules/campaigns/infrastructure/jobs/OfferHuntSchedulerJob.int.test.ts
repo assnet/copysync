@@ -22,7 +22,7 @@ const def = (tenantId: string, nextRunAt: Date): CreateOfferHuntInput => ({
 
 const output = (): RunOfferHuntOutput => ({
   runId: 'r', status: 'SUCCEEDED', errorCode: null, seenCount: 0, matchedCount: 0, chosenCount: 0, sentCount: 0,
-  aiUsed: false, aiFallback: false, ranking: [], finds: [], remainingToday: 5, pausedReason: null,
+  aiUsed: false, aiFallback: false, rejectedBy: null, ranking: [], finds: [], remainingToday: 5, pausedReason: null,
 });
 
 function processJob(client: PrismaClient, calls: RunOfferHuntInput[], perTick: number) {

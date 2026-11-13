@@ -4,7 +4,7 @@ import type { IOfferHunterSettingsRepository } from '../../../domain/contracts/h
 import type { IOfferGeneratorConfigRepository } from '../../../domain/contracts/IOfferGeneratorConfigRepository';
 import type { OfferHuntFind } from '../../../domain/hunter/OfferHunt';
 import { DEFAULT_OFFER_IMAGE_MODE } from '../../../domain/enums/OfferImageMode';
-import { OfferHuntDestinationRequiredError } from '../../../../../shared/errors/internal/OfferHuntErrors';
+import { OfferHuntDestinationRequiredError, OfferHuntResendPendingError } from '../../../../../shared/errors/internal/OfferHuntErrors';
 import { AppError } from '../../../../../shared/errors/AppError';
 import { logger } from '../../../../../shared/logger/logger';
 import type { EnqueueOfferUseCase } from '../../use-cases/EnqueueOfferUseCase';
@@ -17,6 +17,8 @@ import { DEFAULT_INTERVAL } from '../../use-cases/OfferGeneratorConfigUseCases';
 export const huntProductUrl = (goodsId: string) => `https://br.shein.com/product-p-${goodsId}.html`;
 /** Idempotência do Enqueue: queda entre enfileirar e gravar `offerId` não reenvia. */
 export const huntSourceKey = (findId: string) => `hunt:${findId}`;
+/** Reenvio: chave nova a cada vez (o Enqueue devolveria a oferta antiga com a chave do achado). */
+export const huntResendSourceKey = (findId: string, at: Date) => `hunt:${findId}:r${at.getTime()}`;
 
 export interface HuntDestination {
   sessionId: string;
@@ -61,54 +63,81 @@ export class HuntFindDelivery {
   }
 
   async deliver(tenantId: string, find: OfferHuntFind, destination: HuntDestination): Promise<HuntDeliveryResult> {
-    let storedImage: string | null = null;
+    const image = { stored: null as string | null };
     let queuedOfferId: string | null = null;
     try {
-      const resolved = await this.deps.affiliateProducts.execute(tenantId, huntProductUrl(find.goodsId), { riskScope: 'OFFER_HUNTER' });
-      const p = resolved.product;
-      const title = p.title ?? find.title;
-      const composed = await this.deps.texts.compose({
-        tenantId,
-        audience: 'STANDARD',
-        title,
-        priceCents: p.priceCents ?? find.priceCents,
-        originalPriceCents: p.originalPriceCents ?? find.originalPriceCents,
-        coupon: null,
-        affiliateUrl: resolved.affiliateUrl,
-      });
-      storedImage = p.imageSourceUrl ? await this.deps.images.storeImage(p.imageSourceUrl) : null;
-      const config = await this.deps.configs.find(tenantId);
-      const res = await this.deps.enqueue.execute({
-        tenantId,
-        destinations: [destination],
-        origin: 'HUNTER',
-        provider: resolved.provider,
-        sourceUrl: resolved.sourceUrl,
-        affiliateUrl: resolved.affiliateUrl,
-        title,
-        text: composed.text,
-        imageUrl: storedImage,
-        coupon: null,
-        mentionAll: false,
-        imageMode: DEFAULT_OFFER_IMAGE_MODE,
-        simulateTyping: false,
-        typingSeconds: 15,
-        startAt: this.now(),
-        expiresAt: null,
-        intervalMinSeconds: config?.intervalMinSeconds ?? DEFAULT_INTERVAL.min,
-        intervalMaxSeconds: config?.intervalMaxSeconds ?? DEFAULT_INTERVAL.max,
-        sourceKey: huntSourceKey(find.id),
-      });
-      if (res.kind !== 'queued') return this.fail(tenantId, find, 'EXPIRED', null, storedImage);
-      queuedOfferId = res.offerId;
-      await this.deps.finds.transition(tenantId, find.id, ['APPROVED'], 'SENT', { offerId: res.offerId, failureReason: null });
+      const offerId = await this.enqueue(tenantId, find, destination, huntSourceKey(find.id), image);
+      if (!offerId) return this.fail(tenantId, find, 'EXPIRED', null, image.stored);
+      queuedOfferId = offerId;
+      await this.deps.finds.transition(tenantId, find.id, ['APPROVED'], 'SENT', { offerId, failureReason: null });
       if (find.runId) await this.deps.runs.incrementSent(tenantId, find.runId);
-      return { status: 'SENT', offerId: res.offerId };
+      return { status: 'SENT', offerId };
     } catch (err) {
       if (queuedOfferId) return this.settleQueued(tenantId, find, queuedOfferId);
       const reason = err instanceof AppError ? err.code : 'DELIVERY_FAILED';
-      return this.fail(tenantId, find, reason, err, storedImage);
+      return this.fail(tenantId, find, reason, err, image.stored);
     }
+  }
+
+  /**
+   * Reenvio de achado já entregue: mesmo caminho (link do tenant regerado, preço/foto atuais, texto, Enqueue
+   * `HUNTER`) com `sourceKey` novo, para o destino atual. Não mexe no estado do achado: quem grava a oferta
+   * nova é o chamador. Falha antes de enfileirar descarta a foto e lança o erro (código traduzido no painel).
+   */
+  async resend(tenantId: string, find: OfferHuntFind, destination: HuntDestination, at: Date): Promise<string> {
+    const image = { stored: null as string | null };
+    try {
+      const offerId = await this.enqueue(tenantId, find, destination, huntResendSourceKey(find.id, at), image);
+      if (!offerId) throw new OfferHuntResendPendingError();
+      return offerId;
+    } catch (err) {
+      if (image.stored) await this.deps.images.discardImage(image.stored);
+      logger.warn({ tenantId, findId: find.id, code: err instanceof AppError ? err.code : 'DELIVERY_FAILED' }, 'offer hunt find resend failed');
+      throw err;
+    }
+  }
+
+  /** Resolve → texto → foto → Enqueue. null = Enqueue não enfileirou (expirada). `image.stored` = foto gravada. */
+  private async enqueue(
+    tenantId: string, find: OfferHuntFind, destination: HuntDestination, sourceKey: string, image: { stored: string | null },
+  ): Promise<string | null> {
+    const resolved = await this.deps.affiliateProducts.execute(tenantId, huntProductUrl(find.goodsId), { riskScope: 'OFFER_HUNTER' });
+    const p = resolved.product;
+    const title = p.title ?? find.title;
+    const composed = await this.deps.texts.compose({
+      tenantId,
+      audience: 'STANDARD',
+      title,
+      priceCents: p.priceCents ?? find.priceCents,
+      originalPriceCents: p.originalPriceCents ?? find.originalPriceCents,
+      coupon: null,
+      affiliateUrl: resolved.affiliateUrl,
+    });
+    const storedImage = p.imageSourceUrl ? await this.deps.images.storeImage(p.imageSourceUrl) : null;
+    image.stored = storedImage;
+    const config = await this.deps.configs.find(tenantId);
+    const res = await this.deps.enqueue.execute({
+      tenantId,
+      destinations: [destination],
+      origin: 'HUNTER',
+      provider: resolved.provider,
+      sourceUrl: resolved.sourceUrl,
+      affiliateUrl: resolved.affiliateUrl,
+      title,
+      text: composed.text,
+      imageUrl: storedImage,
+      coupon: null,
+      mentionAll: false,
+      imageMode: DEFAULT_OFFER_IMAGE_MODE,
+      simulateTyping: false,
+      typingSeconds: 15,
+      startAt: this.now(),
+      expiresAt: null,
+      intervalMinSeconds: config?.intervalMinSeconds ?? DEFAULT_INTERVAL.min,
+      intervalMaxSeconds: config?.intervalMaxSeconds ?? DEFAULT_INTERVAL.max,
+      sourceKey,
+    });
+    return res.kind === 'queued' ? res.offerId : null;
   }
 
   /**
