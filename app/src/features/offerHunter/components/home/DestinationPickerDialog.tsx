@@ -7,6 +7,7 @@ import {
 import { CircleCheck, Search, X } from 'lucide-react';
 import { AppIcon, UnavailableReason } from '@/components';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import { hunterStateKey, useHunterStateScope } from '../../hooks/useHunterStateScope';
 import { Blurred, useBlur } from '@/features/privacy';
 import { GroupAvatar } from '@/features/offers/components/GroupChip';
 import { useSessionGroups } from '@/features/offers/hooks/useSessionGroups';
@@ -51,7 +52,8 @@ export function DestinationPickerDialog({
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
   const blurSession = useBlur('offerHunter.sessionName');
   const blurGroup = useBlur('offerHunter.groupNames');
-  const [draft, setDraft, clearDraft] = usePersistedState<Draft>('offerHunter.destinationDraft', EMPTY, { scope: 'tab', version: 1 });
+  const stateScope = useHunterStateScope();
+  const [draft, setDraft, clearDraft] = usePersistedState<Draft>(hunterStateKey('offerHunter.destinationDraft', stateScope), EMPTY, { scope: 'tab', version: 1 });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

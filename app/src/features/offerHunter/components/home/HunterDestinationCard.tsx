@@ -1,5 +1,6 @@
 import { forwardRef, useImperativeHandle, useMemo, useRef } from 'react';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import { hunterStateKey, useHunterStateScope } from '../../hooks/useHunterStateScope';
 import {
   Alert, Avatar, Box, Button, Paper, Skeleton, Stack, Tooltip, Typography,
 } from '@mui/material';
@@ -40,7 +41,8 @@ export const HunterDestinationCard = forwardRef<HunterDestinationCardHandle, Hun
 ) {
   const rootRef = useRef<HTMLDivElement>(null);
   // Seletor aberto sobrevive a reload (estado de interface; o rascunho fica no próprio seletor).
-  const [pickerOpen, setPickerOpen, clearPickerOpen] = usePersistedState('offerHunter.destinationPickerOpen', false, { scope: 'tab', version: 1 });
+  const stateScope = useHunterStateScope();
+  const [pickerOpen, setPickerOpen, clearPickerOpen] = usePersistedState(hunterStateKey('offerHunter.destinationPickerOpen', stateScope), false, { scope: 'tab', version: 1 });
   const blurSession = useBlur('offerHunter.sessionName');
   const blurGroup = useBlur('offerHunter.groupNames');
 

@@ -5,7 +5,9 @@ import { Link as RouterLink, useParams } from 'react-router-dom';
 import { AppIcon } from '@/components';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { offerHunterErrorMessage, offerHunterStrings as t } from '@/features/offerHunter/strings';
-import { useHuntFinds, useHuntOptions, useHuntRuns, useHunterSettings, useOfferHunt, useRunRankings } from '@/features/offerHunter/hooks';
+import {
+  hunterStateKey, useHuntFinds, useHuntOptions, useHuntRuns, useHunterSettings, useHunterStateScope, useOfferHunt, useRunRankings,
+} from '@/features/offerHunter/hooks';
 import { HuntDetailHeader } from '@/features/offerHunter/components/detail/HuntDetailHeader';
 import { HuntFindsTab } from '@/features/offerHunter/components/detail/HuntFindsTab';
 import { HuntRunsTab } from '@/features/offerHunter/components/detail/HuntRunsTab';
@@ -29,8 +31,14 @@ interface DetailUiState {
  * resultado da última busca manual, achados (aprovar/dispensar) e execuções, ambos por cursor.
  */
 export function OfferHunterDetailPage() {
+  // Estado da aba é por dono (tenant + usuário): remonta ao trocar
+  const scope = useHunterStateScope();
+  return <OfferHunterDetail key={scope} scope={scope} />;
+}
+
+function OfferHunterDetail({ scope }: { scope: string }) {
   const { huntId = '' } = useParams<{ huntId: string }>();
-  const [ui, setUi] = usePersistedState<DetailUiState>(`offerHunter.detail.${huntId}`, { tab: 'finds', openFindId: null, editing: false }, { scope: 'tab', version: 1 });
+  const [ui, setUi] = usePersistedState<DetailUiState>(hunterStateKey(`offerHunter.detail.${huntId}`, scope), { tab: 'finds', openFindId: null, editing: false }, { scope: 'tab', version: 1 });
   const huntRes = useOfferHunt(huntId);
   const { hunt, run, running, lastRun, clearLastRun, setActive, setData } = huntRes;
   // Opções e portões da loja desta caçada (só depois de carregá-la)

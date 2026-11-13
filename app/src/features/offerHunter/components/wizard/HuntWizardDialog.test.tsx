@@ -8,9 +8,14 @@ const svc = vi.hoisted(() => ({
   list: vi.fn(), create: vi.fn(), update: vi.fn(), get: vi.fn(), run: vi.fn(), getProviders: vi.fn(), getOptions: vi.fn(), suggestConfig: vi.fn(),
 }));
 vi.mock('@/services/offerHunter.service', () => ({ offerHunterService: svc }));
+const account = vi.hoisted(() => ({ tenantId: 't1' }));
+vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'u1' } }) }));
+vi.mock('@/contexts/TenantContext', () => ({ useTenant: () => ({ activeTenantId: account.tenantId, tenants: [] }) }));
 
 import { HuntWizardDialog, type HuntWizardDialogProps } from './HuntWizardDialog';
-import { wizardDraftKey } from './wizardDraft';
+import { wizardDraftKey as draftKeyOf } from './wizardDraft';
+
+const wizardDraftKey = (huntId?: string) => draftKeyOf(`${account.tenantId}:u1`, huntId);
 
 const field = (label: RegExp) => screen.getByRole('textbox', { name: label });
 const next = () => fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
@@ -49,6 +54,7 @@ const suggestion = (over: Partial<HuntAiSuggestion> = {}): HuntAiSuggestion => (
 beforeEach(() => {
   vi.clearAllMocks();
   sessionStorage.clear();
+  account.tenantId = 't1';
   svc.list.mockResolvedValue([]);
   svc.getProviders.mockResolvedValue([providerState('SHEIN'), providerState('MERCADO_LIVRE')]);
   svc.getOptions.mockImplementation((p: string) => Promise.resolve(p === 'MERCADO_LIVRE' ? mlOptions() : huntOptions()));
@@ -171,6 +177,22 @@ describe('HuntWizardDialog: IA decide os filtros', () => {
     });
   });
 
+  it('troca de loja travada enquanto a IA gera: sugestão não cai no rascunho de outra loja', async () => {
+    let resolve!: (v: HuntAiSuggestion) => void;
+    svc.suggestConfig.mockImplementation(() => new Promise((r) => { resolve = r; }));
+    renderWizard();
+    await pickStore(/^SHEIN/, false);
+    fireEvent.click(await screen.findByRole('checkbox', { name: /Deixar a IA decidir os filtros/ }));
+    fireEvent.change(field(/O que você quer caçar/), { target: { value: 'vestido' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar com IA' }));
+    await waitFor(() => expect(screen.getByRole('radio', { name: /^Mercado Livre/ })).toBeDisabled());
+    fireEvent.click(screen.getByRole('radio', { name: /^Mercado Livre/ }));
+    resolve(suggestion());
+    await screen.findByText('4 de 5 sugestões restantes hoje');
+    expect(screen.getByRole('radio', { name: /^Mercado Livre/ })).toBeEnabled();
+    expect(stored(wizardDraftKey())).toMatchObject({ provider: 'SHEIN', name: 'Vestidos de festa' });
+  });
+
   it('429: limite do dia avisa e trava gerar', async () => {
     svc.suggestConfig.mockRejectedValue({ status: 429, code: 'OFFER_HUNT_AI_SUGGEST_DAILY_LIMIT' });
     renderWizard();
@@ -285,6 +307,27 @@ describe('HuntWizardDialog: assistente', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Descartar' }));
     expect(onClose).toHaveBeenCalled();
     expect(stored(wizardDraftKey('h1'))).toBeUndefined();
+  });
+
+  it('rascunho é por tenant: trocar de conta na mesma aba não mostra o do anterior', async () => {
+    const { unmount } = renderWizard();
+    await pickStore(/^SHEIN/);
+    fireEvent.change(field(/Nome da caçada/), { target: { value: 'Da conta 1' } });
+    unmount();
+    account.tenantId = 't2';
+    renderWizard();
+    expect(await screen.findByRole('heading', { name: 'Onde caçar' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /^SHEIN/ })).toHaveAttribute('aria-checked', 'false');
+    account.tenantId = 't1';
+    expect(stored(wizardDraftKey())).toMatchObject({ name: 'Da conta 1' });
+  });
+
+  it('ML com "só com comissão extra" ligado no rascunho: o interruptor aparece para desligar', async () => {
+    renderWizard({ hunt: hunt({ provider: 'MERCADO_LIVRE', filters: { ...hunt().filters, onlyWithExtra: true } }) });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continuar' })).toBeEnabled());
+    next();
+    next();
+    expect(screen.getByRole('checkbox', { name: /Só com comissão extra/ })).toBeChecked();
   });
 
   it('IA travada quando indisponível; testar agora só na edição', async () => {

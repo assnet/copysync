@@ -103,7 +103,8 @@ export function WizardRefineStep({ draft, options, errors, onChange }: Props) {
         {has('endsWithinDays') && <NumberField label={r.endsWithin} value={f.endsWithinDays} onChange={(v) => setFilter({ endsWithinDays: v })} tip={tips.endsWithin} suffix={wz.daysUnit} placeholder={r.noFilter} error={err('endsWithinDays')} helperText={t.wizard.validation.range(1, limits.endsWithinDaysMax)} aiHint={hint('filters.endsWithinDays')} />}
       </Box>
 
-      {showsLocalExtraFilter(caps) && (
+      {/* No ML o filtro da fonte faz o mesmo; ligado no rascunho (dado antigo) aparece para poder desligar */}
+      {(showsLocalExtraFilter(caps) || (f.onlyWithExtra === true && has('onlyWithExtra'))) && (
         <ToggleOption
           checked={f.onlyWithExtra === true}
           onChange={(v) => setFilter({ onlyWithExtra: v ? true : null })}

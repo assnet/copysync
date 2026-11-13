@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import type { Hunt, HuntGates, HuntOptions } from '@/features/offerHunter/types';
 
@@ -8,7 +8,8 @@ const svc = vi.hoisted(() => ({
   pause: vi.fn(), resume: vi.fn(), remove: vi.fn(), update: vi.fn(), create: vi.fn(),
 }));
 vi.mock('@/services/offerHunter.service', () => ({ offerHunterService: svc }));
-vi.mock('@/services/affiliateCredential.service', () => ({ affiliateCredentialService: { acceptRisk: vi.fn() } }));
+const risk = vi.hoisted(() => ({ acceptRisk: vi.fn() }));
+vi.mock('@/services/affiliateCredential.service', () => ({ affiliateCredentialService: risk }));
 vi.mock('@/services/session.service', () => ({ sessionService: { list: vi.fn().mockResolvedValue({ sessions: [] }) } }));
 vi.mock('@/services/offer.service', () => ({ offerService: { listSessionGroups: vi.fn().mockResolvedValue({ groups: [], partial: false }) } }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'u1', isSuperAdmin: false } }) }));
@@ -119,5 +120,53 @@ describe('OfferHunterPage', () => {
     const [mlSwitch, sheinSwitch] = within(list).getAllByRole('checkbox');
     expect(mlSwitch).toBeEnabled();
     expect(sheinSwitch).toBeDisabled();
+  });
+  it('aceite do aviso no passo 0 troca a loja da tela sem desmontar o assistente', async () => {
+    let sheinRisk = false;
+    svc.getProviders.mockImplementation(() => Promise.resolve([
+      { provider: 'SHEIN', credentialState: 'OK', gates: { ...OPEN, riskAccepted: sheinRisk } },
+      { provider: 'MERCADO_LIVRE', credentialState: 'OK', gates: OPEN },
+    ]));
+    svc.getOptions.mockImplementation((p: string) => Promise.resolve({ ...options(), provider: p, capabilities: fallbackCapabilities(p as 'SHEIN') }));
+    risk.acceptRisk.mockImplementation(() => { sheinRisk = true; return Promise.resolve({ acceptedAt: '2026-11-13T10:00:00Z' }); });
+    renderPage();
+    await waitFor(() => expect(createButton()).toBeEnabled());
+    fireEvent.click(createButton());
+    const wizard = await screen.findByRole('dialog', { name: t.wizard.createTitle });
+    fireEvent.click(await within(wizard).findByRole('button', { name: /Ler aviso: SHEIN/ }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: t.riskNotice.SHEIN.checkbox }));
+    fireEvent.click(screen.getByRole('button', { name: t.riskNotice.SHEIN.confirm }));
+    await waitFor(() => expect(svc.getOptions).toHaveBeenCalledWith('SHEIN'));
+    await waitFor(() => expect(within(screen.getByRole('dialog', { name: t.wizard.createTitle })).getByRole('radio', { name: /^SHEIN/ })).toBeEnabled());
+    expect(screen.getByRole('dialog', { name: t.wizard.createTitle })).toBe(wizard);
+  });
+
+  it('lojas sem estado: o portão da tela não trava caçada de outra loja', async () => {
+    svc.getOptions.mockResolvedValue(options({ riskAccepted: false }));
+    svc.list.mockResolvedValue([
+      hunt('a', { provider: 'MERCADO_LIVRE', status: 'PAUSED', pauseReason: 'USER' }),
+      hunt('b', { status: 'PAUSED', pauseReason: 'USER' }),
+    ]);
+    renderPage();
+    const list = await screen.findByRole('list', { name: t.home.listLabel });
+    await waitFor(() => expect(within(list).getAllByRole('checkbox')[1]).toBeDisabled());
+    expect(within(list).getAllByRole('checkbox')[0]).toBeEnabled();
+  });
+
+  it('resumo do cartão usa categoria e predefinição da loja da caçada (tela ML, caçada SHEIN)', async () => {
+    svc.getProviders.mockResolvedValue([
+      { provider: 'SHEIN', credentialState: 'MISSING', gates: { ...OPEN, credential: false } },
+      { provider: 'MERCADO_LIVRE', credentialState: 'OK', gates: OPEN },
+    ]);
+    svc.getOptions.mockImplementation((p: string) => Promise.resolve(p === 'SHEIN'
+      ? { ...options(), categories: [{ categoryId: 'c1', name: 'Vestidos' }], presets: [{ key: 'TOP_COMMISSION', definition: { source: { sort: 'RECOMMENDED', commissionBand: 'ANY' }, local: {} } }] }
+      : { ...options(), provider: 'MERCADO_LIVRE', capabilities: fallbackCapabilities('MERCADO_LIVRE'), categories: [{ categoryId: 'MLB1', name: 'Calçados' }] }));
+    svc.list.mockResolvedValue([hunt('a', { categoryId: 'c1' }), hunt('b', { categoryId: 'c1' })]);
+    renderPage();
+    const list = await screen.findByRole('list', { name: t.home.listLabel });
+    expect((await within(list).findAllByText('Vestidos'))).toHaveLength(2);
+    expect(within(list).getAllByText(t.presets.TOP_COMMISSION.label)).toHaveLength(2);
+    expect(within(list).queryByText(t.home.categoryUnknown)).toBeNull();
+    expect(svc.getOptions.mock.calls.filter(([p]) => p === 'SHEIN')).toHaveLength(1);
   });
 });

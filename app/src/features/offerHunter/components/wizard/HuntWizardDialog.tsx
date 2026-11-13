@@ -9,7 +9,7 @@ import { AppIcon, ConfirmDialog } from '@/components';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import type { Hunt, HuntOptions, HuntPreset, HuntProvider } from '../../types';
 import { offerHunterErrorMessage, offerHunterStrings as t } from '../../strings';
-import { useHuntAiSuggest, useHuntOptions, useHuntProviders, useOfferHunts } from '../../hooks';
+import { useHuntAiSuggest, useHuntOptions, useHuntProviders, useHunterStateScope, useOfferHunts } from '../../hooks';
 import { capabilitiesOf, providerOf } from '../../providers';
 import {
   WIZARD_DRAFT_VERSION, WIZARD_STEPS, applyAiSuggestion, applyPreset, draftToBody, dropChangedHints, firstInvalidStep, initialDraft,
@@ -42,19 +42,21 @@ export interface HuntWizardDialogProps {
 
 /**
  * Assistente Loja → O que caçar → Refino → Quando e onde. Rascunho por aba (uma chave por caçada em edição),
- * limpo ao salvar ou cancelar. Monta só aberto: a chave do rascunho é lida a cada abertura.
+ * limpo ao salvar ou cancelar. Monta só aberto: a chave do rascunho (com tenant + usuário) é lida a cada abertura.
  */
 export function HuntWizardDialog(props: HuntWizardDialogProps) {
+  const scope = useHunterStateScope();
   if (!props.open) return null;
-  return <HuntWizardBody key={wizardDraftKey(props.hunt?.id)} {...props} />;
+  const draftKey = wizardDraftKey(scope, props.hunt?.id);
+  return <HuntWizardBody key={draftKey} draftKey={draftKey} {...props} />;
 }
 
-function HuntWizardBody({ options, hunt, onOpenRisk, refreshKey, onClose, onSaved }: HuntWizardDialogProps) {
+function HuntWizardBody({ draftKey, options, hunt, onOpenRisk, refreshKey, onClose, onSaved }: HuntWizardDialogProps & { draftKey: string }) {
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
   const initial = useMemo(() => initialDraft(options, hunt), [options, hunt]);
   const [draft, setDraft, clearDraft] = usePersistedState<HuntWizardDraft>(
-    wizardDraftKey(hunt?.id), initial, { scope: 'tab', version: WIZARD_DRAFT_VERSION },
+    draftKey, initial, { scope: 'tab', version: WIZARD_DRAFT_VERSION },
   );
   const { create, update } = useOfferHunts();
   const providers = useHuntProviders(!hunt);
@@ -108,7 +110,8 @@ function HuntWizardBody({ options, hunt, onOpenRisk, refreshKey, onClose, onSave
   };
   const goTo = (s: number) => setDraft((d) => ({ ...d, step: s }));
   const selectProvider = (provider: HuntProvider) => {
-    if (hunt) return;
+    // Troca de loja durante "Gerar com IA" levaria a sugestão de uma loja para o rascunho de outra
+    if (hunt || aiSuggest.loading) return;
     setDraft((d) => (d.provider === provider ? d : { ...d, provider }));
     setErrors((e) => {
       if (!e.provider) return e;
@@ -127,7 +130,8 @@ function HuntWizardBody({ options, hunt, onOpenRisk, refreshKey, onClose, onSave
     const { data, errorCode } = await aiSuggest.suggest({ provider, intent: draft.ai.intent.trim() || null, pickProduct: draft.ai.pickProduct });
     if (data) {
       setAiRemaining(data.remainingToday);
-      setDraft((d) => applyAiSuggestion(d.presetFor === provider ? d : seedProvider(d, opts), data, opts));
+      // Loja trocada enquanto a IA respondia: a sugestão é descartada
+      setDraft((d) => (d.provider !== provider ? d : applyAiSuggestion(d.presetFor === provider ? d : seedProvider(d, opts), data, opts)));
       return;
     }
     if (errorCode === 'OFFER_HUNT_AI_SUGGEST_DAILY_LIMIT') setAiRemaining(0);
@@ -234,6 +238,7 @@ function HuntWizardBody({ options, hunt, onOpenRisk, refreshKey, onClose, onSave
                 providersFailed={Boolean(providers.errorCode)}
                 onRetryProviders={() => void providers.reload()}
                 onSelect={selectProvider}
+                locked={aiSuggest.loading}
                 onOpenRisk={onOpenRisk}
                 error={errors.provider}
               />

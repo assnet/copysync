@@ -10,10 +10,11 @@ import { usePersistedState } from '@/hooks/usePersistedState';
 import { serverNow } from '@/services/serverClock';
 import { gateCopy, offerHunterErrorMessage, offerHunterStrings as t, type HunterRiskProvider } from '@/features/offerHunter/strings';
 import {
-  firstClosedGate, useHuntOptions, useHuntProviders, useHunterSettings, useHuntUsage, useOfferHunts,
+  firstClosedGate, hunterStateKey, useHuntOptions, useHuntOptionsByProvider, useHuntProviders, useHunterSettings, useHunterStateScope,
+  useHuntUsage, useOfferHunts,
 } from '@/features/offerHunter/hooks';
 import { pickHomeProvider, providerOf } from '@/features/offerHunter/providers';
-import type { Hunt } from '@/features/offerHunter/types';
+import type { Hunt, HuntOptions } from '@/features/offerHunter/types';
 import { HuntWizardDialog } from '@/features/offerHunter/components/wizard/HuntWizardDialog';
 import { HunterRiskNoticeDialog } from '@/features/offerHunter/components/HunterRiskNoticeDialog';
 import { HunterGatesPanel } from '@/features/offerHunter/components/home/HunterGatesPanel';
@@ -39,8 +40,16 @@ function useServerNow(): number {
   return now;
 }
 
-/** Tela inicial do Caçador de Ofertas (`/offer-hunter`, sob `OfferHunterRoute`). */
+/**
+ * Tela inicial do Caçador de Ofertas (`/offer-hunter`, sob `OfferHunterRoute`). Remonta ao trocar de tenant/usuário:
+ * o estado persistido (assistente, filtro) é por dono.
+ */
 export function OfferHunterPage() {
+  const scope = useHunterStateScope();
+  return <OfferHunterHome key={scope} scope={scope} />;
+}
+
+function OfferHunterHome({ scope }: { scope: string }) {
   const { user } = useAuth();
   const { tenants, activeTenantId } = useTenant();
   // Só ADMIN confirmado aceita o aviso; super admin recebe 403 da API.
@@ -58,8 +67,8 @@ export function OfferHunterPage() {
   const sessions = useHunterSessions();
   const now = useServerNow();
 
-  const [wizard, setWizard, clearWizard] = usePersistedState<WizardState>('offerHunter.home.wizard', WIZARD_CLOSED, { scope: 'tab', version: 1 });
-  const [filter, setFilter] = usePersistedState<HuntFilter>('offerHunter.home.filter', 'ALL', { scope: 'tab', version: 1 });
+  const [wizard, setWizard, clearWizard] = usePersistedState<WizardState>(hunterStateKey('offerHunter.home.wizard', scope), WIZARD_CLOSED, { scope: 'tab', version: 1 });
+  const [filter, setFilter] = usePersistedState<HuntFilter>(hunterStateKey('offerHunter.home.filter', scope), 'ALL', { scope: 'tab', version: 1 });
   const [riskOpen, setRiskOpen] = useState(false);
   const [riskProvider, setRiskProvider] = useState<HunterRiskProvider>('SHEIN');
   // Sobe a cada aceite: o assistente aberto recarrega o estado das lojas
@@ -70,15 +79,21 @@ export function OfferHunterPage() {
 
   const { options, blockedBy } = opts;
   const list = hunts.hunts;
+  // Troca da loja da tela (aceite no assistente) recarrega as opções: o assistente aberto fica com as últimas
+  const lastOptions = useRef<HuntOptions | null>(null);
+  if (options) lastOptions.current = options;
+  const wizardOptions = options ?? lastOptions.current;
+  // Resumo dos cartões com predefinição/categoria da loja de cada caçada
+  const optionsFor = useHuntOptionsByProvider(useMemo(() => (list ?? []).map(providerOf), [list]), options);
   const huntsMax = options?.limits.huntsMax ?? 5;
   const atLimit = (list?.length ?? 0) >= huntsMax;
   const planClosed = Boolean(options && (!options.gates.plan || !options.gates.hunterEntitlement));
   const blockedTitle = blockedBy ? gateCopy(blockedBy, homeProvider ?? 'SHEIN').title : null;
-  /** Portão que impede ligar a caçada, pela loja dela (sem o estado das lojas, vale o da tela). */
+  /** Portão que impede ligar a caçada, pela loja dela (sem o estado das lojas, vale o da tela só para a mesma loja). */
   const blockedReasonFor = (hunt: Hunt): string | null => {
     const provider = providerOf(hunt);
     const state = providers.providers?.find((s) => s.provider === provider);
-    if (!state) return blockedTitle;
+    if (!state) return provider === homeProvider ? blockedTitle : null;
     const gate = firstClosedGate(state.gates);
     return gate ? gateCopy(gate, provider).title : null;
   };
@@ -246,7 +261,7 @@ export function OfferHunterPage() {
               <Box component="li" key={hunt.id} sx={{ minWidth: 0 }}>
                 <HuntCard
                   hunt={hunt}
-                  options={options}
+                  options={optionsFor(providerOf(hunt)) ?? options}
                   nowMs={now}
                   busy={hunts.busyId === hunt.id}
                   blockedReason={blockedReasonFor(hunt)}
@@ -260,10 +275,10 @@ export function OfferHunterPage() {
         )}
       </Box>
 
-      {options && (
+      {wizardOptions && (
         <HuntWizardDialog
           open={wizard.open && (!wizard.huntId || Boolean(editing))}
-          options={options}
+          options={wizardOptions}
           hunt={editing}
           onOpenRisk={(provider) => { setRiskProvider(provider); setRiskOpen(true); }}
           refreshKey={riskVersion}

@@ -9,6 +9,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — app 0.118.0 / api 0.95.0 — Caçador multimarca (Mercado Livre) e IA de configuração
+
+#### app
+
+- **`WizardProviderStep.tsx`** / **`providers.ts`** — passo 0 do assistente com as logos das lojas (SHEIN, Mercado Livre) e o estado de cada uma (pronta, sem conta, aviso pendente, fora do plano) com o caminho para resolver; loja fixa na edição.
+- **`WizardAiSuggestPanel.tsx`** — "Deixar a IA decidir os filtros": intenção ou "IA escolhe o produto", motivo por campo, descartes e "X de 5 sugestões hoje".
+- **Assistente, chips, recusas, cartões, detalhe** — filtros e ordenações por loja; comissão ML com selo "estimada"; logo da loja em toda a tela; aviso de risco por loja.
+
 ### Added / Changed — app 0.117.0 / api 0.94.0 — Caçador: filtros visíveis, "por que 0 no filtro", comissão de 1ª compra, ranking guardado, envio real e reenvio
 
 #### app ([`docs/cacador-de-ofertas.md`](docs/cacador-de-ofertas.md))

@@ -7,8 +7,10 @@ import { DestinationPickerDialog, type DestinationPickerDialogProps } from './De
 
 const offers = vi.hoisted(() => ({ listSessionGroups: vi.fn() }));
 vi.mock('@/services/offer.service', () => ({ offerService: offers }));
+vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'u1' } }) }));
+vi.mock('@/contexts/TenantContext', () => ({ useTenant: () => ({ activeTenantId: 't1', tenants: [] }) }));
 
-const KEY = 'offerHunter.destinationDraft';
+const KEY = 'offerHunter.destinationDraft@t1:u1';
 const OPTS = { scope: 'tab' as const, version: 1 };
 type Draft = { sessionId: string | null; conversationId: string | null; search: string };
 const draft = () => readPersisted<Draft>(KEY, OPTS);

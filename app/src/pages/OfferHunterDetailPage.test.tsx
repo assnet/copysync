@@ -8,6 +8,8 @@ const svc = vi.hoisted(() => ({
   run: vi.fn(), pause: vi.fn(), resume: vi.fn(), list: vi.fn(), getSettings: vi.fn(), resendFind: vi.fn(),
 }));
 vi.mock('@/services/offerHunter.service', () => ({ offerHunterService: svc }));
+vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'u1' } }) }));
+vi.mock('@/contexts/TenantContext', () => ({ useTenant: () => ({ activeTenantId: 't1', tenants: [] }) }));
 
 import { OfferHunterDetailPage } from './OfferHunterDetailPage';
 

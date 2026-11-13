@@ -7,6 +7,27 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.95.0] — 2026-11-13 — Caçador multimarca (Mercado Livre) e IA de configuração
+
+### Added
+
+#### campaigns ([`docs/cacador-de-ofertas.md`](../docs/cacador-de-ofertas.md), spec `.specs/features/offer-hunter-multi/`)
+
+- **`HuntProvider.ts`** / **`IHuntProviderAdapter`** / **`HuntProviderRegistry`** — caçada com marca (`SHEIN`, `MERCADO_LIVRE`), capacidades por marca (filtros, ordenações, hosts de foto, id do produto), sessão, URL do produto e fonte de catálogo por adaptador; `GET /options?provider=` e `GET /options/providers`.
+- **`MercadoLivreHubClient.ts`** / **`mercadoLivreHubMapper.ts`** — busca do hub de afiliados ML (`POST /affiliate-program/api/hub/search`, sonda da Render aprovada 2026-11-13): categoria, ganhos extras, mais vendidos, ordenação, páginas de 18; comissão do chip do hub; sem chip → tabela oficial por categoria marcada `commissionEstimated` ou cartão descartado.
+- **`mercadoLivreBootstrap.ts`** — bootstrap ML compartilhado; no hub só redirect para login recusa a sessão (403/WAF = indisponível); nunca segue redirect sem https.
+- **`SuggestHuntConfigUseCase`** / **`POST /offer-hunts/ai-suggest`** — IA preenche os filtros da marca (intenção ou "IA escolhe o produto" com amostra de até 5 consultas), validação por capacidade, nada salvo; teto 5 sugestões/dia por conta (`offer_hunt_ai_suggestions`).
+- **`marketplaceRiskNotice.ts`** — aviso de risco do caçador para Mercado Livre (versão 2026-11-13); escopo `OFFER_HUNTER` fail-closed para marca sem aviso.
+
+### Changed
+
+- **`scoreHuntCandidate.ts`** — fatores por capacidade e renormalização; sem comissão secundária usa 100% da primária; notas Shein idênticas (teste de 500 casos).
+- **`RunOfferHuntUseCase`** / **`HuntFindDelivery`** / presenter — sem marca fixa; repetição por `provider + productId`; teto 10/dia somando marcas.
+
+### Breaking Changes
+
+- Nenhuma de contrato existente (`goodsId` mantido nas respostas por compatibilidade). **Migrations**: `20261115100000_offer_hunter_multi_provider`, `20261115100100_offer_hunt_ai_suggestions`.
+
 ## [0.94.0] — 2026-11-12 — Caçador: recusas por filtro, comissão de 1ª compra, ranking guardado, envio real e reenvio
 
 ### Added

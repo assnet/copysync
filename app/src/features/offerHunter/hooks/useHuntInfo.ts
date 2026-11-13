@@ -1,6 +1,6 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { offerHunterService } from '@/services/offerHunter.service';
-import type { HuntAiSuggestInput, HuntAiSuggestion, HuntGateKey, HuntGates, HuntProvider, SaveHunterSettingsInput } from '../types';
+import type { HuntAiSuggestInput, HuntAiSuggestion, HuntGateKey, HuntGates, HuntOptions, HuntProvider, SaveHunterSettingsInput } from '../types';
 import { huntErrorCode, useHuntResource } from './useHuntResource';
 
 /** Ordem em que a tela cobra os portões (a mesma da execução no servidor). `aiAvailable` não trava. */
@@ -20,6 +20,33 @@ export function useHuntOptions(provider: HuntProvider | null = 'SHEIN') {
   const load = useCallback(() => offerHunterService.getOptions(provider ?? 'SHEIN'), [provider]);
   const r = useHuntResource(provider ? `options:${provider}` : null, load);
   return { ...r, options: r.data, blockedBy: firstClosedGate(r.data?.gates) };
+}
+
+/**
+ * Opções por loja para nomear predefinição/categoria das caçadas de lojas diferentes da tela. A da tela (`known`)
+ * é reaproveitada; as outras são buscadas uma vez por loja (só depois da da tela carregar) e ficam em memória
+ * enquanto a tela vive. Falha = tenta de novo quando a lista de lojas (ou a loja da tela) mudar.
+ */
+export function useHuntOptionsByProvider(providers: readonly HuntProvider[], known: HuntOptions | null) {
+  const [map, setMap] = useState<Partial<Record<HuntProvider, HuntOptions>>>({});
+  const requested = useRef(new Set<HuntProvider>());
+  const knownProvider = known ? (known.provider ?? 'SHEIN') : null;
+  const wanted = [...new Set(providers)].sort().join(',');
+  useEffect(() => {
+    if (!knownProvider) return;
+    for (const p of wanted.split(',').filter(Boolean) as HuntProvider[]) {
+      if (p === knownProvider || requested.current.has(p)) continue;
+      requested.current.add(p);
+      offerHunterService.getOptions(p).then(
+        (o) => setMap((m) => ({ ...m, [p]: o })),
+        () => { requested.current.delete(p); },
+      );
+    }
+  }, [wanted, knownProvider]);
+  return useCallback(
+    (provider: HuntProvider): HuntOptions | null => (provider === knownProvider ? known : map[provider] ?? null),
+    [knownProvider, known, map],
+  );
 }
 
 /** `GET /options/providers`: estado de cada loja (plano, conta, aceite) sem chamar a fonte. `enabled` false = não carrega. */

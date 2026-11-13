@@ -3,6 +3,12 @@
 Cada tarefa: commit atômico, `tsc --noEmit` api/app, testes da área. Migrations nunca locais (`api/.env` = produção);
 SQL em Postgres descartável. `[P]` = pode rodar em paralelo.
 
+## Estado (2026-11-13)
+
+T1–T16 feitos (api 0.95.0 · app 0.118.0, commits f5775376..HEAD): núcleo multimarca, hub ML, aviso por marca,
+IA de configuração, painel, conferência visual e duas rodadas de revisão (api e app) com correções. Pendente: T17
+(smoke do dono na Render) e confirmar o formato do filtro de categoria do ML (`{"id":"category","value":"MLB…"}`, suposto).
+
 ## Fase 0 — Portões
 
 - **M0** ~~Captura do hub~~ feita 2026-11-13 (design §1 "Hub ML observado"). **Sonda da Render aprovada

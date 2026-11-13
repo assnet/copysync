@@ -7,6 +7,7 @@ import type {
 } from '../../types';
 import { HUNT_AI_INTENT_MAX, HUNT_COMMISSION_PCT_MAX, HUNT_SORTS } from '../../types';
 import { offerHunterStrings } from '../../strings';
+import { hunterStateKey } from '../../stateKey';
 import { EMPTY_SOURCE_OPTIONS, capabilitiesOf, fallbackCapabilities, hasSourceFilter, providerOf, sortInColumn } from '../../providers';
 
 const v = offerHunterStrings.wizard.validation;
@@ -65,9 +66,9 @@ export const EMPTY_FILTERS: HuntFilters = {
   minRating: null, minSales: null, minReviews: null, onlyWithExtra: null, endsWithinDays: null,
 };
 
-/** Chave do rascunho: uma por caçada em edição, outra para a nova. */
-export function wizardDraftKey(huntId?: string | null): string {
-  return huntId ? `offerHunter.wizard.${huntId}` : 'offerHunter.wizard';
+/** Chave do rascunho: uma por caçada em edição, outra para a nova; `scope` = dono (tenant + usuário). */
+export function wizardDraftKey(scope: string, huntId?: string | null): string {
+  return hunterStateKey(huntId ? `offerHunter.wizard.${huntId}` : 'offerHunter.wizard', scope);
 }
 
 export function intervalChoices(limits: HuntLimits, current?: number): number[] {
@@ -194,9 +195,11 @@ export function dropChangedHints(prev: HuntWizardDraft, next: HuntWizardDraft): 
 /**
  * Aplica a sugestão da IA: filtros (da fonte e locais) trocados pelos dela (o que ela não decidiu fica sem filtro);
  * nome, categoria, palavra, ranking por IA e ofertas por busca só mudam quando ela decidiu. Cada campo preenchido
- * ganha a dica com o motivo. Nada é salvo aqui.
+ * ganha a dica com o motivo. Nada é salvo aqui. Sugestão de outra loja (troca no meio da geração) é ignorada.
+ * Loja que filtra extra na fonte (ML): "só com extra" local vira o filtro da fonte (o local não aparece lá).
  */
 export function applyAiSuggestion(draft: HuntWizardDraft, s: HuntAiSuggestion, options: HuntOptions): HuntWizardDraft {
+  if (s.draft.provider !== draft.provider) return draft;
   const caps = capabilitiesOf(options, s.draft.provider);
   const g = s.draft;
   const hints: Record<string, string> = {};
@@ -223,6 +226,12 @@ export function applyAiSuggestion(draft: HuntWizardDraft, s: HuntAiSuggestion, o
     if (value == null || column) continue;
     (sourceOptions as unknown as Record<string, unknown>)[k] = value;
     mark(`sourceOptions.${k}`);
+  }
+  if (!column && filters.onlyWithExtra && hasSourceFilter(caps, 'extraEarningsOnly')) {
+    sourceOptions.extraEarningsOnly = true;
+    hints['sourceOptions.extraEarningsOnly'] = s.reasons['sourceOptions.extraEarningsOnly'] ?? hints['filters.onlyWithExtra'] ?? '';
+    filters.onlyWithExtra = null;
+    delete hints['filters.onlyWithExtra'];
   }
   return {
     ...draft,

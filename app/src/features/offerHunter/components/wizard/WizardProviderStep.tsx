@@ -30,6 +30,8 @@ interface Props {
   providersFailed: boolean;
   onRetryProviders: () => void;
   onSelect: (provider: HuntProvider) => void;
+  /** Trava a troca de loja (sugestão da IA em andamento). */
+  locked?: boolean;
   onOpenRisk?: (provider: HuntProvider) => void;
   error?: string;
 }
@@ -51,7 +53,7 @@ export function HuntProviderMark({ provider, size = 28 }: { provider: HuntProvid
  * depois). Na edição a loja é fixa e aparece só a logo.
  */
 export function WizardProviderStep({
-  provider, editing, providers, providersLoading, providersFailed, onRetryProviders, onSelect, onOpenRisk, error,
+  provider, editing, providers, providersLoading, providersFailed, onRetryProviders, onSelect, locked = false, onOpenRisk, error,
 }: Props) {
   const theme = useTheme();
   const navigate = useNavigate();
@@ -117,9 +119,9 @@ export function WizardProviderStep({
               <ButtonBase
                 role="radio"
                 aria-checked={selected}
-                aria-disabled={blocked || undefined}
+                aria-disabled={blocked || locked || undefined}
                 aria-label={`${name}: ${p.states[status]}`}
-                disabled={blocked}
+                disabled={blocked || locked}
                 onClick={() => onSelect(key)}
                 sx={{
                   display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-start', textAlign: 'left', gap: 1.5,
