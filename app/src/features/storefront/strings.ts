@@ -241,6 +241,41 @@ export const storefrontStrings = {
     close: 'Fechar prévia ampliada',
   },
 
+  /** Bloco no fim da tela, só para quem pode excluir (`canDelete`). */
+  dangerZone: {
+    title: 'Zona de perigo',
+    description: 'Excluir apaga a página, as ofertas e as imagens, e libera o endereço. Não dá para desfazer.',
+    button: 'Excluir Página de Ofertas',
+    buttonTooltip: 'Pedimos a sua senha antes de excluir',
+  },
+
+  /** Diálogo de exclusão da página, confirmado com a senha de quem está logado. */
+  deletePage: {
+    title: 'Excluir Página de Ofertas?',
+    intro: 'Ao confirmar, apagamos de vez:',
+    addressItem: 'O endereço',
+    offersItem: (n: number) => (n === 0 ? 'As ofertas da página' : `${offers(n)}, entre rascunhos e publicadas`),
+    imagesItem: 'A foto, a capa e as imagens das ofertas',
+    addressFreed: 'O endereço fica livre na hora: outra conta poderá usar este endereço.',
+    irreversible: 'Não dá para desfazer. Depois, você pode criar uma página nova do zero.',
+    passwordLabel: 'Sua senha',
+    passwordHelp: 'Digite a senha da sua conta para confirmar.',
+    showPassword: 'Mostrar senha',
+    hidePassword: 'Ocultar senha',
+    confirm: 'Excluir de vez',
+    deleting: 'Excluindo…',
+    cancel: 'Cancelar',
+    done: 'Página de Ofertas excluída',
+    alreadyDeleted: 'Esta página já tinha sido excluída.',
+    errors: {
+      wrongPassword: 'Senha incorreta. Confira e tente de novo.',
+      locked: (minutes: number) =>
+        `Muitas tentativas com a senha errada. Aguarde ${count(minutes)} ${plural(minutes, 'minuto', 'minutos')} e tente de novo.`,
+      forbidden: 'Só administradores da conta podem excluir a Página de Ofertas.',
+      generic: 'Não foi possível excluir a página. Tente de novo.',
+    },
+  },
+
   errors: {
     generic: 'Algo deu errado. Tente de novo.',
     PLAN_FEATURE_UNAVAILABLE: 'O seu plano não inclui a Página de Ofertas.',

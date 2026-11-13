@@ -304,3 +304,16 @@ describe('apiClient — cancelamento e timeout não são indisponibilidade', () 
     }
   });
 });
+
+describe('apiClient — senha incorreta numa confirmação (401 INVALID_CREDENTIALS)', () => {
+  it('não renova o token, não repete o pedido e não desloga', async () => {
+    localStorage.setItem('refreshToken', 'rt');
+    const adapter = vi.fn(rejectWith(401, 'INVALID_CREDENTIALS'));
+    const apiClient = await load(adapter);
+    await expect(apiClient.post('/storefront/delete', { password: 'x' })).rejects.toMatchObject({ status: 401, code: 'INVALID_CREDENTIALS' });
+    expect(adapter).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem('accessToken')).toBe('tok');
+    expect(localStorage.getItem('refreshToken')).toBe('rt');
+    expect(location.href).toBe('http://localhost/dashboard');
+  });
+});

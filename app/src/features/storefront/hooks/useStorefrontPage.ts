@@ -89,8 +89,8 @@ export function useStorefrontPage() {
 
   // null = fora do modo editar
   const [draft, setDraft, clearDraft] = usePersistedState<StorefrontFormState | null>('storefront.form', null);
-  const [tab, setTab] = usePersistedState<StorefrontOfferTab>('storefront.tab', 'drafts');
-  const [addDraft, setAddDraft] = usePersistedState<AddOfferDraft>('storefront.addOffer', EMPTY_ADD);
+  const [tab, setTab, clearTab] = usePersistedState<StorefrontOfferTab>('storefront.tab', 'drafts');
+  const [addDraft, setAddDraft, clearAddDraft] = usePersistedState<AddOfferDraft>('storefront.addOffer', EMPTY_ADD);
   const [viewport, setViewport] = usePersistedState<StorefrontViewport>('storefront.previewViewport', 'mobile');
   const [editOfferId, setEditOfferId, clearEditOffer] = usePersistedState<string | null>('storefront.editOffer', null);
 
@@ -105,6 +105,8 @@ export function useStorefrontPage() {
   const [addRebuiltProvider, setAddRebuiltProvider] = useState<StorefrontOfferProvider | null>(null);
   const [imageErrors, setImageErrors] = useState<Partial<Record<StorefrontImageKind, string | null>>>({});
   const [toast, setToast] = useState<StorefrontToast | null>(null);
+  /** Diálogo de excluir a página: não persiste (reload fecha a ação destrutiva; a senha vive só no diálogo). */
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const notify = (message: string, severity: StorefrontToast['severity'] = 'success') => setToast({ message, severity });
 
@@ -321,6 +323,35 @@ export function useStorefrontPage() {
     }
   };
 
+  /**
+   * Exclui a página com a senha de quem está logado. Sucesso (ou página que já não existe): fecha o
+   * diálogo, limpa o estado de trabalho persistido e recarrega para o estado "criar página". Os
+   * demais erros sobem para o diálogo, que mostra o texto de cada código.
+   */
+  const deletePage = async (password: string) => {
+    let gone = false;
+    try {
+      await storefrontService.deleteStorefront(password);
+    } catch (err) {
+      if (codeOf(err) !== 'STOREFRONT_NOT_FOUND') throw err;
+      gone = true;
+    }
+    setDeleteOpen(false);
+    clearDraft();
+    clearTab();
+    clearAddDraft();
+    clearEditOffer();
+    setSubmitted(false);
+    setSlugCheck(NO_SLUG_CHECK);
+    setAddError(null);
+    setAddErrorAction(null);
+    setAddErrorSource(null);
+    setAddRebuiltProvider(null);
+    setImageErrors({});
+    notify(gone ? t.deletePage.alreadyDeleted : t.deletePage.done);
+    await load();
+  };
+
   const allOffers = overview ? [...overview.offers.drafts, ...overview.offers.published] : [];
   const editingOffer = editOfferId ? (allOffers.find((o) => o.id === editOfferId) ?? null) : null;
 
@@ -336,6 +367,8 @@ export function useStorefrontPage() {
     addDraft, setAddDraft, editAddDraft, addError, addErrorAction, addErrorSource, addRebuiltProvider, extract,
     toggleStatus, deleteOffer, reorder,
     editingOffer, openEditOffer: (o: StorefrontOffer) => setEditOfferId(o.id), closeEditOffer: clearEditOffer, saveOffer,
+    // exclusão da página
+    deleteOpen, openDelete: () => setDeleteOpen(true), closeDelete: () => setDeleteOpen(false), deletePage,
     // prévia e avisos
     viewport, setViewport,
     toast, notify, closeToast: () => setToast(null),

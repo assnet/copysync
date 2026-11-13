@@ -82,6 +82,8 @@ export interface StorefrontOverview {
   categories: StorefrontCategory[];
   subtitleSuggestions: string[];
   domains: StorefrontDomain[];
+  /** Papel do usuário permite excluir a página (admin da conta ou super admin). Ausente = não. */
+  canDelete?: boolean;
 }
 
 export type SlugAvailabilityStatus = 'INVALID' | 'RESERVED' | 'PREMIUM' | 'TAKEN' | 'OWNED' | 'AVAILABLE';

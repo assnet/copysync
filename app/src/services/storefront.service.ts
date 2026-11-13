@@ -90,4 +90,14 @@ export const storefrontService = {
   async deleteOffer(id: string): Promise<void> {
     await apiClient.delete(offer(id));
   },
+
+  /**
+   * Exclui a página inteira (ofertas, imagens e endereço) confirmando a senha de quem está logado.
+   * POST e não DELETE: o corpo leva segredo. 401 `INVALID_CREDENTIALS` (senha errada; o `apiClient`
+   * não desloga), 429 `PASSWORD_CONFIRMATION_LOCKED` (`meta.retryAfterSeconds`), 403 `FORBIDDEN`,
+   * 404 `STOREFRONT_NOT_FOUND`. A senha nunca é guardada nem logada.
+   */
+  async deleteStorefront(password: string): Promise<void> {
+    await apiClient.post(`${BASE}/delete`, { password });
+  },
 };

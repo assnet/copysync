@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { renderWithTheme } from '@/test/renderWithTheme';
 import { PrivacyProvider } from '@/features/privacy';
@@ -13,6 +13,7 @@ const svc = vi.hoisted(() => ({
   saveStorefront: vi.fn(),
   extractOffer: vi.fn(),
   preview: vi.fn(() => new Promise<string>(() => {})),
+  deleteStorefront: vi.fn(),
 }));
 vi.mock('@/services/storefront.service', () => ({ storefrontService: svc }));
 
@@ -154,6 +155,153 @@ describe('StorefrontPage', () => {
     it('Página de Ofertas fora do plano continua redirecionando', async () => {
       await extract({ status: 403, code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: 'storefront_enabled' } });
       expect(await screen.findByText('tela de planos')).toBeInTheDocument();
+    });
+  });
+
+  describe('excluir a página', () => {
+    const SECRET = 'S3nh@-muito-secreta';
+    const withPage = (canDelete?: boolean): StorefrontOverview => ({
+      ...overview,
+      canDelete,
+      publicUrl: 'https://achadinhos.ofertas.test',
+      storefront: {
+        id: 'p1', title: 'Achadinhos', subtitle: null, avatarUrl: null, coverUrl: null,
+        colorPrimary: '#2563EB', colorBackground: '#F5F5F5', colorCard: '#FFFFFF', categories: [],
+        status: 'ACTIVE', domainId: 'd1', slug: 'achadinhos',
+        createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z',
+      },
+    });
+    const d = t.deletePage;
+    const passwordField = () => screen.getByLabelText(d.passwordLabel) as HTMLInputElement;
+    const confirmButton = () => screen.getByRole('button', { name: d.confirm });
+    const storageDump = () => JSON.stringify([{ ...sessionStorage }, { ...localStorage }]);
+
+    const openDialog = async (mode: 'light' | 'dark' = 'light') => {
+      svc.getStorefront.mockResolvedValue(withPage(true));
+      renderPage(mode);
+      fireEvent.click(await screen.findByRole('button', { name: t.dangerZone.button }));
+      await screen.findByRole('dialog');
+    };
+    const typeAndSend = () => {
+      fireEvent.change(passwordField(), { target: { value: SECRET } });
+      fireEvent.click(confirmButton());
+    };
+
+    beforeEach(() => {
+      localStorage.clear();
+      svc.deleteStorefront.mockReset();
+    });
+
+    it.each([[false], [undefined]])('sem canDelete (%s) não mostra a zona de perigo', async (canDelete) => {
+      svc.getStorefront.mockResolvedValue(withPage(canDelete));
+      renderPage();
+      await screen.findByRole('button', { name: t.config.edit });
+      expect(screen.queryByText(t.dangerZone.title)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: t.dangerZone.button })).not.toBeInTheDocument();
+    });
+
+    it('sem página criada não mostra a zona de perigo, mesmo com canDelete', async () => {
+      svc.getStorefront.mockResolvedValue({ ...overview, canDelete: true });
+      renderPage();
+      await screen.findByRole('button', { name: t.empty.cta });
+      expect(screen.queryByText(t.dangerZone.title)).not.toBeInTheDocument();
+    });
+
+    it('diálogo mostra o que será apagado e confirma só com senha digitada', async () => {
+      await openDialog('dark');
+      expect(within(screen.getByRole('dialog')).getByText('achadinhos.ofertas.test')).toBeInTheDocument();
+      expect(screen.getByText(d.addressFreed)).toBeInTheDocument();
+      expect(confirmButton()).toBeDisabled();
+      expect(passwordField()).toHaveAttribute('type', 'password');
+      expect(passwordField()).toHaveAttribute('autocomplete', 'current-password');
+      fireEvent.change(passwordField(), { target: { value: SECRET } });
+      expect(confirmButton()).toBeEnabled();
+      fireEvent.click(screen.getByRole('button', { name: d.showPassword }));
+      expect(passwordField()).toHaveAttribute('type', 'text');
+    });
+
+    it('204: envia a senha, avisa, limpa o rascunho e volta ao estado de criar', async () => {
+      svc.getStorefront.mockResolvedValue(withPage(true));
+      renderPage();
+      // rascunho de edição aberto e persistido antes de excluir
+      fireEvent.click(await screen.findByRole('button', { name: t.config.edit }));
+      fireEvent.change(screen.getByRole('textbox', { name: new RegExp(t.fields.name.label) }), { target: { value: 'Outro nome' } });
+      await waitFor(() => expect(Object.keys(sessionStorage).some((k) => k.includes('storefront.form'))).toBe(true));
+      fireEvent.click(screen.getByRole('button', { name: t.dangerZone.button }));
+      await screen.findByRole('dialog');
+
+      svc.deleteStorefront.mockResolvedValue(undefined);
+      svc.getStorefront.mockResolvedValue({ ...overview, canDelete: true });
+      fireEvent.change(passwordField(), { target: { value: SECRET } });
+      expect(storageDump()).not.toContain(SECRET);
+      fireEvent.submit(passwordField().closest('form')!); // Enter no campo
+
+      expect(await screen.findByText(d.done)).toBeInTheDocument();
+      expect(svc.deleteStorefront).toHaveBeenCalledTimes(1);
+      expect(svc.deleteStorefront).toHaveBeenCalledWith(SECRET);
+      expect(await screen.findByRole('button', { name: t.empty.cta })).toBeInTheDocument();
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      expect(screen.queryByRole('textbox', { name: new RegExp(t.fields.name.label) })).not.toBeInTheDocument();
+      expect(Object.keys(sessionStorage).some((k) => k.includes('storefront.form'))).toBe(false);
+      expect(storageDump()).not.toContain(SECRET);
+    });
+
+    it('401: mostra senha incorreta, limpa o campo, devolve o foco e não guarda a senha', async () => {
+      await openDialog();
+      svc.deleteStorefront.mockRejectedValue({ status: 401, code: 'INVALID_CREDENTIALS' });
+      typeAndSend();
+      expect(await screen.findByText(d.errors.wrongPassword)).toBeInTheDocument();
+      expect(passwordField()).toHaveValue('');
+      expect(passwordField()).toHaveAttribute('aria-invalid', 'true');
+      await waitFor(() => expect(passwordField()).toHaveFocus());
+      expect(confirmButton()).toBeDisabled();
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(storageDump()).not.toContain(SECRET);
+    });
+
+    it('429: mostra a espera em minutos e trava o envio', async () => {
+      await openDialog();
+      svc.deleteStorefront.mockRejectedValue({ status: 429, code: 'PASSWORD_CONFIRMATION_LOCKED', meta: { retryAfterSeconds: 840 } });
+      typeAndSend();
+      expect(await screen.findByText(d.errors.locked(14))).toBeInTheDocument();
+      expect(passwordField()).toBeDisabled();
+      expect(passwordField()).toHaveValue('');
+      expect(confirmButton()).toBeDisabled();
+    });
+
+    it('403: avisa que só administradores podem excluir', async () => {
+      await openDialog();
+      svc.deleteStorefront.mockRejectedValue({ status: 403, code: 'FORBIDDEN' });
+      typeAndSend();
+      expect(await screen.findByText(d.errors.forbidden)).toBeInTheDocument();
+      expect(passwordField()).toHaveValue('');
+    });
+
+    it('erro sem código mostra o texto genérico', async () => {
+      await openDialog();
+      svc.deleteStorefront.mockRejectedValue(new Error('rede'));
+      typeAndSend();
+      expect(await screen.findByText(d.errors.generic)).toBeInTheDocument();
+    });
+
+    it('404: trata como já excluída e recarrega', async () => {
+      await openDialog();
+      svc.deleteStorefront.mockRejectedValue({ status: 404, code: 'STOREFRONT_NOT_FOUND' });
+      svc.getStorefront.mockResolvedValue({ ...overview, canDelete: true });
+      typeAndSend();
+      expect(await screen.findByText(d.alreadyDeleted)).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: t.empty.cta })).toBeInTheDocument();
+    });
+
+    it('cancelar fecha e reabrir vem com o campo vazio', async () => {
+      await openDialog();
+      fireEvent.change(passwordField(), { target: { value: SECRET } });
+      fireEvent.click(screen.getByRole('button', { name: d.cancel }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: t.dangerZone.button }));
+      await screen.findByRole('dialog');
+      expect(passwordField()).toHaveValue('');
+      expect(svc.deleteStorefront).not.toHaveBeenCalled();
     });
   });
 

@@ -190,13 +190,17 @@ apiClient.interceptors.response.use(
     // Inclui o passo do código (/auth/login/verify|resend): 401/400 ali nunca tenta refresh.
     const isAuthLogin = /\/auth\/login(\/(verify|resend))?$/.test(requestUrl);
     const isAuthRefresh = requestUrl.endsWith('/auth/refresh');
+    // Senha digitada errada numa confirmação (ex.: excluir a Página de Ofertas): o token segue
+    // válido. Sem refresh, sem repetir o pedido (gastaria outra tentativa) e sem logout.
+    const isWrongPassword = error.response?.status === 401 && error.response.data?.error?.code === 'INVALID_CREDENTIALS';
 
     if (
       error.response?.status === 401 &&
       originalRequest &&
       !originalRequest._retry &&
       !isAuthLogin &&
-      !isAuthRefresh
+      !isAuthRefresh &&
+      !isWrongPassword
     ) {
       originalRequest._retry = true;
 
@@ -225,7 +229,7 @@ apiClient.interceptors.response.use(
       }
     }
 
-    if (error.response?.status === 401) {
+    if (error.response?.status === 401 && !isWrongPassword) {
       clearSessionAndRedirect();
     }
 

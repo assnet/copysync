@@ -2,8 +2,10 @@ import { Alert, Box, Button, Skeleton, Snackbar, Stack } from '@mui/material';
 import { RotateCw } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { AddOfferCard } from './components/AddOfferCard';
+import { DeleteStorefrontDialog } from './components/DeleteStorefrontDialog';
 import { EditOfferDialog } from './components/EditOfferDialog';
 import { OfferTabs } from './components/OfferTabs';
+import { StorefrontDangerZone } from './components/StorefrontDangerZone';
 import { StorefrontConfigCard } from './components/StorefrontConfigCard';
 import { StorefrontHeader } from './components/StorefrontHeader';
 import { StorefrontPreview } from './components/StorefrontPreview';
@@ -115,6 +117,16 @@ export function StorefrontPage() {
               )}
             </Stack>
           </Box>
+
+          {page && overview.canDelete === true && <StorefrontDangerZone onDelete={s.openDelete} />}
+
+          <DeleteStorefrontDialog
+            open={s.deleteOpen && page !== null}
+            address={overview.publicUrl?.replace(/^https?:\/\//, '') ?? page?.slug ?? null}
+            offerCount={overview.offers.drafts.length + overview.offers.published.length}
+            onClose={s.closeDelete}
+            onConfirm={s.deletePage}
+          />
 
           <EditOfferDialog
             offer={s.editingOffer}
