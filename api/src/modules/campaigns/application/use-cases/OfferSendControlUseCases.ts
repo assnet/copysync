@@ -1,6 +1,7 @@
 import type { IOfferRepository } from '../../domain/contracts/IOfferRepository';
 import type { IOfferDispatchRepository } from '../../domain/contracts/IOfferDispatchRepository';
 import type { IOfferGeneratorConfigRepository } from '../../domain/contracts/IOfferGeneratorConfigRepository';
+import { MANUAL_OFFER_ORIGINS } from '../../domain/enums/OfferOrigin';
 import { scheduleDispatches } from '../../domain/services/scheduleDispatches';
 import { appendToLanes, laneGapMs, laneTailsFromOpen } from '../../domain/services/appendToLanes';
 import { compactLane } from '../../domain/services/compactLane';
@@ -103,8 +104,8 @@ export class ResumeOfferUseCase extends OfferControlUseCase {
     // Volta para o fim da fila das suas sessões: o que entrou durante a pausa não é atropelado
     const sessionIds = [...new Set(queued.flatMap((d) => (d.sessionId ? [d.sessionId] : [])))];
     // Fim do bloco ocupado de cada sessão (a própria oferta ainda está PAUSED: não conta). Gerador só
-    // espera outro gerador: o claim o põe à frente das capturas do monitoramento
-    const laneOrigin = offer.origin === 'GENERATOR' ? 'GENERATOR' : undefined;
+    // espera outro gerador: o claim o põe à frente das capturas do monitoramento (caçador: outros manuais)
+    const laneOrigin = offer.origin === 'GENERATOR' ? 'GENERATOR' : offer.origin === 'HUNTER' ? MANUAL_OFFER_ORIGINS : undefined;
     const openBySession = new Map<string, Date[]>();
     for (const sessionId of sessionIds) openBySession.set(sessionId, await this.deps.dispatches.openNotBefore(input.tenantId, sessionId, planned[0] ?? start, laneOrigin));
     const tails = laneTailsFromOpen(openBySession, planned[0] ?? start, interval.maxMs);

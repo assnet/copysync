@@ -187,4 +187,14 @@ describe('ResumeOfferUseCase — fila por sessão', () => {
     expect(byConv('c3').notBefore).toEqual(sec(650));
     expect(byConv('c4').notBefore).toEqual(sec(800));
   });
+  it('caçador retomado não fica atrás de capturas do monitoramento; espera outro manual', async () => {
+    for (const [ahead, c3] of [['MONITORING', 0], ['GENERATOR', 650]] as const) {
+      const { deps, offers, dispatches, byConv, input } = setup({ status: 'PAUSED', origin: 'HUNTER' });
+      for (const d of dispatches.items) d.sessionId = 's1';
+      offers.items.push(makeOffer({ id: 'other', status: 'SENDING', origin: ahead }));
+      for (const [i, at] of [100, 300, 500].entries()) dispatches.add({ offerId: 'other', conversationId: `o${i}`, sessionId: 's1', notBefore: sec(at) });
+      await new ResumeOfferUseCase(deps).execute(input);
+      expect(byConv('c3').notBefore).toEqual(sec(c3));
+    }
+  });
 });

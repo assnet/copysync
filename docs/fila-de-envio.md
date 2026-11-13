@@ -117,11 +117,20 @@ capturas por sessão, ~250 envios/h, oferta manual esperaria ~16 h). Dentro da m
 `notBefore`. É só a ordem do `DISTINCT ON` (`od."origin" <> 'GENERATOR'` antes de `notBefore`), com
 `IN (offers)` virando `JOIN`: mesmo plano e mesmo custo (~40 ms com 13 mil `QUEUED` em produção).
 
+(2026-11-13) O caçador (`HUNTER`) entra junto: a coluna `"monitoring"` (`origin NOT IN ('GENERATOR',
+'HUNTER')`) ordena a faixa (`sessão, monitoring, waitingSessionSince IS NULL, notBefore, id`) e também o
+`LIMIT` do tick (`monitoring, notBefore, id`): sem isso a faixa cuja cabeça virou o envio manual
+(`notBefore` mais novo) perdia a vaga para capturas velhas de outras sessões. Sem índice novo: o custo é
+o `DISTINCT ON` sobre todos os vencidos, igual antes (EXPLAIN no descartável, 13 mil `QUEUED` sendo
+10 mil numa sessão + 50 mil `SENT`: ~50–65 ms, `offer_dispatches_status_notBefore_idx`).
+
 - O intervalo da sessão não muda: `gapSeconds`/`SENT` recente/`SENDING` seguram o gerador como antes.
 - Gerador com `notBefore` futuro (agendado, ou entre um grupo e outro) não fura: só o vencido.
 - Previsão honesta: `SendOfferUseCase` e a retomada de oferta do gerador chamam
   `openNotBefore(..., 'GENERATOR')`: o fim da faixa considera só envios do gerador. Captura do
   monitoramento continua encostando em tudo (gerador incluído).
+  Caçador (`EnqueueOfferUseCase` com `origin: 'HUNTER'` e a retomada) passa `MANUAL_OFFER_ORIGINS`
+  (gerador + caçador): captura agendada no futuro não o empurra; gerador segue só com `'GENERATOR'`.
 - Não fazer: `Offer.priority` numérico, prioridade por tenant ou por plano, nem fazer captura
   furar captura. Capturas velhas acumuladas (preço desatualizado) são outro problema: validade por idade
   da captura ainda não existe (decisão pendente).

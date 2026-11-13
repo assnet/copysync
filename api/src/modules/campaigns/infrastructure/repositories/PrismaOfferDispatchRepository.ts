@@ -116,8 +116,9 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
    * ignora a janela; tenant sem configuração não tem janela). Filtrar no candidato, e não na cabeça, deixa a
    * cabeça da faixa ser o próximo elegível (o gerador não fica preso atrás de uma captura fora da janela).
    *
-   * Prioridade na faixa: envio vencido do gerador sai antes de qualquer captura do monitoramento da
-   * mesma sessão, mesmo com milhares de capturas acumuladas mais antigas. O intervalo da sessão
+   * Prioridade na faixa: envio vencido manual/curado (gerador e caçador) sai antes de qualquer captura
+   * do monitoramento da mesma sessão, mesmo com milhares de capturas acumuladas mais antigas, e a
+   * faixa com cabeça manual vem antes das outras no LIMIT do tick. O intervalo da sessão
    * (gapSeconds/SENT recente) continua valendo: só muda quem é a cabeça.
    *
    * Dono da sessão (docs/arquitetura-escala.md §3.3): envio cuja sessão tem lease vivo de OUTRO
@@ -152,7 +153,8 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
            AND "id" IN (
              SELECT "id" FROM (
                SELECT DISTINCT ON (COALESCE(d."sessionId", d."id"))
-                      d."id", d."notBefore", d."sessionId", d."gapSeconds"
+                      d."id", d."notBefore", d."sessionId", d."gapSeconds",
+                      (od."origin" NOT IN ('GENERATOR'::"OfferOrigin", 'HUNTER'::"OfferOrigin")) AS "monitoring"
                  FROM "offer_dispatches" d
                  JOIN "offers" od ON od."id" = d."offerId" AND od."status" = 'SENDING'::"OfferStatus"
                 WHERE d."status" = 'QUEUED'::"OfferDispatchStatus" AND d."notBefore" <= ${now}
@@ -180,10 +182,11 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
                      WHERE go."id" = d."offerId" AND go."origin" = 'GENERATOR'::"OfferOrigin" AND go."scheduledAt" IS NULL
                        AND NOT ${generatorOpen}
                   )
-                -- Gerador (envio manual) fura a fila do monitoramento na faixa da sessão; dentro da mesma
-                -- origem, quem esperava a sessão reconectar volta primeiro (a ordem da fila se mantém)
-                ORDER BY COALESCE(d."sessionId", d."id"), (od."origin" <> 'GENERATOR'::"OfferOrigin"),
-                         (d."waitingSessionSince" IS NULL), d."notBefore"
+                -- Manual/curada (gerador e caçador) fura a fila do monitoramento na faixa da sessão; dentro
+                -- do grupo, quem esperava a sessão reconectar volta primeiro (a ordem da fila se mantém)
+                ORDER BY COALESCE(d."sessionId", d."id"),
+                         "monitoring",
+                         (d."waitingSessionSince" IS NULL), d."notBefore", d."id"
              ) heads
               WHERE NOT EXISTS (
                 -- Sessão em espera: envio devolvido por sessão fora do ar ainda não chegou na nova tentativa
@@ -202,7 +205,9 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
                         OR (o."status" = 'FAILED'::"OfferDispatchStatus" AND o."failureReason" = 'SEND_TIMEOUT'
                             AND o."claimedAt" + make_interval(secs => GREATEST(heads."gapSeconds" - ${LANE_GAP_TOLERANCE_SECONDS}, ${LANE_TIMEOUT_HOLD_SECONDS})) > ${now}))
               )
-              ORDER BY heads."notBefore"
+              -- Entre sessões, cabeça manual/curada antes (senão a faixa que acabou de ganhar um envio manual,
+              -- com notBefore mais novo, perderia a vaga do tick para capturas velhas de outras sessões)
+              ORDER BY heads."monitoring", heads."notBefore", heads."id"
               LIMIT ${limit}
            )
         RETURNING *`;
@@ -210,11 +215,12 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
     });
   }
 
-  async openNotBefore(tenantId: string, sessionId: string, from: Date, origin?: OfferOrigin): Promise<Date[]> {
+  async openNotBefore(tenantId: string, sessionId: string, from: Date, origin?: OfferOrigin | readonly OfferOrigin[]): Promise<Date[]> {
+    const origins = origin === undefined ? undefined : typeof origin === 'string' ? [origin] : [...origin];
     const rows = await this.prisma.offerDispatch.findMany({
       where: {
         tenantId, sessionId, status: { in: ['QUEUED', 'SENDING'] },
-        offer: { status: 'SENDING', ...(origin ? { origin } : {}), OR: [{ scheduledAt: null }, { scheduledAt: { lte: from } }], AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gt: from } }] }] },
+        offer: { status: 'SENDING', ...(origins ? { origin: { in: origins } } : {}), OR: [{ scheduledAt: null }, { scheduledAt: { lte: from } }], AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gt: from } }] }] },
       },
       select: { notBefore: true },
       orderBy: { notBefore: 'asc' },

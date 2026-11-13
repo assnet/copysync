@@ -16,7 +16,7 @@ let convGen = '';
 
 const spToUtc = (hh: number, mm = 0, day = 28) => new Date(Date.UTC(2026, 9, day, hh + 3, mm)); // dd/10/2026 hh:mm em SP
 
-async function offer(origin: 'GENERATOR' | 'MONITORING') {
+async function offer(origin: 'GENERATOR' | 'MONITORING' | 'HUNTER') {
   return prisma.offer.create({ data: { tenantId, provider: 'AMAZON', sourceUrl: 'x', affiliateUrl: 'x', text: 'x', status: 'SENDING', origin } });
 }
 async function queued(offerId: string, conversationId: string, notBefore: Date) {
@@ -234,6 +234,86 @@ describe('claimDue — prioridade do gerador na faixa', () => {
   });
 });
 
+describe('claimDue — manuais/curadas (gerador e caçador) antes do monitoramento', () => {
+  let sessionB = '';
+  let convB = '';
+  /** Um envio por oferta: (offerId, conversationId) é único. */
+  async function one(origin: 'GENERATOR' | 'MONITORING' | 'HUNTER', notBefore: Date, sid = sessionId, conv = convMon, gapSeconds = 0) {
+    const o = await offer(origin);
+    return prisma.offerDispatch.create({ data: { tenantId, offerId: o.id, conversationId: conv, sessionId: sid, notBefore, status: 'QUEUED', gapSeconds } });
+  }
+  async function backlog(n: number, sid = sessionId, conv = convMon) {
+    const offers = await Promise.all(Array.from({ length: n }, () => offer('MONITORING')));
+    await prisma.offerDispatch.createMany({
+      data: offers.map((o, i) => ({ tenantId, offerId: o.id, conversationId: conv, sessionId: sid, notBefore: new Date(spToUtc(7).getTime() + i * 1000), status: 'QUEUED' as const, gapSeconds: 0 })),
+    });
+  }
+  beforeAll(async () => {
+    sessionB = (await prisma.session.create({ data: { tenantId, name: 'SB', status: 'CONNECTED' } })).id;
+    convB = (await prisma.chatConversation.create({ data: { tenantId, sessionId: sessionB, isGroup: true, groupJid: 'pb' } })).id;
+  });
+
+  it.each(['HUNTER', 'GENERATOR'] as const)('100 capturas vencidas + 1 %s vencido mais novo: o próximo claim é ele', async (origin) => {
+    await reset();
+    await backlog(100);
+    const h = await one(origin, spToUtc(8, 55), sessionId, convGen);
+    expect((await repo.claimDue(spToUtc(9), 10)).map((d) => d.id)).toEqual([h.id]);
+  });
+
+  it('caçador ainda não vencido não fura: sai a captura mais antiga', async () => {
+    await reset();
+    await backlog(3);
+    await one('HUNTER', spToUtc(9, 30), sessionId, convGen);
+    const got = await repo.claimDue(spToUtc(9), 10);
+    expect(got).toHaveLength(1);
+    expect(got[0]!.notBefore).toEqual(spToUtc(7));
+  });
+
+  it('dois caçadores seguidos respeitam o intervalo da sessão; capturas não furam o intervalo', async () => {
+    await reset();
+    await backlog(5);
+    const a = await one('HUNTER', spToUtc(8, 50), sessionId, convGen, 300);
+    const b = await one('HUNTER', spToUtc(8, 51), sessionId, convGen, 300);
+    expect((await repo.claimDue(spToUtc(9), 10)).map((d) => d.id)).toEqual([a.id]);
+    // em envio: a faixa fica fechada
+    expect(await repo.claimDue(spToUtc(9), 10)).toEqual([]);
+    await prisma.offerDispatch.update({ where: { id: a.id }, data: { status: 'SENT', claimedAt: spToUtc(9) } });
+    // 1 min depois do envio (intervalo 300 s): nada sai, nem captura
+    expect(await repo.claimDue(new Date(spToUtc(9).getTime() + 60_000), 10)).toEqual([]);
+    expect((await repo.claimDue(spToUtc(9, 5), 10)).map((d) => d.id)).toEqual([b.id]);
+  });
+
+  it('outra sessão não é afetada: a captura dela sai no mesmo claim', async () => {
+    await reset();
+    await backlog(10);
+    const h = await one('HUNTER', spToUtc(8, 55), sessionId, convGen);
+    const m = await one('MONITORING', spToUtc(8), sessionB, convB);
+    const got = await repo.claimDue(spToUtc(9), 10);
+    expect(got.map((d) => d.id).sort()).toEqual([h.id, m.id].sort());
+  });
+
+  it('vaga do tick (limit 1): faixa com caçador na cabeça vence captura mais antiga de outra sessão', async () => {
+    await reset();
+    await backlog(5);
+    const h = await one('HUNTER', spToUtc(8, 55), sessionId, convGen);
+    await one('MONITORING', spToUtc(6, 30), sessionB, convB);
+    expect((await repo.claimDue(spToUtc(9), 1)).map((d) => d.id)).toEqual([h.id]);
+  });
+
+  it('dois workers concorrentes: o caçador sai uma vez só e a faixa não abre duas vezes', async () => {
+    await reset();
+    await backlog(20);
+    const h = await one('HUNTER', spToUtc(8, 55), sessionId, convGen);
+    const repo2 = new PrismaOfferDispatchRepository(prisma, 'worker-test-2');
+    const [x, y] = await Promise.all([
+      repo.claimDue(spToUtc(9), 5, { excludeSessionIds: [] }),
+      repo2.claimDue(spToUtc(9), 5, { excludeSessionIds: [] }),
+    ]);
+    expect([...x, ...y].map((d) => d.id)).toEqual([h.id]);
+    expect(await prisma.offerDispatch.count({ where: { tenantId, status: 'SENDING' } })).toBe(1);
+  });
+});
+
 describe('openSessionIds', () => {
   it('sessões com QUEUED de oferta SENDING, sem repetir', async () => {
     await reset();
@@ -273,6 +353,18 @@ describe('openNotBefore', () => {
     await queued(mon.id, convMon, spToUtc(8));
     expect(await repo.openNotBefore(tenantId, sessionId, spToUtc(8, 5), 'GENERATOR')).toEqual([spToUtc(8, 10)]);
     expect(await repo.openNotBefore(tenantId, sessionId, spToUtc(8, 5))).toEqual([spToUtc(8), spToUtc(8, 10)]);
+  });
+
+  it('lista de origens (manuais): gerador e caçador, sem as capturas do monitoramento', async () => {
+    await reset();
+    const gen = await offer('GENERATOR');
+    await queued(gen.id, convGen, spToUtc(8, 10));
+    const hun = await offer('HUNTER');
+    await queued(hun.id, convGen, spToUtc(8, 20));
+    const mon = await offer('MONITORING');
+    await queued(mon.id, convMon, spToUtc(8, 30));
+    expect(await repo.openNotBefore(tenantId, sessionId, spToUtc(8, 5), ['GENERATOR', 'HUNTER'])).toEqual([spToUtc(8, 10), spToUtc(8, 20)]);
+    expect(await repo.openNotBefore(tenantId, sessionId, spToUtc(8, 5), 'GENERATOR')).toEqual([spToUtc(8, 10)]);
   });
 });
 

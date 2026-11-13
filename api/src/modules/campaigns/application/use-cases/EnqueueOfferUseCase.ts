@@ -1,7 +1,7 @@
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
 import type { IOfferDispatchRepository } from '../../domain/contracts/IOfferDispatchRepository';
 import type { IOfferRepository } from '../../domain/contracts/IOfferRepository';
-import type { OfferOrigin } from '../../domain/enums/OfferOrigin';
+import { MANUAL_OFFER_ORIGINS, type OfferOrigin } from '../../domain/enums/OfferOrigin';
 import type { OfferImageMode } from '../../domain/enums/OfferImageMode';
 import { appendToLanes, laneGapMs, laneTailsFromOpen } from '../../domain/services/appendToLanes';
 import { fitSlots } from '../../domain/services/fitSlots';
@@ -87,9 +87,11 @@ export class EnqueueOfferUseCase {
     // Uma faixa por sessão: a oferta inteira entra depois do que já está à frente em qualquer delas
     const sessionIds = [...new Set(destinations.map((d) => d.sessionId))];
     // Fim do bloco ocupado de cada sessão (buraco maior que o intervalo máximo libera a faixa)
+    // Caçador fura a fila do monitoramento no claim: só espera outros manuais (como o gerador no SendOffer)
+    const laneOrigin = input.origin === 'HUNTER' ? MANUAL_OFFER_ORIGINS : undefined;
     const openBySession = new Map<string, Date[]>();
     for (const sessionId of sessionIds) {
-      openBySession.set(sessionId, await this.deps.dispatches.openNotBefore(tenantId, sessionId, planned[0]!));
+      openBySession.set(sessionId, await this.deps.dispatches.openNotBefore(tenantId, sessionId, planned[0]!, laneOrigin));
     }
     const tails = laneTailsFromOpen(openBySession, planned[0]!, interval.maxMs);
     const laned = tails.size === 0

@@ -86,6 +86,41 @@ describe('EnqueueOfferUseCase', () => {
   });
 });
 
+describe('EnqueueOfferUseCase — caçador na faixa (manuais furam o monitoramento)', () => {
+  function withCaptures(s: ReturnType<typeof setup>) {
+    s.offers.items.push(makeOffer({ id: 'cap', status: 'SENDING', origin: 'MONITORING' }));
+    // capturas agendadas de agora até +100 s (bloco contíguo)
+    s.dispatches.add({ offerId: 'cap', conversationId: 'c0', sessionId: 's1', notBefore: NOW });
+    s.dispatches.add({ offerId: 'cap', conversationId: 'c1', sessionId: 's1', notBefore: new Date(NOW.getTime() + 100_000) });
+  }
+
+  it('capturas do monitoramento agendadas no futuro não atrasam o caçador', async () => {
+    const s = setup();
+    withCaptures(s);
+    const out = await s.uc.execute(input({ origin: 'HUNTER' }));
+    expect(out).toMatchObject({ kind: 'queued', firstSendAt: NOW });
+  });
+
+  it('caçador espera outro manual (gerador ou caçador) da sessão', async () => {
+    for (const origin of ['GENERATOR', 'HUNTER'] as const) {
+      const s = setup();
+      withCaptures(s);
+      s.offers.items.push(makeOffer({ id: 'man', status: 'SENDING', origin }));
+      s.dispatches.add({ offerId: 'man', conversationId: 'm0', sessionId: 's1', notBefore: NOW });
+      s.dispatches.add({ offerId: 'man', conversationId: 'm1', sessionId: 's1', notBefore: new Date(NOW.getTime() + 100_000) });
+      const out = await s.uc.execute(input({ origin: 'HUNTER' }));
+      expect(out.kind === 'queued' && out.firstSendAt.getTime() - NOW.getTime()).toBe(190_000);
+    }
+  });
+
+  it('monitoramento segue esperando as capturas (comportamento de sempre)', async () => {
+    const s = setup();
+    withCaptures(s);
+    const out = await s.uc.execute(input());
+    expect(out.kind === 'queued' && out.firstSendAt.getTime() - NOW.getTime()).toBe(190_000);
+  });
+});
+
 describe('EnqueueOfferUseCase — sessão cruzada', () => {
   it('destinos de duas sessões: cada envio na faixa da própria sessão, ordem e intervalo mantidos', async () => {
     const s = setup();
