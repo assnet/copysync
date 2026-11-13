@@ -140,7 +140,7 @@ export class InMemoryOfferDispatchRepository implements IOfferDispatchRepository
     const excluded = new Set(options.excludeSessionIds ?? []);
     const due = this.items
       .filter((d) => d.status === 'QUEUED' && d.notBefore <= now)
-      .filter((d) => !d.sessionId || !excluded.has(d.sessionId))
+      .filter((d) => !d.sessionId || (!excluded.has(d.sessionId) && !this.deletedSessionIds.has(d.sessionId)))
       .filter((d) => this.offers.items.find((o) => o.id === d.offerId)?.status === 'SENDING')
       .slice(0, limit);
     for (const d of due) Object.assign(d, { status: 'SENDING', claimedAt: now, claimToken: `tok-${++this.tokenSeq}` });
@@ -160,6 +160,13 @@ export class InMemoryOfferDispatchRepository implements IOfferDispatchRepository
     if (!d) return false;
     d.claimedAt = NOW;
     return true;
+  }
+  /** Sessões excluídas (espelho de `sessions.deletedAt`): fora do claim e fechadas pelo lote. */
+  deletedSessionIds = new Set<string>();
+  async skipForDeletedSessions(limit: number) {
+    const gone = this.items.filter((d) => d.status === 'QUEUED' && d.sessionId && this.deletedSessionIds.has(d.sessionId)).slice(0, limit);
+    for (const d of gone) Object.assign(d, { status: 'SKIPPED', failureReason: 'SESSION_DELETED' });
+    return gone.length;
   }
   async skipExpired(now: Date) {
     let n = 0;

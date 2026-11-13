@@ -83,6 +83,32 @@ ter saído. Envio legado sem sessão continua falhando como antes. Painel: "Agua
 Motivo: a sessão pode cair sem registro (o banco segue `CONNECTED`); antes, cada grupo da vez
 virava "Falhou" e perdia a oferta.
 
+### 2.2.2 Sessão excluída: descarte na hora
+
+Sessão excluída (`sessions.deletedAt`) não reconecta: esperar as 6 h do §2.2.1 só segurava a fila. Regra
+(2026-11-13): todo envio `QUEUED` dela vira **`SKIPPED` / `SESSION_DELETED`** (`domain/offerDispatchReasons.ts`),
+vencido ou futuro, de oferta em envio ou pausada. Sem estado novo. Três pontos:
+
+1. **Na exclusão**: `PrismaSessionOfferDispatchStore.pauseBySession` entra na lista `SessionLinkedResources` do
+   `DeleteSessionUseCase` (mesma porta do rodízio de links, composta em `session.routes.ts`), antes do soft delete,
+   filtrando `tenantId`.
+2. **No tick**: `skipForDeletedSessions(DELETED_SESSION_SWEEP_LIMIT = 500)` roda depois do `skipExpired` e antes do
+   claim. Pega o que escapou do item 1 (envio que estava `SENDING` e voltou à fila, enfileirado no meio da exclusão,
+   sessões excluídas antes desta regra). CTE com `LIMIT … FOR UPDATE OF d SKIP LOCKED` + `UPDATE … FROM`: dois
+   workers não se esperam nem fecham a mesma linha. Não usar `id IN (SELECT … LIMIT … FOR UPDATE)`: o planner
+   reexecuta a subconsulta e passa do limite (pego no teste de integração).
+3. **No claim**: sessão excluída entra no mesmo `NOT IN` do dono da sessão (`s."deletedAt" IS NOT NULL OR lease
+   alheio`): nunca ocupa vaga do tick, mesmo com mais de 500 pendentes.
+
+A oferta que ficou sem envio aberto é fechada pelo sweep de órfãs (`SENT` se algum grupo saiu, senão `FAILED`);
+o achado do caçador mostra "Não enviado" e o painel, "A sessão foi excluída antes do envio". Sessão **viva**
+fora do ar não muda: segue o §2.2.1. Envio `SENDING` não é tocado (termina ou volta pelo caminho normal).
+
+EXPLAIN ANALYZE (Postgres 16 descartável; 60 mil envios, 10 mil `QUEUED` sendo 3 mil de sessão excluída; 3,2 mil
+sessões, 300 excluídas): **~4 ms** fechando 500 e **~0,8 ms** sem nada a fechar. `Seq Scan` em `sessions` (tabela
+pequena) → `Hash Join` com os `QUEUED` por `offer_dispatches_status_notBefore_idx`. Sem índice nem migration.
+Produção em 2026-11-13: 33 sessões (12 excluídas), 7.297 `QUEUED`, **nenhum** de sessão excluída.
+
 ### 2.3 Previsão: encostar no fim da faixa
 
 Ao disparar (`SendOfferUseCase`) e ao retomar (`ResumeOfferUseCase`), a agenda da oferta é
@@ -234,5 +260,6 @@ Com `PROCESS_ROLE=worker` e BullMQ (`arquitetura-escala.md` §3.3/3.6), a faixa 
 - Tirar o advisory lock do claim (abre a mesma faixa em dois workers).
 - Criar envio sem `sessionId` (cai na faixa "legado", sem série).
 - `Date.now()` no painel contra `notBefore`; sempre `serverNow()`/`serverToLocal()`.
+- Esperar reconexão de sessão excluída ou criar estado novo para isso: é `SKIPPED/SESSION_DELETED` (§2.2.2).
 - Testar SQL do claim num Postgres em fuso diferente de UTC: as colunas são `timestamp` sem fuso
   gravadas em UTC (a Render é UTC). Banco local de teste: `ALTER DATABASE … SET timezone='UTC'`.

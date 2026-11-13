@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../../../../shared/database/prisma.client';
 import { Prisma } from '@prisma/client';
 import { PrismaOfferDispatchRepository, postingWindowOpenSql, zoneMinuteSql } from './PrismaOfferDispatchRepository';
+import { PrismaSessionOfferDispatchStore } from './PrismaSessionOfferDispatchStore';
 import { isWithinPostingWindow, weekdayInZone, type PostingWindow } from '../../domain/services/postingWindow';
 
 /**
@@ -628,5 +629,83 @@ describe('claimDue — só o dono da sessão envia (dois processos)', () => {
     expect(names(labels, a)).not.toContain('s2');
     expect(names(labels, b)).not.toContain('s1');
     expect([...names(labels, a), ...names(labels, b)].sort()).toEqual(['null', 's1', 's2', 's3', 's4']);
+  });
+});
+
+describe('sessão excluída — envios descartados na hora (docs/fila-de-envio.md §2.2.2)', () => {
+  const s: Record<'gone' | 'offline', string> = { gone: '', offline: '' };
+  const c: Record<string, string> = {};
+  const state = async () => (await prisma.offerDispatch.findMany({ where: { tenantId }, orderBy: [{ notBefore: 'asc' }, { id: 'asc' }] }))
+    .map((r) => [r.sessionId === s.gone ? 'gone' : r.sessionId === s.offline ? 'offline' : 'live', r.status, r.failureReason]);
+
+  beforeAll(async () => {
+    s.gone = (await prisma.session.create({ data: { tenantId, name: 'gone', status: 'DISCONNECTED', deletedAt: new Date() } })).id;
+    s.offline = (await prisma.session.create({ data: { tenantId, name: 'offline', status: 'DISCONNECTED' } })).id;
+    for (const k of ['gone', 'offline'] as const) {
+      for (const n of [1, 2, 3]) c[`${k}${n}`] = (await prisma.chatConversation.create({ data: { tenantId, sessionId: s[k], isGroup: true, groupJid: `del-${k}-${n}` } })).id;
+    }
+  });
+
+  async function seed() {
+    await reset();
+    const mon = await offer('MONITORING');
+    const paused = await offer('GENERATOR');
+    await prisma.offer.update({ where: { id: paused.id }, data: { status: 'PAUSED' } });
+    const at = (m: number) => spToUtc(8, m);
+    const row = (offerId: string, conversationId: string, sessionId: string, notBefore: Date, extra: object = {}) =>
+      prisma.offerDispatch.create({ data: { tenantId, offerId, conversationId, sessionId, notBefore, status: 'QUEUED', gapSeconds: 0, ...extra } });
+    await row(mon.id, c.gone1!, s.gone, at(1)); // vencido
+    await row(mon.id, c.gone2!, s.gone, spToUtc(23), { waitingSessionSince: at(0) }); // futuro, esperava a sessão
+    await row(paused.id, c.gone3!, s.gone, at(3)); // oferta pausada
+    await row(mon.id, c.offline1!, s.offline, at(4), { waitingSessionSince: at(0) }); // viva fora do ar
+    await row(mon.id, convMon, sessionId, at(5)); // viva conectada
+    return { mon, paused };
+  }
+
+  it('lote fecha só os QUEUED da sessão excluída (vencido, futuro e de oferta pausada); viva fora do ar e as demais ficam', async () => {
+    const { mon, paused } = await seed();
+    expect(await repo.skipForDeletedSessions(500)).toBe(3);
+    expect(await state()).toEqual([
+      ['gone', 'SKIPPED', 'SESSION_DELETED'], ['gone', 'SKIPPED', 'SESSION_DELETED'],
+      ['offline', 'QUEUED', null], ['live', 'QUEUED', null], ['gone', 'SKIPPED', 'SESSION_DELETED'],
+    ]);
+    expect(await repo.skipForDeletedSessions(500)).toBe(0);
+    // Oferta só com envios da sessão excluída fica órfã: o sweep do worker a finaliza
+    expect((await repo.findSendingWithoutOpenDispatches(20)).map((o) => o.id)).toEqual([paused.id]);
+    expect(await repo.countOpen(mon.id, tenantId)).toBe(2);
+  });
+
+  it('claim nunca reivindica sessão excluída, mesmo antes do lote; a viva fora do ar segue na vez dela', async () => {
+    await seed();
+    const got = await repo.claimDue(spToUtc(9), 10);
+    expect(got.map((d) => d.sessionId).sort()).toEqual([s.offline, sessionId].sort());
+    expect(await prisma.offerDispatch.count({ where: { tenantId, sessionId: s.gone, status: 'QUEUED' } })).toBe(3);
+  });
+
+  it('lote respeita o limite e não toca SENDING/SENT da sessão excluída', async () => {
+    await seed();
+    await prisma.offerDispatch.updateMany({ where: { tenantId, conversationId: c.gone3! }, data: { status: 'SENDING', claimedAt: new Date(), claimToken: 'tok' } });
+    expect(await repo.skipForDeletedSessions(1)).toBe(1);
+    expect(await repo.skipForDeletedSessions(1)).toBe(1);
+    expect(await repo.skipForDeletedSessions(1)).toBe(0);
+    expect(await prisma.offerDispatch.count({ where: { tenantId, conversationId: c.gone3!, status: 'SENDING', claimToken: 'tok' } })).toBe(1);
+  });
+
+  it('dois workers no mesmo instante: cada envio é fechado uma vez só e o claim concorrente não é afetado', async () => {
+    await seed();
+    const repo2 = new PrismaOfferDispatchRepository(prisma, 'worker-test-2');
+    const [a, b, claimed] = await Promise.all([repo.skipForDeletedSessions(500), repo2.skipForDeletedSessions(500), repo2.claimDue(spToUtc(9), 10)]);
+    expect(a + b).toBe(3);
+    expect(claimed.every((d) => d.sessionId !== s.gone)).toBe(true);
+    expect(await prisma.offerDispatch.count({ where: { tenantId, failureReason: 'SESSION_DELETED', status: 'SKIPPED' } })).toBe(3);
+  });
+
+  it('exclusão da sessão: PrismaSessionOfferDispatchStore fecha os QUEUED dela (só do tenant) na mesma operação', async () => {
+    await seed();
+    const store = new PrismaSessionOfferDispatchStore(prisma);
+    expect(await store.pauseBySession('outro-tenant', s.offline)).toBe(0);
+    expect(await store.pauseBySession(tenantId, s.offline)).toBe(1);
+    expect(await prisma.offerDispatch.count({ where: { tenantId, sessionId: s.offline, status: 'SKIPPED', failureReason: 'SESSION_DELETED' } })).toBe(1);
+    expect(await prisma.offerDispatch.count({ where: { tenantId, status: 'QUEUED' } })).toBe(4);
   });
 });

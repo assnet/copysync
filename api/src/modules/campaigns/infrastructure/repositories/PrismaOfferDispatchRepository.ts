@@ -12,6 +12,7 @@ import { OFFER_DISPATCH_STATUSES, type OfferDispatchStatus } from '../../domain/
 import { PrismaOfferDispatchMapper as Mapper, type OfferDispatchRawRow } from '../mappers/PrismaOfferDispatchMapper';
 import { POSTING_TIME_ZONE, weekdayInZone } from '../../domain/services/postingWindow';
 import { LANE_TIMEOUT_HOLD_SECONDS } from '../../domain/offerTyping';
+import { SESSION_DELETED_REASON } from '../../domain/offerDispatchReasons';
 
 /** Folga (s) no intervalo mínimo da faixa: o claim acontece até um tick depois do `notBefore`. */
 export const LANE_GAP_TOLERANCE_SECONDS = 5;
@@ -176,10 +177,12 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
                  FROM "offer_dispatches" d
                  JOIN "offers" od ON od."id" = d."offerId" AND od."status" = 'SENDING'::"OfferStatus"
                 WHERE d."status" = 'QUEUED'::"OfferDispatchStatus" AND d."notBefore" <= ${now}
-                  -- Sessão com lease vivo de outro processo: só o dono envia (nulo nunca entra no NOT IN)
+                  -- Sessão com lease vivo de outro processo: só o dono envia (nulo nunca entra no NOT IN).
+                  -- Sessão excluída nunca é candidata: o lote de skipForDeletedSessions fecha esses envios
                   AND (d."sessionId" IS NULL OR d."sessionId" NOT IN (
                     SELECT s."id" FROM "sessions" s
-                     WHERE s."ownerWorkerId" <> ${this.workerId} AND s."leaseUntil" > (now() AT TIME ZONE 'UTC')))
+                     WHERE s."deletedAt" IS NOT NULL
+                        OR (s."ownerWorkerId" <> ${this.workerId} AND s."leaseUntil" > (now() AT TIME ZONE 'UTC'))))
                   -- Pausa global do tenant; suspenso/cancelado (billing) fica QUEUED até reativar
                   AND d."tenantId" IN (SELECT "id" FROM "tenants" WHERE "sendingPausedAt" IS NULL AND "status" = 'ACTIVE'::"TenantStatus")
                   -- Oferta do monitoramento fora do horário de postagem da configuração espera a janela abrir
@@ -274,6 +277,29 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
       data: { status: 'SKIPPED', failureReason: 'OFFER_EXPIRED' },
     });
     return r.count;
+  }
+
+  /**
+   * CROSS-TENANT por design (worker). Lote limitado com SKIP LOCKED: dois workers não esperam um pelo
+   * outro nem fecham a mesma linha (o UPDATE reconfere QUEUED). Plano (docs/fila-de-envio.md §2.2.2):
+   * "sessions" excluídas (tabela pequena) → `offer_dispatches_sessionId_status_idx`; sem índice novo.
+   */
+  async skipForDeletedSessions(limit: number): Promise<number> {
+    if (limit <= 0) return 0;
+    // CTE (materializada pelo FOR UPDATE): com `id IN (SELECT … LIMIT … FOR UPDATE)` o planner pode
+    // reexecutar a subconsulta por linha e fechar mais que o limite
+    return this.prisma.$executeRaw`
+      WITH gone AS (
+        SELECT d."id" FROM "offer_dispatches" d
+          JOIN "sessions" s ON s."id" = d."sessionId"
+         WHERE d."status" = 'QUEUED'::"OfferDispatchStatus" AND s."deletedAt" IS NOT NULL
+         LIMIT ${limit}
+           FOR UPDATE OF d SKIP LOCKED)
+      UPDATE "offer_dispatches" u
+         SET "status" = 'SKIPPED'::"OfferDispatchStatus", "failureReason" = ${SESSION_DELETED_REASON},
+             "updatedAt" = (now() AT TIME ZONE 'UTC')
+        FROM gone
+       WHERE u."id" = gone."id" AND u."status" = 'QUEUED'::"OfferDispatchStatus"`;
   }
 
   async laneState(tenantId: string, sessionId: string, now: Date): Promise<{ open: OfferDispatch[]; lastClaimedAt: Date | null }> {

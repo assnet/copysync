@@ -89,6 +89,13 @@ export interface IOfferDispatchRepository {
    */
   skipExpired(now: Date): Promise<number>;
   /**
+   * Worker, cross-tenant: fecha em lote (SKIPPED/SESSION_DELETED) até `limit` QUEUED de sessão excluída
+   * (`sessions.deletedAt`), de qualquer horário e de oferta SENDING ou PAUSED: a sessão não volta, então
+   * não há o que esperar. O claim também ignora sessão excluída: nenhum desses ocupa vaga do tick nem cai
+   * na espera de 6 h. A oferta é finalizada pelo sweep de órfãs. Ver docs/fila-de-envio.md §2.2.2.
+   */
+  skipForDeletedSessions(limit: number): Promise<number>;
+  /**
    * Sessão fora do ar na vez do envio: SENDING (com o token da posse, oferta SENDING/PAUSED) →
    * QUEUED com `notBefore = retryAt` e `waitingSessionSince` (mantém o primeiro). O claim dá prioridade a ele e não abre
    * outro envio da sessão antes: a ordem se mantém. false = posse perdida. `waitReason` vai para

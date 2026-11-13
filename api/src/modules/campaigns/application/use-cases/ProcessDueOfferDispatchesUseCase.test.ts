@@ -22,6 +22,33 @@ function setup(convs = ['c1', 'c2']) {
 const statuses = (s: ReturnType<typeof setup>) => s.dispatches.items.map((d) => [d.status, d.failureReason ?? d.chatMessageId]);
 
 describe('ProcessDueOfferDispatchesUseCase', () => {
+  it('sessão excluída: QUEUED (vencido ou futuro) fecha SKIPPED SESSION_DELETED no tick, sem chamar o sender nem esperar 6 h; oferta fecha', async () => {
+    const s = setup([]);
+    s.dispatches.add({ offerId: 'offer-1', conversationId: 'c1', sessionId: 'gone' });
+    s.dispatches.add({ offerId: 'offer-1', conversationId: 'c2', sessionId: 'gone', notBefore: new Date(NOW.getTime() + 3_600_000) });
+    s.dispatches.deletedSessionIds.add('gone');
+    expect(await s.uc.execute()).toEqual({ processed: 0 });
+    expect(s.sender.send).not.toHaveBeenCalled();
+    expect(statuses(s)).toEqual([['SKIPPED', 'SESSION_DELETED'], ['SKIPPED', 'SESSION_DELETED']]);
+    expect(s.offers.items[0]!.status).toBe('FAILED');
+  });
+
+  it('sessão excluída não afeta as outras: a viva envia no mesmo tick e a viva fora do ar segue esperando', async () => {
+    const s = setup([]);
+    s.dispatches.add({ offerId: 'offer-1', conversationId: 'c1', sessionId: 'gone' });
+    s.dispatches.add({ offerId: 'offer-1', conversationId: 'c2', sessionId: 'live' });
+    s.dispatches.add({ offerId: 'offer-1', conversationId: 'c3', sessionId: 'offline' });
+    s.dispatches.deletedSessionIds.add('gone');
+    s.sender.send.mockImplementation(async (i: { conversationId: string }) => {
+      if (i.conversationId === 'c3') throw new SessionNotConnectedError('offline');
+      return { chatMessageId: 'm1' };
+    });
+    expect(await s.uc.execute()).toEqual({ processed: 2 });
+    expect(statuses(s)).toEqual([['SKIPPED', 'SESSION_DELETED'], ['SENT', 'm1'], ['QUEUED', null]]);
+    expect(s.dispatches.items[2]!.waitingSessionSince).toEqual(NOW);
+    expect(s.offers.items[0]!.status).toBe('SENDING');
+  });
+
   it('oferta com mentionAll repassa a flag ao sender', async () => {
     const s = setup(['c1']);
     s.offers.items[0]!.mentionAll = true;

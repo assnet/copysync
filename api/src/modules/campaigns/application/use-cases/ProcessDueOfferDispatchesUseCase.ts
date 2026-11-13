@@ -34,6 +34,9 @@ const FLOOD_WAIT_CODES = new Set([FLOOD_WAIT_REASON]);
 export const FLOOD_WAIT_MARGIN_MS = 1_000;
 export const FLOOD_MAX_WAIT_MS = 6 * 3_600_000;
 
+/** QUEUED de sessão excluída fechados por tick (SKIPPED/SESSION_DELETED); o resto fica para o próximo. */
+export const DELETED_SESSION_SWEEP_LIMIT = 500;
+
 /** Ofertas SENDING órfãs finalizadas por tick. */
 export const FINALIZE_SWEEP_LIMIT = 20;
 
@@ -105,6 +108,9 @@ export class ProcessDueOfferDispatchesUseCase {
     await dispatches.releaseStale(new Date(now.getTime() - STALE_DISPATCH_MS));
     // Vencidos fecham em lote antes do claim: não ocupam a cabeça da faixa um por tick
     await dispatches.skipExpired(now);
+    // Sessão excluída não volta: fecha em lote em vez de esperar OFFLINE_MAX_WAIT_MS (o claim já a ignora)
+    const dropped = await dispatches.skipForDeletedSessions(DELETED_SESSION_SWEEP_LIMIT);
+    if (dropped > 0) logger.info({ dropped }, 'offer dispatches of deleted sessions skipped');
     if (signal?.aborted) return { processed: 0 };
     if (ctx.concurrency === 2) return this.executeConcurrent(signal);
     const due = await dispatches.claimDue(now, this.deps.batchSize ?? DISPATCH_BATCH_SIZE);

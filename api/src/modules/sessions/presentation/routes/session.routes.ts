@@ -38,6 +38,7 @@ import { sessionLeaseContainer } from '../../infrastructure/lease/sessionLeaseCo
 import { getActiveEngine } from '../../../../shared/engine/activeEngine';
 import type { IMessagingEngine } from '../../../messaging/domain/contracts/IMessagingEngine';
 import { PrismaLinkRotationPlanEnforcementStore } from '../../../link-rotation/infrastructure/repositories/PrismaLinkRotationPlanEnforcementStore';
+import { PrismaSessionOfferDispatchStore } from '../../../campaigns/infrastructure/repositories/PrismaSessionOfferDispatchStore';
 
 // ── Shared dependencies ───────────────────────────────────────────────────────
 const sessionRepo = new PrismaSessionRepository();
@@ -80,6 +81,8 @@ function buildUseCases() {
     requestSessionPairingCode: new RequestSessionPairingCodeUseCase(sessionRepo, auditRepo, engine),
     deleteSession: new DeleteSessionUseCase(sessionRepo, authStateRepo, auditRepo, engine, [
       new PrismaLinkRotationPlanEnforcementStore(prisma),
+      // Envios de oferta na fila da sessão fecham na hora (SKIPPED/SESSION_DELETED)
+      new PrismaSessionOfferDispatchStore(prisma),
     ], lease.release),
   };
 }
