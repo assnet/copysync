@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   BadgePercent, Bookmark, Send, Bot, Crown, EyeOff, Flame, Globe, LayoutDashboard, Link2,
-  KeyRound, MessagesSquare, Receipt, SlidersHorizontal, Server, Settings, Signpost, Tag, UserRoundPlus, Users, Workflow,
+  GraduationCap, KeyRound, MessagesSquare, Receipt, SlidersHorizontal, Server, Settings, Signpost, Tag, UserRoundPlus, Users, Workflow,
 } from 'lucide-react';
 import { MODULE_ICONS } from './icons';
 import { plansStrings } from '@/features/plans/strings';
@@ -12,6 +12,7 @@ import { linkDomainsAdminStrings } from '@/features/linkDomainsAdmin/strings';
 import { workersAdminStrings } from '@/features/workersAdmin/strings';
 import { infraCostsStrings } from '@/features/infraCosts/strings';
 import { redirectLinksStrings } from '@/features/redirectLinks/strings';
+import { tutorialsStrings } from '@/features/tutorials/strings';
 import { navigationStrings as s } from './strings';
 
 /**
@@ -82,6 +83,8 @@ export function linkMatches(link: NavLink, pathname: string): boolean {
 /** Credenciais de afiliado moram no produto Afiliados (antes em Configurações; rota antiga redireciona). */
 export const AFFILIATE_CREDENTIALS_PATH = '/affiliates/credentials';
 /** Planos são por produto: a vitrine atual é a do Afiliados (rota antiga `/plans` redireciona). */
+/** Central de tutoriais em vídeo (docs/tutoriais.md). */
+export const AFFILIATE_TUTORIALS_PATH = '/affiliates/tutorials';
 export const AFFILIATE_PLANS_PATH = '/affiliates/plans';
 
 export function buildNavigation({ isSuperAdmin, offerHunterVisible }: BuildNavigationInput): NavigationModel {
@@ -105,6 +108,7 @@ export function buildNavigation({ isSuperAdmin, offerHunterVisible }: BuildNavig
         ? [{ key: 'offer-hunter', label: s.links.offerHunter, path: '/offer-hunter', icon: MODULE_ICONS.offerHunter, badge: plansStrings.badgeBusiness, matchPrefix: '/offer-hunter' }]
         : []),
       { key: 'affiliate-credentials', label: s.links.affiliateCredentials, path: AFFILIATE_CREDENTIALS_PATH, icon: KeyRound },
+      { key: 'affiliate-tutorials', label: tutorialsStrings.navLabel, path: AFFILIATE_TUTORIALS_PATH, icon: GraduationCap },
       { key: 'affiliate-plans', label: plansStrings.menuLabel, path: AFFILIATE_PLANS_PATH, icon: Crown },
     ],
   };

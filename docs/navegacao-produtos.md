@@ -25,6 +25,7 @@ Conta, IA e Extensão. Assinatura é do tenant (um `planSlug`), por isso fica aq
 | | | Story de Oferta | `/offer-story` | MAX |
 | | | Caçador de Ofertas (só com `offerHunterVisible`) | `/offer-hunter` | MAX |
 | | | Credenciais de afiliado | `/affiliates/credentials` | |
+| | | Tutoriais | `/affiliates/tutorials` | |
 | | | Planos | `/affiliates/plans` | |
 | CRM & Automação | `soon` | Chat (só super admin) | `/chat` | |
 | Gestor de Grupos | `soon` | — | — | |

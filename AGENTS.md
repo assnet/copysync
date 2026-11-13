@@ -46,6 +46,7 @@ Pode buscar inspiração nos projetos legados em: legado1/ e legado2/
 - Login: compra, primeiro acesso, vídeo e botão flutuante de suporte (`features/platformLinks/links.ts`, slugs `comprar-login`/`suporte`, fachada do YouTube, `features/supportChat/`): [`docs/login-apresentacao.md`](docs/login-apresentacao.md). Compra/suporte só via `/redirect/<slug>`; iframe só após o clique; tela com ação fixa no canto inferior direito entra em `SUPPORT_CHAT_HIDDEN_PATHS`/`RAISED_PATHS`.
 - Assinatura no painel (`/settings/subscription`, `GET /subscription`, hook tolerante a suspenso, redirect `TENANT_SUSPENDED`): [`docs/assinatura.md`](docs/assinatura.md). Sem preço, sem checkout próprio, sem chamada à central; `tenantAnyStatusHook` só nessa rota.
 - Vitrine de planos no painel (`/plans`, catálogo de vitrine, o que não fazer): [`docs/planos.md`](docs/planos.md). Preço é texto de marketing em `features/plans/catalog.ts`; nunca no banco.
+- Tutoriais (`/affiliates/tutorials`, vitrine de videoaulas YouTube, progresso só no navegador, retomada por `postMessage` sem script externo): [`docs/tutoriais.md`](docs/tutoriais.md). Aula nova = linha em `catalog.ts` + texto em `strings.ts`; `id` nunca muda; sem API nem `iframe_api`.
 - Navegação por produtos no painel (menu em acordeão, `buildNavigation`, `strings.ts`, estado `navigation.expandedProducts`, sessão é do tenant e não do produto): [`docs/navegacao-produtos.md`](docs/navegacao-produtos.md). Rota nova sem item no modelo, rótulo fora de `strings.ts` e produto fora de `docs/produto-roadmap.md` não entram.
 
 ###

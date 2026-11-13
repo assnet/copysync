@@ -10,7 +10,7 @@ describe('buildNavigation', () => {
     expect(model.products[0].status).toBe('available');
     expect(model.products[0].children.map((c) => c.path)).toEqual([
       '/offers', '/monitoring', '/broadcast-groups', '/link-rotation', '/storefront', '/offer-story',
-      '/affiliates/credentials', '/affiliates/plans',
+      '/affiliates/credentials', '/affiliates/tutorials', '/affiliates/plans',
     ]);
   });
 
@@ -60,7 +60,7 @@ describe('buildNavigation', () => {
     const children = model.products[0].children;
     expect(children.map((c) => c.path)).toEqual([
       '/offers', '/monitoring', '/broadcast-groups', '/link-rotation', '/storefront', '/offer-story', '/offer-hunter',
-      '/affiliates/credentials', '/affiliates/plans',
+      '/affiliates/credentials', '/affiliates/tutorials', '/affiliates/plans',
     ]);
     const hunter = children.find((c) => c.key === 'offer-hunter')!;
     expect(hunter).toMatchObject({ label: 'Caçador de Ofertas', badge: 'MAX' });
