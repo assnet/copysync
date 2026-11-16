@@ -17,6 +17,24 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.97.0] — 2026-11-16 — Caçador: reaproveitar o ranking e audiência por flag no admin
+
+### Added
+
+#### campaigns ([`docs/cacador-de-ofertas.md`](../docs/cacador-de-ofertas.md), spec `.specs/features/hunter-ranking-reuse/`)
+
+- **`SendRankingItemUseCase.ts`** — `POST /offer-hunts/:id/runs/:runId/ranking/:productId/send`: envia manualmente uma oferta "fora do corte" do ranking (execução ≤ 48 h), com os portões da marca, link/preço atualizados e repetição respeitada; achado com `fromRanking = true`, que **não** conta no teto `offer_hunter_finds_per_day` nem no "enviadas" da execução; chave de envio `hunt:<findId>` (idempotente com aprovar/retomada).
+- **`SendRankingRemainderUseCase.ts`** — `POST …/ranking/send-all` só para super admin (403 para os demais): envia todas as não escolhidas, devolve `{ sent, skipped }`, para em erro de portão ou de entrega devolvendo o parcial.
+- **`GET /offer-hunts/:id/runs/:runId`** — `sentProductIds` e `rankingReusable`.
+
+#### tenants
+
+- **`SetFeatureAudienceUseCase.ts`** / **`PUT /admin/plan-entitlements/:key/audience`** — flag "Só super admin" por recurso (hoje o Caçador) em `platform_settings.feature_audience`, lida a cada pedido, com auditoria; `OFFER_HUNTER_AUDIENCE` vira só valor inicial.
+
+### Breaking Changes
+
+- Nenhuma. **Migration**: `20261117100000_offer_hunt_find_source` (`offer_hunt_finds.fromRanking`).
+
 ## [0.96.1] — 2026-11-16 — Caçador: prévia do link nas ofertas do Mercado Livre
 
 ### Fixed

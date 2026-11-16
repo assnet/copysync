@@ -29,7 +29,7 @@ const def = (tenantId: string): CreateOfferHuntInput => ({
 });
 
 /** Um caso de uso por "processo" (pool próprio); entrega falsa conta as ofertas (o Enqueue real é idempotente à parte). */
-function useCase(client: PrismaClient, delivered: string[]) {
+function useCase(client: PrismaClient, delivered: string[], fail = new Set<string>()) {
   const finds = new PrismaOfferHuntFindRepository(client);
   return new SendRankingItemUseCase({
     hunts: new PrismaOfferHuntRepository(client),
@@ -41,8 +41,12 @@ function useCase(client: PrismaClient, delivered: string[]) {
     riskGate: new FakeRiskGate(),
     delivery: {
       requireDestination: async () => ({ sessionId: 's', conversationId: 'c' }),
-      deliver: async (tenantId: string, f: OfferHuntFind, _d: unknown, opts?: { sourceKey?: string }) => {
-        delivered.push(opts?.sourceKey ?? '');
+      deliver: async (tenantId: string, f: OfferHuntFind) => {
+        delivered.push(`hunt:${f.id}`);
+        if (fail.has(f.productId)) {
+          await finds.transition(tenantId, f.id, ['APPROVED'], 'FAILED', { failureReason: 'DELIVERY_FAILED' });
+          return { status: 'FAILED' as const, reason: 'DELIVERY_FAILED', error: new Error('net') };
+        }
         await finds.transition(tenantId, f.id, ['APPROVED'], 'SENT', { failureReason: null });
         return { status: 'SENT' as const, offerId: `offer-${delivered.length}` };
       },
@@ -71,6 +75,14 @@ async function seed(tag: string) {
   return { tenantId, huntId: hunt.id, runId: run.id };
 }
 
+/** Achado de execução normal (insertWithinDailyLimit). */
+const newFind = (huntId: string, productId = '20000002') => ({
+  huntId, runId: null, status: 'PENDING_REVIEW' as const, provider: 'SHEIN' as const, productId, goodsId: productId,
+  commissionEstimated: false, skcCode: null, activityId: null, title: 'x', imageUrl: null, priceCents: 1, originalPriceCents: null,
+  discountPercent: null, commissionPercent: null, commissionCents: null, returningCommissionPercent: null, returningCommissionCents: null,
+  extraCommissionCents: null, salesBucket: null, reviewsBucket: null, rating: null, score: 1, factors: [], aiReason: null,
+});
+
 describe('SendRankingItemUseCase + PrismaOfferHuntFindRepository.insertRankingFind', () => {
   it('dois pedidos simultâneos do mesmo item → 1 achado, 1 entrega; o outro 409 OFFER_HUNT_ALREADY_SENT', async () => {
     const { tenantId, huntId, runId } = await seed('race');
@@ -80,27 +92,51 @@ describe('SendRankingItemUseCase + PrismaOfferHuntFindRepository.insertRankingFi
     expect(r.map((x) => x.status).sort()).toEqual(['fulfilled', 'rejected']);
     const rejected = r.find((x) => x.status === 'rejected') as PromiseRejectedResult;
     expect(rejected.reason).toMatchObject({ code: 'OFFER_HUNT_ALREADY_SENT' });
-    expect(delivered).toEqual([`hunt:rank:${runId}:20000001`]);
     const rows = await prisma.offerHuntFind.findMany({ where: { tenantId } });
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ runId, huntId, productId: '20000001', status: 'SENT', aiReason: 'bom preço' });
+    expect(delivered).toEqual([`hunt:${rows[0]!.id}`]);
+    expect(rows[0]).toMatchObject({ runId, huntId, productId: '20000001', status: 'SENT', aiReason: 'bom preço', fromRanking: true });
     expect(await new PrismaOfferHuntFindRepository(prisma).productIdsByRun(tenantId, runId)).toEqual(['20000001']);
   });
 
   it('repetido na janela da caçada (achado de outra execução) → ALREADY_SENT REPEATED; não conta no teto (teto 0)', async () => {
     const { tenantId, huntId, runId } = await seed('repeat');
     const finds = new PrismaOfferHuntFindRepository(prisma);
-    const base = {
-      huntId, runId: null, status: 'PENDING_REVIEW' as const, provider: 'SHEIN' as const, productId: '20000002', goodsId: '20000002',
-      commissionEstimated: false, skcCode: null, activityId: null, title: 'x', imageUrl: null, priceCents: 1, originalPriceCents: null,
-      discountPercent: null, commissionPercent: null, commissionCents: null, returningCommissionPercent: null, returningCommissionCents: null,
-      extraCommissionCents: null, salesBucket: null, reviewsBucket: null, rating: null, score: 1, factors: [], aiReason: null,
-    };
-    await finds.insertWithinDailyLimit(tenantId, [base], { since: new Date(0), limit: 10 });
+    const base = newFind(huntId);
+    await finds.insertWithinDailyLimit(tenantId, [{ ...base, productId: '20000002' }], { since: new Date(0), limit: 10 });
     const delivered: string[] = [];
     await expect(useCase(prisma, delivered).execute({ tenantId, huntId, runId, productId: '20000002' }))
       .rejects.toMatchObject({ code: 'OFFER_HUNT_ALREADY_SENT', meta: { reason: 'REPEATED' } });
     await expect(useCase(prisma, delivered).execute({ tenantId, huntId, runId, productId: '20000001' })).resolves.toMatchObject({ status: 'SENT' });
     expect(delivered).toHaveLength(1);
+  });
+
+  it('teto 10 com 5 reaproveitados: uso do painel não sobe e a próxima execução grava o saldo cheio (10)', async () => {
+    const { tenantId, huntId, runId } = await seed('quota');
+    const finds = new PrismaOfferHuntFindRepository(prisma);
+    for (let i = 0; i < 5; i++) {
+      await finds.insertRankingFind(tenantId, { ...newFind(huntId, `3000000${i}`), runId, status: 'APPROVED' }, new Date(0));
+    }
+    expect(await finds.countCreatedSince(tenantId, new Date(0))).toBe(0);
+    const next = Array.from({ length: 12 }, (_, i) => newFind(huntId, `400000${String(i).padStart(2, '0')}`));
+    expect(await finds.insertWithinDailyLimit(tenantId, next, { since: new Date(0), limit: 10 })).toHaveLength(10);
+    expect(await finds.countCreatedSince(tenantId, new Date(0))).toBe(10);
+  });
+
+  it('FAILED/DISMISSED da execução não é "enviado": fora do productIdsByRun e o item é reenviado (linha nova)', async () => {
+    const { tenantId, huntId, runId } = await seed('failed');
+    const finds = new PrismaOfferHuntFindRepository(prisma);
+    const delivered: string[] = [];
+    const input = { tenantId, huntId, runId, productId: '20000001' };
+    await expect(useCase(prisma, delivered, new Set(['20000001'])).execute(input)).rejects.toMatchObject({ code: 'DELIVERY_FAILED' });
+    expect(await finds.productIdsByRun(tenantId, runId)).toEqual([]);
+    expect(await finds.recentProductIds(tenantId, huntId, 'SHEIN', new Date(0), { exceptUndeliveredInRun: runId })).toEqual(new Set());
+    expect(await finds.recentProductIds(tenantId, huntId, 'SHEIN', new Date(0))).toEqual(new Set(['20000001']));
+    await expect(useCase(prisma, delivered).execute(input)).resolves.toMatchObject({ status: 'SENT' });
+    const rows = await prisma.offerHuntFind.findMany({ where: { tenantId }, orderBy: { createdAt: 'asc' } });
+    expect(rows.map((r) => r.status)).toEqual(['FAILED', 'SENT']);
+    expect(delivered).toEqual(rows.map((r) => `hunt:${r.id}`));
+    expect(await finds.productIdsByRun(tenantId, runId)).toEqual(['20000001']);
+    await expect(useCase(prisma, delivered).execute(input)).rejects.toMatchObject({ code: 'OFFER_HUNT_ALREADY_SENT', meta: { reason: 'RUN' } });
   });
 });

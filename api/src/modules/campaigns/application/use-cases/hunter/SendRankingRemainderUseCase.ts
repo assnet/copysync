@@ -52,7 +52,8 @@ export class SendRankingRemainderUseCase {
     const repeatSince = new Date(now.getTime() - hunt.repeatAfterDays * DAY_MS);
     const repeated = new Set<string>();
     for (const provider of new Set(pending.map((i) => i.provider))) {
-      for (const id of await this.deps.finds.recentProductIds(input.tenantId, hunt.id, provider, repeatSince)) repeated.add(`${provider}:${id}`);
+      const ids = await this.deps.finds.recentProductIds(input.tenantId, hunt.id, provider, repeatSince, { exceptUndeliveredInRun: run.id });
+      for (const id of ids) repeated.add(`${provider}:${id}`);
     }
     for (const item of pending) {
       if (repeated.has(`${item.provider}:${item.productId}`)) {
@@ -67,14 +68,15 @@ export class SendRankingRemainderUseCase {
           out.skipped.push({ productId: item.productId, reason: err.meta?.reason === 'REPEATED' ? 'REPEATED' : 'ALREADY_SENT' });
           continue;
         }
-        if (!(err instanceof AppError)) throw err;
-        if (STOP_CODES.has(err.code)) {
+        // Erro cru (banco, rede fora da entrega): como portão, para; com algo enviado devolve o feito, sem 500
+        const code = err instanceof AppError ? err.code : 'DELIVERY_FAILED';
+        if (!(err instanceof AppError) || STOP_CODES.has(code)) {
           if (out.sent === 0) throw err;
-          out.skipped.push({ productId: item.productId, reason: err.code });
-          logger.warn({ tenantId: input.tenantId, runId: run.id, code: err.code, sent: out.sent }, 'offer hunt ranking send-all stopped');
+          out.skipped.push({ productId: item.productId, reason: code });
+          logger.warn({ tenantId: input.tenantId, runId: run.id, code, sent: out.sent }, 'offer hunt ranking send-all stopped');
           return out;
         }
-        out.skipped.push({ productId: item.productId, reason: err.code });
+        out.skipped.push({ productId: item.productId, reason: code });
       }
     }
     logger.info({ tenantId: input.tenantId, runId: run.id, sent: out.sent, skipped: out.skipped.length }, 'offer hunt ranking send-all done');

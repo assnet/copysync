@@ -38,6 +38,13 @@ export class OfferHuntSourceUnavailableError extends AppError {
   }
 }
 
+/** Entrega do achado falhou por erro fora do catálogo de códigos (rede, banco): achado FAILED, código estável. */
+export class OfferHuntDeliveryFailedError extends AppError {
+  constructor() {
+    super('DELIVERY_FAILED', 'Offer hunt find could not be delivered', 502);
+  }
+}
+
 /** Caçada ou achado não existe no tenant. */
 export class OfferHuntNotFoundError extends AppError {
   constructor(resource: 'hunt' | 'find' | 'run' = 'hunt') {

@@ -91,7 +91,7 @@ export function RankingTable({ items, reuse }: { items: HuntRankingItem[]; reuse
                 label={item.chosen ? t.wizard.test.chosen : t.wizard.test.notChosen}
                 sx={{ height: 22, fontWeight: 600 }}
               />
-              {reuse && <ReuseAction item={item} reuse={reuse} />}
+              {reuse && <ReuseAction item={item} position={t.ranking.position(i + 1)} reuse={reuse} />}
             </Box>
           </Box>
           <Box sx={{ gridColumn: { xs: '1 / -1', sm: 'auto' } }}>
@@ -114,7 +114,7 @@ export function RankingTable({ items, reuse }: { items: HuntRankingItem[]; reuse
 
 const ru = t.rankingReuse;
 
-function ReuseAction({ item, reuse }: { item: HuntRankingItem; reuse: RankingReuseActions }) {
+function ReuseAction({ item, position, reuse }: { item: HuntRankingItem; position: string; reuse: RankingReuseActions }) {
   if (reuse.sentProductIds.has(item.productId)) {
     return (
       <Chip
@@ -138,7 +138,7 @@ function ReuseAction({ item, reuse }: { item: HuntRankingItem; reuse: RankingReu
           variant="outlined"
           disabled={!reuse.reusable || reuse.busy}
           onClick={() => reuse.onSend(item)}
-          aria-label={ru.sendAria(item.title || t.ranking.noTitle)}
+          aria-label={ru.sendAria(position)}
           startIcon={busyHere ? <CircularProgress size={14} aria-hidden /> : <AppIcon icon={Send} size="inline" />}
           sx={{ height: 24, py: 0, fontWeight: 600 }}
         >

@@ -5,11 +5,12 @@ import type { IHuntProviderRegistry } from '../../../domain/contracts/hunter/IHu
 import type { OfferHunt, OfferHuntFind, OfferHuntRankingItem, OfferHuntRun } from '../../../domain/hunter/OfferHunt';
 import { HUNT_RANKING_REUSE_MAX_AGE_HOURS, isRankingWithinReuseWindow } from '../../../domain/services/hunter/rankingReuse';
 import {
-  OfferHuntAlreadySentError, OfferHuntFindInvalidStateError, OfferHuntNotFoundError, OfferHuntRankingExpiredError,
+  OfferHuntAlreadySentError, OfferHuntDeliveryFailedError, OfferHuntFindInvalidStateError, OfferHuntNotFoundError, OfferHuntRankingExpiredError,
 } from '../../../../../shared/errors/internal/OfferHuntErrors';
+import { AppError } from '../../../../../shared/errors/AppError';
 import { logger } from '../../../../../shared/logger/logger';
 import { assertHuntBrandGates, type HuntBrandGateDeps } from '../../services/hunter/huntProviderGates';
-import { huntRankingSourceKey, type HuntFindDelivery } from '../../services/hunter/HuntFindDelivery';
+import type { HuntFindDelivery } from '../../services/hunter/HuntFindDelivery';
 
 const DAY_MS = 86_400_000;
 
@@ -40,8 +41,10 @@ export interface RankingContext {
  * `ranking` gravado (por `productId`); execução ≤ 48 h (`OFFER_HUNT_RANKING_EXPIRED`). Portões da marca como na
  * execução (plano da marca, caçador, credencial, aceite `OFFER_HUNTER`), **sem** o teto `offer_hunter_finds_per_day`
  * e sem a guarda de 24 execuções. Destino obrigatório. Grava o achado APPROVED no lock por tenant (já enviado desta
- * execução ou repetido em `repeatAfterDays` → 409 `OFFER_HUNT_ALREADY_SENT`) e entrega pela `HuntFindDelivery`
- * (`sourceKey hunt:rank:<runId>:<productId>`). Falha na entrega: achado FAILED e o erro sobe (aprovar tenta de novo).
+ * execução ou repetido em `repeatAfterDays` → 409 `OFFER_HUNT_ALREADY_SENT`) com `fromRanking` (fora do teto e do
+ * `sentCount` da execução) e entrega pela `HuntFindDelivery` (`sourceKey hunt:<findId>`, a mesma de aprovar/retomada).
+ * Falha na entrega: achado FAILED e sobe um `AppError` (erro cru de rede/banco vira `DELIVERY_FAILED`); o item pode
+ * ser enviado de novo (linha nova).
  */
 export class SendRankingItemUseCase {
   constructor(private readonly deps: SendRankingItemDeps) {}
@@ -75,11 +78,16 @@ export class SendRankingItemUseCase {
     const inserted = await this.deps.finds.insertRankingFind(tenantId, toRankingFind(item, hunt.id, run.id), repeatSince);
     if (inserted.kind === 'ALREADY_SENT') throw new OfferHuntAlreadySentError(inserted.reason);
     const find = inserted.find;
-    const r = await this.deps.delivery.deliver(tenantId, find, destination, { sourceKey: huntRankingSourceKey(run.id, item.productId) });
-    if (r.status === 'FAILED') throw r.error ?? new OfferHuntFindInvalidStateError('FAILED');
+    const r = await this.deps.delivery.deliver(tenantId, find, destination);
+    if (r.status === 'FAILED') throw deliveryError(r.error);
     logger.info({ tenantId, huntId: hunt.id, runId: run.id, findId: find.id, offerId: r.offerId }, 'offer hunt ranking item sent');
     return (await this.deps.finds.findById(tenantId, find.id)) ?? { ...find, status: 'SENT', offerId: r.offerId };
   }
+}
+
+function deliveryError(error: unknown): AppError {
+  if (error instanceof AppError) return error;
+  return error ? new OfferHuntDeliveryFailedError() : new OfferHuntFindInvalidStateError('FAILED');
 }
 
 function toRankingFind(i: OfferHuntRankingItem, huntId: string, runId: string): NewOfferHuntFind & { runId: string; huntId: string } {

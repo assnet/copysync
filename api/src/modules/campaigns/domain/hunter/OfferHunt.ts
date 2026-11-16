@@ -183,6 +183,8 @@ export interface OfferHuntFind extends OfferHuntFindSnapshot {
   resendCount: number;
   lastResentAt: Date | null;
   resendInFlightUntil: Date | null;
+  /** Item do ranking reaproveitado: fora do teto do dia e do `sentCount` da execução. */
+  fromRanking: boolean;
   /** null = sem oferta, ou lido sem o join do disparo. */
   delivery: OfferHuntFindDelivery | null;
   createdAt: Date;

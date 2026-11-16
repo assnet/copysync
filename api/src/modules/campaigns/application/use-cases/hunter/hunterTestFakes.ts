@@ -107,6 +107,9 @@ export class InMemoryRuns implements Pick<IOfferHuntRunRepository, 'startWithinD
   }
 }
 
+/** Conta como "enviado" na execução (espelho do repositório Prisma): tudo menos FAILED/DISMISSED. */
+const delivered = (f: OfferHuntFind) => f.status !== 'FAILED' && f.status !== 'DISMISSED';
+
 export class InMemoryFinds implements Pick<
   IOfferHuntFindRepository, 'insertWithinDailyLimit' | 'countCreatedSince' | 'recentProductIds' | 'findById' | 'transition' | 'reclaimStaleApproved'
   | 'claimResend' | 'releaseResend' | 'recordResend' | 'countResendsInDay' | 'insertRankingFind' | 'productIdsByRun'
@@ -132,29 +135,32 @@ export class InMemoryFinds implements Pick<
     });
     return fresh.slice(0, room).map((f) => {
       const row: OfferHuntFind = { ...f, id: `find-${++this.seq}`, tenantId, failureReason: null, offerId: null,
-        resendCount: 0, lastResentAt: null, resendInFlightUntil: null, delivery: null, createdAt: NOW, updatedAt: NOW };
+        resendCount: 0, lastResentAt: null, resendInFlightUntil: null, fromRanking: false, delivery: null, createdAt: NOW, updatedAt: NOW };
       this.items.push(row);
       return row;
     });
   }
   async insertRankingFind(tenantId: string, f: NewOfferHuntFind & { runId: string; huntId: string }, repeatSince: Date): Promise<RankingFindInsert> {
     const same = (x: OfferHuntFind) => x.tenantId === tenantId && x.provider === f.provider && x.productId === f.productId;
-    if (this.items.some((x) => same(x) && x.runId === f.runId)) return { kind: 'ALREADY_SENT', reason: 'RUN' };
-    if (this.items.some((x) => same(x) && x.huntId === f.huntId && x.createdAt >= repeatSince)) return { kind: 'ALREADY_SENT', reason: 'REPEATED' };
+    if (this.items.some((x) => same(x) && x.runId === f.runId && delivered(x))) return { kind: 'ALREADY_SENT', reason: 'RUN' };
+    if (this.items.some((x) => same(x) && x.huntId === f.huntId && x.createdAt >= repeatSince && (x.runId !== f.runId || delivered(x)))) {
+      return { kind: 'ALREADY_SENT', reason: 'REPEATED' };
+    }
     const row: OfferHuntFind = { ...f, id: `find-${++this.seq}`, tenantId, failureReason: null, offerId: null,
-      resendCount: 0, lastResentAt: null, resendInFlightUntil: null, delivery: null, createdAt: this.clock(), updatedAt: this.clock() };
+      resendCount: 0, lastResentAt: null, resendInFlightUntil: null, fromRanking: true, delivery: null, createdAt: this.clock(), updatedAt: this.clock() };
     this.items.push(row);
     return { kind: 'INSERTED', find: row };
   }
   async productIdsByRun(tenantId: string, runId: string) {
-    return [...new Set(this.items.filter((f) => f.tenantId === tenantId && f.runId === runId).map((f) => f.productId))];
+    return [...new Set(this.items.filter((f) => f.tenantId === tenantId && f.runId === runId && delivered(f)).map((f) => f.productId))];
   }
   async countCreatedSince(tenantId: string, since: Date) {
-    return this.items.filter((f) => f.tenantId === tenantId && f.createdAt >= since).length;
+    return this.items.filter((f) => f.tenantId === tenantId && !f.fromRanking && f.createdAt >= since).length;
   }
-  async recentProductIds(tenantId: string, huntId: string, provider: HuntProvider, since: Date) {
+  async recentProductIds(tenantId: string, huntId: string, provider: HuntProvider, since: Date, opts: { exceptUndeliveredInRun?: string } = {}) {
     return new Set(this.items
       .filter((f) => f.tenantId === tenantId && f.huntId === huntId && f.provider === provider && f.createdAt >= since)
+      .filter((f) => !opts.exceptUndeliveredInRun || f.runId !== opts.exceptUndeliveredInRun || delivered(f))
       .map((f) => f.productId));
   }
   async findById(tenantId: string, id: string) { return this.items.find((f) => f.id === id && f.tenantId === tenantId) ?? null; }
@@ -210,7 +216,7 @@ export class InMemoryFinds implements Pick<
       commissionPercent: c.commissionNewPct, commissionCents: c.commissionNewCents, returningCommissionPercent: null,
       returningCommissionCents: null, extraCommissionCents: 0, salesBucket: c.sales, reviewsBucket: c.reviews, rating: c.rating,
       score: 50, factors: [], aiReason: null, status: 'PENDING_REVIEW', failureReason: null, offerId: null,
-      resendCount: 0, lastResentAt: null, resendInFlightUntil: null, delivery: null, createdAt: NOW, updatedAt: NOW, ...patch,
+      resendCount: 0, lastResentAt: null, resendInFlightUntil: null, fromRanking: false, delivery: null, createdAt: NOW, updatedAt: NOW, ...patch,
     };
     row.productId = productId;
     row.goodsId = provider === 'SHEIN' ? productId : null;

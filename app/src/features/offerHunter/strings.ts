@@ -428,7 +428,8 @@ export const offerHunterStrings = {
   /** Reaproveitar o ranking de uma execução: enviar itens não escolhidos (um a um; todos só super admin). */
   rankingReuse: {
     send: 'Enviar',
-    sendAria: (title: string) => `Enviar a oferta ${title}`,
+    /** Rótulo genérico pela posição: o título do produto fica fora do leitor de tela (flag de borrar). */
+    sendAria: (position: string) => `Enviar a oferta ${position} do ranking`,
     sendTooltip: 'Envia esta oferta ao grupo de destino agora, com link e preço atualizados. Não conta no limite de ofertas do dia.',
     expiredTooltip: 'Ranking com mais de 48 h: rode uma busca nova para preços atuais',
     sent: 'Enviada',
@@ -460,6 +461,7 @@ export const offerHunterStrings = {
       /** Motivos de pulo do "Enviar todas" (`skipped[].reason`). */
       REPEATED: 'Já enviada dentro do prazo de repetição da caçada.',
       ALREADY_SENT: 'Já enviada por esta execução.',
+      DELIVERY_FAILED: 'Falha ao enviar esta oferta. Tente de novo em instantes.',
     } as Record<string, string>,
   },
 

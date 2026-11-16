@@ -309,18 +309,27 @@ IP, o recurso para e volta ao dono.
   credencial → aceite `OFFER_HUNTER`) + destino (422). **Não** gasta `offer_hunter_finds_per_day` nem a guarda de 24.
 - Achado novo APPROVED com o retrato do item (provider, productId, título, preço, comissões, foto, nota, fatores,
   motivo da IA, `runId`; sem `skc`/`activityId`/preço original) gravado por `insertRankingFind` no **mesmo lock por
-  tenant** do teto: já tem achado desta execução (escolhido ou reaproveitado) ou a caçada escolheu o produto dentro de
-  `repeatAfterDays` → 409 `OFFER_HUNT_ALREADY_SENT` (`meta.reason` `RUN`/`REPEATED`). Dois cliques/abas: 1 achado,
-  1 oferta. Entrega pela `HuntFindDelivery` (Resolve do tenant, texto, foto, Enqueue `HUNTER`) com
-  `sourceKey hunt:rank:<runId>:<productId>`. Falhou: achado FAILED, erro sobe; tenta de novo pelo "Aprovar" do achado.
+  tenant** do teto: já tem achado desta execução (escolhido ou reaproveitado, fora FAILED/DISMISSED) ou a caçada
+  escolheu o produto dentro de `repeatAfterDays` (o FAILED/DISMISSED desta execução não bloqueia) → 409
+  `OFFER_HUNT_ALREADY_SENT` (`meta.reason` `RUN`/`REPEATED`). Dois cliques/abas: 1 achado, 1 oferta.
+- **Origem do achado**: coluna `offer_hunt_finds.fromRanking` (migration `20261117100000_offer_hunt_find_source`,
+  default `false` = execução normal); `insertRankingFind` grava `true`. Reaproveitado **não conta** no teto
+  `offer_hunter_finds_per_day` (`used` do `insertWithinDailyLimit` e `countCreatedSince` do uso do painel filtram
+  `fromRanking = false`) e **não soma** no `sentCount` ("enviadas") da execução original (`HuntFindDelivery.deliver`).
+- Entrega pela `HuntFindDelivery` (Resolve do tenant, texto, foto, Enqueue `HUNTER`) com `sourceKey hunt:<findId>`, a
+  **mesma** chave de aprovar e da retomada de APPROVED preso (chave própria duplicaria a oferta na retomada). Falhou:
+  achado FAILED e sobe `AppError` (erro cru de rede/banco vira `DELIVERY_FAILED`, 502); o item volta a "Enviar" e o
+  reenvio cria linha nova (o FAILED fica no histórico).
 - **Enviar todos** (`POST /:id/runs/:runId/ranking/send-all`, `SendRankingRemainderUseCase`): **só super admin**
   (403 `FORBIDDEN` para os demais; o `superAdminHook` compartilhado daria 401, que o painel trata como sessão vencida).
   Em sequência, itens `chosen: false` sem achado desta execução; repetidos da janela entram em `skipped`
   (`REPEATED`/`ALREADY_SENT`). Erro de portão (plano, credencial, aceite, destino) ou loja fora/limitando: sem nada
   enviado, o erro sobe; com algo enviado, para e devolve `{ sent, skipped }` com o item que parou (`reason` = código).
+  Erro não-`AppError` (banco): sem nada enviado sobe; com algo enviado para e devolve com `reason: 'DELIVERY_FAILED'`.
   Outros erros pulam o item. Sem pausa artificial: o espaçamento é o da fila do gerador.
-- `GET /:id/runs/:runId` traz `sentProductIds` (produtos com achado desta execução) e `rankingReusable` (tem ranking e
-  ≤ 48 h).
+- `GET /:id/runs/:runId` traz `sentProductIds` (produtos com achado desta execução, fora FAILED/DISMISSED: chip
+  "Enviada") e `rankingReusable` (tem ranking e ≤ 48 h). Botão "Enviar" com rótulo acessível pela posição ("Enviar a
+  oferta 3º do ranking"): o título nunca vai ao leitor de tela (flag `offerHunter.productText`).
 
 ## O que não fazer
 
@@ -337,6 +346,7 @@ IP, o recurso para e volta ao dono.
 - Mais de 1 grupo, `superAdminOnly` no menu, ou ligar o job fora da Render.
 - Ler `OFFER_HUNTER_AUDIENCE` em código novo (só valor inicial; a audiência é a flag do admin) ou guardar a flag em
   memória do processo.
+- Dar ao reaproveitamento `sourceKey` diferente de `hunt:<findId>`; somar reaproveitado no `sentCount` da execução.
 - Reaproveitar ranking com mais de 48 h, contar o reaproveitamento no teto do dia, abrir "Enviar todos" para quem não é
   super admin ou gravar o achado reaproveitado fora do lock (`insertRankingFind`).
 - Usar `commRate`/`categoryRate` (filtra recompra) ou mostrar "faixa" na tela; reenviar com o `sourceKey` do achado

@@ -9,6 +9,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — app 0.121.0 / api 0.97.0 — Caçador: reaproveitar o ranking e flag "Só super admin"
+
+#### app
+
+- **`ReusableRanking.tsx`** / **`RankingTable.tsx`** — botão "Enviar" em cada oferta fora do corte (confirmação com o grupo, "Enviada" depois, desabilitado após 48 h) e "Enviar todas as não escolhidas" só para super admin.
+- **`AdminPlanEntitlementsPage.tsx`** — coluna "Só super admin" com `Switch` por recurso que tem audiência (hoje o Caçador de Ofertas); desligar libera o recurso a todos os clientes dos planos marcados.
+
 ### Added — app 0.119.0 / api 0.96.0 — Excluir Página de Ofertas
 
 #### app

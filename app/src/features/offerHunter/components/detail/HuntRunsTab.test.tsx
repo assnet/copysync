@@ -92,7 +92,8 @@ const item2 = { ...rankItem, productId: 'g2', goodsId: 'g2', title: 'Saia', chos
 const item3 = { ...rankItem, productId: 'g3', goodsId: 'g3', title: 'Blusa', chosen: false, aiReason: null };
 const ranked = (over: Partial<HuntRun> = {}) =>
   run('r1', { hasRanking: true, ranking: [rankItem, item2, item3], sentProductIds: ['g1'], rankingReusable: true, ...over });
-const sendBtn = (title: string) => screen.getByRole('button', { name: `Enviar a oferta ${title}` });
+/** Rótulo pela posição no ranking (título fora do leitor de tela): Vestido 1º, Saia 2º, Blusa 3º. */
+const sendBtn = (pos: string) => screen.getByRole('button', { name: `Enviar a oferta ${pos} do ranking` });
 const confirmSend = () => fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Enviar' }));
 
 describe('HuntRunsTab — reaproveitar o ranking', () => {
@@ -102,10 +103,10 @@ describe('HuntRunsTab — reaproveitar o ranking', () => {
     const onSent = vi.fn();
     render(<Tab items={[run('r1', { hasRanking: true })]} openRunId="r1" onRankingSent={onSent} />);
     await screen.findByText('Saia');
-    expect(screen.queryByRole('button', { name: 'Enviar a oferta Vestido' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Enviar a oferta 1º do ranking' })).not.toBeInTheDocument();
     expect(screen.getAllByTestId('ranking-item-sent')).toHaveLength(1);
     expect(screen.queryByRole('button', { name: 'Enviar todas as não escolhidas' })).not.toBeInTheDocument();
-    fireEvent.click(sendBtn('Saia'));
+    fireEvent.click(sendBtn('2º'));
     expect(svc.sendRankingItem).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog')).toHaveTextContent('"Promo VIP"');
     confirmSend();
@@ -129,7 +130,7 @@ describe('HuntRunsTab — reaproveitar o ranking', () => {
     svc.sendRankingItem.mockRejectedValue(Object.assign(new Error('x'), { code }));
     render(<Tab items={[run('r1', { hasRanking: true })]} openRunId="r1" />);
     await screen.findByText('Saia');
-    fireEvent.click(sendBtn('Saia'));
+    fireEvent.click(sendBtn('2º'));
     confirmSend();
     expect(await screen.findByRole('alert')).toHaveTextContent(msg);
     expect(screen.getAllByTestId('ranking-item-sent')).toHaveLength(code === 'OFFER_HUNT_ALREADY_SENT' ? 2 : 1);
@@ -140,8 +141,8 @@ describe('HuntRunsTab — reaproveitar o ranking', () => {
     svc.getRun.mockResolvedValue(ranked({ rankingReusable: false }));
     render(<Tab items={[run('r1', { hasRanking: true })]} openRunId="r1" />);
     await screen.findByText('Saia');
-    expect(sendBtn('Saia')).toBeDisabled();
-    expect(sendBtn('Blusa')).toBeDisabled();
+    expect(sendBtn('2º')).toBeDisabled();
+    expect(sendBtn('3º')).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Enviar todas as não escolhidas' })).toBeDisabled();
   });
 
@@ -151,11 +152,11 @@ describe('HuntRunsTab — reaproveitar o ranking', () => {
     svc.sendRankingItem.mockReturnValue(new Promise((r) => { resolve = r; }));
     render(<Tab items={[run('r1', { hasRanking: true })]} openRunId="r1" />);
     await screen.findByText('Saia');
-    fireEvent.click(sendBtn('Saia'));
+    fireEvent.click(sendBtn('2º'));
     confirmSend();
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Enviar a oferta Saia' })).toBeDisabled());
-    expect(sendBtn('Blusa')).toBeDisabled();
-    fireEvent.click(sendBtn('Saia'));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Enviar a oferta 2º do ranking' })).toBeDisabled());
+    expect(sendBtn('3º')).toBeDisabled();
+    fireEvent.click(sendBtn('2º'));
     expect(svc.sendRankingItem).toHaveBeenCalledTimes(1);
     await act(async () => { resolve({ id: 'f2' }); });
   });

@@ -14,6 +14,13 @@ import { PrismaOfferHuntMapper as Mapper } from '../../mappers/PrismaOfferHuntMa
 
 /** Chave de repetição: caçada + marca + produto (linha antiga sem `productId` usa `goodsId`). */
 const repeatKey = (huntId: string, provider: string, productId: string) => `${huntId}:${provider}:${productId}`;
+/**
+ * Achado que NÃO conta como "enviado" na execução (chip, 409 e lock do reaproveitamento): falhou ou foi dispensado.
+ * PENDING_REVIEW conta (aprovar depois duplicaria a oferta); APPROVED/SENT contam.
+ */
+const UNDELIVERED_STATUSES: OfferHuntFindStatus[] = ['FAILED', 'DISMISSED'];
+/** Fora a linha FAILED/DISMISSED da execução `runId` (`runId <> x` sozinho exclui NULL). */
+const notUndeliveredInRun = (runId: string) => ({ OR: [{ runId: null }, { runId: { not: runId } }, { status: { notIn: UNDELIVERED_STATUSES } }] });
 
 /** Disparo mais recente da oferta atual + nome do grupo (tenant em todo filtro). */
 const deliveryInclude = (tenantId: string) => ({
@@ -72,7 +79,7 @@ export class PrismaOfferHuntFindRepository implements IOfferHuntFindRepository {
     const rows = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`offer_hunt_finds:${tenantId}`}::text))`;
       const fresh = await this.withoutRepeats(tx, tenantId, finds, quota.repeatSince);
-      const used = await tx.offerHuntFind.count({ where: { tenantId, createdAt: { gte: quota.since } } });
+      const used = await tx.offerHuntFind.count({ where: { tenantId, fromRanking: false, createdAt: { gte: quota.since } } });
       const room = Math.max(0, quota.limit - used);
       const out = [];
       for (const f of fresh.slice(0, room)) {
@@ -121,31 +128,44 @@ export class PrismaOfferHuntFindRepository implements IOfferHuntFindRepository {
     const product = (provider: string) => ({ provider: provider as HuntProvider, OR: [{ productId: find.productId }, { productId: null, goodsId: find.productId }] });
     return this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`offer_hunt_finds:${tenantId}`}::text))`;
-      const inRun = await tx.offerHuntFind.count({ where: { tenantId, runId: find.runId, ...product(find.provider) } });
+      const inRun = await tx.offerHuntFind.count({
+        where: { tenantId, runId: find.runId, status: { notIn: UNDELIVERED_STATUSES }, ...product(find.provider) },
+      });
       if (inRun > 0) return { kind: 'ALREADY_SENT' as const, reason: 'RUN' as const };
+      // Repetição: achado FAILED/DISMISSED desta execução não bloqueia (reenvio do item cria linha nova)
       const repeated = await tx.offerHuntFind.count({
-        where: { tenantId, huntId: find.huntId, createdAt: { gte: repeatSince }, ...product(find.provider) },
+        where: {
+          tenantId, huntId: find.huntId, createdAt: { gte: repeatSince },
+          AND: [product(find.provider), notUndeliveredInRun(find.runId)],
+        },
       });
       if (repeated > 0) return { kind: 'ALREADY_SENT' as const, reason: 'REPEATED' as const };
       const row = await tx.offerHuntFind.create({
-        data: { ...Mapper.snapshotToData(find), tenantId, huntId: find.huntId, runId: find.runId, status: find.status },
+        data: { ...Mapper.snapshotToData(find), tenantId, huntId: find.huntId, runId: find.runId, status: find.status, fromRanking: true },
       });
       return { kind: 'INSERTED' as const, find: Mapper.findToDomain(row) };
     });
   }
 
   async productIdsByRun(tenantId: string, runId: string): Promise<string[]> {
-    const rows = await this.prisma.offerHuntFind.findMany({ where: { tenantId, runId }, select: { productId: true, goodsId: true } });
+    const rows = await this.prisma.offerHuntFind.findMany({
+      where: { tenantId, runId, status: { notIn: UNDELIVERED_STATUSES } }, select: { productId: true, goodsId: true },
+    });
     return [...new Set(rows.flatMap((r) => { const id = r.productId ?? r.goodsId; return id ? [id] : []; }))];
   }
 
   countCreatedSince(tenantId: string, since: Date): Promise<number> {
-    return this.prisma.offerHuntFind.count({ where: { tenantId, createdAt: { gte: since } } });
+    return this.prisma.offerHuntFind.count({ where: { tenantId, fromRanking: false, createdAt: { gte: since } } });
   }
 
-  async recentProductIds(tenantId: string, huntId: string, provider: HuntProvider, since: Date): Promise<Set<string>> {
+  async recentProductIds(
+    tenantId: string, huntId: string, provider: HuntProvider, since: Date, opts: { exceptUndeliveredInRun?: string } = {},
+  ): Promise<Set<string>> {
     const rows = await this.prisma.offerHuntFind.findMany({
-      where: { tenantId, huntId, provider, createdAt: { gte: since } },
+      where: {
+        tenantId, huntId, provider, createdAt: { gte: since },
+        ...(opts.exceptUndeliveredInRun ? notUndeliveredInRun(opts.exceptUndeliveredInRun) : {}),
+      },
       select: { productId: true, goodsId: true },
       distinct: ['productId', 'goodsId'],
     });

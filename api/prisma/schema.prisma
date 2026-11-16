@@ -1415,6 +1415,8 @@ model OfferHuntFind {
   lastResentAt               DateTime?
   /// Reenvio em voo até aqui (2º clique recusado); vencido sem troca de oferta = retomável com o mesmo número.
   resendInFlightUntil        DateTime?
+  /// Item do ranking reaproveitado ("Fora do corte"): não conta no teto do dia nem no `sentCount` da execução.
+  fromRanking                Boolean             @default(false)
   createdAt                  DateTime            @default(now())
   updatedAt                  DateTime            @updatedAt
 

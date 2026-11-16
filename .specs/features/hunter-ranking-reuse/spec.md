@@ -16,14 +16,15 @@ Estado: em implementação (pedido do dono, 2026-11-16). Base: api 0.96.1 · app
 ## Contrato fixo
 
 - `POST /api/offer-hunts/:id/runs/:runId/ranking/:productId/send` → 200 `{ find }` (achado novo, entregue pelo
-  `HuntFindDelivery`, `origin HUNTER`, `sourceKey hunt:rank:<runId>:<productId>`). Erros: 404 `OFFER_HUNT_NOT_FOUND`
+  `HuntFindDelivery`, `origin HUNTER`, `sourceKey hunt:<findId>` — a mesma de aprovar/retomada; achado com
+  `fromRanking = true`, fora do teto do dia e do `sentCount` da execução). Erros: 404 `OFFER_HUNT_NOT_FOUND`
   (caçada/execução/produto fora do ranking), 409 `OFFER_HUNT_ALREADY_SENT` (repetição ou já enviado desta execução),
   409 `OFFER_HUNT_RANKING_EXPIRED` (> 48 h), 422 `OFFER_HUNT_DESTINATION_REQUIRED`, portões como na execução.
 - `POST /api/offer-hunts/:id/runs/:runId/ranking/send-all` (**super admin**; demais 403) → 200
   `{ sent: number, skipped: [{ productId, reason }] }` — envia todos os itens não escolhidos e ainda não enviados, em
   sequência, parando em erro de portão (credencial/aceite/plano).
 - `GET /api/offer-hunts/:id/runs/:runId` passa a trazer `sentProductIds: string[]` (achados desta execução, escolhidos ou
-  reaproveitados) e `rankingReusable: boolean` (≤ 48 h).
+  reaproveitados, fora FAILED/DISMISSED) e `rankingReusable: boolean` (≤ 48 h).
 - Admin: `GET /api/admin/plan-entitlements` → cada chave ganha `superAdminOnly: boolean | null` (null = não se aplica;
   hoje só `offer_hunter_enabled` aplica). `PUT /api/admin/plan-entitlements/:key/audience` `{ superAdminOnly: boolean }`
   (super admin; chave sem audiência → 400). Persistência: `platform_settings` chave `feature_audience`

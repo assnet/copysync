@@ -80,7 +80,7 @@ const find: OfferHuntFind = {
   activityId: 'act1', title: 'Vestido', imageUrl: 'https://img.ltwebstatic.com/v.jpg', priceCents: 5990, originalPriceCents: 9990, discountPercent: 40, commissionPercent: 15,
   commissionCents: 898, returningCommissionPercent: 5, returningCommissionCents: 300, extraCommissionCents: 0, salesBucket: 1000,
   reviewsBucket: 100, rating: 4.8, score: 81.5, factors: [{ key: 'commission', points: 30, max: 40 }], aiReason: null,
-  failureReason: null, offerId: null, resendCount: 0, lastResentAt: null, resendInFlightUntil: null, delivery: null, createdAt: NOW, updatedAt: NOW,
+  failureReason: null, offerId: null, resendCount: 0, lastResentAt: null, resendInFlightUntil: null, fromRanking: false, delivery: null, createdAt: NOW, updatedAt: NOW,
 };
 
 beforeEach(async () => {

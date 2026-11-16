@@ -40,6 +40,15 @@ describe('RankingTable', () => {
     localStorage.clear();
   });
 
+  it('botão Enviar: rótulo acessível pela posição, sem o título do produto (flag de borrar)', () => {
+    localStorage.setItem('privacy.blur', JSON.stringify(['offerHunter.productText']));
+    const reuse = { sentProductIds: new Set<string>(), reusable: true, busyProductId: null, busy: false, onSend: () => {} };
+    render(<PrivacyProvider><RankingTable items={[item(), item({ productId: 'g2', goodsId: 'g2', title: 'Saia secreta', chosen: false })]} reuse={reuse} /></PrivacyProvider>);
+    const btn = screen.getByRole('button', { name: 'Enviar a oferta 2º do ranking' });
+    expect(btn.getAttribute('aria-label')).not.toMatch(/Saia secreta/);
+    localStorage.clear();
+  });
+
   it('sem itens mostra o aviso de filtro vazio', () => {
     render(<RankingTable items={[]} />);
     expect(screen.getByText(/Nenhuma oferta passou nos filtros/)).toBeInTheDocument();

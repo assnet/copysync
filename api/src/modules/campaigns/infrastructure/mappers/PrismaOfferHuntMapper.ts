@@ -247,6 +247,7 @@ export class PrismaOfferHuntMapper {
       resendCount: raw.resendCount,
       lastResentAt: raw.lastResentAt,
       resendInFlightUntil: raw.resendInFlightUntil,
+      fromRanking: raw.fromRanking,
       delivery: null,
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
