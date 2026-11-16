@@ -26,10 +26,10 @@ export const LESSONS: readonly Lesson[] = [
   { id: 'credential-shopee', number: '5.3', group: 'credentials', youtubeId: 'ex4ASPYH8oQ' },
   { id: 'credential-amazon', number: '5.4', group: 'credentials', youtubeId: 'wnZErO6Xk8s' },
   { id: 'monitoring', number: '6', group: 'resources', youtubeId: 'mpN-4lCYxPU' },
-  { id: 'offer-generator', number: '7', group: 'resources', youtubeId: null },
+  { id: 'offer-generator', number: '7', group: 'resources', youtubeId: 'wBxFCDsBruE' },
   { id: 'link-manager', number: '8', group: 'resources', youtubeId: 'hPhCZ7HbuNI' },
-  { id: 'storefront', number: '9', group: 'resources', youtubeId: null },
-  { id: 'offer-story', number: '10', group: 'resources', youtubeId: null },
+  { id: 'storefront', number: '9', group: 'resources', youtubeId: 'n7IAoZ8FTaE' },
+  { id: 'offer-story', number: '10', group: 'resources', youtubeId: '8b41lup1J9I' },
 ];
 
 export const isPlayable = (lesson: Lesson): boolean => lesson.youtubeId !== null;

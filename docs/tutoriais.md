@@ -56,7 +56,7 @@ com `origin` do embed e `source === iframe.contentWindow`. Grava a cada 5 s toca
 
 ## Pendências
 
-- Aulas 7 (Gerador de ofertas), 9 (Página de Ofertas) e 10 (Story de Oferta) sem vídeo.
+- Todas as 13 aulas têm vídeo (aulas 7, 9 e 10 publicadas em 2026-11-16). Sem vídeo, o card volta a "Em breve" com `youtubeId: null`.
 - Descrições curtas dos cards foram redigidas a partir do título: revisar com o conteúdo real das aulas.
 - Aceito: desmarcar conclusão com o vídeo parado em ≥ 90% pode reconcluir no próximo tick do player.
 - Leitura de progresso em reprodução real só validável em navegador com YouTube liberado (testes cobrem a lógica).

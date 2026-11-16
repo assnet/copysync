@@ -13,7 +13,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 #### Painel (app/) — `tutorials` ([`docs/tutoriais.md`](../docs/tutoriais.md))
 
-- **`features/tutorials/*`**, **`routes/AppRoutes.tsx`**, **`features/navigation/model.ts`** — aba **Tutoriais** em Afiliados (`/affiliates/tutorials`, app 0.120.0): vitrine de 13 aulas em 3 trilhas, hero com aula em destaque, painel de trilha guiada (anel/barra), busca (`/`), filtros por estado e trilha, copiar link (`?aula=`), player em diálogo com retomada no ponto salvo e navegação anterior/próxima. Progresso (`progress.ts`) fica no navegador, por usuário, via `usePersistedState` escopo `browser`; conclusão automática aos 90% ou pelo botão. Ponto lido do iframe por `postMessage` (`youtubeBridge.ts`), sem carregar script do YouTube (CSP intacto). Aulas 7, 9 e 10 sem vídeo aparecem como "Em breve".
+- **`features/tutorials/*`**, **`routes/AppRoutes.tsx`**, **`features/navigation/model.ts`** — aba **Tutoriais** em Afiliados (`/affiliates/tutorials`, app 0.120.0): vitrine de 13 aulas em 3 trilhas, hero com aula em destaque, painel de trilha guiada (anel/barra), busca (`/`), filtros por estado e trilha, copiar link (`?aula=`), player em diálogo com retomada no ponto salvo e navegação anterior/próxima. Progresso (`progress.ts`) fica no navegador, por usuário, via `usePersistedState` escopo `browser`; conclusão automática aos 90% ou pelo botão. Ponto lido do iframe por `postMessage` (`youtubeBridge.ts`), sem carregar script do YouTube (CSP intacto). Aulas 7, 9 e 10 entram com vídeo em app 0.122.1 (as 13 aulas reproduzíveis).
 
 ---
 
