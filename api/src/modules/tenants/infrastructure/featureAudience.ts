@@ -1,0 +1,21 @@
+import { env } from '../../../shared/config/env';
+import { PrismaAuditLogRepository } from '../../../shared/audit/PrismaAuditLogRepository';
+import { UnitOfWork } from '../../../shared/database/UnitOfWork';
+import { FeatureAudienceReader, type FeatureAudienceDefaults } from '../application/services/FeatureAudienceReader';
+import type { FeatureAudienceTransaction } from '../application/use-cases/SetFeatureAudienceUseCase';
+import { ENTITLEMENT_KEYS } from '../domain/entitlementKeys';
+import { PrismaFeatureAudienceRepository } from './repositories/PrismaFeatureAudienceRepository';
+
+/** Valor inicial (chave nunca gravada): `OFFER_HUNTER_AUDIENCE`, lida a cada uso. `super_admin` = só super admin. */
+export const featureAudienceDefaults: FeatureAudienceDefaults = () => ({
+  [ENTITLEMENT_KEYS.OFFER_HUNTER_ENABLED]: env.OFFER_HUNTER_AUDIENCE !== 'entitled',
+});
+
+let reader: FeatureAudienceReader | null = null;
+/** Leitor único (sem estado: lê o banco a cada uso). Importar não toca o banco. */
+export const featureAudienceReader = (): FeatureAudienceReader =>
+  (reader ??= new FeatureAudienceReader(new PrismaFeatureAudienceRepository(), featureAudienceDefaults));
+
+/** Flag + AuditLog no mesmo `tx`. */
+export const prismaFeatureAudienceTransaction: FeatureAudienceTransaction = (fn) =>
+  new UnitOfWork().runInTransaction((tx) => fn({ audience: new PrismaFeatureAudienceRepository(tx), audit: new PrismaAuditLogRepository(tx) }));

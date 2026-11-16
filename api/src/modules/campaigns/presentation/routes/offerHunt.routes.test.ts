@@ -15,6 +15,11 @@ import { GetOfferHunterUsageUseCase } from '../../application/use-cases/hunter/O
 import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
 import { AT_TOKEN, MEMBER, NOW, makeHunt } from '../../application/use-cases/hunter/hunterTestFakes';
 import type { OfferHuntFind } from '../../domain/hunter/OfferHunt';
+import { PrismaFeatureAudienceRepository } from '../../../tenants/infrastructure/repositories/PrismaFeatureAudienceRepository';
+import type { FeatureAudienceSettings } from '../../../tenants/domain/featureAudience';
+import { PrismaOfferHuntFindRepository } from '../../infrastructure/repositories/hunter/PrismaOfferHuntFindRepository';
+import { SendRankingItemUseCase } from '../../application/use-cases/hunter/SendRankingItemUseCase';
+import { SendRankingRemainderUseCase } from '../../application/use-cases/hunter/SendRankingRemainderUseCase';
 
 /* Contrato HTTP sem banco: Prisma vazio, auth/tenant falsos, repositórios e use cases espionados no protótipo. */
 const auth = vi.hoisted(() => ({ isSuperAdmin: false, memberOf: true }));
@@ -52,10 +57,13 @@ const GATED: [string, string, object?][] = [
   ['POST', `/${ID}/pause`], ['POST', `/${ID}/resume`], ['POST', `/${ID}/run`], ['GET', `/${ID}/runs`], ['GET', `/${ID}/runs/run-1`], ['GET', `/${ID}/finds`],
   ['POST', '/finds/f1/approve'], ['POST', '/finds/f1/dismiss'], ['POST', '/finds/f1/resend'], ['GET', '/usage'], ['GET', '/options'], ['GET', '/options/providers'], ['GET', '/settings'],
   ['PUT', '/settings', { sessionId: 's1', conversationId: 'c1' }],
+  ['POST', `/${ID}/runs/run-1/ranking/123/send`], ['POST', `/${ID}/runs/run-1/ranking/send-all`],
 ];
 
 let app: FastifyInstance;
 let ent: Record<string, boolean | number>;
+/** `platform_settings.feature_audience` gravado ({} = nunca gravado: vale a env). */
+let savedAudience: FeatureAudienceSettings;
 const bodies: string[] = [];
 const originalAudience = env.OFFER_HUNTER_AUDIENCE;
 const setAudience = (a: 'super_admin' | 'entitled') => { (env as { OFFER_HUNTER_AUDIENCE: string }).OFFER_HUNTER_AUDIENCE = a; };
@@ -79,6 +87,8 @@ beforeEach(async () => {
   auth.isSuperAdmin = false;
   auth.memberOf = true;
   setAudience('super_admin');
+  savedAudience = {};
+  vi.spyOn(PrismaFeatureAudienceRepository.prototype, 'get').mockImplementation(async () => savedAudience);
   ent = { [ENTITLEMENT_KEYS.MARKETPLACE_SHEIN_ENABLED]: true, [ENTITLEMENT_KEYS.OFFER_HUNTER_ENABLED]: true, [ENTITLEMENT_KEYS.OFFER_HUNTER_FINDS_PER_DAY]: 10 };
   vi.spyOn(PrismaEntitlementReader.prototype, 'getBoolean').mockImplementation(async (_t, k) => (typeof ent[k] === 'boolean' ? (ent[k] as boolean) : null));
   vi.spyOn(PrismaEntitlementReader.prototype, 'getNumber').mockImplementation(async (_t, k) => (typeof ent[k] === 'number' ? (ent[k] as number) : null));
@@ -148,6 +158,78 @@ describe('audiência entitled', () => {
     expect((await call('GET', '/access')).json().data).toEqual({ visible: true });
     auth.memberOf = false;
     expect((await call('GET', '/access')).json().data).toEqual({ visible: false });
+  });
+});
+
+describe('audiência pela flag do admin (feature_audience)', () => {
+  it('flag gravada false vence a env super_admin: usuário comum de tenant com o entitlement acessa /access e rotas', async () => {
+    savedAudience = { offer_hunter_enabled: false };
+    const usage = { used: 0, limit: 10, remaining: 10, runsToday: 0, runsMax: 24, resendsToday: 0, resendsMax: 10 };
+    vi.spyOn(GetOfferHunterUsageUseCase.prototype, 'execute').mockResolvedValue(usage);
+    expect((await call('GET', '/access')).json().data).toEqual({ visible: true });
+    expect((await call('GET', '/usage')).statusCode).toBe(200);
+    ent[ENTITLEMENT_KEYS.OFFER_HUNTER_ENABLED] = false;
+    expect((await call('GET', '/usage')).statusCode).toBe(403);
+    expect((await call('GET', '/access')).json().data).toEqual({ visible: false });
+  });
+
+  it('flag gravada true vence a env entitled: só super admin', async () => {
+    setAudience('entitled');
+    savedAudience = { offer_hunter_enabled: true };
+    expect((await call('GET', '/usage')).statusCode).toBe(403);
+    expect((await call('GET', '/access')).json().data).toEqual({ visible: false });
+    auth.isSuperAdmin = true;
+    expect((await call('GET', '/access')).json().data).toEqual({ visible: true });
+  });
+
+  it('troca da flag vale no pedido seguinte (sem cache)', async () => {
+    expect((await call('GET', '/access')).json().data).toEqual({ visible: false });
+    savedAudience = { offer_hunter_enabled: false };
+    expect((await call('GET', '/access')).json().data).toEqual({ visible: true });
+  });
+});
+
+describe('reaproveitar o ranking', () => {
+  const sendUrl = `/${ID}/runs/run-1/ranking/123/send`;
+  const allUrl = `/${ID}/runs/run-1/ranking/send-all`;
+
+  it('POST .../ranking/:productId/send → 200 { find } (membro com a flag aberta)', async () => {
+    savedAudience = { offer_hunter_enabled: false };
+    const exec = vi.spyOn(SendRankingItemUseCase.prototype, 'execute').mockResolvedValue({ ...find, status: 'SENT', offerId: 'o1' });
+    const res = await call('POST', sendUrl);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.find).toMatchObject({ id: 'f1', status: 'SENT', offerId: 'o1', productId: '12345678' });
+    expect(exec).toHaveBeenCalledWith({ tenantId: 'tenant-a', huntId: ID, runId: 'run-1', productId: '123' });
+  });
+
+  it('erros do envio: 409 OFFER_HUNT_ALREADY_SENT / OFFER_HUNT_RANKING_EXPIRED', async () => {
+    auth.isSuperAdmin = true;
+    const { OfferHuntAlreadySentError, OfferHuntRankingExpiredError } = await import('../../../../shared/errors/internal/OfferHuntErrors');
+    vi.spyOn(SendRankingItemUseCase.prototype, 'execute')
+      .mockRejectedValueOnce(new OfferHuntAlreadySentError('REPEATED'))
+      .mockRejectedValueOnce(new OfferHuntRankingExpiredError(48));
+    const a = await call('POST', sendUrl);
+    expect([a.statusCode, a.json().error.code]).toEqual([409, 'OFFER_HUNT_ALREADY_SENT']);
+    const b = await call('POST', sendUrl);
+    expect([b.statusCode, b.json().error.code]).toEqual([409, 'OFFER_HUNT_RANKING_EXPIRED']);
+  });
+
+  it('send-all: usuário com acesso ao caçador mas não super admin → 403, sem enviar', async () => {
+    savedAudience = { offer_hunter_enabled: false };
+    const exec = vi.spyOn(SendRankingRemainderUseCase.prototype, 'execute');
+    const res = await call('POST', allUrl);
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe('FORBIDDEN');
+    expect(exec).not.toHaveBeenCalled();
+  });
+
+  it('send-all: super admin → 200 { sent, skipped }', async () => {
+    auth.isSuperAdmin = true;
+    const exec = vi.spyOn(SendRankingRemainderUseCase.prototype, 'execute').mockResolvedValue({ sent: 2, skipped: [{ productId: '9', reason: 'REPEATED' }] });
+    const res = await call('POST', allUrl);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ success: true, data: { sent: 2, skipped: [{ productId: '9', reason: 'REPEATED' }] } });
+    expect(exec).toHaveBeenCalledWith({ tenantId: 'tenant-a', huntId: ID, runId: 'run-1' });
   });
 });
 
@@ -223,9 +305,16 @@ describe('rotas (super admin)', () => {
       returningCommissionPercent: null, returningCommissionCents: null, extraCommissionCents: 0, salesBucket: null, reviewsBucket: null,
       rating: null, score: 50, factors: [], aiReason: null, chosen: true }];
     const get = vi.spyOn(PrismaOfferHuntRunRepository.prototype, 'findById').mockResolvedValueOnce({ ...RUN_BASE, ranking });
+    const sent = vi.spyOn(PrismaOfferHuntFindRepository.prototype, 'productIdsByRun').mockResolvedValue(['1']);
     const ok = await call('GET', `/${ID}/runs/run-1`);
     expect(ok.statusCode).toBe(200);
-    expect(ok.json().data).toMatchObject({ id: 'run-1', hasRanking: true, ranking: [{ goodsId: '1', chosen: true }] });
+    // Execução de NOW (dias atrás) → fora das 48 h
+    expect(ok.json().data).toMatchObject({
+      id: 'run-1', hasRanking: true, ranking: [{ goodsId: '1', chosen: true }], sentProductIds: ['1'], rankingReusable: false,
+    });
+    expect(sent).toHaveBeenCalledWith('tenant-a', 'run-1');
+    get.mockResolvedValueOnce({ ...RUN_BASE, startedAt: new Date(Date.now() - 3_600_000), ranking });
+    expect((await call('GET', `/${ID}/runs/run-1`)).json().data).toMatchObject({ rankingReusable: true });
     expect(get).toHaveBeenCalledWith('tenant-a', ID, 'run-1');
     get.mockResolvedValueOnce(null);
     const missing = await call('GET', `/${ID}/runs/run-x`);

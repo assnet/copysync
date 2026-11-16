@@ -4,6 +4,7 @@ import { planEntitlementAdminRoutes } from './planEntitlementAdmin.routes';
 import { errorHandler } from '../../../../shared/http/errorHandler';
 import { ListAdminPlanEntitlementsUseCase } from '../../application/use-cases/ListAdminPlanEntitlementsUseCase';
 import { SetPlanEntitlementUseCase } from '../../application/use-cases/SetPlanEntitlementUseCase';
+import { SetFeatureAudienceUseCase } from '../../application/use-cases/SetFeatureAudienceUseCase';
 
 /* Contrato HTTP sem banco: Prisma vazio, auth falsa, use cases espionados no protótipo. */
 const auth = vi.hoisted(() => ({ loggedIn: true, isSuperAdmin: false }));
@@ -54,8 +55,9 @@ describe('GET /admin/plan-entitlements', () => {
 
   it('super admin → 200 com planos e chaves', async () => {
     vi.spyOn(ListAdminPlanEntitlementsUseCase.prototype, 'execute').mockResolvedValue([
-      { key: 'marketplace_shein_enabled', type: { kind: 'boolean' }, plans: { COPYSYNC_LITE: null, COPYSYNC_PRO: false, COPYSYNC_MAX: true } },
-      { key: 'offer_hunter_finds_per_day', type: { kind: 'integer', min: 0, max: 100 }, plans: { COPYSYNC_LITE: 0, COPYSYNC_PRO: 0, COPYSYNC_MAX: 10 } },
+      { key: 'marketplace_shein_enabled', type: { kind: 'boolean' }, plans: { COPYSYNC_LITE: null, COPYSYNC_PRO: false, COPYSYNC_MAX: true }, superAdminOnly: null },
+      { key: 'offer_hunter_finds_per_day', type: { kind: 'integer', min: 0, max: 100 }, plans: { COPYSYNC_LITE: 0, COPYSYNC_PRO: 0, COPYSYNC_MAX: 10 }, superAdminOnly: null },
+      { key: 'offer_hunter_enabled', type: { kind: 'boolean' }, plans: { COPYSYNC_LITE: false, COPYSYNC_PRO: false, COPYSYNC_MAX: true }, superAdminOnly: true },
     ]);
     const res = await app.inject({ method: 'GET', url: URL });
     expect(res.statusCode).toBe(200);
@@ -64,8 +66,9 @@ describe('GET /admin/plan-entitlements', () => {
       data: {
         plans: ['COPYSYNC_LITE', 'COPYSYNC_PRO', 'COPYSYNC_MAX'],
         entitlements: [
-          { key: 'marketplace_shein_enabled', type: { kind: 'boolean' }, plans: { COPYSYNC_LITE: null, COPYSYNC_PRO: false, COPYSYNC_MAX: true } },
-          { key: 'offer_hunter_finds_per_day', type: { kind: 'integer', min: 0, max: 100 }, plans: { COPYSYNC_LITE: 0, COPYSYNC_PRO: 0, COPYSYNC_MAX: 10 } },
+          { key: 'marketplace_shein_enabled', type: { kind: 'boolean' }, plans: { COPYSYNC_LITE: null, COPYSYNC_PRO: false, COPYSYNC_MAX: true }, superAdminOnly: null },
+          { key: 'offer_hunter_finds_per_day', type: { kind: 'integer', min: 0, max: 100 }, plans: { COPYSYNC_LITE: 0, COPYSYNC_PRO: 0, COPYSYNC_MAX: 10 }, superAdminOnly: null },
+          { key: 'offer_hunter_enabled', type: { kind: 'boolean' }, plans: { COPYSYNC_LITE: false, COPYSYNC_PRO: false, COPYSYNC_MAX: true }, superAdminOnly: true },
         ],
       },
     });
@@ -135,5 +138,41 @@ describe('PUT /admin/plan-entitlements/:planSlug/:key', () => {
     expect(res.statusCode).toBe(200);
     expect(spy).toHaveBeenCalledWith({ planSlug: 'COPYSYNC_PRO', key: 'marketplace_shein_enabled', value: true, actorUserId: 'admin-1' });
     expect(res.json()).toEqual({ success: true, data: { planSlug: 'COPYSYNC_PRO', key: 'marketplace_shein_enabled', value: true, tenantsUpdated: 4 } });
+  });
+});
+
+describe('PUT /admin/plan-entitlements/:key/audience', () => {
+  const AUD = `${URL}/offer_hunter_enabled/audience`;
+
+  it('não super admin → 401, sem gravar; não cai no PUT de plano', async () => {
+    const spy = vi.spyOn(SetFeatureAudienceUseCase.prototype, 'execute');
+    const plan = vi.spyOn(SetPlanEntitlementUseCase.prototype, 'execute');
+    auth.isSuperAdmin = false;
+    expect((await app.inject({ method: 'PUT', url: AUD, payload: { superAdminOnly: false } })).statusCode).toBe(401);
+    expect(spy).not.toHaveBeenCalled();
+    expect(plan).not.toHaveBeenCalled();
+  });
+
+  it('chave sem audiência → 400 VALIDATION_ERROR (use case real, sem transação)', async () => {
+    const res = await app.inject({ method: 'PUT', url: `${URL}/marketplace_shein_enabled/audience`, payload: { superAdminOnly: true } });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('corpo sem boolean → 400', async () => {
+    const spy = vi.spyOn(SetFeatureAudienceUseCase.prototype, 'execute');
+    expect((await app.inject({ method: 'PUT', url: AUD, payload: { superAdminOnly: 'no' } })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'PUT', url: AUD, payload: { value: true } })).statusCode).toBe(400);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('ok → 200 com a flag e o super admin como autor', async () => {
+    const spy = vi.spyOn(SetFeatureAudienceUseCase.prototype, 'execute').mockResolvedValue({ key: 'offer_hunter_enabled', superAdminOnly: false });
+    const plan = vi.spyOn(SetPlanEntitlementUseCase.prototype, 'execute');
+    const res = await app.inject({ method: 'PUT', url: AUD, payload: { superAdminOnly: false } });
+    expect(res.statusCode).toBe(200);
+    expect(spy).toHaveBeenCalledWith({ key: 'offer_hunter_enabled', superAdminOnly: false, actorUserId: 'admin-1' });
+    expect(plan).not.toHaveBeenCalled();
+    expect(res.json()).toEqual({ success: true, data: { key: 'offer_hunter_enabled', superAdminOnly: false } });
   });
 });

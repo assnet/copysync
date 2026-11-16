@@ -15,6 +15,8 @@ import { AiHuntCandidateRanker } from '../application/services/hunter/AiHuntCand
 import { HuntFindDelivery } from '../application/services/hunter/HuntFindDelivery';
 import { RunOfferHuntUseCase } from '../application/use-cases/hunter/RunOfferHuntUseCase';
 import { ApproveHuntFindUseCase, DismissHuntFindUseCase } from '../application/use-cases/hunter/HuntFindDecisionUseCases';
+import { SendRankingItemUseCase } from '../application/use-cases/hunter/SendRankingItemUseCase';
+import { SendRankingRemainderUseCase } from '../application/use-cases/hunter/SendRankingRemainderUseCase';
 import { ResendHuntFindUseCase } from '../application/use-cases/hunter/ResendHuntFindUseCase';
 import { SetOfferHunterDestinationUseCase } from '../application/use-cases/hunter/SetOfferHunterDestinationUseCase';
 import {
@@ -27,6 +29,7 @@ import {
   type GetOfferHunterOptionsDeps,
 } from '../application/use-cases/hunter/OfferHunterInfoUseCases';
 import { OfferHunterAudienceGate } from '../application/services/hunter/offerHunterAudience';
+import { featureAudienceReader } from '../../tenants/infrastructure/featureAudience';
 import { LazyHuntAiAvailability } from './adapters/LazyHuntAiAvailability';
 
 /*
@@ -90,7 +93,18 @@ const resumeHunt = lazy(() => new ResumeOfferHuntUseCase(crudDeps()));
 const getHunt    = lazy(() => new GetOfferHuntUseCase(crudDeps()));
 const listHunts  = lazy(() => new ListOfferHuntsUseCase(crudDeps()));
 const listRuns   = lazy(() => new ListOfferHuntRunsUseCase({ hunts: hunts(), runs: runs() }));
-const getRun     = lazy(() => new GetOfferHuntRunUseCase({ runs: runs() }));
+const getRun     = lazy(() => new GetOfferHuntRunUseCase({ runs: runs(), finds: finds() }));
+const sendRankingItem = lazy(() => new SendRankingItemUseCase({
+  hunts: hunts(),
+  runs: runs(),
+  finds: finds(),
+  providers: providers(),
+  entitlements: offersContainer.entitlements(),
+  credentials: offersContainer.credentialGateway(),
+  riskGate: offersContainer.riskGate(),
+  delivery: delivery(),
+}));
+const sendRankingRemainder = lazy(() => new SendRankingRemainderUseCase({ items: sendRankingItem(), finds: finds() }));
 const listFinds  = lazy(() => new ListOfferHuntFindsUseCase({ hunts: hunts(), finds: finds() }));
 const usage      = lazy(() => new GetOfferHunterUsageUseCase({ finds: finds(), runs: runs(), entitlements: offersContainer.entitlements() }));
 const optionsDeps = lazy((): GetOfferHunterOptionsDeps => ({
@@ -104,7 +118,7 @@ const optionsDeps = lazy((): GetOfferHunterOptionsDeps => ({
 const options    = lazy(() => new GetOfferHunterOptionsUseCase(optionsDeps()));
 const providerStates = lazy(() => new GetOfferHunterProvidersUseCase(optionsDeps()));
 const getDestination = lazy(() => new GetOfferHunterDestinationUseCase({ settings: settings(), configs: configs() }));
-const audienceGate = lazy(() => new OfferHunterAudienceGate(offersContainer.entitlements()));
+const audienceGate = lazy(() => new OfferHunterAudienceGate(offersContainer.entitlements(), featureAudienceReader()));
 
 export const hunterContainer = {
   hunts,
@@ -125,6 +139,8 @@ export const hunterContainer = {
   listOfferHunts:        listHunts,
   listOfferHuntRuns:     listRuns,
   getOfferHuntRun:       getRun,
+  sendRankingItem,
+  sendRankingRemainder,
   listOfferHuntFinds:    listFinds,
   getOfferHunterUsage:   usage,
   getOfferHunterOptions: options,

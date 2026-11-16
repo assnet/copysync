@@ -1,4 +1,6 @@
 import type { OfferHunt, OfferHuntFind, OfferHuntRun, OfferHuntRunSummary, OfferHunterSettings } from '../../domain/hunter/OfferHunt';
+import type { OfferHuntRunDetail } from '../../application/use-cases/hunter/OfferHuntHistoryUseCases';
+import type { SendRankingRemainderOutput } from '../../application/use-cases/hunter/SendRankingRemainderUseCase';
 import type { RunOfferHuntOutput, HuntRankingItem } from '../../application/use-cases/hunter/RunOfferHuntUseCase';
 import type { OfferHuntPage } from '../../application/use-cases/hunter/OfferHuntHistoryUseCases';
 import type { ApproveHuntFindOutput } from '../../application/use-cases/hunter/HuntFindDecisionUseCases';
@@ -78,6 +80,15 @@ export const OfferHuntPresenter = {
       ...OfferHuntPresenter.runSummary({ ...r, hasRanking: r.ranking !== null }),
       ranking: r.ranking ? r.ranking.map(OfferHuntPresenter.rankingItem) : null,
     };
+  },
+
+  /** Detalhe da execução: ranking + `sentProductIds` + `rankingReusable`. */
+  runDetail(d: OfferHuntRunDetail) {
+    return { ...OfferHuntPresenter.run(d.run), sentProductIds: [...d.sentProductIds], rankingReusable: d.rankingReusable };
+  },
+
+  rankingRemainder(o: SendRankingRemainderOutput) {
+    return { sent: o.sent, skipped: o.skipped.map((s) => ({ productId: s.productId, reason: s.reason })) };
   },
 
   /** Item da lista do histórico: sem `ranking`, com `hasRanking`. */

@@ -3,6 +3,7 @@ import type { IOfferHuntRunRepository, OfferHuntPageCursor } from '../../../doma
 import type { IOfferHuntFindRepository } from '../../../domain/contracts/hunter/IOfferHuntFindRepository';
 import type { OfferHuntFind, OfferHuntRun, OfferHuntRunSummary } from '../../../domain/hunter/OfferHunt';
 import { OfferHuntCursorInvalidError, OfferHuntNotFoundError } from '../../../../../shared/errors/internal/OfferHuntErrors';
+import { isRankingReusable } from '../../../domain/services/hunter/rankingReuse';
 import { createHuntPageCursor, readHuntPageCursor } from './huntPageCursor';
 
 /** Tamanho da página: decisão do servidor (o painel só devolve o cursor). */
@@ -50,14 +51,28 @@ export class ListOfferHuntRunsUseCase {
   }
 }
 
+/** Execução com o ranking + o que já saiu dela (reaproveitamento do ranking). */
+export interface OfferHuntRunDetail {
+  run: OfferHuntRun;
+  /** Produtos com achado desta execução (escolhidos ou reaproveitados). */
+  sentProductIds: string[];
+  /** Tem ranking e começou há ≤ 48 h. */
+  rankingReusable: boolean;
+}
+
 /** Uma execução com o `ranking` (a lista não traz). Outro tenant/caçada → 404 `OFFER_HUNT_NOT_FOUND`. */
 export class GetOfferHuntRunUseCase {
-  constructor(private readonly deps: { runs: Pick<IOfferHuntRunRepository, 'findById'> }) {}
+  constructor(private readonly deps: {
+    runs: Pick<IOfferHuntRunRepository, 'findById'>;
+    finds: Pick<IOfferHuntFindRepository, 'productIdsByRun'>;
+    now?: () => Date;
+  }) {}
 
-  async execute(input: { tenantId: string; huntId: string; runId: string }): Promise<OfferHuntRun> {
+  async execute(input: { tenantId: string; huntId: string; runId: string }): Promise<OfferHuntRunDetail> {
     const run = await this.deps.runs.findById(input.tenantId, input.huntId, input.runId);
     if (!run) throw new OfferHuntNotFoundError('run');
-    return run;
+    const sentProductIds = await this.deps.finds.productIdsByRun(input.tenantId, run.id);
+    return { run, sentProductIds, rankingReusable: isRankingReusable(run, this.deps.now?.() ?? new Date()) };
   }
 }
 

@@ -171,17 +171,33 @@ describe('histórico com cursor keyset assinado', () => {
 });
 
 describe('OfferHunterAudienceGate', () => {
-  const gate = (enabled: boolean | null) => new OfferHunterAudienceGate({ getBoolean: async () => enabled });
+  const flag = { superAdminOnly: true, reads: 0 };
+  const audience = { superAdminOnly: async () => { flag.reads++; return flag.superAdminOnly; } };
+  const gate = (enabled: boolean | null) => new OfferHunterAudienceGate({ getBoolean: async () => enabled }, audience);
 
-  it('super_admin: só super admin, sem olhar o plano', async () => {
-    expect(await gate(true).allows({ audience: 'super_admin', isSuperAdmin: false, tenantId: TENANT })).toBe(false);
-    expect(await gate(null).allows({ audience: 'super_admin', isSuperAdmin: true, tenantId: TENANT })).toBe(true);
+  it('flag ligada (só super admin): só super admin, sem olhar o plano', async () => {
+    flag.superAdminOnly = true;
+    expect(await gate(true).allows({ isSuperAdmin: false, tenantId: TENANT })).toBe(false);
+    expect(await gate(null).allows({ isSuperAdmin: true, tenantId: TENANT })).toBe(true);
   });
 
-  it('entitled: precisa do tenant com offer_hunter_enabled === true', async () => {
-    expect(await gate(true).allows({ audience: 'entitled', isSuperAdmin: false, tenantId: TENANT })).toBe(true);
-    expect(await gate(null).allows({ audience: 'entitled', isSuperAdmin: true, tenantId: TENANT })).toBe(false);
-    expect(await gate(true).allows({ audience: 'entitled', isSuperAdmin: false, tenantId: null })).toBe(false);
+  it('flag desligada: precisa do tenant com offer_hunter_enabled === true', async () => {
+    flag.superAdminOnly = false;
+    expect(await gate(true).allows({ isSuperAdmin: false, tenantId: TENANT })).toBe(true);
+    expect(await gate(null).allows({ isSuperAdmin: true, tenantId: TENANT })).toBe(false);
+    expect(await gate(true).allows({ isSuperAdmin: false, tenantId: null })).toBe(false);
+  });
+
+  it('lê a flag a cada uso (troca no admin vale no pedido seguinte); flag já lida não relê', async () => {
+    const g = gate(true);
+    flag.reads = 0;
+    flag.superAdminOnly = true;
+    expect(await g.allows({ isSuperAdmin: false, tenantId: TENANT })).toBe(false);
+    flag.superAdminOnly = false;
+    expect(await g.allows({ isSuperAdmin: false, tenantId: TENANT })).toBe(true);
+    expect(flag.reads).toBe(2);
+    expect(await g.allows({ isSuperAdmin: false, tenantId: TENANT }, true)).toBe(false);
+    expect(flag.reads).toBe(2);
   });
 });
 

@@ -30,6 +30,8 @@ export function findImageSource(find: Pick<OfferHuntFind, 'imageUrl' | 'provider
 
 /** Idempotência do Enqueue: queda entre enfileirar e gravar `offerId` não reenvia. */
 export const huntSourceKey = (findId: string) => `hunt:${findId}`;
+/** Item do ranking reaproveitado: chave pelo item da execução (dois cliques não duplicam a oferta). */
+export const huntRankingSourceKey = (runId: string, productId: string) => `hunt:rank:${runId}:${productId}`;
 /**
  * Reenvio: chave por número do reenvio (o claim dá o número). Retomar o MESMO reenvio reusa a chave e o
  * Enqueue (idempotente por `sourceKey`) devolve a oferta já criada, sem duplicar.
@@ -80,11 +82,12 @@ export class HuntFindDelivery {
     return { sessionId: s.sessionId, conversationId: s.conversationId };
   }
 
-  async deliver(tenantId: string, find: OfferHuntFind, destination: HuntDestination): Promise<HuntDeliveryResult> {
+  /** `sourceKey` padrão `hunt:<findId>`; o reaproveitamento do ranking passa `huntRankingSourceKey`. */
+  async deliver(tenantId: string, find: OfferHuntFind, destination: HuntDestination, opts: { sourceKey?: string } = {}): Promise<HuntDeliveryResult> {
     const image = { stored: null as string | null };
     let queuedOfferId: string | null = null;
     try {
-      const offerId = await this.enqueue(tenantId, find, destination, huntSourceKey(find.id), image);
+      const offerId = await this.enqueue(tenantId, find, destination, opts.sourceKey ?? huntSourceKey(find.id), image);
       if (!offerId) return this.fail(tenantId, find, 'EXPIRED', null, image.stored);
       queuedOfferId = offerId;
       await this.deps.finds.transition(tenantId, find.id, ['APPROVED'], 'SENT', { offerId, failureReason: null });

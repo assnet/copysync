@@ -3,6 +3,7 @@ import type {
   IOfferHuntFindRepository,
   NewOfferHuntFind,
   OfferHuntFindTransition,
+  RankingFindInsert,
   ResendClaim,
   ResendClaimOptions,
 } from '../../../domain/contracts/hunter/IOfferHuntFindRepository';
@@ -111,6 +112,31 @@ export class PrismaOfferHuntFindRepository implements IOfferHuntFindRepository {
       taken.add(key);
       return true;
     });
+  }
+
+  /** Mesmo lock de `insertWithinDailyLimit` (`offer_hunt_finds:<tenant>`): sem contar o teto do dia. */
+  async insertRankingFind(
+    tenantId: string, find: NewOfferHuntFind & { runId: string; huntId: string }, repeatSince: Date,
+  ): Promise<RankingFindInsert> {
+    const product = (provider: string) => ({ provider: provider as HuntProvider, OR: [{ productId: find.productId }, { productId: null, goodsId: find.productId }] });
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`offer_hunt_finds:${tenantId}`}::text))`;
+      const inRun = await tx.offerHuntFind.count({ where: { tenantId, runId: find.runId, ...product(find.provider) } });
+      if (inRun > 0) return { kind: 'ALREADY_SENT' as const, reason: 'RUN' as const };
+      const repeated = await tx.offerHuntFind.count({
+        where: { tenantId, huntId: find.huntId, createdAt: { gte: repeatSince }, ...product(find.provider) },
+      });
+      if (repeated > 0) return { kind: 'ALREADY_SENT' as const, reason: 'REPEATED' as const };
+      const row = await tx.offerHuntFind.create({
+        data: { ...Mapper.snapshotToData(find), tenantId, huntId: find.huntId, runId: find.runId, status: find.status },
+      });
+      return { kind: 'INSERTED' as const, find: Mapper.findToDomain(row) };
+    });
+  }
+
+  async productIdsByRun(tenantId: string, runId: string): Promise<string[]> {
+    const rows = await this.prisma.offerHuntFind.findMany({ where: { tenantId, runId }, select: { productId: true, goodsId: true } });
+    return [...new Set(rows.flatMap((r) => { const id = r.productId ?? r.goodsId; return id ? [id] : []; }))];
   }
 
   countCreatedSince(tenantId: string, since: Date): Promise<number> {

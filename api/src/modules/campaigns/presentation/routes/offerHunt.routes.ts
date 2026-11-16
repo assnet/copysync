@@ -1,4 +1,5 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { ForbiddenError } from '../../../../shared/errors/internal/AuthErrors';
 import { authHook } from '../../../../shared/http/hooks/authHook';
 import { tenantHook } from '../../../../shared/http/hooks/tenantHook';
 import { httpResponse } from '../../../../shared/http/httpResponse';
@@ -10,7 +11,7 @@ import { OfferHuntPresenter as P } from '../presenters/OfferHuntPresenter';
 import type { HuntProvider } from '../../domain/hunter/HuntProvider';
 import {
   accessResponse, approveFindResponse, createHuntBodySchema, findIdParamSchema, findResponse, findsPageResponse,
-  huntIdParamSchema, huntListResponse, huntResponse, optionsQuerySchema, optionsResponse, pageQuerySchema, providersResponse, runResultResponse,
+  huntIdParamSchema, huntListResponse, rankingItemParamSchema, rankingSendAllResponse, rankingSendResponse, huntResponse, optionsQuerySchema, optionsResponse, pageQuerySchema, providersResponse, runResultResponse,
   runIdParamSchema, runResponse, runsPageResponse, settingsBodySchema, settingsResponse, updateHuntBodySchema, usageResponse,
 } from '../schemas/offerHunt.schema';
 
@@ -21,6 +22,15 @@ type IdParams = { Params: { id: string } };
 type FindParams = { Params: { findId: string } };
 type RunParams = { Params: { id: string; runId: string } };
 type PageQuery = { Querystring: { cursor?: string } };
+type RankingItemParams = { Params: { id: string; runId: string; productId: string } };
+
+/**
+ * "Enviar todas" do ranking: só super admin (pelo token). 403 `FORBIDDEN` (o `superAdminHook` compartilhado
+ * responde 401, que o painel trataria como sessão vencida). Lança, nunca `send` + `return` (§14).
+ */
+async function superAdminOnlyHook(request: FastifyRequest): Promise<void> {
+  if (request.user?.isSuperAdmin !== true) throw new ForbiddenError('Super admin access required');
+}
 
 /**
  * Caçador de Ofertas, em /api/offer-hunts. Toda rota (menos `/access`) leva auth + tenant + portão de
@@ -206,7 +216,42 @@ export async function offerHuntRoutes(app: FastifyInstance): Promise<void> {
     { preHandler, schema: { tags, summary: 'Uma execução com o ranking', params: runIdParamSchema, response: { 200: runResponse } } },
     async (request, reply) => {
       const run = await c.getOfferHuntRun().execute({ tenantId: request.tenantContext.tenantId, huntId: request.params.id, runId: request.params.runId });
-      httpResponse.ok(reply, P.run(run));
+      httpResponse.ok(reply, P.runDetail(run));
+    },
+  );
+
+  app.post<RankingItemParams>(
+    '/:id/runs/:runId/ranking/:productId/send',
+    {
+      preHandler: [...preHandler],
+      config: { rateLimit: perTenantRateLimit(rateLimitPresets.offerHuntRun) },
+      schema: {
+        tags, summary: 'Enviar item do ranking (execução ≤ 48 h; não conta no teto do dia)', params: rankingItemParamSchema,
+        response: { 200: rankingSendResponse },
+      },
+    },
+    async (request, reply) => {
+      const { id, runId, productId } = request.params;
+      const find = await c.sendRankingItem().execute({ tenantId: request.tenantContext.tenantId, huntId: id, runId, productId });
+      httpResponse.ok(reply, { find: P.find(find) });
+    },
+  );
+
+  app.post<RunParams>(
+    '/:id/runs/:runId/ranking/send-all',
+    {
+      preHandler: [...preHandler, superAdminOnlyHook],
+      config: { rateLimit: perTenantRateLimit(rateLimitPresets.offerHuntRun) },
+      schema: {
+        tags, summary: 'Enviar todos os itens não escolhidos do ranking (só super admin)', params: runIdParamSchema,
+        response: { 200: rankingSendAllResponse },
+      },
+    },
+    async (request, reply) => {
+      const out = await c.sendRankingRemainder().execute({
+        tenantId: request.tenantContext.tenantId, huntId: request.params.id, runId: request.params.runId,
+      });
+      httpResponse.ok(reply, P.rankingRemainder(out));
     },
   );
 

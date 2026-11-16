@@ -216,9 +216,16 @@ Respostas mantêm `goodsId` (= productId na Shein, null nas outras) para o paine
 
 ## Audiência
 
-`OFFER_HUNTER_AUDIENCE` = `super_admin` (padrão: só super admin, pelo token) | `entitled` (membro de tenant com
-`offer_hunter_enabled === true`). Portão `offerHunterAudienceHook` em todas as rotas, menos `/access` e o aceite.
-Abrir ao público = **trocar a env**, sem deploy. O job roda toda caçada ativa (na prévia só existem as do super admin).
+Flag do admin: `/admin/plan-entitlements`, coluna "Só super admin" da chave `offer_hunter_enabled`
+(`PUT /api/admin/plan-entitlements/:key/audience` `{ superAdminOnly }`, super admin; chave sem audiência → 400;
+auditoria `PLAN_ENTITLEMENT_CHANGED` com `meta.audience`). Ligada = só super admin (pelo token); desligada = membro de
+tenant com `offer_hunter_enabled === true`. `GET /api/admin/plan-entitlements` traz `superAdminOnly` por chave (`null` =
+não se aplica; só o caçador tem). Persistida em `platform_settings["feature_audience"]` (`{ offer_hunter_enabled: bool }`,
+merge `jsonb ||`, sem migration; `tenants/domain/featureAudience.ts`, `FeatureAudienceReader`,
+`PrismaFeatureAudienceRepository`). Lida **a cada pedido** (uma linha por chave primária, sem cache em memória): troca
+vale no pedido seguinte em todas as réplicas. `OFFER_HUNTER_AUDIENCE` virou **só valor inicial** (chave nunca gravada:
+`super_admin` = ligada). Portão `offerHunterAudienceHook` em todas as rotas, menos `/access` e o aceite. O job roda toda
+caçada ativa (na prévia só existem as do super admin).
 
 ## Rotas (`/api/offer-hunts`, `authHook` + tenant + audiência)
 
@@ -233,6 +240,9 @@ Abrir ao público = **trocar a env**, sem deploy. O job roda toda caçada ativa 
 | `GET /:id/runs` · `/:id/finds` | histórico com cursor assinado |
 | `POST /finds/:findId/approve` · `/dismiss` | aprovar (envia) ou dispensar |
 | `POST /finds/:findId/resend` | reenviar achado já entregue (preset `offerHuntRun`; não conta no teto) |
+| `GET /:id/runs/:runId` | execução com ranking, `sentProductIds`, `rankingReusable` |
+| `POST /:id/runs/:runId/ranking/:productId/send` | enviar item do ranking (≤ 48 h; não conta no teto) |
+| `POST /:id/runs/:runId/ranking/send-all` | enviar os não escolhidos (só super admin; 403 aos demais) |
 
 Aceite: `POST /api/integrations/affiliate-credentials/:provider/risk-acceptance` com `scope: 'OFFER_HUNTER'`. Erros em
 `OfferHuntErrors.ts` (inclui `OFFER_HUNT_SOURCE_UNAVAILABLE` 503).
@@ -290,6 +300,28 @@ IP, o recurso para e volta ao dono.
 `20261114100500_add_offer_hunt_run_rejections` · `20261114100600_add_offer_hunt_commission_operator` (backfill) ·
 `20261114100700_add_offer_hunt_run_ranking` · `20261114100800_add_offer_hunt_find_resend`. Só rodam na Render.
 
+## Reaproveitar o ranking ("Fora do corte")
+
+- **Enviar um item** (`POST /:id/runs/:runId/ranking/:productId/send`, `SendRankingItemUseCase`, preset `offerHuntRun`):
+  manual, qualquer usuário com acesso ao caçador. Execução ≤ **48 h** pelo `startedAt` (`rankingReuse.ts`; mais velha →
+  409 `OFFER_HUNT_RANKING_EXPIRED`); item precisa estar no `ranking` gravado (senão 404 `OFFER_HUNT_NOT_FOUND`).
+  Portões da marca iguais aos da execução (`assertHuntBrandGates` em `huntProviderGates.ts`: plano da marca → caçador →
+  credencial → aceite `OFFER_HUNTER`) + destino (422). **Não** gasta `offer_hunter_finds_per_day` nem a guarda de 24.
+- Achado novo APPROVED com o retrato do item (provider, productId, título, preço, comissões, foto, nota, fatores,
+  motivo da IA, `runId`; sem `skc`/`activityId`/preço original) gravado por `insertRankingFind` no **mesmo lock por
+  tenant** do teto: já tem achado desta execução (escolhido ou reaproveitado) ou a caçada escolheu o produto dentro de
+  `repeatAfterDays` → 409 `OFFER_HUNT_ALREADY_SENT` (`meta.reason` `RUN`/`REPEATED`). Dois cliques/abas: 1 achado,
+  1 oferta. Entrega pela `HuntFindDelivery` (Resolve do tenant, texto, foto, Enqueue `HUNTER`) com
+  `sourceKey hunt:rank:<runId>:<productId>`. Falhou: achado FAILED, erro sobe; tenta de novo pelo "Aprovar" do achado.
+- **Enviar todos** (`POST /:id/runs/:runId/ranking/send-all`, `SendRankingRemainderUseCase`): **só super admin**
+  (403 `FORBIDDEN` para os demais; o `superAdminHook` compartilhado daria 401, que o painel trata como sessão vencida).
+  Em sequência, itens `chosen: false` sem achado desta execução; repetidos da janela entram em `skipped`
+  (`REPEATED`/`ALREADY_SENT`). Erro de portão (plano, credencial, aceite, destino) ou loja fora/limitando: sem nada
+  enviado, o erro sobe; com algo enviado, para e devolve `{ sent, skipped }` com o item que parou (`reason` = código).
+  Outros erros pulam o item. Sem pausa artificial: o espaçamento é o da fila do gerador.
+- `GET /:id/runs/:runId` traz `sentProductIds` (produtos com achado desta execução) e `rankingReusable` (tem ranking e
+  ≤ 48 h).
+
 ## O que não fazer
 
 - Forjar `armortoken`/`smdeviceid`/`x-oest`/`anti-in`, headless ou insistir em desafio anti-bot.
@@ -303,6 +335,10 @@ IP, o recurso para e volta ao dono.
 - Mandar `AT`, link, `goodsId` ou dado do tenant à IA, ou logar `AT`/link/título.
 - Criar `Offer` fora do `EnqueueOfferUseCase`, devolver link colado ou usar `imageUrl` do achado na mensagem.
 - Mais de 1 grupo, `superAdminOnly` no menu, ou ligar o job fora da Render.
+- Ler `OFFER_HUNTER_AUDIENCE` em código novo (só valor inicial; a audiência é a flag do admin) ou guardar a flag em
+  memória do processo.
+- Reaproveitar ranking com mais de 48 h, contar o reaproveitamento no teto do dia, abrir "Enviar todos" para quem não é
+  super admin ou gravar o achado reaproveitado fora do lock (`insertRankingFind`).
 - Usar `commRate`/`categoryRate` (filtra recompra) ou mostrar "faixa" na tela; reenviar com o `sourceKey` do achado
   (o Enqueue devolveria a oferta antiga); contar reenvio no teto; tratar o `SENT` do achado como "enviado".
 
@@ -317,9 +353,9 @@ refletindo sem deploy, pausa ao deslogar da Shein.
 | Camada | Arquivos |
 |---|---|
 | Domínio | `domain/hunter/{HuntCandidate,OfferHunt}.ts`; `domain/services/hunter/{scoreHuntCandidate,matchHuntFilters,parseSalesBucket,huntSchedule,huntPresets,huntRankingPrompt,hunterLimits,validateHuntDefinition}.ts`; `domain/contracts/{ISheinCatalogClient,IBroadcastGroupUsageReader}.ts`, `domain/contracts/hunter/*` |
-| Aplicação | `application/use-cases/hunter/*` (`RunOfferHuntUseCase`, CRUD, histórico, info, decisão, destino); `application/services/hunter/{HuntFindDelivery,AiHuntCandidateRanker,offerHunterAudience}.ts` |
+| Aplicação | `application/use-cases/hunter/*` (`RunOfferHuntUseCase`, CRUD, histórico, info, decisão, destino, `SendRankingItemUseCase`, `SendRankingRemainderUseCase`); `application/services/hunter/{HuntFindDelivery,AiHuntCandidateRanker,offerHunterAudience,huntProviderGates}.ts` |
 | Infra | `infrastructure/http/SheinCatalogClient.ts`; `infrastructure/repositories/hunter/*`; `infrastructure/mappers/PrismaOfferHuntMapper.ts`; `infrastructure/jobs/OfferHuntSchedulerJob.ts`; `infrastructure/{hunterContainer,offerHunterSchedulerStart}.ts` |
 | HTTP | `presentation/routes/offerHunt.routes.ts`, `presentation/schemas/offerHunt.schema.ts`, `presentation/presenters/OfferHuntPresenter.ts`, `presentation/hooks/offerHunterAudienceHook.ts`; `shared/errors/internal/OfferHuntErrors.ts` |
 | Aceite | `integrations/domain/{enums/MarketplaceRiskScope,services/marketplaceRiskNotice}.ts`, `AcceptMarketplaceRiskUseCase.ts`, `PrismaMarketplaceRiskAcceptanceRepository.ts` |
-| Planos | `tenants/domain/{entitlementKeys,planPresets,adminEditableEntitlements}.ts`, `SetPlanEntitlementUseCase.ts`, `planEntitlementAdmin.routes.ts` |
+| Planos | `tenants/domain/{entitlementKeys,planPresets,adminEditableEntitlements,featureAudience}.ts`, `SetPlanEntitlementUseCase.ts`, `SetFeatureAudienceUseCase.ts`, `tenants/infrastructure/featureAudience.ts`, `planEntitlementAdmin.routes.ts` |
 | Painel | `app/src/features/offerHunter/**`, `app/src/pages/OfferHunter{,Detail}Page.tsx`, `app/src/services/offerHunter.service.ts`, `features/navigation/model.ts`, `pages/admin/AdminPlanEntitlementsPage.tsx` |

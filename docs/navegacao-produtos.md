@@ -37,7 +37,7 @@ Produto `soon` sem filho visível fica desabilitado (sem acordeão, `aria-disabl
 Produto `soon` com filho visível para o usuário atual (CRM para super admin) abre normalmente.
 Caçador de Ofertas: visibilidade vem da API (`GET /offer-hunts/access` → `useOfferHunterAccess` →
 `buildNavigation({ offerHunterVisible })`, mesma consulta do guard `OfferHunterRoute`). Selo MAX; item com selo que não cabe
-numa linha quebra em 2 (`ProductNavItem`), nunca encurtar o nome. Sem `superAdminOnly`: abrir ao público é só trocar `OFFER_HUNTER_AUDIENCE` ([`cacador-de-ofertas.md`](cacador-de-ofertas.md)).
+numa linha quebra em 2 (`ProductNavItem`), nunca encurtar o nome. Sem `superAdminOnly`: abrir ao público é desligar "Só super admin" em `/admin/plan-entitlements` ([`cacador-de-ofertas.md`](cacador-de-ofertas.md)).
 
 ## Onde fica cada coisa
 

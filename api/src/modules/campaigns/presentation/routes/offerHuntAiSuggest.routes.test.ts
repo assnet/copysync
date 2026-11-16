@@ -4,6 +4,7 @@ import rateLimit from '@fastify/rate-limit';
 import { offerHuntAiSuggestRoutes } from './offerHuntAiSuggest.routes';
 import { errorHandler } from '../../../../shared/http/errorHandler';
 import { env } from '../../../../shared/config/env';
+import { PrismaFeatureAudienceRepository } from '../../../tenants/infrastructure/repositories/PrismaFeatureAudienceRepository';
 import { PrismaEntitlementReader } from '../../infrastructure/repositories/PrismaEntitlementReader';
 import { SuggestHuntConfigUseCase, type SuggestHuntConfigOutput } from '../../application/use-cases/hunter/SuggestHuntConfigUseCase';
 import { OfferHuntAiSuggestDailyLimitError } from '../../../../shared/errors/internal/OfferHuntAiErrors';
@@ -43,6 +44,7 @@ const post = (payload: object) => app.inject({ method: 'POST', url: URL, payload
 beforeEach(async () => {
   auth.isSuperAdmin = true;
   (env as { OFFER_HUNTER_AUDIENCE: string }).OFFER_HUNTER_AUDIENCE = 'super_admin';
+  vi.spyOn(PrismaFeatureAudienceRepository.prototype, 'get').mockResolvedValue({});
   vi.spyOn(PrismaEntitlementReader.prototype, 'getBoolean').mockImplementation(async (_t, k) => k === ENTITLEMENT_KEYS.OFFER_HUNTER_ENABLED);
   app = Fastify();
   app.setErrorHandler(errorHandler);

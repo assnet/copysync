@@ -228,7 +228,19 @@ export const accessResponse = envelope(obj({ visible: { type: 'boolean' } }));
 export const huntResponse = envelope(huntSchema);
 export const huntListResponse = envelope({ type: 'array', items: huntSchema });
 export const runsPageResponse = envelope(obj({ items: { type: 'array', items: runSummarySchema }, nextCursor: nullableStr }));
-export const runResponse = envelope(runSchema);
+export const runResponse = envelope(obj({
+  ...runSchema.properties,
+  sentProductIds: { type: 'array', items: { type: 'string' } },
+  rankingReusable: { type: 'boolean' },
+}));
+export const rankingItemParamSchema = {
+  type: 'object', required: ['id', 'runId', 'productId'], properties: { id, runId: id, productId: id }, additionalProperties: false,
+} as const;
+export const rankingSendResponse = envelope(obj({ find: findSchema }));
+export const rankingSendAllResponse = envelope(obj({
+  sent: { type: 'integer' },
+  skipped: { type: 'array', items: obj({ productId: { type: 'string' }, reason: { type: 'string' } }) },
+}));
 export const runIdParamSchema = {
   type: 'object', required: ['id', 'runId'], properties: { id, runId: id }, additionalProperties: false,
 } as const;

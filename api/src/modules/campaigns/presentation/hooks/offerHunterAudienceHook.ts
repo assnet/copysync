@@ -1,17 +1,15 @@
 import type { FastifyRequest } from 'fastify';
-import { env } from '../../../../shared/config/env';
 import { resolveMembership } from '../../../../shared/http/hooks/resolveMembership';
 import { OfferHunterUnavailableError } from '../../../../shared/errors/internal/OfferHuntErrors';
 import { hunterContainer } from '../../infrastructure/hunterContainer';
 
 /**
- * Portão de audiência das rotas do caçador. Roda depois de `authHook` + `tenantHook`. A env é lida a cada
- * requisição (trocar `OFFER_HUNTER_AUDIENCE` abre ao público sem deploy de código). Fora → 403
- * `OFFER_HUNTER_UNAVAILABLE`. Lança (nunca `send` + `return`), como pede o AGENTS.md §14.
+ * Portão de audiência das rotas do caçador. Roda depois de `authHook` + `tenantHook`. A flag do admin ("Só super
+ * admin", `platform_settings.feature_audience`) é lida a cada requisição: trocar no admin vale no pedido seguinte.
+ * Fora → 403 `OFFER_HUNTER_UNAVAILABLE`. Lança (nunca `send` + `return`), como pede o AGENTS.md §14.
  */
 export async function offerHunterAudienceHook(request: FastifyRequest): Promise<void> {
   const allowed = await hunterContainer.audienceGate().allows({
-    audience: env.OFFER_HUNTER_AUDIENCE,
     isSuperAdmin: request.user?.isSuperAdmin === true,
     tenantId: request.tenantContext?.tenantId ?? null,
   });
@@ -19,14 +17,15 @@ export async function offerHunterAudienceHook(request: FastifyRequest): Promise<
 }
 
 /**
- * `GET /access` (só `authHook`): mesmo portão, sem 403 para ninguém. No modo `entitled` o tenant vem do
+ * `GET /access` (só `authHook`): mesmo portão, sem 403 para ninguém. Com a flag desligada o tenant vem do
  * `X-Tenant-Id` e passa pela mesma validação do `tenantHook`; header ausente ou membro inválido = invisível.
  */
 export async function isOfferHunterVisible(request: FastifyRequest): Promise<boolean> {
   const { userId, isSuperAdmin } = request.user;
-  const audience = env.OFFER_HUNTER_AUDIENCE;
+  const gate = hunterContainer.audienceGate();
+  const superAdminOnly = await gate.superAdminOnly();
   let tenantId: string | null = null;
-  if (audience === 'entitled') {
+  if (!superAdminOnly) {
     const header = request.headers['x-tenant-id'];
     if (typeof header !== 'string' || !header) return false;
     try {
@@ -35,5 +34,5 @@ export async function isOfferHunterVisible(request: FastifyRequest): Promise<boo
       return false;
     }
   }
-  return hunterContainer.audienceGate().allows({ audience, isSuperAdmin: isSuperAdmin === true, tenantId });
+  return gate.allows({ isSuperAdmin: isSuperAdmin === true, tenantId }, superAdminOnly);
 }

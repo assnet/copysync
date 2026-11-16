@@ -24,6 +24,11 @@ export interface OfferHuntFindTransition {
   failureReason?: string | null;
 }
 
+/** Reaproveitamento do ranking: gravado, ou já enviado desta execução (`RUN`) / repetido na janela (`REPEATED`). */
+export type RankingFindInsert =
+  | { kind: 'INSERTED'; find: OfferHuntFind }
+  | { kind: 'ALREADY_SENT'; reason: 'RUN' | 'REPEATED' };
+
 /** Achados (só os escolhidos). O teto diário de ofertas garimpadas conta linhas daqui. */
 export interface IOfferHuntFindRepository {
   /**
@@ -35,6 +40,14 @@ export interface IOfferHuntFindRepository {
   insertWithinDailyLimit(
     tenantId: string, finds: NewOfferHuntFind[], quota: { since: Date; limit: number; repeatSince?: Date },
   ): Promise<OfferHuntFind[]>;
+  /**
+   * Item do ranking reaproveitado (fora do teto do dia): no mesmo lock por tenant do `insertWithinDailyLimit`,
+   * recusa se a execução (`find.runId`) já tem achado do produto, ou se a caçada escolheu o produto desde
+   * `repeatSince`. Dois pedidos simultâneos do mesmo item: só um grava.
+   */
+  insertRankingFind(tenantId: string, find: NewOfferHuntFind & { runId: string; huntId: string }, repeatSince: Date): Promise<RankingFindInsert>;
+  /** Ids de produto com achado nesta execução (escolhidos ou reaproveitados). */
+  productIdsByRun(tenantId: string, runId: string): Promise<string[]>;
   countCreatedSince(tenantId: string, since: Date): Promise<number>;
   /** Ids de produto da marca já escolhidos pela caçada desde `since` (qualquer estado): regra de repetição. */
   recentProductIds(tenantId: string, huntId: string, provider: HuntProvider, since: Date): Promise<Set<string>>;

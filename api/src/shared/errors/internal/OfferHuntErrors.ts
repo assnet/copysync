@@ -52,7 +52,7 @@ export class OfferHuntFindInvalidStateError extends AppError {
   }
 }
 
-/** Portão de audiência (`OFFER_HUNTER_AUDIENCE`): usuário/tenant fora da prévia ou sem o entitlement. */
+/** Portão de audiência (flag "Só super admin" do admin; `OFFER_HUNTER_AUDIENCE` só valor inicial): usuário/tenant fora da prévia ou sem o entitlement. */
 export class OfferHunterUnavailableError extends AppError {
   constructor() {
     super('OFFER_HUNTER_UNAVAILABLE', 'Offer hunter is not available for this account', 403);
@@ -84,5 +84,19 @@ export class OfferHuntResendPendingError extends AppError {
 export class OfferHuntResendDailyLimitError extends AppError {
   constructor(limit: number) {
     super('OFFER_HUNT_RESEND_DAILY_LIMIT', 'Daily find resends limit reached', 429, { limit });
+  }
+}
+
+/** Item do ranking já enviado desta execução, ou repetido dentro de `repeatAfterDays` da caçada. */
+export class OfferHuntAlreadySentError extends AppError {
+  constructor(reason: 'RUN' | 'REPEATED') {
+    super('OFFER_HUNT_ALREADY_SENT', 'Offer hunt ranking item already sent', 409, { reason });
+  }
+}
+
+/** Ranking de execução com mais de 48 h: preço/estoque podem ter mudado, não é reaproveitável. */
+export class OfferHuntRankingExpiredError extends AppError {
+  constructor(maxAgeHours: number) {
+    super('OFFER_HUNT_RANKING_EXPIRED', 'Offer hunt ranking is too old to reuse', 409, { maxAgeHours });
   }
 }

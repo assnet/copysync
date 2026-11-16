@@ -14,7 +14,6 @@ import { countHuntRejections, huntFilterRejections } from '../../../domain/servi
 import { scoreHuntCandidate } from '../../../domain/services/hunter/scoreHuntCandidate';
 import { startOfDayInZone } from '../../../domain/services/startOfDayInZone';
 import { ENTITLEMENT_KEYS } from '../../../../tenants/domain/entitlementKeys';
-import { currentRiskNoticeVersion } from '../../../../integrations/domain/services/marketplaceRiskNotice';
 import { AppError } from '../../../../../shared/errors/AppError';
 import { PlanFeatureUnavailableError } from '../../../../../shared/errors/internal/PlanErrors';
 import { MarketplaceRiskNotAcceptedError } from '../../../../../shared/errors/internal/MarketplaceRiskErrors';
@@ -22,7 +21,6 @@ import {
   AffiliateApiRateLimitedError,
   AffiliateApiUnavailableError,
   AffiliateCredentialRejectedError,
-  AffiliateCredentialRequiredError,
 } from '../../../../../shared/errors/internal/OfferErrors';
 import {
   OfferHuntDailyLimitError,
@@ -32,7 +30,7 @@ import {
 } from '../../../../../shared/errors/internal/OfferHuntErrors';
 import { logger } from '../../../../../shared/logger/logger';
 import type { HuntDestination, HuntFindDelivery } from '../../services/hunter/HuntFindDelivery';
-import { HUNT_PROVIDER_PLAN_KEY } from '../../services/hunter/huntProviderGates';
+import { assertHuntBrandGates } from '../../services/hunter/huntProviderGates';
 
 /** Fonte indisponível N execuções seguidas → pausa `SOURCE_UNAVAILABLE` (HUNT-13). */
 export const HUNT_SOURCE_FAILURES_BEFORE_PAUSE = 3;
@@ -222,23 +220,12 @@ export class RunOfferHuntUseCase {
     tenantId: string, adapter: IHuntProviderAdapter, since: Date,
   ): Promise<{ session: HuntSourceSession; limit: number; balance: number }> {
     const { entitlements } = this.deps;
-    const provider = adapter.provider;
-    const planKey = HUNT_PROVIDER_PLAN_KEY[provider];
-    if (planKey && (await entitlements.getBoolean(tenantId, planKey)) !== true) {
-      throw new GateRefusal(new PlanFeatureUnavailableError(planKey), 'PLAN_UNAVAILABLE');
-    }
-    if ((await entitlements.getBoolean(tenantId, ENTITLEMENT_KEYS.OFFER_HUNTER_ENABLED)) !== true) {
-      throw new GateRefusal(new PlanFeatureUnavailableError(ENTITLEMENT_KEYS.OFFER_HUNTER_ENABLED), 'PLAN_UNAVAILABLE');
-    }
-    const state = await this.deps.credentials.resolveState(tenantId, provider);
-    if (state.state === 'rejected') throw new GateRefusal(new AffiliateCredentialRejectedError(provider), 'CREDENTIAL_REJECTED');
-    const session = state.state === 'ok' ? adapter.sessionFrom(state.cred) : null;
-    if (!session) throw new GateRefusal(new AffiliateCredentialRequiredError(provider));
-    if (!(await this.deps.riskGate.isAccepted(tenantId, provider, 'OFFER_HUNTER'))) {
-      throw new GateRefusal(
-        new MarketplaceRiskNotAcceptedError(provider, currentRiskNoticeVersion(provider, 'OFFER_HUNTER') ?? '', 'OFFER_HUNTER'),
-        'RISK_NOT_ACCEPTED',
-      );
+    let session: HuntSourceSession;
+    try {
+      session = await assertHuntBrandGates(this.deps, tenantId, adapter);
+    } catch (err) {
+      if (!(err instanceof AppError)) throw err;
+      throw new GateRefusal(err, gatePause(err));
     }
     // Lido a cada execução; ausente = 0 (nunca "ilimitado" como no gerador)
     const limit = (await entitlements.getNumber(tenantId, ENTITLEMENT_KEYS.OFFER_HUNTER_FINDS_PER_DAY)) ?? 0;
@@ -333,6 +320,14 @@ export class RunOfferHuntUseCase {
     if (input.trigger === 'MANUAL') throw thrown;
     return { ...emptyOutput(runId, 'FAILED', code, paused), ...counters, ranking: ranking ?? [], remainingToday: balance };
   }
+}
+
+/** Pausa do agendado por portão da marca (credencial sem sessão não pausa: o dono só não cadastrou). */
+function gatePause(err: AppError): OfferHuntPauseReason | null {
+  if (err instanceof PlanFeatureUnavailableError) return 'PLAN_UNAVAILABLE';
+  if (err instanceof AffiliateCredentialRejectedError) return 'CREDENTIAL_REJECTED';
+  if (err instanceof MarketplaceRiskNotAcceptedError) return 'RISK_NOT_ACCEPTED';
+  return null;
 }
 
 function emptyOutput(runId: string, status: 'FAILED' | 'SKIPPED', errorCode: string, pausedReason: OfferHuntPauseReason | null): RunOfferHuntOutput {

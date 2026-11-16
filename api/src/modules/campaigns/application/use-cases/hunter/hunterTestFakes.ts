@@ -1,7 +1,7 @@
 // Fakes em memória do Caçador de Ofertas — só para testes dos use cases.
 import type { IOfferHuntRepository, OfferHuntPatch } from '../../../domain/contracts/hunter/IOfferHuntRepository';
 import type { IOfferHuntRunRepository, FinishOfferHuntRunInput, StartOfferHuntRunInput } from '../../../domain/contracts/hunter/IOfferHuntRunRepository';
-import type { IOfferHuntFindRepository, NewOfferHuntFind, OfferHuntFindTransition, ResendClaim, ResendClaimOptions } from '../../../domain/contracts/hunter/IOfferHuntFindRepository';
+import type { IOfferHuntFindRepository, NewOfferHuntFind, OfferHuntFindTransition, RankingFindInsert, ResendClaim, ResendClaimOptions } from '../../../domain/contracts/hunter/IOfferHuntFindRepository';
 import type { IOfferHunterSettingsRepository } from '../../../domain/contracts/hunter/IOfferHunterSettingsRepository';
 import type { IHuntProviderRegistry } from '../../../domain/contracts/hunter/IHuntProviderAdapter';
 import { HuntProviderRegistry } from '../../../infrastructure/hunter/HuntProviderRegistry';
@@ -68,7 +68,7 @@ export class InMemoryHunts implements Pick<IOfferHuntRepository, 'findById' | 'p
   }
 }
 
-export class InMemoryRuns implements Pick<IOfferHuntRunRepository, 'startWithinDailyLimit' | 'createSkipped' | 'finish' | 'incrementSent' | 'countStartedSince'> {
+export class InMemoryRuns implements Pick<IOfferHuntRunRepository, 'startWithinDailyLimit' | 'createSkipped' | 'finish' | 'incrementSent' | 'countStartedSince' | 'findById'> {
   items: OfferHuntRun[] = [];
   private seq = 0;
   private make(input: StartOfferHuntRunInput, patch: Partial<OfferHuntRun>): OfferHuntRun {
@@ -98,11 +98,18 @@ export class InMemoryRuns implements Pick<IOfferHuntRunRepository, 'startWithinD
     const r = this.items.find((x) => x.id === id && x.tenantId === tenantId);
     if (r) r.sentCount++;
   }
+  async findById(tenantId: string, huntId: string, id: string) {
+    return this.items.find((x) => x.id === id && x.tenantId === tenantId && x.huntId === huntId) ?? null;
+  }
+  /** Execução já fechada com ranking (reaproveitamento). */
+  seed(patch: Partial<OfferHuntRun>): OfferHuntRun {
+    return this.make({ tenantId: TENANT, huntId: HUNT, provider: 'SHEIN', trigger: 'MANUAL', startedAt: NOW }, { status: 'SUCCEEDED', finishedAt: NOW, ...patch });
+  }
 }
 
 export class InMemoryFinds implements Pick<
   IOfferHuntFindRepository, 'insertWithinDailyLimit' | 'countCreatedSince' | 'recentProductIds' | 'findById' | 'transition' | 'reclaimStaleApproved'
-  | 'claimResend' | 'releaseResend' | 'recordResend' | 'countResendsInDay'
+  | 'claimResend' | 'releaseResend' | 'recordResend' | 'countResendsInDay' | 'insertRankingFind' | 'productIdsByRun'
 > {
   /** Relógio do `updatedAt` gravado (o Prisma usa o do servidor). */
   clock: () => Date = () => NOW;
@@ -129,6 +136,18 @@ export class InMemoryFinds implements Pick<
       this.items.push(row);
       return row;
     });
+  }
+  async insertRankingFind(tenantId: string, f: NewOfferHuntFind & { runId: string; huntId: string }, repeatSince: Date): Promise<RankingFindInsert> {
+    const same = (x: OfferHuntFind) => x.tenantId === tenantId && x.provider === f.provider && x.productId === f.productId;
+    if (this.items.some((x) => same(x) && x.runId === f.runId)) return { kind: 'ALREADY_SENT', reason: 'RUN' };
+    if (this.items.some((x) => same(x) && x.huntId === f.huntId && x.createdAt >= repeatSince)) return { kind: 'ALREADY_SENT', reason: 'REPEATED' };
+    const row: OfferHuntFind = { ...f, id: `find-${++this.seq}`, tenantId, failureReason: null, offerId: null,
+      resendCount: 0, lastResentAt: null, resendInFlightUntil: null, delivery: null, createdAt: this.clock(), updatedAt: this.clock() };
+    this.items.push(row);
+    return { kind: 'INSERTED', find: row };
+  }
+  async productIdsByRun(tenantId: string, runId: string) {
+    return [...new Set(this.items.filter((f) => f.tenantId === tenantId && f.runId === runId).map((f) => f.productId))];
   }
   async countCreatedSince(tenantId: string, since: Date) {
     return this.items.filter((f) => f.tenantId === tenantId && f.createdAt >= since).length;

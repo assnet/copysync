@@ -381,8 +381,8 @@ const envSchema = z.object({
     z.string().optional(),
   ),
   // ── Caçador de Ofertas (.specs/features/offer-hunter) ───────────────────
-  // Quem vê/usa as rotas: `super_admin` (prévia, padrão) ou `entitled` (todo tenant com o entitlement).
-  // Trocar para `entitled` abre ao público sem deploy de código.
+  // Só VALOR INICIAL da audiência (chave nunca gravada): quem decide é a flag "Só super admin" em
+  // /admin/plan-entitlements (`platform_settings.feature_audience`). Não ler em código novo.
   OFFER_HUNTER_AUDIENCE: z.enum(['super_admin', 'entitled']).default('super_admin'),
   // Job que roda as caçadas agendadas, só em worker/all. Desligado por padrão; liga só na Render.
   OFFER_HUNTER_JOB_ENABLED: z
