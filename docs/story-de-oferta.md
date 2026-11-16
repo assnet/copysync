@@ -71,7 +71,7 @@ resposta devolve `affiliateUrl` para o botão "Copiar link".
 | --- | --- | --- |
 | sem desconto, `original > price` | `original` | `price` |
 | sem desconto, sem `original` maior | — | `price` |
-| desconto `d%` | `original` se `original > price`, senão `price` | `round(price × (100 − d) / 100)` |
+| desconto `d%` (cupom) | `price` (preço sem cupom; **nunca** o `original`) | `round(price × (100 − d) / 100)` |
 | `price` nulo | — | — (sem bloco de preço, aviso `NO_PRICE`) |
 | desconto que arredonda para R$ 0,00 | — | — (sem bloco de preço, aviso `NO_PRICE`) |
 
@@ -89,6 +89,9 @@ Preço nunca é inventado: vem do produto extraído ou do desconto digitado.
 
 - A arte mostra **um único percentual**: o selo `-X% OFF` = `round((De − Por) / De × 100)`, entre 1 e 99
   (`buildStoryLayoutModel`, `offPercent`), calculado dos mesmos centavos impressos em "De" e "Por".
+- Com cupom em %, "De" = preço atual sem cupom, então o selo = % do cupom (cupom 50% → `-50% OFF`, De 63,00 → Por
+  31,50). Antes o "De" era o original da loja e o selo somava loja + cupom (cupom 50% virava `-59%`); decisão do
+  dono 2026-11-16 (opção B). O desconto da loja só aparece no selo quando **não** há % de cupom.
 - O % digitado do cupom entra no "Por" (`computeStoryPrice`) e **não é impresso ao lado do código quando há selo**.
   Só vira rótulo do ticket (`-d%`) quando não há selo (produto sem preço). Bug de produção 2026-11-13: selo `89%`
   (De 7.999,00 → Por 887,00, cupom já aplicado) ao lado de ticket `-80%` (cupom digitado) na mesma arte; o selo

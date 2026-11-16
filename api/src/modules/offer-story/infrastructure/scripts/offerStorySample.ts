@@ -31,6 +31,7 @@ export async function sampleRenderInput(template: OfferStoryTemplate): Promise<O
     headline: 'Fone de ouvido Bluetooth com cancelamento de ruído',
     productImage: await sampleProductImage(),
     price: { fromCents: 29990, toCents: 19990 },
-    coupon: { code: 'OFERTA10', discountPercent: 10 },
+    // Sem %: o preço da amostra já vem pronto; com % o selo teria de ser o do cupom (computeStoryPrice)
+    coupon: { code: 'OFERTA10', discountPercent: null },
   };
 }

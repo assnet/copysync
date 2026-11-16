@@ -17,6 +17,17 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.98.1] — 2026-11-16 — Story: selo igual ao % do cupom
+
+### Fixed
+
+#### offer-story ([`docs/story-de-oferta.md`](../docs/story-de-oferta.md))
+
+- **`computeStoryPrice.ts`** — com cupom em %, o "De" riscado passa a ser o preço atual sem cupom (antes: o preço original da loja). O selo De→Por somava o desconto da loja ao do cupom: cupom 50% em produto de 75,91 por 63,00 saía "-59%". Agora sai "-50%", De 63,00 → Por 31,50. Sem % de cupom nada muda.
+- **`offerStorySample.ts`** — amostra das miniaturas com cupom sem %, para o selo continuar coerente com o preço pronto da amostra (miniaturas iguais, sem regenerar).
+
+---
+
 ## [0.98.0] — 2026-11-16 — Caçador: repetidos de outra busca no detalhe da execução
 
 ### Added

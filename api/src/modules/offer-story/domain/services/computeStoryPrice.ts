@@ -15,5 +15,7 @@ export function computeStoryPrice(
   const discounted = Math.round((price * (100 - discountPercent)) / 100);
   // Desconto que arredonda para R$ 0,00 não vira preço na arte (vira NO_PRICE).
   if (discounted <= 0) return { fromCents: null, toCents: null };
-  return { fromCents: higherOriginal ?? price, toCents: discounted };
+  // Com cupom em %, "De" é o preço atual (sem cupom), nunca o original: o selo De→Por fica igual ao % do cupom
+  // (cupom 50% não pode virar "-59%" somando o desconto da loja; decisão do dono 2026-11-16, opção B).
+  return { fromCents: price, toCents: discounted };
 }

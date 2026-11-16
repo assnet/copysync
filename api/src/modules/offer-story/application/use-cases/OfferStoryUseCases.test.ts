@@ -81,11 +81,11 @@ describe('RenderOfferStoryUseCase', () => {
     expect(fakes.resolveProduct.calls).toHaveLength(0);
   });
 
-  it('cupom com desconto: código aparado, "por" com desconto, "de" = original', async () => {
+  it('cupom com desconto: código aparado, "por" com desconto, "de" = preço sem cupom (não o original)', async () => {
     const { fakes, render } = setup();
     const out = await render.execute({ ...base, coupon: { code: ' PROMO10 ', discountPercent: 10 } });
     expect(out.coupon).toEqual({ code: 'PROMO10', discountPercent: 10 });
-    expect(out.price).toEqual({ fromCents: 15000, toCents: 9000 });
+    expect(out.price).toEqual({ fromCents: 10000, toCents: 9000 });
     expect(fakes.renderer.calls[0].coupon).toEqual({ code: 'PROMO10', discountPercent: 10 });
   });
 
@@ -168,7 +168,7 @@ describe('RenderOfferStoryUseCase', () => {
     fakes.ai.text = 'Fone XYZ Pro por apenas 89% a menos';
     const second = await render.execute(input);
     for (const out of [first, second]) {
-      expect(out.price).toEqual({ fromCents: 799900, toCents: 88700 });
+      expect(out.price).toEqual({ fromCents: 443500, toCents: 88700 });
       expect(out.coupon).toEqual({ code: 'PEDROSO', discountPercent: 80 });
     }
     expect(fakes.renderer.calls[1].price).toEqual(fakes.renderer.calls[0].price);
