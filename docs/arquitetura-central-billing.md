@@ -108,6 +108,21 @@ feature" do design §17 (`design.md:1217`), que já apontava esta integração c
 receiver roda no HTTP e a sessão vive no worker. A fase E3 troca o bus por `RedisInternalEventBus` (escala §3.4), e aí o
 listener continua funcionando sem mudança. Até E3, processo único (`all`) e o bus in-process basta.
 
+### Suspensão pelo admin da central
+
+A assinatura da central não tem estado "suspenso". **Ida:** suspender no admin da central grava `canceledAt` e emite
+`subscription.canceled`; o CopySync consulta a união (`GET /integrations/subscriptions`), a linha com `canceledAt` não dá
+acesso (corte na hora, sem tolerância) e, sem outra assinatura válida, o tenant vai a `CANCELLED` (`suspendedAt` gravado,
+`TENANT_SUSPENDED` emitido, sessões desconectadas, painel 403). Rótulo no CopySync: **cancelado** (tela Assinatura:
+"Cancelada", `app/src/features/subscription/strings.ts:118`); não existe "suspenso pela central". **Volta:** ativar na central
+emite `subscription.activated` → `ACTIVE`, `suspendedAt = null`, plano e entitlements sincronizados, sem consultar a central.
+Regras que valem: outra assinatura ainda válida → segue `ACTIVE` (`KEPT_ACTIVE`); tenant com `adminBlockedAt` não muda de
+status nem é reativado pelo evento; central fora → 503 sem efeito (reenvio). **Nenhum dado do tenant é apagado** no corte:
+sessões, grupos, ofertas, credenciais, plano e entitlements ficam no banco; busca em `api/src` (2026-11-16) não achou job ou
+limpeza que apague por `CANCELLED` (os `deleteMany` existentes são ações do usuário ou retenção por data, sem olhar status).
+Travado por teste em `ApplyBillingEventUseCase.test.ts` ("suspensão e reativação pelo admin da central"). Não fazer: criar
+estado "suspenso" vindo da central, apagar dado por status, reconectar sessão na reativação.
+
 ## O que o CopySync implementa
 
 | Camada | Item |
