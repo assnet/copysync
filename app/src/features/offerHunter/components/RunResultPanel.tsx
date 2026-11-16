@@ -1,4 +1,5 @@
 import { Alert, Box, Chip, IconButton, LinearProgress, Stack, Tooltip, Typography } from '@mui/material';
+import type { ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { AppIcon } from '@/components';
 import type { HuntProvider, HuntRunResult } from '../types';
@@ -15,12 +16,14 @@ interface Props {
   /** Loja da caçada (textos de pausa e de recusa). Padrão SHEIN. */
   provider?: HuntProvider;
   onClose?: () => void;
+  /** Troca a lista do ranking (ex.: ranking com "Enviar" quando a busca tem `runId`). */
+  rankingSlot?: ReactNode;
 }
 
 const test = t.wizard.test;
 
 /** Resultado de "Testar agora"/"Rodar agora": resumo, IA usada/indisponível, pausa automática e ranking. */
-export function RunResultPanel({ title, running, result, error, provider = 'SHEIN', onClose }: Props) {
+export function RunResultPanel({ title, running, result, error, provider = 'SHEIN', onClose, rankingSlot }: Props) {
   if (!running && !result && !error) return null;
   const failedMsg = result && result.status !== 'SUCCEEDED' && result.errorCode
     ? (t.errors[result.errorCode] ?? test.failed)
@@ -64,7 +67,7 @@ export function RunResultPanel({ title, running, result, error, provider = 'SHEI
           </Box>
           <RejectionNote rejectedBy={result.rejectedBy} matchedCount={result.matchedCount} provider={provider} />
           {result.aiFallback && <Alert severity="info">{test.aiFallback}</Alert>}
-          <RankingTable items={result.ranking} />
+          {rankingSlot ?? <RankingTable items={result.ranking} />}
         </Stack>
       )}
     </Box>

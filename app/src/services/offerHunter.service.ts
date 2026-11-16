@@ -2,7 +2,7 @@ import { apiClient } from './apiClient';
 import type { ApiSuccess } from '@/types/api.types';
 import type {
   CreateHuntInput, HunterSettings, Hunt, HuntAiSuggestInput, HuntAiSuggestion, HuntApproveResult, HuntFind, HuntOptions,
-  HuntPage, HuntProvider, HuntProviderState, HuntRun, HuntRunResult, HuntUsage, SaveHunterSettingsInput, UpdateHuntInput,
+  HuntPage, HuntProvider, HuntProviderState, HuntRankingSendAllResult, HuntRun, HuntRunResult, HuntUsage, SaveHunterSettingsInput, UpdateHuntInput,
 } from '@/features/offerHunter/types';
 
 const BASE = '/offer-hunts';
@@ -115,6 +115,23 @@ export const offerHunterService = {
   /** Execução completa com `ranking` (null = não guardado); a lista de execuções não traz o ranking. */
   async getRun(huntId: string, runId: string): Promise<HuntRun> {
     const res = await apiClient.get<ApiSuccess<HuntRun>>(`${BASE}/${enc(huntId)}/runs/${enc(runId)}`);
+    return res.data.data;
+  },
+
+  /**
+   * Reaproveita um item não escolhido do ranking: achado novo enviado ao destino (não conta no teto do dia).
+   * 404 `OFFER_HUNT_NOT_FOUND`, 409 `OFFER_HUNT_ALREADY_SENT`/`OFFER_HUNT_RANKING_EXPIRED`, 422 `OFFER_HUNT_DESTINATION_REQUIRED`, portões.
+   */
+  async sendRankingItem(huntId: string, runId: string, productId: string): Promise<HuntFind> {
+    const res = await apiClient.post<ApiSuccess<{ find: HuntFind }>>(
+      `${BASE}/${enc(huntId)}/runs/${enc(runId)}/ranking/${enc(productId)}/send`,
+    );
+    return res.data.data.find;
+  },
+
+  /** Só super admin (demais 403): envia todos os não escolhidos e não enviados; para no 1º erro de portão. */
+  async sendAllRanking(huntId: string, runId: string): Promise<HuntRankingSendAllResult> {
+    const res = await apiClient.post<ApiSuccess<HuntRankingSendAllResult>>(`${BASE}/${enc(huntId)}/runs/${enc(runId)}/ranking/send-all`);
     return res.data.data;
   },
 

@@ -130,4 +130,38 @@ describe('AdminPlanEntitlementsPage', () => {
     expect(await screen.findByText(t.errors.load)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: t.retry })).toBeInTheDocument();
   });
+
+  it('coluna "Só super admin": Switch só na linha com audiência; demais mostram "—"; troca confirma e chama a rota', async () => {
+    const HUNTER = 'offer_hunter_enabled';
+    vi.spyOn(adminPlanEntitlementsService, 'list').mockResolvedValue({
+      ...list(),
+      entitlements: [
+        ...list().entitlements.map((r) => ({ ...r, superAdminOnly: null })),
+        { key: HUNTER, type: { kind: 'boolean' }, plans: { COPYSYNC_MAX: true }, superAdminOnly: true },
+      ],
+    });
+    const setAudience = vi.spyOn(adminPlanEntitlementsService, 'setAudience').mockResolvedValue({ key: HUNTER, superAdminOnly: false });
+    const user = userEvent.setup();
+    renderWithTheme(<AdminPlanEntitlementsPage />, 'dark');
+    const sw = await screen.findByRole('checkbox', { name: t.audience.aria('Caçador de Ofertas') });
+    expect(screen.getByRole('columnheader', { name: t.columns.audience })).toBeInTheDocument();
+    expect(sw).toBeChecked();
+    expect(screen.getByTestId(`audience-${KEY}`)).toHaveTextContent('—');
+    expect(screen.getByTestId(`audience-${NUM}`)).toHaveTextContent('—');
+    expect(screen.queryByRole('checkbox', { name: t.audience.aria('Afiliado Shein') })).not.toBeInTheDocument();
+    await user.click(sw);
+    expect(setAudience).not.toHaveBeenCalled();
+    expect(screen.getByText(t.audience.titleOff('Caçador de Ofertas'))).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: t.audience.confirmOff }));
+    expect(setAudience).toHaveBeenCalledWith(HUNTER, false);
+    expect(await screen.findByText(t.audience.saved('Caçador de Ofertas', false))).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: t.audience.aria('Caçador de Ofertas') })).not.toBeChecked());
+  });
+
+  it('serviço da audiência chama PUT /:key/audience', async () => {
+    const { apiClient } = await import('@/services/apiClient');
+    const put = vi.spyOn(apiClient, 'put').mockResolvedValue({ data: { data: { key: 'offer_hunter_enabled', superAdminOnly: true } } });
+    await expect(adminPlanEntitlementsService.setAudience('offer_hunter_enabled', true)).resolves.toEqual({ key: 'offer_hunter_enabled', superAdminOnly: true });
+    expect(put).toHaveBeenCalledWith('/admin/plan-entitlements/offer_hunter_enabled/audience', { superAdminOnly: true });
+  });
 });

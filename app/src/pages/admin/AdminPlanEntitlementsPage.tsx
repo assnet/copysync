@@ -32,6 +32,7 @@ function parseDraft(draft: string, min: number, max: number): number | null {
 export function AdminPlanEntitlementsPage() {
   const pe = usePlanEntitlementsAdmin();
   const [pending, setPending] = useState<PendingChange | null>(null);
+  const [pendingAudience, setPendingAudience] = useState<{ key: string; value: boolean } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [drafts, setDrafts] = usePersistedState<Record<string, string>>('admin.planEntitlements.numberDrafts', {});
 
@@ -57,6 +58,15 @@ export function AdminPlanEntitlementsPage() {
     }
   };
 
+  const confirmAudience = async () => {
+    if (!pendingAudience) return;
+    const change = pendingAudience;
+    setPendingAudience(null);
+    const out = await pe.setAudience(change.key, change.value);
+    if (out) setNotice(t.audience.saved(featureLabel(out.key), out.superAdminOnly));
+  };
+  const audienceFeature = pendingAudience ? featureLabel(pendingAudience.key) : '';
+
   const plans = pe.data?.plans ?? [];
   const rows = pe.data?.entitlements ?? [];
   const pendingFeature = pending ? featureLabel(pending.key) : '';
@@ -79,7 +89,8 @@ export function AdminPlanEntitlementsPage() {
           {rows.length === 0 ? (
             <EmptyState icon={<AppIcon icon={SlidersHorizontal} size="lg" />} title={t.empty} description={t.emptyHint} sx={{ py: 5 }} />
           ) : (
-            <TableContainer>
+            // Rolagem lateral só dentro da tabela (a coluna "Só super admin" não cabe em 360 px), nunca da página
+            <TableContainer sx={{ overflowX: 'auto' }}>
               {/* 360 px: padding padrão (16 px) das 4 colunas estourava a largura; no celular encolhe. */}
               <Table
                 size="small"
@@ -93,6 +104,7 @@ export function AdminPlanEntitlementsPage() {
                   <TableRow>
                     <TableCell>{t.columns.feature}</TableCell>
                     {plans.map((p) => <TableCell key={p} align="center">{planName(p)}</TableCell>)}
+                    <TableCell align="center">{t.columns.audience}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -185,6 +197,22 @@ export function AdminPlanEntitlementsPage() {
                             </TableCell>
                           );
                         })}
+                        <TableCell align="center" data-testid={`audience-${row.key}`}>
+                          {typeof row.superAdminOnly === 'boolean' ? (
+                            <Tooltip title={row.superAdminOnly ? t.audience.tooltipOn : t.audience.tooltipOff} arrow describeChild enterTouchDelay={0}>
+                              <span>{/* span: Tooltip segue funcionando com o Switch desabilitado */}
+                              <Switch
+                                checked={row.superAdminOnly}
+                                disabled={pe.busy !== null}
+                                onChange={(e) => setPendingAudience({ key: row.key, value: e.target.checked })}
+                                inputProps={{ 'aria-label': t.audience.aria(label) }}
+                              />
+                              </span>
+                            </Tooltip>
+                          ) : (
+                            <Typography component="span" variant="body2" color="text.secondary" aria-label={t.audience.noneAria}>{t.audience.none}</Typography>
+                          )}
+                        </TableCell>
                       </TableRow>
                     );
                   })}
@@ -210,6 +238,16 @@ export function AdminPlanEntitlementsPage() {
         confirmColor={pending?.value === false ? 'error' : 'primary'}
         onConfirm={() => void confirm()}
         onClose={() => setPending(null)}
+      />
+
+      <ConfirmDialog
+        open={pendingAudience !== null}
+        title={pendingAudience?.value ? t.audience.titleOn(audienceFeature) : t.audience.titleOff(audienceFeature)}
+        description={pendingAudience?.value ? t.audience.descriptionOn(audienceFeature) : t.audience.descriptionOff(audienceFeature)}
+        confirmLabel={pendingAudience?.value ? t.audience.confirmOn : t.audience.confirmOff}
+        cancelLabel={t.confirm.cancel}
+        onConfirm={() => void confirmAudience()}
+        onClose={() => setPendingAudience(null)}
       />
 
       <Snackbar open={Boolean(pe.actionError)} autoHideDuration={6000} onClose={pe.clearActionError} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>

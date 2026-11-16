@@ -425,6 +425,44 @@ export const offerHunterStrings = {
     factorsAria: 'Ver como a pontuação foi montada',
   },
 
+  /** Reaproveitar o ranking de uma execução: enviar itens não escolhidos (um a um; todos só super admin). */
+  rankingReuse: {
+    send: 'Enviar',
+    sendAria: (title: string) => `Enviar a oferta ${title}`,
+    sendTooltip: 'Envia esta oferta ao grupo de destino agora, com link e preço atualizados. Não conta no limite de ofertas do dia.',
+    expiredTooltip: 'Ranking com mais de 48 h: rode uma busca nova para preços atuais',
+    sent: 'Enviada',
+    confirmTitle: 'Enviar esta oferta?',
+    confirmText: (group: string | null) =>
+      `A oferta vai para o grupo de destino atual${group ? ` "${group}"` : ''}, com link e preço atualizados. Não conta no limite de ofertas do dia.`,
+    confirmSend: 'Enviar',
+    confirmCancel: 'Voltar',
+    sentNotice: 'Oferta enviada: está na fila de envio.',
+    sendAll: 'Enviar todas as não escolhidas',
+    sendAllTooltip: 'Envia em sequência todas as ofertas não escolhidas e ainda não enviadas desta execução. Para no primeiro bloqueio de conta, aviso ou plano.',
+    sendAllNone: 'Nenhuma oferta não escolhida para enviar.',
+    sendAllTitle: (n: number) => `Enviar ${n} ${plural(n, 'oferta', 'ofertas')}?`,
+    sendAllText: (n: number, group: string | null) =>
+      `${n} ${plural(n, 'oferta não escolhida vai', 'ofertas não escolhidas vão')} para o grupo de destino atual${group ? ` "${group}"` : ''}, uma a uma, com link e preço atualizados. Não contam no limite de ofertas do dia.`,
+    sendAllConfirm: 'Enviar todas',
+    sendAllResult: (sent: number, skipped: number) =>
+      `${sent} ${plural(sent, 'enviada', 'enviadas')}, ${skipped} ${plural(skipped, 'pulada', 'puladas')}`,
+    skippedTitle: 'Ofertas puladas',
+    skippedLabel: 'Ofertas puladas e o motivo',
+    sending: 'Enviando…',
+    /** Erros com sentido próprio no ranking (o resto cai em `errors`). */
+    errors: {
+      OFFER_HUNT_NOT_FOUND: 'Esta oferta não está mais no ranking desta execução.',
+      OFFER_HUNT_ALREADY_SENT: 'Esta oferta já foi enviada (por esta execução ou dentro do prazo de repetição da caçada).',
+      OFFER_HUNT_RANKING_EXPIRED: 'Ranking com mais de 48 h: rode uma busca nova para preços atuais.',
+      OFFER_HUNT_DESTINATION_REQUIRED: 'Escolha o grupo de destino do caçador antes de enviar.',
+      FORBIDDEN: 'Só o administrador da plataforma pode enviar todas de uma vez.',
+      /** Motivos de pulo do "Enviar todas" (`skipped[].reason`). */
+      REPEATED: 'Já enviada dentro do prazo de repetição da caçada.',
+      ALREADY_SENT: 'Já enviada por esta execução.',
+    } as Record<string, string>,
+  },
+
   /** Predefinições (`HUNT_PRESETS`). */
   presets: {
     TOP_COMMISSION: { label: 'Maior comissão', hint: 'Comissão de 1ª compra a partir de 15%.' },
@@ -687,6 +725,8 @@ export const offerHunterStrings = {
     OFFER_HUNT_PAUSED: 'A caçada está pausada.',
     OFFER_HUNT_RESEND_PENDING: 'O envio anterior desta oferta ainda está na fila. Tente de novo depois que ele sair.',
     OFFER_HUNT_RESEND_NOT_DELIVERED: 'Esta oferta ainda não foi enviada. Use "Aprovar e enviar".',
+    OFFER_HUNT_ALREADY_SENT: 'Esta oferta já foi enviada.',
+    OFFER_HUNT_RANKING_EXPIRED: 'Ranking com mais de 48 h: rode uma busca nova para preços atuais.',
     OFFER_HUNTER_UNAVAILABLE: 'O caçador não está disponível para a sua conta.',
     PLAN_FEATURE_UNAVAILABLE: 'O caçador não está liberado no seu plano.',
     MARKETPLACE_RISK_NOT_ACCEPTED: 'Aceite o aviso de risco do caçador para continuar.',
@@ -937,4 +977,10 @@ export function aiSuggestErrorMessage(code: string | null): string {
 export function offerHunterErrorMessage(err: unknown): string {
   const code = (err as { code?: unknown } | null)?.code;
   return (typeof code === 'string' && offerHunterStrings.errors[code]) || offerHunterStrings.errors.generic;
+}
+
+/** Mensagem do erro ao reaproveitar o ranking: texto próprio do ranking, senão o geral por código, senão genérico. */
+export function rankingReuseErrorMessage(code: string | null | undefined): string {
+  const s = offerHunterStrings;
+  return (code && (s.rankingReuse.errors[code] ?? s.errors[code])) || s.errors.generic;
 }

@@ -35,7 +35,10 @@ export interface OfferHunterAccess {
   loading: boolean;
 }
 
-/** `GET /offer-hunts/access`: a API aplica a audiência (`OFFER_HUNTER_AUDIENCE`); o front não decide por papel. */
+/**
+ * `GET /offer-hunts/access`: a API aplica a audiência (flag "Só super admin" em `/admin/plan-entitlements`; a env
+ * `OFFER_HUNTER_AUDIENCE` só vale até a flag ser gravada). O front não decide por papel nem guarda além da sessão da página.
+ */
 export function useOfferHunterAccess(): OfferHunterAccess {
   const { user } = useAuth();
   const { activeTenantId } = useTenant();

@@ -43,5 +43,23 @@ export function usePlanEntitlementsAdmin() {
     }
   }, []);
 
-  return { data, loading, loadError, busy, actionError, clearActionError: () => setActionError(null), reload, set };
+  const setAudience = useCallback(async (key: string, superAdminOnly: boolean) => {
+    setBusy(`${key}:audience`);
+    setActionError(null);
+    try {
+      const out = await adminPlanEntitlementsService.setAudience(key, superAdminOnly);
+      setData((prev) => prev && {
+        ...prev,
+        entitlements: prev.entitlements.map((r) => (r.key === key ? { ...r, superAdminOnly: out.superAdminOnly } : r)),
+      });
+      return out;
+    } catch (err) {
+      setActionError(planEntitlementErrorMessage(err));
+      return null;
+    } finally {
+      setBusy(null);
+    }
+  }, []);
+
+  return { data, loading, loadError, busy, actionError, clearActionError: () => setActionError(null), reload, set, setAudience };
 }

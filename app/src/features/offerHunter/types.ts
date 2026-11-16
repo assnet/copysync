@@ -167,6 +167,10 @@ export interface HuntRun {
   hasRanking: boolean;
   /** Só no detalhe (`GET /:id/runs/:runId`): até 15 melhores; null = não guardado. Ausente na lista. */
   ranking?: HuntRankingItem[] | null;
+  /** Só no detalhe: produtos com achado desta execução (escolhidos ou reaproveitados do ranking). */
+  sentProductIds?: string[];
+  /** Só no detalhe: ranking ainda reaproveitável (execução com até 48 h). Ausente = não. */
+  rankingReusable?: boolean;
   startedAt: string;
   finishedAt: string | null;
 }
@@ -263,6 +267,12 @@ export interface HuntRunResult {
   finds: HuntFind[];
   remainingToday: number;
   pausedReason: OfferHuntPauseReason | null;
+}
+
+/** `POST /:id/runs/:runId/ranking/send-all` (só super admin): enviadas e puladas com o código do motivo. */
+export interface HuntRankingSendAllResult {
+  sent: number;
+  skipped: { productId: string; reason: string }[];
 }
 
 /** Página por cursor opaco: o front só devolve `nextCursor`, nunca `limit`/`offset`. */

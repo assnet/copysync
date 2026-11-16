@@ -16,6 +16,8 @@ export interface AdminPlanEntitlementRow {
   key: string;
   type: AdminEntitlementValueType;
   plans: Partial<Record<string, PlanEntitlementValue>>;
+  /** Audiência do recurso: true = só super admin vê/usa; null/ausente = não se aplica a esta chave. */
+  superAdminOnly?: boolean | null;
 }
 
 export interface AdminPlanEntitlementList {
@@ -28,4 +30,10 @@ export interface SetPlanEntitlementResult {
   key: string;
   value: EditablePlanEntitlementValue;
   tenantsUpdated: number;
+}
+
+/** `PUT /admin/plan-entitlements/:key/audience`. */
+export interface SetEntitlementAudienceResult {
+  key: string;
+  superAdminOnly: boolean;
 }

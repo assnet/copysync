@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
-const svc = vi.hoisted(() => ({ getRun: vi.fn() }));
+const svc = vi.hoisted(() => ({ getRun: vi.fn(), sendRankingItem: vi.fn(), sendAllRanking: vi.fn() }));
 vi.mock('@/services/offerHunter.service', () => ({ offerHunterService: svc }));
+const auth = vi.hoisted(() => ({ user: { id: 'u1', isSuperAdmin: false } }));
+vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: auth.user }) }));
 
 import { useRunRankings, type HuntPagedList } from '../../hooks';
 import type { HuntRun } from '../../types';
@@ -24,12 +26,21 @@ const rankItem = {
 };
 
 /** Aba com o hook real de ranking (service mockado), como a página monta. */
-function Tab({ items, openRunId, onToggleRun = vi.fn() }: { items: HuntRun[]; openRunId: string | null; onToggleRun?: (id: string) => void }) {
+function Tab({ items, openRunId, onToggleRun = vi.fn(), onRankingSent }: {
+  items: HuntRun[]; openRunId: string | null; onToggleRun?: (id: string) => void; onRankingSent?: () => void;
+}) {
   const rankings = useRunRankings('h1');
-  return <HuntRunsTab runs={list(items)} openRunId={openRunId} onToggleRun={onToggleRun} rankings={rankings} />;
+  return (
+    <HuntRunsTab runs={list(items)} openRunId={openRunId} onToggleRun={onToggleRun} rankings={rankings} destinationGroupName="Promo VIP" onRankingSent={onRankingSent} />
+  );
 }
 
-beforeEach(() => { svc.getRun.mockReset(); });
+beforeEach(() => {
+  svc.getRun.mockReset();
+  svc.sendRankingItem.mockReset();
+  svc.sendAllRanking.mockReset();
+  auth.user = { id: 'u1', isSuperAdmin: false };
+});
 
 describe('HuntRunsTab', () => {
   it('0 no filtro: recusas do maior para o menor e dica; execução antiga sem nada novo', () => {
@@ -74,6 +85,97 @@ describe('HuntRunsTab', () => {
     expect(screen.queryByRole('button', { name: 'Ver ranking' })).not.toBeInTheDocument();
     expect(screen.queryByText('Ranking não guardado nesta execução.')).not.toBeInTheDocument();
     expect(screen.getByTestId('hunt-run-running')).toHaveTextContent('Em andamento');
+  });
+});
+
+const item2 = { ...rankItem, productId: 'g2', goodsId: 'g2', title: 'Saia', chosen: false, aiReason: null };
+const item3 = { ...rankItem, productId: 'g3', goodsId: 'g3', title: 'Blusa', chosen: false, aiReason: null };
+const ranked = (over: Partial<HuntRun> = {}) =>
+  run('r1', { hasRanking: true, ranking: [rankItem, item2, item3], sentProductIds: ['g1'], rankingReusable: true, ...over });
+const sendBtn = (title: string) => screen.getByRole('button', { name: `Enviar a oferta ${title}` });
+const confirmSend = () => fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Enviar' }));
+
+describe('HuntRunsTab — reaproveitar o ranking', () => {
+  it('"Enviar" só nos não escolhidos; confirma citando o grupo, envia e marca "Enviada"', async () => {
+    svc.getRun.mockResolvedValueOnce(ranked()).mockResolvedValue(ranked({ sentProductIds: ['g1', 'g2'] }));
+    svc.sendRankingItem.mockResolvedValue({ id: 'f2' });
+    const onSent = vi.fn();
+    render(<Tab items={[run('r1', { hasRanking: true })]} openRunId="r1" onRankingSent={onSent} />);
+    await screen.findByText('Saia');
+    expect(screen.queryByRole('button', { name: 'Enviar a oferta Vestido' })).not.toBeInTheDocument();
+    expect(screen.getAllByTestId('ranking-item-sent')).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Enviar todas as não escolhidas' })).not.toBeInTheDocument();
+    fireEvent.click(sendBtn('Saia'));
+    expect(svc.sendRankingItem).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toHaveTextContent('"Promo VIP"');
+    confirmSend();
+    await waitFor(() => expect(screen.getAllByTestId('ranking-item-sent')).toHaveLength(2));
+    expect(svc.sendRankingItem).toHaveBeenCalledWith('h1', 'r1', 'g2');
+    expect(onSent).toHaveBeenCalled();
+    await waitFor(() => expect(svc.getRun).toHaveBeenCalledTimes(2));
+    expect(screen.getByText('Oferta enviada: está na fila de envio.')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['OFFER_HUNT_ALREADY_SENT', 'Esta oferta já foi enviada (por esta execução ou dentro do prazo de repetição da caçada).'],
+    ['OFFER_HUNT_RANKING_EXPIRED', 'Ranking com mais de 48 h: rode uma busca nova para preços atuais.'],
+    ['OFFER_HUNT_DESTINATION_REQUIRED', 'Escolha o grupo de destino do caçador antes de enviar.'],
+    ['AFFILIATE_CREDENTIAL_REQUIRED', 'Conecte a sua conta de afiliado da loja.'],
+    ['MARKETPLACE_RISK_NOT_ACCEPTED', 'Aceite o aviso de risco do caçador para continuar.'],
+    ['PLAN_FEATURE_UNAVAILABLE', 'O caçador não está liberado no seu plano.'],
+    ['QUALQUER', 'Algo deu errado. Tente de novo.'],
+  ])('erro %s vira mensagem própria', async (code, msg) => {
+    svc.getRun.mockResolvedValue(ranked());
+    svc.sendRankingItem.mockRejectedValue(Object.assign(new Error('x'), { code }));
+    render(<Tab items={[run('r1', { hasRanking: true })]} openRunId="r1" />);
+    await screen.findByText('Saia');
+    fireEvent.click(sendBtn('Saia'));
+    confirmSend();
+    expect(await screen.findByRole('alert')).toHaveTextContent(msg);
+    expect(screen.getAllByTestId('ranking-item-sent')).toHaveLength(code === 'OFFER_HUNT_ALREADY_SENT' ? 2 : 1);
+  });
+
+  it('janela expirada: botões desabilitados', async () => {
+    auth.user = { id: 'u1', isSuperAdmin: true };
+    svc.getRun.mockResolvedValue(ranked({ rankingReusable: false }));
+    render(<Tab items={[run('r1', { hasRanking: true })]} openRunId="r1" />);
+    await screen.findByText('Saia');
+    expect(sendBtn('Saia')).toBeDisabled();
+    expect(sendBtn('Blusa')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Enviar todas as não escolhidas' })).toBeDisabled();
+  });
+
+  it('sem envio duplo: durante o envio todos os botões travam e só uma chamada sai', async () => {
+    svc.getRun.mockResolvedValue(ranked());
+    let resolve!: (v: unknown) => void;
+    svc.sendRankingItem.mockReturnValue(new Promise((r) => { resolve = r; }));
+    render(<Tab items={[run('r1', { hasRanking: true })]} openRunId="r1" />);
+    await screen.findByText('Saia');
+    fireEvent.click(sendBtn('Saia'));
+    confirmSend();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Enviar a oferta Saia' })).toBeDisabled());
+    expect(sendBtn('Blusa')).toBeDisabled();
+    fireEvent.click(sendBtn('Saia'));
+    expect(svc.sendRankingItem).toHaveBeenCalledTimes(1);
+    await act(async () => { resolve({ id: 'f2' }); });
+  });
+
+  it('super admin: "Enviar todas" confirma a quantidade, chama a rota e lista as puladas', async () => {
+    auth.user = { id: 'u1', isSuperAdmin: true };
+    svc.getRun.mockResolvedValue(ranked());
+    svc.sendAllRanking.mockResolvedValue({ sent: 1, skipped: [{ productId: 'g3', reason: 'REPEATED' }] });
+    render(<Tab items={[run('r1', { hasRanking: true })]} openRunId="r1" />);
+    await screen.findByText('Saia');
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar todas as não escolhidas' }));
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent('Enviar 2 ofertas?');
+    expect(dialog).toHaveTextContent('"Promo VIP"');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Enviar todas' }));
+    expect(await screen.findByText('1 enviada, 1 pulada')).toBeInTheDocument();
+    expect(svc.sendAllRanking).toHaveBeenCalledWith('h1', 'r1');
+    const skipped = await screen.findByRole('list', { name: 'Ofertas puladas e o motivo' });
+    expect(skipped).toHaveTextContent('Blusa');
+    expect(skipped).toHaveTextContent('Já enviada dentro do prazo de repetição da caçada.');
   });
 });
 

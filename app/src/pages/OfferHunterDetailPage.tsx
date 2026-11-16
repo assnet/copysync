@@ -12,6 +12,7 @@ import { HuntDetailHeader } from '@/features/offerHunter/components/detail/HuntD
 import { HuntFindsTab } from '@/features/offerHunter/components/detail/HuntFindsTab';
 import { HuntRunsTab } from '@/features/offerHunter/components/detail/HuntRunsTab';
 import { RunResultPanel } from '@/features/offerHunter/components/RunResultPanel';
+import { ReusableRanking } from '@/features/offerHunter/components/ReusableRanking';
 import { HuntWizardDialog } from '@/features/offerHunter/components/wizard/HuntWizardDialog';
 import { providerOf } from '@/features/offerHunter/providers';
 
@@ -94,6 +95,28 @@ function OfferHunterDetail({ scope }: { scope: string }) {
     }
   };
 
+  const destinationGroupName = settings?.groupName ?? null;
+  const onRankingChanged = (runId: string, ids: string[]) => {
+    for (const productId of ids) rankings.markSent(runId, productId);
+    rankings.refresh(runId);
+    void finds.reload();
+  };
+  // Ranking de "Rodar agora" com `runId`: reaproveitável; antes de recarregar a execução, vale o que a busca devolveu
+  const lastRunId = lastRun?.runId ?? null;
+  const lastEntry = lastRunId ? rankings.get(lastRunId) : undefined;
+  const lastReady = lastEntry?.state === 'ready' ? lastEntry : null;
+  const lastRanking = lastRun && lastRunId && lastRun.ranking.length > 0 ? (
+    <ReusableRanking
+      huntId={hunt.id}
+      runId={lastRunId}
+      items={lastRun.ranking}
+      sentProductIds={lastReady ? lastReady.sentProductIds : lastRun.finds.map((f) => f.productId)}
+      reusable={lastReady ? lastReady.reusable : true}
+      destinationGroupName={destinationGroupName}
+      onChanged={(ids) => onRankingChanged(lastRunId, ids)}
+    />
+  ) : undefined;
+
   return (
     // Folga no fim: o botão flutuante de suporte não cobre o "Reenviar" do último achado
     <Box sx={{ pb: 9 }}>
@@ -118,6 +141,7 @@ function OfferHunterDetail({ scope }: { scope: string }) {
             error={runError}
             provider={providerOf(hunt)}
             onClose={() => { clearLastRun(); setRunError(null); }}
+            rankingSlot={lastRanking}
           />
         </Box>
       )}
@@ -148,7 +172,7 @@ function OfferHunterDetail({ scope }: { scope: string }) {
             onApprove={finds.approve}
             onDismiss={finds.dismiss}
             onRedeliver={finds.resend}
-            destinationGroupName={settings?.groupName ?? null}
+            destinationGroupName={destinationGroupName}
           />
         </Box>
       ) : (
@@ -158,6 +182,8 @@ function OfferHunterDetail({ scope }: { scope: string }) {
             openRunId={ui.openRunId ?? null}
             onToggleRun={(id) => setUi((s) => ({ ...s, openRunId: s.openRunId === id ? null : id }))}
             rankings={rankings}
+            destinationGroupName={destinationGroupName}
+            onRankingSent={() => void finds.reload()}
           />
         </Box>
       )}

@@ -1,6 +1,6 @@
-import { Box, Chip, Stack, Typography } from '@mui/material';
+import { Box, Button, Chip, CircularProgress, Stack, Tooltip, Typography } from '@mui/material';
 import { alpha, useTheme } from '@mui/material/styles';
-import { Check, MessageSquareText } from 'lucide-react';
+import { Check, CheckCheck, MessageSquareText, Send } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { Blurred, useBlur } from '@/features/privacy';
 import type { HuntRankingItem } from '../types';
@@ -12,11 +12,23 @@ import { EstimatedTag } from './EstimatedTag';
 import { ProductThumb } from './ProductThumb';
 import { ScoreBar } from './ScoreBar';
 
+/** Ações de reaproveitar o ranking (execução com `runId`): "Enviar" nos não escolhidos, "Enviada" nos já enviados. */
+export interface RankingReuseActions {
+  sentProductIds: ReadonlySet<string>;
+  /** false = execução com mais de 48 h: botões desabilitados com a explicação. */
+  reusable: boolean;
+  /** Produto sendo enviado agora (spinner nele). */
+  busyProductId: string | null;
+  /** Algum envio em andamento: todos os botões travam (sem envio duplo). */
+  busy: boolean;
+  onSend: (item: HuntRankingItem) => void;
+}
+
 /**
  * Ranking de uma busca, na ordem da pontuação: posição, foto, título, preço, pontuação (fatores no
  * Tooltip), se entrou no corte e o motivo da IA. Lista em vez de `<table>`: cabe no celular sem rolagem lateral.
  */
-export function RankingTable({ items }: { items: HuntRankingItem[] }) {
+export function RankingTable({ items, reuse }: { items: HuntRankingItem[]; reuse?: RankingReuseActions }) {
   const theme = useTheme();
   const blurText = useBlur('offerHunter.productText');
   if (items.length === 0) {
@@ -79,6 +91,7 @@ export function RankingTable({ items }: { items: HuntRankingItem[] }) {
                 label={item.chosen ? t.wizard.test.chosen : t.wizard.test.notChosen}
                 sx={{ height: 22, fontWeight: 600 }}
               />
+              {reuse && <ReuseAction item={item} reuse={reuse} />}
             </Box>
           </Box>
           <Box sx={{ gridColumn: { xs: '1 / -1', sm: 'auto' } }}>
@@ -96,5 +109,42 @@ export function RankingTable({ items }: { items: HuntRankingItem[] }) {
         </Box>
       ))}
     </Stack>
+  );
+}
+
+const ru = t.rankingReuse;
+
+function ReuseAction({ item, reuse }: { item: HuntRankingItem; reuse: RankingReuseActions }) {
+  if (reuse.sentProductIds.has(item.productId)) {
+    return (
+      <Chip
+        size="small"
+        color="success"
+        variant="outlined"
+        icon={<AppIcon icon={CheckCheck} size="inline" />}
+        label={ru.sent}
+        data-testid="ranking-item-sent"
+        sx={{ height: 22, fontWeight: 600 }}
+      />
+    );
+  }
+  if (item.chosen) return null;
+  const busyHere = reuse.busyProductId === item.productId;
+  return (
+    <Tooltip title={reuse.reusable ? ru.sendTooltip : ru.expiredTooltip} arrow describeChild enterTouchDelay={0}>
+      <span>{/* span: Tooltip segue funcionando com o botão desabilitado */}
+        <Button
+          size="small"
+          variant="outlined"
+          disabled={!reuse.reusable || reuse.busy}
+          onClick={() => reuse.onSend(item)}
+          aria-label={ru.sendAria(item.title || t.ranking.noTitle)}
+          startIcon={busyHere ? <CircularProgress size={14} aria-hidden /> : <AppIcon icon={Send} size="inline" />}
+          sx={{ height: 24, py: 0, fontWeight: 600 }}
+        >
+          {busyHere ? ru.sending : ru.send}
+        </Button>
+      </span>
+    </Tooltip>
   );
 }

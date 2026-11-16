@@ -8,6 +8,7 @@ import { offerHunterStrings as t } from '../../strings';
 import { formatDateTime } from '../../format';
 import { RejectionNote } from '../RejectionNote';
 import { RankingTable } from '../RankingTable';
+import { ReusableRanking } from '../ReusableRanking';
 
 const r = t.runs;
 const d = t.detail;
@@ -23,10 +24,21 @@ interface Props {
   onToggleRun: (runId: string) => void;
   /** Ranking sob demanda (cache por execução na página). */
   rankings: RunRankings;
+  /** Grupo de destino atual (confirmação de enviar item do ranking). */
+  destinationGroupName?: string | null;
+  /** Item do ranking enviado: recarregar os achados. */
+  onRankingSent?: () => void;
+}
+
+interface PanelProps {
+  run: HuntRun;
+  rankings: RunRankings;
+  destinationGroupName: string | null;
+  onRankingSent?: () => void;
 }
 
 /** Conteúdo do ranking aberto: busca ao montar (Collapse com `unmountOnExit`), com carregando e erro com retry. */
-function RunRankingPanel({ run, rankings }: { run: HuntRun; rankings: RunRankings }) {
+function RunRankingPanel({ run, rankings, destinationGroupName, onRankingSent }: PanelProps) {
   const inline = run.ranking !== undefined ? run.ranking : undefined;
   const need = inline === undefined && run.hasRanking;
   useEffect(() => { if (need) rankings.load(run.id); }, [need, rankings, run.id]);
@@ -48,11 +60,27 @@ function RunRankingPanel({ run, rankings }: { run: HuntRun; rankings: RunRanking
       </Alert>
     );
   }
-  return entry.items ? <RankingTable items={entry.items} /> : <Typography variant="body2" color="text.secondary">{r.rankingMissing}</Typography>;
+  if (!entry.items) return <Typography variant="body2" color="text.secondary">{r.rankingMissing}</Typography>;
+  if (!run.huntId) return <RankingTable items={entry.items} />;
+  return (
+    <ReusableRanking
+      huntId={run.huntId}
+      runId={run.id}
+      items={entry.items}
+      sentProductIds={entry.sentProductIds}
+      reusable={entry.reusable}
+      destinationGroupName={destinationGroupName}
+      onChanged={(ids) => {
+        for (const productId of ids) rankings.markSent(run.id, productId);
+        rankings.refresh(run.id);
+        onRankingSent?.();
+      }}
+    />
+  );
 }
 
 /** Histórico de execuções por cursor: gatilho, estado, contadores, recusas por filtro, IA, horários e ranking guardado. */
-export function HuntRunsTab({ runs, openRunId, onToggleRun, rankings }: Props) {
+export function HuntRunsTab({ runs, openRunId, onToggleRun, rankings, destinationGroupName = null, onRankingSent }: Props) {
   if (runs.loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={28} /></Box>;
   if (runs.errorCode && runs.items.length === 0) {
     return <Alert severity="error" action={<Button color="inherit" size="small" onClick={() => void runs.reload()}>{t.page.retry}</Button>}>{d.listError}</Alert>;
@@ -105,7 +133,7 @@ export function HuntRunsTab({ runs, openRunId, onToggleRun, rankings }: Props) {
                   </Button>
                   <Collapse in={open} unmountOnExit>
                     <Box id={rankingId} sx={{ mt: 1 }}>
-                      <RunRankingPanel run={run} rankings={rankings} />
+                      <RunRankingPanel run={run} rankings={rankings} destinationGroupName={destinationGroupName} onRankingSent={onRankingSent} />
                     </Box>
                   </Collapse>
                 </>
