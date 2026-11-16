@@ -96,6 +96,12 @@ const sideEffects = vi.hoisted(() => vi.fn(async () => ({})));
 vi.mock('../../../shared/database/prisma.client', () => ({ prisma: db.prisma }));
 vi.mock('../../../shared/events/InternalEventBus', () => ({ internalEventBus: { emit } }));
 vi.mock('./applyPlanSideEffects', () => ({ applyPlanSideEffects: sideEffects }));
+const logWarn = vi.hoisted(() => vi.fn());
+vi.mock('../../../shared/logger/logger', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../../../shared/logger/logger')>();
+  const child = mod.logger.child({ module: 'ApplyBillingEventUseCase' });
+  return { ...mod, logger: { ...mod.logger, child: () => new Proxy(child, { get: (t, k) => (k === 'warn' ? logWarn : Reflect.get(t, k)) }) } };
+});
 
 import { ApplyBillingEventUseCase, classifyHubLookupFailure, hubLookupFailureCounts, type ApplyBillingEventInput } from './ApplyBillingEventUseCase';
 import { SlugTakenError } from '../../../shared/errors/internal/TeamErrors';
@@ -271,6 +277,50 @@ describe('ApplyBillingEventUseCase', () => {
     expect(db.state.entitlements.get('offer_generations_per_day')).toBe(20);
     await run(ev('subscription.updated', { eventId: 'ev-max', seq: 12n, payload: { planSlug: 'COPYSYNC_MAX' } }));
     expect(db.state.entitlements.get('offer_generations_per_day')).toBe(Prisma.JsonNull);
+  });
+
+  describe('nível pelas permissões do evento', () => {
+    const unknownPermsLog = () => logWarn.mock.calls.filter(([, msg]) => msg === 'Billing event with unknown permissions; ignored');
+
+    it('subscription.updated com permissão de nível maior aplica os presets desse nível', async () => {
+      makeTenant({ planSlug: 'COPYSYNC_LITE' });
+      const out = await run(ev('subscription.updated', { payload: { planSlug: 'copysync-lite-mensal', permissions: ['COPYSYNC_LITE', 'COPYSYNC_MAX'] } }));
+      expect(out.outcome).toBe('APPLIED');
+      expect(db.state.tenant!.planSlug).toBe('COPYSYNC_MAX');
+      expect(db.state.entitlements.get('whatsapp_sessions')).toBe('2');
+      expect(db.state.entitlements.get('offer_generations_per_day')).toBe(Prisma.JsonNull);
+    });
+
+    it('sem permissions (central antiga) ou lista vazia: nível pelo planSlug, como hoje', async () => {
+      makeTenant({ planSlug: 'COPYSYNC_LITE' });
+      await run(ev('subscription.updated', { eventId: 'ev-a', payload: { planSlug: 'copysync-pro-mensal' } }));
+      expect(db.state.tenant!.planSlug).toBe('COPYSYNC_PRO');
+      await run(ev('subscription.updated', { eventId: 'ev-b', seq: 12n, payload: { planSlug: 'copysync-max-anual', permissions: [] } }));
+      expect(db.state.tenant!.planSlug).toBe('COPYSYNC_MAX');
+      expect(unknownPermsLog()).toHaveLength(0);
+    });
+
+    it('permissão desconhecida gera log com as chaves, é ignorada e o evento aplica', async () => {
+      makeTenant({ planSlug: 'COPYSYNC_LITE' });
+      logWarn.mockClear();
+      const out = await run(ev('subscription.updated', { payload: { planSlug: 'copysync-pro-mensal', permissions: ['PULSO_X', 'COPYSYNC_PRO'] } }));
+      expect(out.outcome).toBe('APPLIED');
+      expect(db.state.tenant!.planSlug).toBe('COPYSYNC_PRO');
+      expect(unknownPermsLog()).toEqual([[{ eventId: 'ev-subscription.updated', permissions: ['PULSO_X'] }, 'Billing event with unknown permissions; ignored']]);
+    });
+
+    it('planSlug desconhecido com permissão reconhecida aplica o nível da permissão', async () => {
+      makeTenant({ planSlug: 'COPYSYNC_LITE' });
+      await run(ev('subscription.renewed', { payload: { planSlug: 'gold', permissions: ['COPYSYNC_PRO'] } }));
+      expect(db.state.tenant!.planSlug).toBe('COPYSYNC_PRO');
+    });
+
+    it('corte mantido pela união usa o nível da permissão (igual à reconciliação)', async () => {
+      makeTenant({ planSlug: 'COPYSYNC_PRO' });
+      hub.fetchByCustomer.mockResolvedValue(hubOk([hubSub({ billingStatus: 'REFUNDED' }), hubSub({ id: 's-new', permissions: ['COPYSYNC_MAX'], expiresAt: iso(30) })]));
+      expect((await run(ev('subscription.refunded', { payload: {} }))).outcome).toBe('KEPT_ACTIVE');
+      expect(db.state.tenant!.planSlug).toBe('COPYSYNC_MAX');
+    });
   });
 
   it('plano desconhecido em renovação: reativa mas não grava plano nem entitlements', async () => {

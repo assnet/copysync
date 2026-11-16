@@ -11,6 +11,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
+#### integrations / tenants ([`docs/arquitetura-central-billing.md`](../docs/arquitetura-central-billing.md))
+
+- **`planPresets.ts`**, **`billing.routes.ts`**, **`ApplyBillingEventUseCase.ts`**, **`HubSubscriptionsClient.ts`**, **`subscriptionReconcile.ts`** — o nível do tenant passa a vir das permissões da assinatura: `resolveEffectivePlanSlug` (permissão `COPYSYNC_*` mais alta; sem nenhuma reconhecida, o `planSlug`). Antes `permissions` era descartado na borda, então editar as permissões de uma assinatura na central não mudava o nível. Agora a rota leva o campo ao use case, o cliente da central o copia de `GET /integrations/subscriptions` e evento, corte pela união e reconciliação usam a mesma função. Permissão desconhecida gera `warn` sem derrubar o evento; central sem o campo segue pelo `planSlug` (os 7 planos `copysync` de produção já trazem a permissão do próprio nível: nenhum tenant muda de nível).
+
 #### Painel (app/) — `tutorials` ([`docs/tutoriais.md`](../docs/tutoriais.md))
 
 - **`features/tutorials/*`**, **`routes/AppRoutes.tsx`**, **`features/navigation/model.ts`** — aba **Tutoriais** em Afiliados (`/affiliates/tutorials`, app 0.120.0): vitrine de 13 aulas em 3 trilhas, hero com aula em destaque, painel de trilha guiada (anel/barra), busca (`/`), filtros por estado e trilha, copiar link (`?aula=`), player em diálogo com retomada no ponto salvo e navegação anterior/próxima. Progresso (`progress.ts`) fica no navegador, por usuário, via `usePersistedState` escopo `browser`; conclusão automática aos 90% ou pelo botão. Ponto lido do iframe por `postMessage` (`youtubeBridge.ts`), sem carregar script do YouTube (CSP intacto). Aulas 7, 9 e 10 entram com vídeo em app 0.122.1 (as 13 aulas reproduzíveis).

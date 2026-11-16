@@ -14,6 +14,9 @@ export interface HubSubscriptionsClientConfig {
 
 const isStrOrNull = (v: unknown): v is string | null => v === null || typeof v === 'string';
 const isOptStr = (v: unknown): v is string | null | undefined => v === undefined || isStrOrNull(v);
+/** Mesma tolerância do webhook: item que não é texto é descartado; não lista = ausente (nível pelo planSlug). */
+const permissionList = (v: unknown): string[] | undefined =>
+  Array.isArray(v) ? v.filter((p): p is string => typeof p === 'string') : undefined;
 
 function parseSubscription(v: unknown): HubSubscription | null {
   if (!v || typeof v !== 'object') return null;
@@ -23,6 +26,8 @@ function parseSubscription(v: unknown): HubSubscription | null {
     || !isOptStr(o.canceledAt) || !isOptStr(o.refundedAt) || !isOptStr(o.chargedbackAt)) return null;
   return {
     id: o.id, planSlug: o.planSlug, billingStatus: o.billingStatus, expiresAt: o.expiresAt, deletedAt: o.deletedAt,
+    // Central antiga não envia: fica ausente e o nível sai do planSlug
+    ...(permissionList(o.permissions) && { permissions: permissionList(o.permissions) }),
     // Opcionais: a central ainda não expõe; presentes, cortam na hora
     ...(o.canceledAt !== undefined && { canceledAt: o.canceledAt }),
     ...(o.refundedAt !== undefined && { refundedAt: o.refundedAt }),

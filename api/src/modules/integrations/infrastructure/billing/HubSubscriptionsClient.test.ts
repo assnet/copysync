@@ -30,7 +30,7 @@ describe('HubSubscriptionsClient', () => {
     const r = await client(fetchFn, 'https://hub.example.com/api/').fetchByCustomer(ID);
     expect(r).toEqual({
       ok: true,
-      snapshot: { externalUserId: ID, lastSeq: 42n, subscriptions: [{ id: 's1', planSlug: 'copysync-pro-mensal', billingStatus: 'ACTIVE', expiresAt: null, deletedAt: null }] },
+      snapshot: { externalUserId: ID, lastSeq: 42n, subscriptions: [{ id: 's1', planSlug: 'copysync-pro-mensal', permissions: ['x'], billingStatus: 'ACTIVE', expiresAt: null, deletedAt: null }] },
     });
     const [url, init] = fetchFn.mock.calls[0] as [string, RequestInit];
     expect(url).toBe(`https://hub.example.com/api/integrations/subscriptions?externalUserId=${ID}`);
@@ -39,6 +39,21 @@ describe('HubSubscriptionsClient', () => {
     expect(h['X-Application-Key']).toBe('copysync');
     const canonical = buildM2MCanonical({ method: 'GET', path: '/api/integrations/subscriptions', query: `externalUserId=${ID}`, timestamp: h['X-Timestamp']!, nonce: h['X-Nonce']! });
     expect(h['X-Signature']).toBe(signM2MCanonical('m2m-secret', canonical));
+  });
+
+  it('permissions da central passa adiante; ausente fica ausente; malformado não derruba a resposta', async () => {
+    const sub0 = okBody().subscriptions[0]!;
+    const run = async (perms: unknown) => {
+      const { permissions: _omit, ...rest } = sub0;
+      const sub = perms === undefined ? rest : { ...rest, permissions: perms };
+      const r = await client(vi.fn().mockResolvedValue(reply(200, okBody({ subscriptions: [sub] })))).fetchByCustomer(ID);
+      expect(r.ok).toBe(true);
+      return r.ok ? r.snapshot.subscriptions[0]! : null;
+    };
+    expect((await run(['COPYSYNC_MAX', 'COPYSYNC_LITE']))?.permissions).toEqual(['COPYSYNC_MAX', 'COPYSYNC_LITE']);
+    expect('permissions' in (await run(undefined))!).toBe(false);
+    expect('permissions' in (await run('COPYSYNC_MAX'))!).toBe(false);
+    expect((await run(['COPYSYNC_PRO', 3]))?.permissions).toEqual(['COPYSYNC_PRO']);
   });
 
   it('canceledAt/refundedAt/chargedbackAt opcionais: presentes passam adiante, tipo errado é inválido', async () => {
@@ -54,7 +69,7 @@ describe('HubSubscriptionsClient', () => {
     const body = okBody({ subscriptions: [{ ...okBody().subscriptions[0], status: 'active', canceledAt: '2026-11-07T10:00:00.000Z', refundedAt: null, chargedbackAt: null }] });
     const r = await client(vi.fn().mockResolvedValue(reply(200, body))).fetchByCustomer(ID);
     expect(r.ok && r.snapshot.subscriptions[0]).toEqual({
-      id: 's1', planSlug: 'copysync-pro-mensal', billingStatus: 'ACTIVE', expiresAt: null, deletedAt: null,
+      id: 's1', planSlug: 'copysync-pro-mensal', permissions: ['x'], billingStatus: 'ACTIVE', expiresAt: null, deletedAt: null,
       canceledAt: '2026-11-07T10:00:00.000Z', refundedAt: null, chargedbackAt: null,
     });
   });
