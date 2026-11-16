@@ -215,7 +215,10 @@ export async function offerHuntRoutes(app: FastifyInstance): Promise<void> {
     '/:id/runs/:runId',
     { preHandler, schema: { tags, summary: 'Uma execução com o ranking', params: runIdParamSchema, response: { 200: runResponse } } },
     async (request, reply) => {
-      const run = await c.getOfferHuntRun().execute({ tenantId: request.tenantContext.tenantId, huntId: request.params.id, runId: request.params.runId });
+      const run = await c.getOfferHuntRun().execute({
+        tenantId: request.tenantContext.tenantId, huntId: request.params.id, runId: request.params.runId,
+        ignoreAgeLimit: request.user?.isSuperAdmin === true,
+      });
       httpResponse.ok(reply, P.runDetail(run));
     },
   );
@@ -226,13 +229,15 @@ export async function offerHuntRoutes(app: FastifyInstance): Promise<void> {
       preHandler: [...preHandler],
       config: { rateLimit: perTenantRateLimit(rateLimitPresets.offerHuntRun) },
       schema: {
-        tags, summary: 'Enviar item do ranking (execução ≤ 48 h; não conta no teto do dia)', params: rankingItemParamSchema,
+        tags, summary: 'Enviar item do ranking (execução ≤ 48 h, super admin sem limite; não conta no teto do dia)', params: rankingItemParamSchema,
         response: { 200: rankingSendResponse },
       },
     },
     async (request, reply) => {
       const { id, runId, productId } = request.params;
-      const find = await c.sendRankingItem().execute({ tenantId: request.tenantContext.tenantId, huntId: id, runId, productId });
+      const find = await c.sendRankingItem().execute({
+        tenantId: request.tenantContext.tenantId, huntId: id, runId, productId, ignoreAgeLimit: request.user?.isSuperAdmin === true,
+      });
       httpResponse.ok(reply, { find: P.find(find) });
     },
   );

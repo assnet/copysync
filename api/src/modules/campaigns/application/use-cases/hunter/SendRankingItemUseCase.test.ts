@@ -113,6 +113,11 @@ describe('SendRankingItemUseCase', () => {
     expect(s.finds.items).toHaveLength(0);
   });
 
+  it('super admin (ignoreAgeLimit): execução com mais de 48 h envia', async () => {
+    const s = await withDestination(setup({ runAgeMs: 30 * 24 * HOUR }));
+    await expect(s.uc.execute({ ...s.input('2'), ignoreAgeLimit: true })).resolves.toMatchObject({ status: 'SENT' });
+  });
+
   it('48 h exatas ainda vale', async () => {
     const s = await withDestination(setup({ runAgeMs: 48 * HOUR }));
     await expect(s.uc.execute(s.input('2'))).resolves.toMatchObject({ status: 'SENT' });
@@ -263,9 +268,9 @@ describe('SendRankingRemainderUseCase', () => {
     await expect(all.execute({ tenantId: TENANT, huntId: HUNT, runId: s.run.id })).rejects.toThrow('db down');
   });
 
-  it('execução expirada → 409 OFFER_HUNT_RANKING_EXPIRED', async () => {
+  it('rota só de super admin: execução com mais de 48 h envia mesmo assim', async () => {
     const s = await withDestination(setup({ runAgeMs: 49 * HOUR }));
-    await expect(s.all.execute({ tenantId: TENANT, huntId: HUNT, runId: s.run.id })).rejects.toMatchObject({ code: 'OFFER_HUNT_RANKING_EXPIRED' });
+    expect(await s.all.execute({ tenantId: TENANT, huntId: HUNT, runId: s.run.id })).toEqual({ sent: 3, skipped: [] });
   });
 });
 
@@ -278,6 +283,14 @@ describe('GetOfferHuntRunUseCase — repetidos de outra execução', () => {
     const get = new GetOfferHuntRunUseCase({ runs: s.runs, hunts: s.hunts, finds: s.finds, now: () => s.now });
     const out = await get.execute({ tenantId: TENANT, huntId: HUNT, runId: s.run.id });
     expect(out).toMatchObject({ sentProductIds: [pid('1')], repeatedProductIds: [pid('2')], rankingReusable: true });
+  });
+
+  it('super admin: ranking fora das 48 h segue reaproveitável, com repetidos', async () => {
+    const s = setup({ runAgeMs: 49 * HOUR });
+    s.finds.seed({ runId: 'other', productId: pid('2'), createdAt: s.now });
+    const get = new GetOfferHuntRunUseCase({ runs: s.runs, hunts: s.hunts, finds: s.finds, now: () => s.now });
+    expect(await get.execute({ tenantId: TENANT, huntId: HUNT, runId: s.run.id, ignoreAgeLimit: true }))
+      .toMatchObject({ repeatedProductIds: [pid('2')], rankingReusable: true });
   });
 
   it('ranking fora das 48 h → repetidos vazio (sem consulta)', async () => {

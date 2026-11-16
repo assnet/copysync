@@ -241,7 +241,7 @@ caçada ativa (na prévia só existem as do super admin).
 | `POST /finds/:findId/approve` · `/dismiss` | aprovar (envia) ou dispensar |
 | `POST /finds/:findId/resend` | reenviar achado já entregue (preset `offerHuntRun`; não conta no teto) |
 | `GET /:id/runs/:runId` | execução com ranking, `sentProductIds`, `repeatedProductIds`, `rankingReusable` |
-| `POST /:id/runs/:runId/ranking/:productId/send` | enviar item do ranking (≤ 48 h; não conta no teto) |
+| `POST /:id/runs/:runId/ranking/:productId/send` | enviar item do ranking (≤ 48 h, super admin sem janela; não conta no teto) |
 | `POST /:id/runs/:runId/ranking/send-all` | enviar os não escolhidos (só super admin; 403 aos demais) |
 
 Aceite: `POST /api/integrations/affiliate-credentials/:provider/risk-acceptance` com `scope: 'OFFER_HUNTER'`. Erros em
@@ -304,7 +304,8 @@ IP, o recurso para e volta ao dono.
 
 - **Enviar um item** (`POST /:id/runs/:runId/ranking/:productId/send`, `SendRankingItemUseCase`, preset `offerHuntRun`):
   manual, qualquer usuário com acesso ao caçador. Execução ≤ **48 h** pelo `startedAt` (`rankingReuse.ts`; mais velha →
-  409 `OFFER_HUNT_RANKING_EXPIRED`); item precisa estar no `ranking` gravado (senão 404 `OFFER_HUNT_NOT_FOUND`).
+  409 `OFFER_HUNT_RANKING_EXPIRED`); **super admin não tem a janela** (`ignoreAgeLimit` pelo token, também no GET da
+  execução e no "Enviar todos", que é só dele); item precisa estar no `ranking` gravado (senão 404 `OFFER_HUNT_NOT_FOUND`).
   Portões da marca iguais aos da execução (`assertHuntBrandGates` em `huntProviderGates.ts`: plano da marca → caçador →
   credencial → aceite `OFFER_HUNTER`) + destino (422). **Não** gasta `offer_hunter_finds_per_day` nem a guarda de 24.
 - Achado novo APPROVED com o retrato do item (provider, productId, título, preço, comissões, foto, nota, fatores,
@@ -330,7 +331,7 @@ IP, o recurso para e volta ao dono.
 - `GET /:id/runs/:runId` traz `sentProductIds` (produtos com achado desta execução, fora FAILED/DISMISSED: chip
   "Enviada"), `repeatedProductIds` (do ranking, já entregues por **outra** execução no `repeatAfterDays`, mesma regra
   do "Enviar todos"; só com ranking reaproveitável: selo "Já enviada (outra busca)" no lugar do "Enviar" e fora da
-  contagem de "Enviar todas as não escolhidas (N)") e `rankingReusable` (tem ranking e ≤ 48 h). Botão "Enviar" com rótulo acessível pela posição ("Enviar a
+  contagem de "Enviar todas as não escolhidas (N)") e `rankingReusable` (tem ranking e ≤ 48 h; super admin: só tem ranking). Botão "Enviar" com rótulo acessível pela posição ("Enviar a
   oferta 3º do ranking"): o título nunca vai ao leitor de tela (flag `offerHunter.productText`).
 
 ## O que não fazer
@@ -349,7 +350,7 @@ IP, o recurso para e volta ao dono.
 - Ler `OFFER_HUNTER_AUDIENCE` em código novo (só valor inicial; a audiência é a flag do admin) ou guardar a flag em
   memória do processo.
 - Dar ao reaproveitamento `sourceKey` diferente de `hunt:<findId>`; somar reaproveitado no `sentCount` da execução.
-- Reaproveitar ranking com mais de 48 h, contar o reaproveitamento no teto do dia, abrir "Enviar todos" para quem não é
+- Reaproveitar ranking com mais de 48 h fora do super admin (`ignoreAgeLimit` só do token, nunca do corpo), contar o reaproveitamento no teto do dia, abrir "Enviar todos" para quem não é
   super admin ou gravar o achado reaproveitado fora do lock (`insertRankingFind`).
 - Usar `commRate`/`categoryRate` (filtra recompra) ou mostrar "faixa" na tela; reenviar com o `sourceKey` do achado
   (o Enqueue devolveria a oferta antiga); contar reenvio no teto; tratar o `SENT` do achado como "enviado".

@@ -17,6 +17,16 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.98.2] — 2026-11-16 — Caçador: super admin sem a janela de 48 h do ranking
+
+### Changed
+
+#### campaigns ([`docs/cacador-de-ofertas.md`](../docs/cacador-de-ofertas.md))
+
+- **`rankingReuse.ts`**, **`SendRankingItemUseCase.ts`**, **`SendRankingRemainderUseCase.ts`**, **`OfferHuntHistoryUseCases.ts`**, **`offerHunt.routes.ts`** — super admin (pelo token, `ignoreAgeLimit`) envia itens do ranking de execução com mais de 48 h; o GET da execução devolve `rankingReusable: true` para ele (botões liberados no painel, sem mudança no app) e o "Enviar todos" (só super admin) não expira. Demais usuários seguem com a janela de 48 h.
+
+---
+
 ## [0.98.1] — 2026-11-16 — Story: selo igual ao % do cupom
 
 ### Fixed

@@ -43,7 +43,8 @@ export class SendRankingRemainderUseCase {
 
   async execute(input: { tenantId: string; huntId: string; runId: string }): Promise<SendRankingRemainderOutput> {
     const now = this.deps.now?.() ?? new Date();
-    const ctx = await this.deps.items.loadContext(input, now);
+    // Rota só de super admin: sem a janela de 48 h
+    const ctx = await this.deps.items.loadContext({ ...input, ignoreAgeLimit: true }, now);
     const { hunt, run } = ctx;
     const inRun = new Set(await this.deps.finds.productIdsByRun(input.tenantId, run.id));
     const out: SendRankingRemainderOutput = { sent: 0, skipped: [] };

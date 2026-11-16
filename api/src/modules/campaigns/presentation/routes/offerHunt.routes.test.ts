@@ -199,7 +199,7 @@ describe('reaproveitar o ranking', () => {
     const res = await call('POST', sendUrl);
     expect(res.statusCode).toBe(200);
     expect(res.json().data.find).toMatchObject({ id: 'f1', status: 'SENT', offerId: 'o1', productId: '12345678' });
-    expect(exec).toHaveBeenCalledWith({ tenantId: 'tenant-a', huntId: ID, runId: 'run-1', productId: '123' });
+    expect(exec).toHaveBeenCalledWith({ tenantId: 'tenant-a', huntId: ID, runId: 'run-1', productId: '123', ignoreAgeLimit: false });
   });
 
   it('erros do envio: 409 OFFER_HUNT_ALREADY_SENT / OFFER_HUNT_RANKING_EXPIRED', async () => {
@@ -308,9 +308,9 @@ describe('rotas (super admin)', () => {
     const sent = vi.spyOn(PrismaOfferHuntFindRepository.prototype, 'productIdsByRun').mockResolvedValue(['1']);
     const ok = await call('GET', `/${ID}/runs/run-1`);
     expect(ok.statusCode).toBe(200);
-    // Execução de NOW (dias atrás) → fora das 48 h
+    // Execução de NOW (dias atrás), fora das 48 h: super admin (este bloco) segue reaproveitável
     expect(ok.json().data).toMatchObject({
-      id: 'run-1', hasRanking: true, ranking: [{ goodsId: '1', chosen: true }], sentProductIds: ['1'], rankingReusable: false,
+      id: 'run-1', hasRanking: true, ranking: [{ goodsId: '1', chosen: true }], sentProductIds: ['1'], rankingReusable: true,
     });
     expect(sent).toHaveBeenCalledWith('tenant-a', 'run-1');
     get.mockResolvedValueOnce({ ...RUN_BASE, startedAt: new Date(Date.now() - 3_600_000), ranking });

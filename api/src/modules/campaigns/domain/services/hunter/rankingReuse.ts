@@ -9,7 +9,7 @@ export function isRankingWithinReuseWindow(run: Pick<OfferHuntRun, 'startedAt'>,
   return now.getTime() - run.startedAt.getTime() <= MAX_AGE_MS;
 }
 
-/** Tem ranking gravado e está na janela. */
-export function isRankingReusable(run: Pick<OfferHuntRun, 'startedAt' | 'ranking'>, now: Date): boolean {
-  return run.ranking !== null && run.ranking.length > 0 && isRankingWithinReuseWindow(run, now);
+/** Tem ranking gravado e está na janela; `ignoreAge` (super admin) dispensa a janela. */
+export function isRankingReusable(run: Pick<OfferHuntRun, 'startedAt' | 'ranking'>, now: Date, opts: { ignoreAge?: boolean } = {}): boolean {
+  return run.ranking !== null && run.ranking.length > 0 && (opts.ignoreAge === true || isRankingWithinReuseWindow(run, now));
 }

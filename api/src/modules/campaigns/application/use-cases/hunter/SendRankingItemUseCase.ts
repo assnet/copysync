@@ -19,6 +19,8 @@ export interface SendRankingItemInput {
   huntId: string;
   runId: string;
   productId: string;
+  /** Super admin (token): sem a janela de 48 h. */
+  ignoreAgeLimit?: boolean;
 }
 
 export interface SendRankingItemDeps extends HuntBrandGateDeps {
@@ -49,14 +51,14 @@ export interface RankingContext {
 export class SendRankingItemUseCase {
   constructor(private readonly deps: SendRankingItemDeps) {}
 
-  /** 404 (caçada/execução/sem ranking) ou 409 expirada. */
+  /** 404 (caçada/execução/sem ranking) ou 409 expirada (super admin com `ignoreAgeLimit` não expira). */
   async loadContext(input: Omit<SendRankingItemInput, 'productId'>, now: Date): Promise<RankingContext> {
     const { tenantId, huntId, runId } = input;
     const hunt = await this.deps.hunts.findById(tenantId, huntId);
     if (!hunt) throw new OfferHuntNotFoundError();
     const run = await this.deps.runs.findById(tenantId, huntId, runId);
     if (!run || !run.ranking) throw new OfferHuntNotFoundError('run');
-    if (!isRankingWithinReuseWindow(run, now)) throw new OfferHuntRankingExpiredError(HUNT_RANKING_REUSE_MAX_AGE_HOURS);
+    if (!input.ignoreAgeLimit && !isRankingWithinReuseWindow(run, now)) throw new OfferHuntRankingExpiredError(HUNT_RANKING_REUSE_MAX_AGE_HOURS);
     return { hunt, run };
   }
 

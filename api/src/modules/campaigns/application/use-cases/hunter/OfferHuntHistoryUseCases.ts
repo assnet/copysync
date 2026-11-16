@@ -76,12 +76,13 @@ export class GetOfferHuntRunUseCase {
     now?: () => Date;
   }) {}
 
-  async execute(input: { tenantId: string; huntId: string; runId: string }): Promise<OfferHuntRunDetail> {
+  /** `ignoreAgeLimit` = super admin: ranking com mais de 48 h segue reaproveitável. */
+  async execute(input: { tenantId: string; huntId: string; runId: string; ignoreAgeLimit?: boolean }): Promise<OfferHuntRunDetail> {
     const run = await this.deps.runs.findById(input.tenantId, input.huntId, input.runId);
     if (!run) throw new OfferHuntNotFoundError('run');
     const now = this.deps.now?.() ?? new Date();
     const sentProductIds = await this.deps.finds.productIdsByRun(input.tenantId, run.id);
-    const rankingReusable = isRankingReusable(run, now);
+    const rankingReusable = isRankingReusable(run, now, { ignoreAge: input.ignoreAgeLimit === true });
     const repeatedProductIds = rankingReusable ? await this.repeated(input.tenantId, input.huntId, run, new Set(sentProductIds), now) : [];
     return { run, sentProductIds, repeatedProductIds, rankingReusable };
   }
