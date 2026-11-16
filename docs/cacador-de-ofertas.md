@@ -157,8 +157,8 @@ candidato pode contar em várias chaves.
 - Repetição dentro do lock do teto (`insertWithinDailyLimit` com `repeatSince`): duas execuções simultâneas não
   escolhem o mesmo produto. Janela de horário vazia (ex.: início 1440 e fim 0) é recusada.
 - Imagem: `imageMode` padrão `LINK_PREVIEW`, foto vinda do Resolve e gravada no storage (`storeImage`), como no
-  gerador ([`mensagens-previa-de-link.md`](mensagens-previa-de-link.md)). `imageUrl` do achado (`mainImage`, só
-  https `ltwebstatic.com`) é **só exibição no painel**; nunca vai à mensagem.
+  gerador ([`mensagens-previa-de-link.md`](mensagens-previa-de-link.md)). `imageUrl` do achado é exibição no painel e **reserva da prévia do link**: se o Resolve não trouxer foto (ML),
+  a entrega grava no storage a foto do achado (só https em host da marca, `findImageSource`).
 - Oferta `HUNTER` fica **fora** de `offer_generations_per_day` (`countCreatedSince`/`createWithinDailyLimit`
   excluem só `HUNTER`; `MONITORING` e o resto seguem contando).
 - Destino único por tenant (`offer_hunter_settings`: sessão + conversa). Entra na união de `broadcast_groups`

@@ -17,6 +17,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.96.1] — 2026-11-16 — Caçador: prévia do link nas ofertas do Mercado Livre
+
+### Fixed
+
+#### campaigns
+
+- **`HuntFindDelivery.ts`** — ofertas do caçador no Mercado Livre saíam sem foto e, portanto, sem prévia do link (produção: 28 de 31 ofertas `HUNTER`/ML sem `imageUrl` desde 2026-11-13; Shein normal). A entrega pegava a foto só do `ResolveAffiliateProductUseCase`, cuja leitura de `produto.mercadolivre.com.br/MLB-…` volta sem foto. Agora, sem foto no Resolve, usa a foto do achado (catálogo do hub, só https em host da marca), gravada no storage como no gerador.
+
 ## [0.96.0] — 2026-11-13 — Excluir Página de Ofertas e descarte de envios de sessão excluída
 
 ### Added

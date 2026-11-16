@@ -14,6 +14,19 @@ import type { ResolveAffiliateProductUseCase } from '../../use-cases/ResolveAffi
 import type { ResolveProductDataUseCase } from '../../use-cases/ResolveProductDataUseCase';
 import type { OfferTextComposer } from '../OfferTextComposer';
 import { DEFAULT_INTERVAL } from '../../use-cases/OfferGeneratorConfigUseCases';
+import { huntCapabilities, isHuntImageHost } from '../../../domain/services/hunter/huntCapabilities';
+
+/** Foto do achado (catálogo da loja) só se for https, sem credencial/porta, num host da marca; senão null. */
+export function findImageSource(find: Pick<OfferHuntFind, 'imageUrl' | 'provider'>): string | null {
+  if (!find.imageUrl) return null;
+  try {
+    const u = new URL(find.imageUrl);
+    if (u.protocol !== 'https:' || u.username || u.password || u.port) return null;
+    return isHuntImageHost(huntCapabilities(find.provider), u.hostname) ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
 
 /** Idempotência do Enqueue: queda entre enfileirar e gravar `offerId` não reenvia. */
 export const huntSourceKey = (findId: string) => `hunt:${findId}`;
@@ -120,7 +133,10 @@ export class HuntFindDelivery {
       coupon: null,
       affiliateUrl: resolved.affiliateUrl,
     });
-    const storedImage = p.imageSourceUrl ? await this.deps.images.storeImage(p.imageSourceUrl) : null;
+    // Foto da prévia do link: a do Resolve; se ele não trouxer (ML: a leitura de `produto.mercadolivre.com.br/MLB-…`
+    // volta sem foto), a do achado, que veio do catálogo da loja — só https em host da marca (`imageHosts`).
+    const imageSource = p.imageSourceUrl ?? findImageSource(find);
+    const storedImage = imageSource ? await this.deps.images.storeImage(imageSource) : null;
     image.stored = storedImage;
     const config = await this.deps.configs.find(tenantId);
     const res = await this.deps.enqueue.execute({

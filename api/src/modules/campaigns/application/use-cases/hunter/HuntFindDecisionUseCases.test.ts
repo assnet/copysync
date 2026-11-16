@@ -20,10 +20,10 @@ function setup() {
   const entitlements = new FakeEntitlementReader({ ...MAX_ENTITLEMENTS });
   const resolve = vi.fn(async (_t: string, url: string, _o?: unknown) => ({
     provider: 'SHEIN' as const, sourceUrl: url, affiliateUrl: 'https://onelink.shein.com/1/tenant', attributionVerified: true, linkRebuilt: true,
-    product: { productRef: '1', title: null, priceCents: null, originalPriceCents: null, imageSourceUrl: 'https://img.ltwebstatic.com/a.jpg' },
+    product: { productRef: '1', title: null, priceCents: null, originalPriceCents: null, imageSourceUrl: 'https://img.ltwebstatic.com/a.jpg' as string | null },
   }));
   const composeInputs: unknown[] = [];
-  const images = { storeImage: async () => '/media/offer.jpg', discardImage: vi.fn(async () => {}) };
+  const images = { storeImage: async (_url: string): Promise<string | null> => '/media/offer.jpg', discardImage: vi.fn(async () => {}) };
   const delivery = new HuntFindDelivery({
     finds, runs, settings,
     affiliateProducts: { execute: resolve },
@@ -63,6 +63,36 @@ describe('ApproveHuntFindUseCase', () => {
     expect(s.composeInputs[0]).toMatchObject({ audience: 'STANDARD', title: 'Vestido Midi Floral', priceCents: 5990 });
     expect(out).toMatchObject({ offerId: offer.id, find: { status: 'SENT', offerId: offer.id } });
     expect(s.runs.items[0]!.sentCount).toBe(1);
+  });
+
+  it('Resolve sem foto (ML): usa a foto do achado do catálogo para a prévia do link', async () => {
+    const s = setup();
+    s.resolve.mockImplementationOnce(async (_t: string, url: string) => ({
+      provider: 'SHEIN' as const, sourceUrl: url, affiliateUrl: 'https://onelink.shein.com/1/tenant', attributionVerified: true, linkRebuilt: true,
+      product: { productRef: '1', title: null, priceCents: null, originalPriceCents: null, imageSourceUrl: null },
+    }));
+    const stored: string[] = [];
+    s.images.storeImage = async (u: string) => { stored.push(u); return '/media/from-find.jpg'; };
+    await s.settings.upsert(TENANT, 'session-1', 'conv-1');
+    const find = s.finds.seed({ goodsId: '533885353', imageUrl: 'https://img.ltwebstatic.com/catalogo.jpg' });
+    await s.approve.execute({ tenantId: TENANT, findId: find.id });
+    expect(stored).toEqual(['https://img.ltwebstatic.com/catalogo.jpg']);
+    expect(s.offers.items[0]).toMatchObject({ imageUrl: '/media/from-find.jpg', imageMode: 'LINK_PREVIEW' });
+  });
+
+  it('Resolve sem foto e foto do achado fora do host da marca: oferta sem foto, nada é baixado', async () => {
+    const s = setup();
+    s.resolve.mockImplementationOnce(async (_t: string, url: string) => ({
+      provider: 'SHEIN' as const, sourceUrl: url, affiliateUrl: 'https://onelink.shein.com/1/tenant', attributionVerified: true, linkRebuilt: true,
+      product: { productRef: '1', title: null, priceCents: null, originalPriceCents: null, imageSourceUrl: null },
+    }));
+    const stored: string[] = [];
+    s.images.storeImage = async (u: string) => { stored.push(u); return '/media/x.jpg'; };
+    await s.settings.upsert(TENANT, 'session-1', 'conv-1');
+    const find = s.finds.seed({ goodsId: '533885353', imageUrl: 'http://evil.example.com/a.jpg' });
+    await s.approve.execute({ tenantId: TENANT, findId: find.id });
+    expect(stored).toEqual([]);
+    expect(s.offers.items[0]!.imageUrl).toBeNull();
   });
 
   it('sem destino → OFFER_HUNT_DESTINATION_REQUIRED e o achado não muda', async () => {
