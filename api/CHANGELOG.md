@@ -17,6 +17,16 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.98.0] — 2026-11-16 — Caçador: repetidos de outra busca no detalhe da execução
+
+### Added
+
+#### campaigns ([`docs/cacador-de-ofertas.md`](../docs/cacador-de-ofertas.md))
+
+- **`OfferHuntHistoryUseCases.ts`** (`GetOfferHuntRunUseCase`) — `GET /offer-hunts/:id/runs/:runId` devolve `repeatedProductIds`: itens do ranking já entregues por outra execução da caçada dentro de `repeatAfterDays` (mesma regra do `SendRankingRemainderUseCase`, por marca). Só calculado com ranking reaproveitável (≤ 48 h); senão vazio. O painel mostra o selo em vez do botão "Enviar".
+
+---
+
 ## [0.97.0] — 2026-11-16 — Caçador: reaproveitar o ranking e audiência por flag no admin
 
 ### Added

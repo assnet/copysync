@@ -1,6 +1,6 @@
 import { Box, Button, Chip, CircularProgress, Stack, Tooltip, Typography } from '@mui/material';
 import { alpha, useTheme } from '@mui/material/styles';
-import { Check, CheckCheck, MessageSquareText, Send } from 'lucide-react';
+import { Check, CheckCheck, History, MessageSquareText, Send } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { Blurred, useBlur } from '@/features/privacy';
 import type { HuntRankingItem } from '../types';
@@ -15,6 +15,8 @@ import { ScoreBar } from './ScoreBar';
 /** Ações de reaproveitar o ranking (execução com `runId`): "Enviar" nos não escolhidos, "Enviada" nos já enviados. */
 export interface RankingReuseActions {
   sentProductIds: ReadonlySet<string>;
+  /** Enviados por outra execução no prazo de repetição: selo no lugar do "Enviar". */
+  repeatedProductIds: ReadonlySet<string>;
   /** false = execução com mais de 48 h: botões desabilitados com a explicação. */
   reusable: boolean;
   /** Produto sendo enviado agora (spinner nele). */
@@ -126,6 +128,21 @@ function ReuseAction({ item, position, reuse }: { item: HuntRankingItem; positio
         data-testid="ranking-item-sent"
         sx={{ height: 22, fontWeight: 600 }}
       />
+    );
+  }
+  if (reuse.repeatedProductIds.has(item.productId)) {
+    return (
+      <Tooltip title={ru.repeatedTooltip} arrow describeChild enterTouchDelay={0}>
+        <Chip
+          size="small"
+          variant="outlined"
+          icon={<AppIcon icon={History} size="inline" />}
+          label={ru.repeated}
+          tabIndex={0}
+          data-testid="ranking-item-repeated"
+          sx={{ height: 22, fontWeight: 600, color: 'text.secondary' }}
+        />
+      </Tooltip>
     );
   }
   if (item.chosen) return null;

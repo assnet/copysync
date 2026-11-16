@@ -105,7 +105,7 @@ describe('HuntRunsTab — reaproveitar o ranking', () => {
     await screen.findByText('Saia');
     expect(screen.queryByRole('button', { name: 'Enviar a oferta 1º do ranking' })).not.toBeInTheDocument();
     expect(screen.getAllByTestId('ranking-item-sent')).toHaveLength(1);
-    expect(screen.queryByRole('button', { name: 'Enviar todas as não escolhidas' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Enviar todas as não escolhidas/ })).not.toBeInTheDocument();
     fireEvent.click(sendBtn('2º'));
     expect(svc.sendRankingItem).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog')).toHaveTextContent('"Promo VIP"');
@@ -143,7 +143,7 @@ describe('HuntRunsTab — reaproveitar o ranking', () => {
     await screen.findByText('Saia');
     expect(sendBtn('2º')).toBeDisabled();
     expect(sendBtn('3º')).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Enviar todas as não escolhidas' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Enviar todas as não escolhidas (2)' })).toBeDisabled();
   });
 
   it('sem envio duplo: durante o envio todos os botões travam e só uma chamada sai', async () => {
@@ -167,7 +167,7 @@ describe('HuntRunsTab — reaproveitar o ranking', () => {
     svc.sendAllRanking.mockResolvedValue({ sent: 1, skipped: [{ productId: 'g3', reason: 'REPEATED' }] });
     render(<Tab items={[run('r1', { hasRanking: true })]} openRunId="r1" />);
     await screen.findByText('Saia');
-    fireEvent.click(screen.getByRole('button', { name: 'Enviar todas as não escolhidas' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar todas as não escolhidas (2)' }));
     const dialog = screen.getByRole('dialog');
     expect(dialog).toHaveTextContent('Enviar 2 ofertas?');
     expect(dialog).toHaveTextContent('"Promo VIP"');
@@ -177,6 +177,27 @@ describe('HuntRunsTab — reaproveitar o ranking', () => {
     const skipped = await screen.findByRole('list', { name: 'Ofertas puladas e o motivo' });
     expect(skipped).toHaveTextContent('Blusa');
     expect(skipped).toHaveTextContent('Já enviada dentro do prazo de repetição da caçada.');
+    // Pulada por repetição vira selo "outra busca" e sai da contagem
+    expect(await screen.findByTestId('ranking-item-repeated')).toHaveTextContent('Já enviada (outra busca)');
+  });
+
+  it('repetidos de outra busca: selo no lugar do "Enviar" e fora da contagem do "Enviar todas"', async () => {
+    auth.user = { id: 'u1', isSuperAdmin: true };
+    svc.getRun.mockResolvedValue(ranked({ repeatedProductIds: ['g3'] }));
+    render(<Tab items={[run('r1', { hasRanking: true })]} openRunId="r1" />);
+    await screen.findByText('Blusa');
+    expect(screen.getByTestId('ranking-item-repeated')).toHaveTextContent('Já enviada (outra busca)');
+    expect(screen.queryByRole('button', { name: 'Enviar a oferta 3º do ranking' })).not.toBeInTheDocument();
+    expect(sendBtn('2º')).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Enviar todas as não escolhidas (1)' })).toBeEnabled();
+  });
+
+  it('tudo já enviado por esta ou outra busca: "Enviar todas (0)" desabilitado', async () => {
+    auth.user = { id: 'u1', isSuperAdmin: true };
+    svc.getRun.mockResolvedValue(ranked({ sentProductIds: ['g1', 'g2'], repeatedProductIds: ['g3'] }));
+    render(<Tab items={[run('r1', { hasRanking: true })]} openRunId="r1" />);
+    await screen.findByText('Blusa');
+    expect(screen.getByRole('button', { name: 'Enviar todas as não escolhidas (0)' })).toBeDisabled();
   });
 });
 

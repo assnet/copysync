@@ -56,23 +56,49 @@ export interface OfferHuntRunDetail {
   run: OfferHuntRun;
   /** Produtos com achado desta execução (escolhidos ou reaproveitados). */
   sentProductIds: string[];
+  /**
+   * Produtos do ranking já entregues por OUTRA execução da caçada dentro de `repeatAfterDays` (o envio daria
+   * `REPEATED`). Só calculado com ranking reaproveitável; senão vazio.
+   */
+  repeatedProductIds: string[];
   /** Tem ranking e começou há ≤ 48 h. */
   rankingReusable: boolean;
 }
+
+const DAY_MS = 86_400_000;
 
 /** Uma execução com o `ranking` (a lista não traz). Outro tenant/caçada → 404 `OFFER_HUNT_NOT_FOUND`. */
 export class GetOfferHuntRunUseCase {
   constructor(private readonly deps: {
     runs: Pick<IOfferHuntRunRepository, 'findById'>;
-    finds: Pick<IOfferHuntFindRepository, 'productIdsByRun'>;
+    hunts: Pick<IOfferHuntRepository, 'findById'>;
+    finds: Pick<IOfferHuntFindRepository, 'productIdsByRun' | 'recentProductIds'>;
     now?: () => Date;
   }) {}
 
   async execute(input: { tenantId: string; huntId: string; runId: string }): Promise<OfferHuntRunDetail> {
     const run = await this.deps.runs.findById(input.tenantId, input.huntId, input.runId);
     if (!run) throw new OfferHuntNotFoundError('run');
+    const now = this.deps.now?.() ?? new Date();
     const sentProductIds = await this.deps.finds.productIdsByRun(input.tenantId, run.id);
-    return { run, sentProductIds, rankingReusable: isRankingReusable(run, this.deps.now?.() ?? new Date()) };
+    const rankingReusable = isRankingReusable(run, now);
+    const repeatedProductIds = rankingReusable ? await this.repeated(input.tenantId, input.huntId, run, new Set(sentProductIds), now) : [];
+    return { run, sentProductIds, repeatedProductIds, rankingReusable };
+  }
+
+  /** Mesma regra do envio (`SendRankingRemainderUseCase`): janela da caçada, por marca, sem o que é desta execução. */
+  private async repeated(tenantId: string, huntId: string, run: OfferHuntRun, inRun: Set<string>, now: Date): Promise<string[]> {
+    const pending = (run.ranking ?? []).filter((i) => !inRun.has(i.productId));
+    if (pending.length === 0) return [];
+    const hunt = await this.deps.hunts.findById(tenantId, huntId);
+    if (!hunt) return [];
+    const since = new Date(now.getTime() - hunt.repeatAfterDays * DAY_MS);
+    const out: string[] = [];
+    for (const provider of new Set(pending.map((i) => i.provider))) {
+      const ids = await this.deps.finds.recentProductIds(tenantId, hunt.id, provider, since, { exceptUndeliveredInRun: run.id });
+      for (const i of pending) if (i.provider === provider && ids.has(i.productId)) out.push(i.productId);
+    }
+    return out;
   }
 }
 

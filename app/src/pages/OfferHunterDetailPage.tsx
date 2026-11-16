@@ -111,6 +111,7 @@ function OfferHunterDetail({ scope }: { scope: string }) {
       runId={lastRunId}
       items={lastRun.ranking}
       sentProductIds={lastReady ? lastReady.sentProductIds : lastRun.finds.map((f) => f.productId)}
+      repeatedProductIds={lastReady ? lastReady.repeatedProductIds : []}
       reusable={lastReady ? lastReady.reusable : true}
       destinationGroupName={destinationGroupName}
       onChanged={(ids) => onRankingChanged(lastRunId, ids)}

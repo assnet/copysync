@@ -240,7 +240,7 @@ caçada ativa (na prévia só existem as do super admin).
 | `GET /:id/runs` · `/:id/finds` | histórico com cursor assinado |
 | `POST /finds/:findId/approve` · `/dismiss` | aprovar (envia) ou dispensar |
 | `POST /finds/:findId/resend` | reenviar achado já entregue (preset `offerHuntRun`; não conta no teto) |
-| `GET /:id/runs/:runId` | execução com ranking, `sentProductIds`, `rankingReusable` |
+| `GET /:id/runs/:runId` | execução com ranking, `sentProductIds`, `repeatedProductIds`, `rankingReusable` |
 | `POST /:id/runs/:runId/ranking/:productId/send` | enviar item do ranking (≤ 48 h; não conta no teto) |
 | `POST /:id/runs/:runId/ranking/send-all` | enviar os não escolhidos (só super admin; 403 aos demais) |
 
@@ -328,7 +328,9 @@ IP, o recurso para e volta ao dono.
   Erro não-`AppError` (banco): sem nada enviado sobe; com algo enviado para e devolve com `reason: 'DELIVERY_FAILED'`.
   Outros erros pulam o item. Sem pausa artificial: o espaçamento é o da fila do gerador.
 - `GET /:id/runs/:runId` traz `sentProductIds` (produtos com achado desta execução, fora FAILED/DISMISSED: chip
-  "Enviada") e `rankingReusable` (tem ranking e ≤ 48 h). Botão "Enviar" com rótulo acessível pela posição ("Enviar a
+  "Enviada"), `repeatedProductIds` (do ranking, já entregues por **outra** execução no `repeatAfterDays`, mesma regra
+  do "Enviar todos"; só com ranking reaproveitável: selo "Já enviada (outra busca)" no lugar do "Enviar" e fora da
+  contagem de "Enviar todas as não escolhidas (N)") e `rankingReusable` (tem ranking e ≤ 48 h). Botão "Enviar" com rótulo acessível pela posição ("Enviar a
   oferta 3º do ranking"): o título nunca vai ao leitor de tela (flag `offerHunter.productText`).
 
 ## O que não fazer

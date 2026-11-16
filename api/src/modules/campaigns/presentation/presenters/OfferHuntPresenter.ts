@@ -84,7 +84,7 @@ export const OfferHuntPresenter = {
 
   /** Detalhe da execução: ranking + `sentProductIds` + `rankingReusable`. */
   runDetail(d: OfferHuntRunDetail) {
-    return { ...OfferHuntPresenter.run(d.run), sentProductIds: [...d.sentProductIds], rankingReusable: d.rankingReusable };
+    return { ...OfferHuntPresenter.run(d.run), sentProductIds: [...d.sentProductIds], repeatedProductIds: [...d.repeatedProductIds], rankingReusable: d.rankingReusable };
   },
 
   rankingRemainder(o: SendRankingRemainderOutput) {

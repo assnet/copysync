@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { SendRankingItemUseCase } from './SendRankingItemUseCase';
 import { SendRankingRemainderUseCase } from './SendRankingRemainderUseCase';
+import { GetOfferHuntRunUseCase } from './OfferHuntHistoryUseCases';
 import { ApproveHuntFindUseCase, HUNT_FIND_STALE_APPROVED_MS } from './HuntFindDecisionUseCases';
 import { HuntFindDelivery } from '../../services/hunter/HuntFindDelivery';
 import { EnqueueOfferUseCase } from '../EnqueueOfferUseCase';
@@ -265,5 +266,24 @@ describe('SendRankingRemainderUseCase', () => {
   it('execução expirada → 409 OFFER_HUNT_RANKING_EXPIRED', async () => {
     const s = await withDestination(setup({ runAgeMs: 49 * HOUR }));
     await expect(s.all.execute({ tenantId: TENANT, huntId: HUNT, runId: s.run.id })).rejects.toMatchObject({ code: 'OFFER_HUNT_RANKING_EXPIRED' });
+  });
+});
+
+describe('GetOfferHuntRunUseCase — repetidos de outra execução', () => {
+  it('marca os do ranking já entregues por outra execução na janela; fora da janela ou desta execução, não', async () => {
+    const s = setup({ ranking: [item('1', { chosen: true }), item('2'), item('3'), item('4')] });
+    s.finds.seed({ runId: s.run.id, productId: pid('1'), createdAt: s.now });
+    s.finds.seed({ runId: 'other', productId: pid('2'), createdAt: s.now });
+    s.finds.seed({ runId: 'old', productId: pid('3'), createdAt: new Date(s.now.getTime() - 8 * 24 * HOUR) });
+    const get = new GetOfferHuntRunUseCase({ runs: s.runs, hunts: s.hunts, finds: s.finds, now: () => s.now });
+    const out = await get.execute({ tenantId: TENANT, huntId: HUNT, runId: s.run.id });
+    expect(out).toMatchObject({ sentProductIds: [pid('1')], repeatedProductIds: [pid('2')], rankingReusable: true });
+  });
+
+  it('ranking fora das 48 h → repetidos vazio (sem consulta)', async () => {
+    const s = setup({ runAgeMs: 49 * HOUR });
+    s.finds.seed({ runId: 'other', productId: pid('2'), createdAt: s.now });
+    const get = new GetOfferHuntRunUseCase({ runs: s.runs, hunts: s.hunts, finds: s.finds, now: () => s.now });
+    expect(await get.execute({ tenantId: TENANT, huntId: HUNT, runId: s.run.id })).toMatchObject({ repeatedProductIds: [], rankingReusable: false });
   });
 });

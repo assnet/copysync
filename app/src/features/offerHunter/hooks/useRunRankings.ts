@@ -5,7 +5,7 @@ import { huntErrorCode } from './useHuntResource';
 
 export type RunRankingEntry =
   | { state: 'loading' }
-  | { state: 'ready'; items: HuntRankingItem[] | null; sentProductIds: string[]; reusable: boolean }
+  | { state: 'ready'; items: HuntRankingItem[] | null; sentProductIds: string[]; repeatedProductIds: string[]; reusable: boolean }
   | { state: 'error'; errorCode: string | null };
 
 export interface RunRankings {
@@ -21,7 +21,7 @@ export interface RunRankings {
 }
 
 const readyEntry = (run: HuntRun): RunRankingEntry => ({
-  state: 'ready', items: run.ranking ?? null, sentProductIds: run.sentProductIds ?? [], reusable: run.rankingReusable === true,
+  state: 'ready', items: run.ranking ?? null, sentProductIds: run.sentProductIds ?? [], repeatedProductIds: run.repeatedProductIds ?? [], reusable: run.rankingReusable === true,
 });
 
 /**

@@ -17,6 +17,8 @@ export interface ReusableRankingProps {
   items: HuntRankingItem[];
   /** Produtos com achado desta execução (`sentProductIds` do `GET /:id/runs/:runId`). */
   sentProductIds: readonly string[];
+  /** Já enviados por outra execução no prazo de repetição (`repeatedProductIds`): sem "Enviar", fora da contagem. */
+  repeatedProductIds: readonly string[];
   /** Execução com até 48 h (`rankingReusable`). */
   reusable: boolean;
   /** Grupo de destino atual do caçador (texto da confirmação; some com a flag de borrar). */
@@ -31,7 +33,7 @@ type Confirm = { kind: 'one'; item: HuntRankingItem } | { kind: 'all'; count: nu
  * Ranking com reaproveitamento: "Enviar" em cada item não escolhido e não enviado (confirmação leve) e,
  * só para super admin, "Enviar todas as não escolhidas" com o resumo do que foi pulado.
  */
-export function ReusableRanking({ huntId, runId, items, sentProductIds, reusable, destinationGroupName, onChanged }: ReusableRankingProps) {
+export function ReusableRanking({ huntId, runId, items, sentProductIds, repeatedProductIds, reusable, destinationGroupName, onChanged }: ReusableRankingProps) {
   const { user } = useAuth();
   const isSuperAdmin = user?.isSuperAdmin === true;
   const blurGroup = useBlur('offerHunter.groupNames');
@@ -39,13 +41,20 @@ export function ReusableRanking({ huntId, runId, items, sentProductIds, reusable
   const sender = useRankingSend(huntId, runId);
   // Marcados aqui na hora; a execução recarregada traz a lista oficial
   const [justSent, setJustSent] = useState<string[]>([]);
+  // Pulados como REPEATED no "Enviar todas" (até a execução recarregada trazer a lista oficial)
+  const [justRepeated, setJustRepeated] = useState<string[]>([]);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [skipped, setSkipped] = useState<{ productId: string; reason: string }[]>([]);
 
   const sent = useMemo(() => new Set([...sentProductIds, ...justSent]), [sentProductIds, justSent]);
-  const pendingCount = items.filter((i) => !i.chosen && !sent.has(i.productId)).length;
+  const repeated = useMemo(
+    () => new Set([...repeatedProductIds, ...justRepeated].filter((id) => !sent.has(id))),
+    [repeatedProductIds, justRepeated, sent],
+  );
+  const isPending = (i: HuntRankingItem) => !i.chosen && !sent.has(i.productId) && !repeated.has(i.productId);
+  const pendingCount = items.filter(isPending).length;
   const group = blurGroup ? null : destinationGroupName;
   const titleOf = (productId: string) => items.find((i) => i.productId === productId)?.title || t.ranking.noTitle;
 
@@ -74,7 +83,7 @@ export function ReusableRanking({ huntId, runId, items, sentProductIds, reusable
   const sendAll = async () => {
     setError(null);
     setSkipped([]);
-    const pending = items.filter((i) => !i.chosen && !sent.has(i.productId)).map((i) => i.productId);
+    const pending = items.filter(isPending).map((i) => i.productId);
     const out = await sender.sendAll();
     if (!out.ok) {
       setError(rankingReuseErrorMessage(out.code));
@@ -86,6 +95,8 @@ export function ReusableRanking({ huntId, runId, items, sentProductIds, reusable
     const done = pending.filter((id) => !skippedIds.has(id));
     const confirmed = done.length === out.result.sent ? done : [];
     markSent(confirmed);
+    const rep = out.result.skipped.filter((s) => s.reason === 'REPEATED').map((s) => s.productId);
+    if (rep.length) setJustRepeated((s) => [...s, ...rep]);
     setSkipped(out.result.skipped);
     setToast(ru.sendAllResult(out.result.sent, out.result.skipped.length));
     onChanged(confirmed);
@@ -103,7 +114,7 @@ export function ReusableRanking({ huntId, runId, items, sentProductIds, reusable
     <Stack spacing={1.25}>
       {isSuperAdmin && (
         <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <Tooltip title={!reusable ? ru.expiredTooltip : pendingCount === 0 ? ru.sendAllNone : ru.sendAllTooltip} arrow describeChild enterTouchDelay={0}>
+          <Tooltip title={!reusable ? ru.expiredTooltip : pendingCount === 0 ? ru.sendAllNone : ru.sendAllTooltip(pendingCount)} arrow describeChild enterTouchDelay={0}>
             <span>
               <Button
                 size="small"
@@ -113,7 +124,7 @@ export function ReusableRanking({ huntId, runId, items, sentProductIds, reusable
                 onClick={() => setConfirm({ kind: 'all', count: pendingCount })}
                 startIcon={sender.sendingAll ? <CircularProgress size={14} color="inherit" aria-hidden /> : <AppIcon icon={SendHorizontal} size="inline" />}
               >
-                {sender.sendingAll ? ru.sending : ru.sendAll}
+                {sender.sendingAll ? ru.sending : ru.sendAll(pendingCount)}
               </Button>
             </span>
           </Tooltip>
@@ -140,6 +151,7 @@ export function ReusableRanking({ huntId, runId, items, sentProductIds, reusable
         items={items}
         reuse={{
           sentProductIds: sent,
+          repeatedProductIds: repeated,
           reusable,
           busyProductId: sender.busyProductId,
           busy: sender.busy || confirm !== null,

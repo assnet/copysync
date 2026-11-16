@@ -169,6 +169,8 @@ export interface HuntRun {
   ranking?: HuntRankingItem[] | null;
   /** Só no detalhe: produtos com achado desta execução (escolhidos ou reaproveitados do ranking). */
   sentProductIds?: string[];
+  /** Só no detalhe: produtos do ranking já enviados por OUTRA execução da caçada no prazo de repetição. */
+  repeatedProductIds?: string[];
   /** Só no detalhe: ranking ainda reaproveitável (execução com até 48 h). Ausente = não. */
   rankingReusable?: boolean;
   startedAt: string;

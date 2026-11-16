@@ -9,6 +9,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — app 0.122.0 / api 0.98.0 — Caçador: ranking marca o que outra busca já enviou
+
+#### app
+
+- **`RankingTable.tsx`** / **`ReusableRanking.tsx`** — produto do ranking já enviado por **outra** execução da caçada no prazo de repetição mostra o selo "Já enviada (outra busca)" (Tooltip) no lugar do "Enviar"; antes o botão aparecia e o envio só era recusado ao clicar. "Enviar todas as não escolhidas (N)" mostra quantas faltam (sem enviadas desta ou de outra busca) e fica desabilitado com 0; pulado como `REPEATED` vira selo na hora.
+- **`useRunRankings.ts`**, **`types.ts`**, **`strings.ts`**, **`HuntRunsTab.tsx`**, **`OfferHunterDetailPage.tsx`** — campo `repeatedProductIds` e textos.
+
 ### Added — app 0.121.0 / api 0.97.0 — Caçador: reaproveitar o ranking e flag "Só super admin"
 
 #### app

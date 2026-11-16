@@ -231,6 +231,7 @@ export const runsPageResponse = envelope(obj({ items: { type: 'array', items: ru
 export const runResponse = envelope(obj({
   ...runSchema.properties,
   sentProductIds: { type: 'array', items: { type: 'string' } },
+  repeatedProductIds: { type: 'array', items: { type: 'string' } },
   rankingReusable: { type: 'boolean' },
 }));
 export const rankingItemParamSchema = {

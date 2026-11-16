@@ -433,15 +433,18 @@ export const offerHunterStrings = {
     sendTooltip: 'Envia esta oferta ao grupo de destino agora, com link e preço atualizados. Não conta no limite de ofertas do dia.',
     expiredTooltip: 'Ranking com mais de 48 h: rode uma busca nova para preços atuais',
     sent: 'Enviada',
+    repeated: 'Já enviada (outra busca)',
+    repeatedTooltip: 'Outra busca desta caçada já enviou este produto dentro do prazo de repetição. Não será enviado de novo.',
     confirmTitle: 'Enviar esta oferta?',
     confirmText: (group: string | null) =>
       `A oferta vai para o grupo de destino atual${group ? ` "${group}"` : ''}, com link e preço atualizados. Não conta no limite de ofertas do dia.`,
     confirmSend: 'Enviar',
     confirmCancel: 'Voltar',
     sentNotice: 'Oferta enviada: está na fila de envio.',
-    sendAll: 'Enviar todas as não escolhidas',
-    sendAllTooltip: 'Envia em sequência todas as ofertas não escolhidas e ainda não enviadas desta execução. Para no primeiro bloqueio de conta, aviso ou plano.',
-    sendAllNone: 'Nenhuma oferta não escolhida para enviar.',
+    sendAll: (n: number) => `Enviar todas as não escolhidas (${n})`,
+    sendAllTooltip: (n: number) =>
+      `Envia em sequência ${n === 1 ? 'a oferta não escolhida que ainda falta' : `as ${n} ofertas não escolhidas que ainda faltam`}, sem as já enviadas por esta ou outra busca. Para no primeiro bloqueio de conta, aviso ou plano.`,
+    sendAllNone: 'Nada a enviar: as ofertas não escolhidas já foram enviadas por esta ou outra busca.',
     sendAllTitle: (n: number) => `Enviar ${n} ${plural(n, 'oferta', 'ofertas')}?`,
     sendAllText: (n: number, group: string | null) =>
       `${n} ${plural(n, 'oferta não escolhida vai', 'ofertas não escolhidas vão')} para o grupo de destino atual${group ? ` "${group}"` : ''}, uma a uma, com link e preço atualizados. Não contam no limite de ofertas do dia.`,

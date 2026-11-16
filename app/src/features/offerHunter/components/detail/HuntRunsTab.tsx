@@ -68,6 +68,7 @@ function RunRankingPanel({ run, rankings, destinationGroupName, onRankingSent }:
       runId={run.id}
       items={entry.items}
       sentProductIds={entry.sentProductIds}
+      repeatedProductIds={entry.repeatedProductIds}
       reusable={entry.reusable}
       destinationGroupName={destinationGroupName}
       onChanged={(ids) => {

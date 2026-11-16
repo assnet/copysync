@@ -93,7 +93,7 @@ const resumeHunt = lazy(() => new ResumeOfferHuntUseCase(crudDeps()));
 const getHunt    = lazy(() => new GetOfferHuntUseCase(crudDeps()));
 const listHunts  = lazy(() => new ListOfferHuntsUseCase(crudDeps()));
 const listRuns   = lazy(() => new ListOfferHuntRunsUseCase({ hunts: hunts(), runs: runs() }));
-const getRun     = lazy(() => new GetOfferHuntRunUseCase({ runs: runs(), finds: finds() }));
+const getRun     = lazy(() => new GetOfferHuntRunUseCase({ runs: runs(), hunts: hunts(), finds: finds() }));
 const sendRankingItem = lazy(() => new SendRankingItemUseCase({
   hunts: hunts(),
   runs: runs(),
