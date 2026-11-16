@@ -67,6 +67,13 @@ não consultam. Falha da consulta: 503 sem recibo (a central retenta); 401/403, 
 retry e logam `error` (motivo, status e contador por motivo desde o boot, `failuresSinceBoot`; sem PII), timeout/rede/5xx logam
 `warn`. O contador é só observabilidade por processo, não decide nada.
 
+**Contrato da renovação Cakto (REN-01, travado por teste na central).** Cada ciclo cobrado vira **assinatura nova** na central
+(`data.id` novo → linha `ACTIVE` + `subscription.activated`); `paidCycles` fica 0 e **nunca** chega `subscription.renewed` da
+Cakto. A do ciclo anterior vence e o job da central grava `subscription.expired` (seq maior). `data.id` repetido não estende nada.
+`purchase_refused` é ignorado pela central (sem `subscription.payment_failed` da Cakto). Assinatura do mesmo cliente em outra
+aplicação nunca muda. Por isso o acesso aqui é **sempre** decidido pela união acima; não cortar no `expired` nem depender de
+`renewed`/`paidCycles` para a Cakto. Detalhe na central: `pulsosocial_api/api/docs/hub-application.md`, seção "Renovação".
+
 **Bloqueio do super-admin (`Tenant.adminBlockedAt`, api 0.71.0).** `UpdateTenantStatusUseCase` com origem SUPER_ADMIN grava
 `adminBlockedAt = agora` ao pôr SUSPENDED/CANCELLED e limpa ao pôr ACTIVE, **sempre** (inclusive sem mudança de status) e
 sempre audita (`meta.adminBlocked`); `suspendedAt` só é gravado na saída de ACTIVE. Webhook e reconciliação nunca mudam o
