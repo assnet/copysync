@@ -106,6 +106,10 @@ describe('featureUsagePresenter × contrato', () => {
     const body = presentFeatureUsageSummary(await useCases().summary.execute(INPUT));
     expect(sameShape(body, fixture('summary.response.json'))).toEqual([]);
     expect(body.features.find((f) => f.key === 'link_rotation')!.coverageReasons).toEqual(['EXISTING_ONLY']);
+    // P3: recorrência e retenção preenchidas no resumo (sem leitor de direito, adoção `null`)
+    const generator = body.features.find((f) => f.key === 'offer_generator')!;
+    expect(generator).toMatchObject({ eligibleTenants: null, adoption: null, recurringTenants: 0 });
+    expect(typeof generator.retainedTenants).toBe('number');
   });
 
   it('detalhe bate com contracts/feature-usage/feature-detail.response.json', async () => {

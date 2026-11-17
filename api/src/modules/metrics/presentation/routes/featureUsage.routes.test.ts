@@ -10,6 +10,7 @@ import { PrismaLiveFeatureUsageReader } from '../../infrastructure/repositories/
 import { PrismaUsageTenantDirectory } from '../../infrastructure/repositories/PrismaUsageTenantDirectory';
 import { PrismaDailyFeatureUsageReader } from '../../infrastructure/repositories/PrismaDailyFeatureUsageReader';
 import { PrismaFeatureUsageRollupStateRepository } from '../../infrastructure/repositories/PrismaFeatureUsageRollupStateRepository';
+import { PrismaFeatureEligibilityReader } from '../../infrastructure/repositories/PrismaFeatureEligibilityReader';
 import type { UsageTenantDirectoryEntry } from '../../domain/contracts/IUsageTenantDirectory';
 import { resolveUsageQuery } from '../schemas/featureUsage.schema';
 
@@ -63,7 +64,11 @@ function mockReads() {
   const state = vi.spyOn(PrismaFeatureUsageRollupStateRepository.prototype, 'get')
     .mockResolvedValue({ backfillCompletedAt: null, backfilledFrom: null, backfillStopReason: null, backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 });
   const daily = vi.spyOn(PrismaDailyFeatureUsageReader.prototype, 'read').mockResolvedValue({ rows: [], firstDataDay: {} });
-  return { read, list, names, audit, state, daily };
+  // P3: direito ao recurso; t1 e t3 (interna) com direito ao gerador
+  const eligibility = vi.spyOn(PrismaFeatureEligibilityReader.prototype, 'read').mockImplementation(async (features) =>
+    new Map(features.map((f) => [f.key, new Set(f.key === 'offer_generator' ? ['t1', 't3'] : [])])),
+  );
+  return { read, list, names, audit, state, daily, eligibility };
 }
 
 describe('auth', () => {
@@ -108,7 +113,33 @@ describe('GET /summary', () => {
     expect(keys).not.toContain('panel_login');
     expect(keys).not.toContain('link_rotation_click');
     expect(read).toHaveBeenCalledTimes(1);
-    expect(data.features.find((f: { key: string }) => f.key === 'offer_generator')).toMatchObject({ uses: 4, activeTenants: 1, adoption: null });
+    // P3: só t1 no recorte com direito (t3 é interna); recorrência padrão N = 3; anterior sem uso
+    expect(data.features.find((f: { key: string }) => f.key === 'offer_generator')).toMatchObject({
+      uses: 4, activeTenants: 1, eligibleTenants: 1, adoption: 1, recurringTenants: 0, retainedTenants: 0,
+    });
+    expect(data.features.find((f: { key: string }) => f.key === 'storefront')).toMatchObject({ eligibleTenants: 0, adoption: null });
+  });
+
+  it('recurringDays 2, 3 e 5 aceitos; 4 = 400 de validação, sem ler', async () => {
+    const { read, eligibility } = mockReads();
+    for (const n of [2, 3, 5]) expect((await app.inject({ method: 'GET', url: `${URL}/summary?recurringDays=${n}` })).statusCode).toBe(200);
+    read.mockClear();
+    eligibility.mockClear();
+    const res = await app.inject({ method: 'GET', url: `${URL}/summary?recurringDays=4` });
+    expect(res.statusCode).toBe(400);
+    expect(read).not.toHaveBeenCalled();
+    expect(eligibility).not.toHaveBeenCalled();
+  });
+
+  it('N = 2 não conta quem usou em 1 dia; detalhe não lê o direito e sai null', async () => {
+    const { eligibility } = mockReads();
+    const two = await app.inject({ method: 'GET', url: `${URL}/summary?recurringDays=2` });
+    expect(two.json().data.features.find((f: { key: string }) => f.key === 'offer_generator').recurringTenants).toBe(0);
+    eligibility.mockClear();
+    const detail = await app.inject({ method: 'GET', url: `${URL}/features/offer_generator` });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json().data.feature).toMatchObject({ eligibleTenants: null, adoption: null, recurringTenants: null, retainedTenants: null });
+    expect(eligibility).not.toHaveBeenCalled();
   });
 
   it('sem tenantName, totals.uses nem activeUsers', async () => {

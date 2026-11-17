@@ -11,6 +11,7 @@ import {
   type FeatureUsageKind,
   type FeatureUsageProduct,
 } from '../../domain/services/featureUsageCatalog';
+import { DEFAULT_RECURRING_DAYS, RECURRING_DAYS_OPTIONS, type RecurringDays } from '../../domain/services/featureUsageRetention';
 import { type UsageGranularity, addDays, dayInZone, daysInclusive } from '../../domain/services/featureUsagePeriod';
 import type { FeatureUsageQueryInput } from '../../application/use-cases/GetFeatureUsageSummaryUseCase';
 
@@ -75,6 +76,15 @@ const usageQueryProperties = {
 } as const;
 
 export const usageQuery = { type: 'object', additionalProperties: false, properties: usageQueryProperties } as const;
+
+/** Resumo (P3): `recurringDays` = N da recorrência, só 2, 3 ou 5 (outro valor = 400 de validação). */
+export const usageSummaryQuery = {
+  type: 'object',
+  additionalProperties: false,
+  properties: { ...usageQueryProperties, recurringDays: { type: 'integer', enum: [...RECURRING_DAYS_OPTIONS], default: DEFAULT_RECURRING_DAYS } },
+} as const;
+
+export type UsageSummaryQuerystring = UsageQuerystring & { recurringDays?: RecurringDays };
 
 export const usageTenantsQuery = {
   type: 'object',

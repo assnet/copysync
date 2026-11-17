@@ -13,4 +13,5 @@ Fixtures que amarram a API e o painel sem import entre `api/` e `app/` (`.specs/
 - **Valida (api):** o teste do catálogo compara `catalog.json` com `FEATURE_USAGE_CATALOG`; o teste do presenter compara as respostas com os três exemplos (mesmas chaves e tipos em todos os níveis).
 - **Consome (app):** os testes de `features/featureUsage` exigem texto para cada chave e código e validam os exemplos contra `types.ts`.
 - Os testes leem os arquivos por caminho (`fs`). Nada daqui entra em build, imagem ou código de produção.
+- P3: o resumo traz `eligibleTenants`, `adoption`, `recurringTenants` e `retainedTenants` preenchidos (`adoption`/`retainedTenants` podem ser `null`); no detalhe os quatro seguem `null`.
 - Dados fictícios. Mudou o contrato? Atualize estes arquivos no mesmo commit.

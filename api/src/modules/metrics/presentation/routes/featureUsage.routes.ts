@@ -9,10 +9,12 @@ import {
 } from '../../infrastructure/featureUsageContainer';
 import {
   type UsageQuerystring,
+  type UsageSummaryQuerystring,
   resolveUsageQuery,
   usageFeatureDetailResponse,
   usageFeatureParams,
   usageQuery,
+  usageSummaryQuery,
   usageSummaryResponse,
   usageTenantsQuery,
   usageTenantsResponse,
@@ -33,16 +35,19 @@ const tags = ['Feature usage (admin)'];
  * responde 503 `USAGE_METRICS_READ_UNAVAILABLE`.
  */
 export async function featureUsageRoutes(app: FastifyInstance): Promise<void> {
-  app.get<{ Querystring: UsageQuerystring }>('/summary', {
+  app.get<{ Querystring: UsageSummaryQuerystring }>('/summary', {
     preHandler,
     schema: {
       tags,
-      summary: 'Uso dos recursos no período (padrão 30 dias): contas ativas, ranking por recurso, por plano e série',
-      querystring: usageQuery,
+      summary: 'Uso dos recursos no período (padrão 30 dias): contas ativas, ranking por recurso, por plano, série, adoção e recorrência (recurringDays 2|3|5)',
+      querystring: usageSummaryQuery,
       response: { 200: usageSummaryResponse },
     },
   }, async (request, reply) => {
-    const out = await getFeatureUsageSummaryUseCase().execute(resolveUsageQuery(request.query, new Date()));
+    const out = await getFeatureUsageSummaryUseCase().execute({
+      ...resolveUsageQuery(request.query, new Date()),
+      recurringDays: request.query.recurringDays,
+    });
     httpResponse.ok(reply, presentFeatureUsageSummary(out));
     return reply;
   });

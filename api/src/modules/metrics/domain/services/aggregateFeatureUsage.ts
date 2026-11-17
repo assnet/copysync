@@ -9,6 +9,7 @@ import {
   featuresFor,
 } from './featureUsageCatalog';
 import { type UsagePeriod, addDays, bucketOf, dataFromOf, dayInZone } from './featureUsagePeriod';
+import { type RecurringDays, featureRetentionStats } from './featureUsageRetention';
 
 /**
  * Agregação pura do "Uso dos recursos" (docs: .specs/features/usage-metrics, design §3/§4/§5).
@@ -84,6 +85,16 @@ export interface FeatureUsageItem {
   lastUsedDay: string | null;
   byKind: FeatureUsageKindStat[];
   byPlan: FeatureUsagePlanStat[];
+  /** P3: contas do recorte com direito hoje (`null` sem leitura de direito). */
+  eligibleTenants: number | null;
+  /** P3: contas que usaram ÷ contas com direito, limitada a 1 (`null` sem direito lido ou com 0 contas com direito). */
+  adoption: number | null;
+  /** P3: contas que usaram sem ter direito hoje (contam na adoção; fora da resposta HTTP). */
+  usedWithoutEligibility: number;
+  /** P3: contas com uso em ≥ N dias distintos (`null` sem `recurringDays`). */
+  recurringTenants: number | null;
+  /** P3: contas que usaram no anterior e no atual (`null` sem `recurringDays` ou sem base no período anterior). */
+  retainedTenants: number | null;
 }
 
 export interface FeatureUsageAggregate {
@@ -133,6 +144,13 @@ export interface AggregateFeatureUsageInput {
    * não com o primeiro dia com uso. Ausente com `daily` = cobertura desde o primeiro dia agregado.
    */
   coverage?: FeatureUsageDailyCoverage | null;
+  /**
+   * P3: contas com direito a cada recurso hoje (todas as contas; aqui entra só o recorte da família). Ausente =
+   * adoção `null`.
+   */
+  eligibility?: ReadonlyMap<string, ReadonlySet<string>>;
+  /** P3: N da recorrência. Ausente = recorrência e retenção `null`. */
+  recurringDays?: RecurringDays;
 }
 
 const FAMILY_PLANS: Record<FeatureUsagePlanFamily, readonly string[]> = {
@@ -347,6 +365,17 @@ export function aggregateFeatureUsage(input: AggregateFeatureUsageInput): Featur
     if (!hasBase && first !== null) everyHasBase = false;
     const reasons = coverageReasonsFor(feature, period, today, source, first, input.cutovers?.[feature.key], input.coverage, coveredFrom);
 
+    const eligibleAll = input.eligibility?.get(feature.key);
+    const eligible = eligibleAll ? new Set([...familyTenants.keys()].filter((id) => eligibleAll.has(id))) : null;
+    const retention = featureRetentionStats({
+      current: cur,
+      previous: prev,
+      eligible: input.eligibility ? (eligible ?? new Set()) : null,
+      recurringDays: input.recurringDays ?? 3,
+      hasPreviousBase: hasBase,
+    });
+    const withRecurrence = input.recurringDays !== undefined;
+
     featureSeries[feature.key] = bucketKeys.map((k) => ({
       bucket: k,
       uses: bucketAcc.get(k)!.uses,
@@ -380,6 +409,11 @@ export function aggregateFeatureUsage(input: AggregateFeatureUsageInput): Featur
           activeTenants: planAcc.get(p.plan)?.tenants.size ?? 0,
           uses: planAcc.get(p.plan)?.uses ?? 0,
         })),
+      eligibleTenants: retention.eligibleTenants,
+      adoption: retention.adoption,
+      usedWithoutEligibility: retention.usedWithoutEligibility,
+      recurringTenants: withRecurrence ? retention.recurringTenants : null,
+      retainedTenants: withRecurrence ? retention.retainedTenants : null,
     };
   });
 

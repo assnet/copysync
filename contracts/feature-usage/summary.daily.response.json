@@ -105,10 +105,10 @@
           "uses": 0
         }
       ],
-      "eligibleTenants": null,
-      "adoption": null,
-      "recurringTenants": null,
-      "retainedTenants": null
+      "eligibleTenants": 12,
+      "adoption": 0.6667,
+      "recurringTenants": 5,
+      "retainedTenants": 4
     },
     {
       "key": "offer_hunter",
@@ -167,9 +167,9 @@
           "uses": 0
         }
       ],
-      "eligibleTenants": null,
-      "adoption": null,
-      "recurringTenants": null,
+      "eligibleTenants": 7,
+      "adoption": 0.4286,
+      "recurringTenants": 2,
       "retainedTenants": null
     },
     {
@@ -226,9 +226,9 @@
           "uses": 0
         }
       ],
-      "eligibleTenants": null,
-      "adoption": null,
-      "recurringTenants": null,
+      "eligibleTenants": 15,
+      "adoption": 0.1333,
+      "recurringTenants": 1,
       "retainedTenants": null
     },
     {
@@ -270,9 +270,9 @@
           "uses": 0
         }
       ],
-      "eligibleTenants": null,
-      "adoption": null,
-      "recurringTenants": null,
+      "eligibleTenants": 3,
+      "adoption": 0.6667,
+      "recurringTenants": 1,
       "retainedTenants": null
     },
     {
@@ -326,9 +326,9 @@
           "uses": 0
         }
       ],
-      "eligibleTenants": null,
+      "eligibleTenants": 0,
       "adoption": null,
-      "recurringTenants": null,
+      "recurringTenants": 0,
       "retainedTenants": null
     }
   ],

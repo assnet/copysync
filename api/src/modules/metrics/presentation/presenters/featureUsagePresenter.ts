@@ -5,7 +5,7 @@ import type { ListFeatureUsageTenantsOutput } from '../../application/use-cases/
 
 /**
  * Respostas de `/admin/usage` (design §5; contrato em `contracts/feature-usage/`). Só chaves e números: rótulo é
- * do painel. Adoção, recorrência e retenção entram na P3 (`null` até lá).
+ * do painel. Adoção, recorrência e retenção (P3) só no resumo; no detalhe saem `null`.
  */
 function presentFeature(item: FeatureUsageItem) {
   return {
@@ -26,10 +26,10 @@ function presentFeature(item: FeatureUsageItem) {
     lastUsedDay: item.lastUsedDay,
     byKind: item.byKind.map((k) => ({ kind: k.kind, uses: k.uses, activeTenants: k.activeTenants })),
     byPlan: item.byPlan.map((p) => ({ plan: p.plan, tenants: p.tenants, activeTenants: p.activeTenants, uses: p.uses })),
-    eligibleTenants: null as number | null,
-    adoption: null as number | null,
-    recurringTenants: null as number | null,
-    retainedTenants: null as number | null,
+    eligibleTenants: item.eligibleTenants,
+    adoption: item.adoption,
+    recurringTenants: item.recurringTenants,
+    retainedTenants: item.retainedTenants,
   };
 }
 

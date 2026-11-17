@@ -364,6 +364,54 @@ describe('séries', () => {
   });
 });
 
+describe('adoção, recorrência e retenção (P3)', () => {
+  const item = (out: ReturnType<typeof run>, key: string) => out.features.find((f) => f.key === key)!;
+  // P30: 2026-10-19..2026-11-17; anterior 2026-09-19..2026-10-18
+  const rows = [
+    r('2026-11-01', 't1', 'storefront', 'ACTION'),
+    r('2026-11-02', 't1', 'storefront', 'ACTION'),
+    r('2026-11-03', 't1', 'storefront', 'ACTION'),
+    r('2026-11-03', 't2', 'storefront', 'ACTION'),
+    r('2026-10-01', 't1', 'storefront', 'ACTION'),
+    r('2026-11-05', 't4', 'storefront', 'ACTION'), // interna: fora do recorte padrão
+  ];
+  const eligibility = new Map([['storefront', new Set(['t1', 't4', 't5'])]]);
+
+  it('sem leitura de direito nem N: os quatro campos null', () => {
+    const f = item(run(rows), 'storefront');
+    expect(f).toMatchObject({ eligibleTenants: null, adoption: null, recurringTenants: null, retainedTenants: null });
+  });
+
+  it('denominador = contas com direito dentro do recorte (status, interna, família); quem usou sem direito é sinalizado', () => {
+    const f = item(run(rows, { eligibility, recurringDays: 3 }), 'storefront');
+    // t4 interna e t5 suspensa saem; sobra t1. t1 e t2 usaram → adoção limitada a 1, t2 sinalizada
+    expect(f.eligibleTenants).toBe(1);
+    expect(f.adoption).toBe(1);
+    expect(f.usedWithoutEligibility).toBe(1);
+    const all = item(run(rows, { eligibility, recurringDays: 3, filters: { includeInternal: true, tenantStatus: 'ALL' } }), 'storefront');
+    expect(all.eligibleTenants).toBe(3);
+    expect(all.adoption).toBe(1); // t1, t2 e t4 usaram ÷ 3 com direito
+  });
+
+  it('recorrência por N e retenção contra o período anterior', () => {
+    expect(item(run(rows, { eligibility, recurringDays: 2 }), 'storefront').recurringTenants).toBe(1);
+    expect(item(run(rows, { eligibility, recurringDays: 5 }), 'storefront').recurringTenants).toBe(0);
+    expect(item(run(rows, { eligibility, recurringDays: 3 }), 'storefront').retainedTenants).toBe(1);
+  });
+
+  it('retenção null quando o recurso não tem base no período anterior', () => {
+    const f = item(run(rows, { eligibility, recurringDays: 3, firstDataDay: { ...FIRST, storefront: '2026-10-01' } }), 'storefront');
+    expect(f.usesPrevious).toBeNull();
+    expect(f.retainedTenants).toBeNull();
+    expect(f.recurringTenants).toBe(1);
+  });
+
+  it('recurso sem conjunto no mapa: 0 com direito e adoção null', () => {
+    const f = item(run(rows, { eligibility, recurringDays: 3 }), 'offer_generator');
+    expect(f).toMatchObject({ eligibleTenants: 0, adoption: null, recurringTenants: 0 });
+  });
+});
+
 describe('rankFeatureTenants', () => {
   it('ordena por usos desc e conta asc, com dias ativos e último uso', () => {
     const rows = [

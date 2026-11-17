@@ -1,5 +1,6 @@
 import { UsageMetricsRangeInvalidError, UsageMetricsReadUnavailableError } from '../../../../shared/errors/internal/UsageMetricsErrors';
 import { logger } from '../../../../shared/logger/logger';
+import type { IFeatureEligibilityReader } from '../../domain/contracts/IFeatureEligibilityReader';
 import type { IFeatureUsageReader } from '../../domain/contracts/IFeatureUsageReader';
 import type { IFeatureUsageRollupStateRepository } from '../../domain/contracts/IFeatureUsageRollupStateRepository';
 import type { IUsageReadGate, UsageReadBudget } from '../../domain/contracts/IUsageReadGate';
@@ -24,6 +25,7 @@ import {
   isCounted,
   sourceOn,
 } from '../../domain/services/featureUsageCatalog';
+import { DEFAULT_RECURRING_DAYS, type RecurringDays } from '../../domain/services/featureUsageRetention';
 import { USAGE_TIME_ZONE, type UsageGranularity, type UsagePeriod, resolveUsagePeriod } from '../../domain/services/featureUsagePeriod';
 
 /** Teto do período lido sob demanda (tabelas de domínio). */
@@ -52,6 +54,8 @@ export interface FeatureUsageQueryInput {
   tenantStatus: UsageTenantStatus | 'ALL';
   includeInternal: boolean;
   tenantId?: string;
+  /** P3, só no resumo: N da recorrência (2, 3 ou 5; padrão 3). Fora do recorte e do cursor. */
+  recurringDays?: RecurringDays;
 }
 
 export interface FeatureUsageRangeOutput {
@@ -82,6 +86,8 @@ export interface FeatureUsageDeps {
   /** Marco do backfill, lido a cada pedido dentro da vaga e do orçamento. */
   rollupState?: Pick<IFeatureUsageRollupStateRepository, 'get'>;
   directory: IUsageTenantDirectory;
+  /** P3: contas com direito a cada recurso (adoção). Sem ele a adoção sai `null`. */
+  eligibility?: IFeatureEligibilityReader;
   gate: IUsageReadGate;
   now?: () => Date;
   catalog?: readonly FeatureUsageDefinition[];
@@ -135,6 +141,8 @@ export interface FeatureUsageRead {
   cutovers: FeatureUsageCutovers;
   /** Cobertura do agregado (do marco), só com `source = daily`. */
   coverage: FeatureUsageDailyCoverage | null;
+  /** P3: direito ao recurso hoje, quando pedido. */
+  eligibility?: Map<string, Set<string>>;
 }
 
 /** Maior teto possível com estas dependências: sem agregado montado, 90 dias; com ele, 400 (o marco decide na vaga). */
@@ -264,6 +272,7 @@ export async function readFeatureUsage(
   deps: FeatureUsageDeps,
   input: FeatureUsageQueryInput,
   features: readonly FeatureUsageDefinition[],
+  options: { eligibility?: boolean } = {},
 ): Promise<FeatureUsageRead> {
   const now = (deps.now ?? (() => new Date()))();
   const period = resolveUsageRequestPeriod(input, now, usageMaxDaysFor(deps));
@@ -280,7 +289,10 @@ export async function readFeatureUsage(
       cutovers: chosen.cutovers,
     });
     const tenants = await deps.directory.list(budget);
+    // Mais uma instrução, em sequência, no mesmo orçamento e na mesma vaga
+    const eligibility = options.eligibility && deps.eligibility ? await deps.eligibility.read(features, budget) : undefined;
     return {
+      eligibility,
       period,
       now,
       rows: read.rows,
@@ -303,8 +315,10 @@ export class GetFeatureUsageSummaryUseCase {
     const catalog = this.deps.catalog ?? FEATURE_USAGE_CATALOG;
     const filters = toUsageFilters(input);
     const features = scopedFeatures(catalog, filters);
-    const read = await readFeatureUsage(this.deps, input, features);
+    const read = await readFeatureUsage(this.deps, input, features, { eligibility: true });
     const agg = aggregateFeatureUsage({
+      eligibility: read.eligibility,
+      recurringDays: input.recurringDays ?? DEFAULT_RECURRING_DAYS,
       rows: read.rows,
       firstDataDay: read.firstDataDay,
       tenants: read.tenants,
