@@ -10,6 +10,7 @@ import { PrismaLinkClickRepository } from '../repositories/PrismaLinkClickReposi
 import { getActiveEngine } from '../../../../shared/engine/activeEngine';
 import { logger } from '../../../../shared/logger/logger';
 import { currentWorkerId } from '../../../../shared/config/workerIdentity';
+import { backgroundProductAccessEnforced } from '../../../tenants/infrastructure/productAccessContainer';
 
 /** Prefixo do lease por processo: `link-rotation-member-sync:<workerId>`. */
 export const MEMBER_SYNC_LEASE = 'link-rotation-member-sync';
@@ -135,7 +136,7 @@ export class LinkRotationMemberSyncJob {
 export function createLinkRotationMemberSyncJob(prisma: PrismaClient): LinkRotationMemberSyncJob {
   const lease = new PrismaLinkRotationJobLease(prisma);
   const workerId = currentWorkerId();
-  const store = new PrismaLinkRotationMemberSyncStore(prisma, workerId);
+  const store = new PrismaLinkRotationMemberSyncStore(prisma, workerId, backgroundProductAccessEnforced());
   const purge = new PurgeExpiredLinkClicksUseCase({ clicks: new PrismaLinkClickRepository(prisma), lease });
   return new LinkRotationMemberSyncJob({
     lease,

@@ -164,6 +164,18 @@ describe('ResolvePublicLinkUseCase', () => {
     expect(clicks.items).toHaveLength(0);
   });
 
+  it('produto Afiliados inativo → unavailable, sem contar clique', async () => {
+    const r = seedRotation();
+    repo.seedGroup(r.id);
+    const asked: string[] = [];
+    deps.products = { has: async (tenantId, product) => { asked.push(`${tenantId}/${product}`); return false; } };
+    expect(await resolve()).toEqual({ kind: 'unavailable' });
+    expect(asked).toEqual([`${r.tenantId}/AFFILIATES`]);
+    expect(clicks.items).toHaveLength(0);
+    deps.products = { has: async () => true };
+    expect((await resolve()).kind).toBe('redirect');
+  });
+
   it('sem salt e sem rodízio no nome → not_found (o hook tenta a página de ofertas)', async () => {
     deps.clickSalt = null;
     expect(await resolve()).toEqual({ kind: 'not_found' });

@@ -1,3 +1,4 @@
+import type { IProductAccessReader } from '../../../tenants/domain/contracts/IProductAccessReader';
 import type { IPublicPageRenderer, PublicPageAddress, RenderedPublicPage } from '../../domain/contracts/IPublicPageRenderer';
 import { StorefrontStatus } from '../../domain/enums/StorefrontEnums';
 import type { StorefrontUseCaseDeps } from './storefrontUseCaseDeps';
@@ -9,10 +10,14 @@ type Deps = Pick<StorefrontUseCaseDeps, 'storefronts' | 'offers' | 'domains' | '
  * Página pública `<slug>.<domínio>` (sem tenant context: o Host decide). Status espelha o rodízio
  * (design §4.2): sem página → null (hook segue o fallback → 404 da marca); tenant não ativo → 503
  * genérica (sem dado do tenant); `PAUSED_BY_PLAN` → 200 pausada; ativa sem publicadas → 200
- * "em breve"; ativa com publicadas → 200, única resposta cacheável.
+ * "em breve"; ativa com publicadas → 200, única resposta cacheável. Produto Afiliados inativo = tenant
+ * não ativo (`products` ausente = sempre ativo; design product-access §3.5).
  */
 export class RenderPublicStorefrontUseCase implements IPublicPageRenderer {
-  constructor(private readonly deps: Deps) {}
+  constructor(
+    private readonly deps: Deps,
+    private readonly products?: Pick<IProductAccessReader, 'has'>,
+  ) {}
 
   async render(address: PublicPageAddress): Promise<RenderedPublicPage | null> {
     const { storefronts, offers, domains, template } = this.deps;
@@ -20,7 +25,7 @@ export class RenderPublicStorefrontUseCase implements IPublicPageRenderer {
     if (!found) return null;
     const { storefront: page, tenantActive } = found;
 
-    if (!tenantActive) return { status: 503, ...template.unavailable(), cacheable: false };
+    if (!tenantActive || (this.products && !(await this.products.has(page.tenantId, 'AFFILIATES')))) return { status: 503, ...template.unavailable(), cacheable: false };
     if (page.status === StorefrontStatus.PAUSED_BY_PLAN) return { status: 200, ...template.paused(page.title), cacheable: false };
 
     const published = publicStorefrontOffers(await offers.listPublished(page.tenantId, page.id));

@@ -12,6 +12,7 @@ import { OFFER_DISPATCH_STATUSES, type OfferDispatchStatus } from '../../domain/
 import { PrismaOfferDispatchMapper as Mapper, type OfferDispatchRawRow } from '../mappers/PrismaOfferDispatchMapper';
 import { POSTING_TIME_ZONE, weekdayInZone } from '../../domain/services/postingWindow';
 import { LANE_TIMEOUT_HOLD_SECONDS } from '../../domain/offerTyping';
+import { excludeAffiliatesInactiveSql } from '../../../tenants/infrastructure/access/affiliatesInactiveFilter';
 import { SESSION_DELETED_REASON } from '../../domain/offerDispatchReasons';
 
 /** Folga (s) no intervalo mínimo da faixa: o claim acontece até um tick depois do `notBefore`. */
@@ -60,6 +61,8 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
   constructor(
     private readonly prisma: PrismaClient,
     private readonly workerId: string,
+    /** `enforce` do acesso por produto: tenant com Afiliados inativo fica fora do claim (fica `QUEUED`, como o suspenso). */
+    private readonly affiliatesGateEnforced = false,
   ) {}
 
   /**
@@ -191,6 +194,7 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
                          AND s."leaseUntil" > (now() AT TIME ZONE 'UTC'))))
                   -- Pausa global do tenant; suspenso/cancelado (billing) fica QUEUED até reativar
                   AND d."tenantId" IN (SELECT "id" FROM "tenants" WHERE "sendingPausedAt" IS NULL AND "status" = 'ACTIVE'::"TenantStatus")
+                  ${excludeAffiliatesInactiveSql(Prisma.sql`d."tenantId"`, this.affiliatesGateEnforced)}
                   -- Oferta do monitoramento fora do horário de postagem da configuração espera a janela abrir
                   AND NOT EXISTS (
                     SELECT 1 FROM "offers" mo

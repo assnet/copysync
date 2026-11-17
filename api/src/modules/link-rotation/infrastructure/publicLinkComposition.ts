@@ -8,6 +8,7 @@ import type { PublicLinkDeps } from '../presentation/routes/publicLink.routes';
 import { ActiveLinkDomainCache } from './cache/ActiveLinkDomainCache';
 import { linkRotationContainer } from './linkRotationContainer';
 import { PrismaLinkRotationPublicStore } from './repositories/PrismaLinkRotationPublicStore';
+import { backgroundProductAccessReader } from '../../tenants/infrastructure/productAccessContainer';
 
 /**
  * Monta a página pública por Host (design.md §4.4; storefront §4.2). Nada toca o banco aqui: o cache de
@@ -26,6 +27,7 @@ export function createPublicLinkDeps(input: Pick<PublicLinkDeps, 'pageRenderers'
     store: new PrismaLinkRotationPublicStore(prisma),
     // Página pública depende só do sal; sem LINK_PROBE_SECRET apenas o teste de DNS fica desligado.
     clickSalt: env.LINK_CLICK_SALT ?? null,
+    products: backgroundProductAccessReader(),
   });
   return {
     domains,
