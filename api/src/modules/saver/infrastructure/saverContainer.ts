@@ -118,7 +118,6 @@ const listSessionGroups = lazy(() => new ListSaverSessionGroupsUseCase({
 const requestExtraction = lazy(() => new RequestSaverExtractionUseCase({
   sessions: sessionReader(),
   entitlements: entitlements(),
-  groups: groups(),
   queue: queue(),
   engine: activeEngine,
 }));

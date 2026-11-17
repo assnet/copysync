@@ -1,14 +1,21 @@
-import type { ISaverExtractionQueue, ReleaseSaverItemInput } from '../../domain/contracts/ISaverExtractionQueue';
+import type { ISaverExtractionQueue, ReleaseSaverItemInput, SaverItemClaim } from '../../domain/contracts/ISaverExtractionQueue';
 import type { ISaverSessionStateStore } from '../../domain/contracts/ISaverSessionStateStore';
 import type { ISaverGroupRepository, SaverGroupScanInput } from '../../domain/contracts/ISaverGroupRepository';
 import type { ISaverMembershipRepository } from '../../domain/contracts/ISaverMembershipRepository';
-import type { IPlatformSaverContactRepository } from '../../domain/contracts/IPlatformSaverContactRepository';
+import type {
+  ApplyGroupReadOutcome,
+  IPlatformSaverContactRepository,
+  SaverContactUsage,
+} from '../../domain/contracts/IPlatformSaverContactRepository';
 import type { PlatformSaverContact, SaverExtraction, SaverExtractionItem, SaverGroup } from '../../domain/entities/SaverEntities';
 import { SaverExtractionItemStatus, SaverExtractionStatus, SaverExtractionTrigger } from '../../domain/enums/SaverEnums';
 import type { MergeGroupReadResult, SaverReadMember } from '../../domain/services/mergeGroupRead';
 import type { ProcessNextSaverItemDeps } from './ProcessNextSaverItemUseCase';
 
 /** Fakes em memória dos contratos do Saver para testes de use case (sem banco). */
+
+/** Hora padrão do pedido nos fakes (o `NOW` dos testes do passo). */
+export const FAKE_ITEM_CREATED_AT = new Date('2026-11-17T12:00:00.000Z');
 
 const PENDING = new Set<string>([SaverExtractionItemStatus.QUEUED, SaverExtractionItemStatus.RUNNING]);
 
@@ -18,19 +25,24 @@ export class FakeSaverQueue implements ISaverExtractionQueue {
   releases: ReleaseSaverItemInput[] = [];
   /** Sessões com `deletedAt` (exclusão lógica). */
   deletedSessions = new Set<string>();
+  /** Usuários super admin (para `requestedBySuperAdmin`). */
+  superAdmins = new Set<string>();
 
-  addItem(partial: Partial<SaverExtractionItem> & Pick<SaverExtractionItem, 'id' | 'sessionId' | 'tenantId' | 'groupId'>): SaverExtractionItem {
+  addItem(
+    partial: Partial<SaverExtractionItem> & Pick<SaverExtractionItem, 'id' | 'sessionId' | 'tenantId' | 'groupId'>,
+    requestedByUserId: string | null = null,
+  ): SaverExtractionItem {
     const extractionId = partial.extractionId ?? 'ext-1';
     if (!this.extractions.some((e) => e.id === extractionId)) {
       this.extractions.push({
-        id: extractionId, tenantId: partial.tenantId, sessionId: partial.sessionId, requestedByUserId: null,
+        id: extractionId, tenantId: partial.tenantId, sessionId: partial.sessionId, requestedByUserId,
         trigger: SaverExtractionTrigger.MANUAL, status: SaverExtractionStatus.QUEUED, totalGroups: 0, doneGroups: 0,
         failedGroups: 0, membersFound: 0, newContacts: 0, createdAt: new Date(0), finishedAt: null,
       });
     }
     const item: SaverExtractionItem = {
       extractionId, status: SaverExtractionItemStatus.QUEUED, attempts: 0, nextAttemptAt: new Date(0),
-      lockedUntil: null, errorCode: null, finishedAt: null, ...partial,
+      lockedUntil: null, errorCode: null, finishedAt: null, createdAt: FAKE_ITEM_CREATED_AT, ...partial,
     };
     this.extractions.find((e) => e.id === extractionId)!.totalGroups += 1;
     this.items.push(item);
@@ -38,6 +50,10 @@ export class FakeSaverQueue implements ISaverExtractionQueue {
   }
 
   async enqueue(): Promise<SaverExtraction> {
+    throw new Error('not used');
+  }
+
+  async requestGroups(): Promise<SaverExtraction> {
     throw new Error('not used');
   }
 
@@ -55,8 +71,15 @@ export class FakeSaverQueue implements ISaverExtractionQueue {
     return { ...item };
   }
 
-  async release(input: ReleaseSaverItemInput): Promise<void> {
+  /** Mesma posse do SQL: item `RUNNING` com o `lockedUntil` do claim. */
+  owns(itemId: string, lockedUntil: Date | null): boolean {
+    const item = this.items.find((i) => i.id === itemId);
+    return !!item && item.status === SaverExtractionItemStatus.RUNNING && item.lockedUntil?.getTime() === lockedUntil?.getTime();
+  }
+
+  async release(input: ReleaseSaverItemInput): Promise<boolean> {
     this.releases.push(input);
+    if (!this.owns(input.itemId, input.claimedLockUntil)) return false;
     const item = this.items.find((i) => i.id === input.itemId)!;
     Object.assign(item, {
       status: input.status, attempts: input.attempts, nextAttemptAt: input.nextAttemptAt,
@@ -68,6 +91,7 @@ export class FakeSaverQueue implements ISaverExtractionQueue {
     if (input.status === SaverExtractionItemStatus.DONE) ext.doneGroups += 1;
     if (input.status === SaverExtractionItemStatus.FAILED) ext.failedGroups += 1;
     this.close(input.finishedAt ?? input.nextAttemptAt);
+    return true;
   }
 
   async findExtraction(tenantId: string, id: string): Promise<SaverExtraction | null> {
@@ -83,7 +107,16 @@ export class FakeSaverQueue implements ISaverExtractionQueue {
   }
 
   async cancelPendingByTenant(tenantId: string, now: Date): Promise<number> {
-    return this.cancelWhere((i) => i.tenantId === tenantId, now);
+    return this.cancelWhere((i) => i.tenantId === tenantId && !this.bySuperAdmin(i.extractionId), now);
+  }
+
+  async requestedBySuperAdmin(extractionId: string): Promise<boolean> {
+    return this.bySuperAdmin(extractionId);
+  }
+
+  private bySuperAdmin(extractionId: string): boolean {
+    const by = this.extractions.find((e) => e.id === extractionId)?.requestedByUserId;
+    return !!by && this.superAdmins.has(by);
   }
 
   async countScansSince(): Promise<number> {
@@ -181,13 +214,17 @@ export class FakeSaverGroups implements ISaverGroupRepository {
   async upsertMany(): Promise<SaverGroup[]> {
     return [];
   }
-  async recordScan(_tenantId: string, groupId: string, scan: SaverGroupScanInput): Promise<void> {
+  async recordScan(tenantId: string, groupId: string, scan: SaverGroupScanInput): Promise<void> {
+    if (this.groups.find((g) => g.tenantId === tenantId && g.id === groupId)?.removedAt) return;
     this.scans.push({ groupId, scan });
   }
   async countActive(tenantId: string): Promise<number> {
     return (await this.listActive(tenantId)).length;
   }
-  async markRemoved(): Promise<void> {}
+  async markRemoved(tenantId: string, groupId: string, at: Date): Promise<void> {
+    const g = this.groups.find((x) => x.tenantId === tenantId && x.id === groupId && !x.removedAt);
+    if (g) g.removedAt = at;
+  }
 }
 
 /**
@@ -203,19 +240,34 @@ export class FakeSaverStore {
   applyError: Error | null = null;
   private seq = 0;
 
-  constructor(private readonly groups: FakeSaverGroups) {}
+  constructor(
+    private readonly groups: FakeSaverGroups,
+    private readonly queue: FakeSaverQueue,
+  ) {}
 
   readonly platformContacts: IPlatformSaverContactRepository = {
     findByKeys: async (phones, lids) =>
       this.contacts.filter((c) => (c.phone && phones.includes(c.phone)) || (c.lid && lids.includes(c.lid))),
     list: async () => [],
     findLinks: async () => [],
-    applyGroupRead: async (tenantId: string, groupId: string, result: MergeGroupReadResult) => {
+    applyGroupRead: async (
+      tenantId: string,
+      groupId: string,
+      result: MergeGroupReadResult,
+      claim: SaverItemClaim,
+      fitsContacts: (usage: SaverContactUsage) => boolean,
+    ): Promise<ApplyGroupReadOutcome> => {
       if (this.applyError) {
         const err = this.applyError;
         this.applyError = null;
         throw err;
       }
+      const group = this.groups.groups.find((g) => g.tenantId === tenantId && g.id === groupId);
+      if (!this.queue.owns(claim.itemId, claim.lockedUntil) || group?.removedAt) return { status: 'CLAIM_LOST' };
+      const existingIds = [...new Set(result.membershipUpserts.flatMap((m) => ('existingId' in m.contact ? [m.contact.existingId] : [])))];
+      const used = await this.memberships.countDistinctContacts(tenantId);
+      const firstLinks = await this.memberships.countContactsWithoutTenantLink(tenantId, existingIds);
+      if (!fitsContacts({ used, adding: firstLinks + result.contactInserts.length })) return { status: 'LIMIT_REACHED' };
       this.applied += 1;
       const insertedIds = result.contactInserts.map((c) => {
         const id = `c${++this.seq}`;
@@ -228,7 +280,7 @@ export class FakeSaverStore {
         if (link) link.leftAt = null;
         else this.links.push({ tenantId, groupId, contactId, leftAt: null });
       }
-      return { insertedIds, created: insertedIds.length };
+      return { status: 'APPLIED', insertedIds, created: insertedIds.length };
     },
   };
 
@@ -261,6 +313,8 @@ export interface SaverStepHarness {
   /** Membros devolvidos por `groupJid`; `Error` = engine lança. */
   reads: Map<string, SaverReadMember[] | Error>;
   engineCalls: { sessionId: string; groupJid: string }[];
+  /** Roda durante a leitura do engine (simula remoção/cancelamento concorrente). */
+  duringRead: (() => Promise<void>) | null;
   /** Tenants com produto SAVER ativo; `Error` = leitura do acesso falha. */
   activeTenants: Set<string>;
   productError: Error | null;
@@ -271,11 +325,12 @@ export function makeSaverStepHarness(random: () => number = () => 0): SaverStepH
   const queue = new FakeSaverQueue();
   const states = new FakeSaverSessionStates();
   const groups = new FakeSaverGroups();
-  const store = new FakeSaverStore(groups);
+  const store = new FakeSaverStore(groups, queue);
   const h: SaverStepHarness = {
     queue, states, groups, store,
     reads: new Map(),
     engineCalls: [],
+    duringRead: null,
     activeTenants: new Set(),
     productError: null,
     entitlements: new Map(),
@@ -288,6 +343,7 @@ export function makeSaverStepHarness(random: () => number = () => 0): SaverStepH
     engine: {
       getGroupMembers: async (sessionId, groupJid) => {
         h.engineCalls.push({ sessionId, groupJid });
+        if (h.duringRead) await h.duringRead();
         const read = h.reads.get(groupJid) ?? [];
         if (read instanceof Error) throw read;
         return read;

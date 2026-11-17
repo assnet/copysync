@@ -96,7 +96,7 @@ export const PrismaSaverMapper = {
   },
 
   /** Também serve a linha crua do `RETURNING` do claim (mesmas colunas). */
-  item(row: Pick<PrismaSaverExtractionItem, Exclude<keyof PrismaSaverExtractionItem, 'createdAt'>>): SaverExtractionItem {
+  item(row: PrismaSaverExtractionItem): SaverExtractionItem {
     return {
       id: row.id,
       extractionId: row.extractionId,
@@ -109,6 +109,7 @@ export const PrismaSaverMapper = {
       lockedUntil: row.lockedUntil,
       errorCode: row.errorCode,
       finishedAt: row.finishedAt,
+      createdAt: row.createdAt,
     };
   },
 };

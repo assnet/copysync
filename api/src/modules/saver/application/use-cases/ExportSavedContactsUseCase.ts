@@ -44,7 +44,7 @@ export interface SavedContactsExportFile {
 /**
  * Exportação do tenant (SAVER-25..30, 46). Permissão `export` (OPERATOR só com liberação), grupos do
  * próprio tenant não removidos, contagem antes do primeiro byte (vazio = 422) e `AuditLog SAVER_EXPORTED`
- * com formato, filtros e quantidade, nunca nome, número ou LID. O nome é o do VÍNCULO (lido pelo tenant),
+ * ao fim do stream (`count`, `completed`) com formato, filtros e quantidade, nunca nome, número ou LID. O nome é o do VÍNCULO (lido pelo tenant),
  * nunca o do contato da base da plataforma: o repositório de vínculos nem expõe o outro.
  */
 export class ExportSavedContactsUseCase {
@@ -79,10 +79,9 @@ export class ExportSavedContactsUseCase {
     const skippedWithoutPhone = isVCard ? count.lidOnly : 0;
     if (total <= 0) throw new SaverExportEmptyError(input.format);
 
-    await this.audit.create({
+    const auditMeta: SaverExportAuditMeta = {
       tenantId: actor.tenantId,
       userId: actor.userId,
-      action: 'SAVER_EXPORTED',
       meta: {
         format: input.format,
         groupIds,
@@ -94,10 +93,10 @@ export class ExportSavedContactsUseCase {
           onlyActive: query.onlyActive,
           onePerGroup: query.onePerGroup,
         },
-        count: total,
+        expectedCount: total,
         skippedWithoutPhone,
       },
-    });
+    };
 
     const date = this.now().toISOString().slice(0, 10);
     return {
@@ -106,7 +105,7 @@ export class ExportSavedContactsUseCase {
       contentType: isVCard ? 'text/vcard; charset=utf-8' : 'text/csv; charset=utf-8',
       total,
       skippedWithoutPhone,
-      lines: this.stream(query, input.format, opts),
+      lines: this.stream(query, input.format, opts, auditMeta),
     };
   }
 
@@ -124,29 +123,59 @@ export class ExportSavedContactsUseCase {
     return ids;
   }
 
-  private async *stream(query: SaverMembershipExportQuery, format: SaverExportFormat, opts: SaverExportOptions): AsyncGenerator<string> {
+  /**
+   * Auditoria no `finally` do gerador (como na exportação da plataforma): `count` = linhas de contato
+   * entregues e `completed` = chegou ao fim; download interrompido fica registrado como incompleto.
+   */
+  private async *stream(
+    query: SaverMembershipExportQuery,
+    format: SaverExportFormat,
+    opts: SaverExportOptions,
+    audit: SaverExportAuditMeta,
+  ): AsyncGenerator<string> {
     const isVCard = format === SaverExportFormat.VCARD;
-    if (!isVCard) yield csvHeader(opts);
-    for await (const batch of this.memberships.exportBatches(query, SAVER_EXPORT_BATCH)) {
-      for (const row of batch) {
-        const line = applyExportOptions(
-          {
-            name: row.name,
-            phone: row.phone,
-            lid: row.lid,
-            isAdmin: row.isAdmin,
-            active: row.active,
-            extractedAt: row.extractedAt,
-            groupName: row.groupName,
-          },
-          opts,
-        );
-        if (!line) continue;
-        const out = isVCard ? toVCardEntry(line) : toCsvLine(line, opts);
-        if (out) yield out;
+    let count = 0;
+    let completed = false;
+    try {
+      if (!isVCard) yield csvHeader(opts);
+      for await (const batch of this.memberships.exportBatches(query, SAVER_EXPORT_BATCH)) {
+        for (const row of batch) {
+          const line = applyExportOptions(
+            {
+              name: row.name,
+              phone: row.phone,
+              lid: row.lid,
+              isAdmin: row.isAdmin,
+              active: row.active,
+              extractedAt: row.extractedAt,
+              groupName: row.groupName,
+            },
+            opts,
+          );
+          if (!line) continue;
+          const out = isVCard ? toVCardEntry(line) : toCsvLine(line, opts);
+          if (!out) continue;
+          count++;
+          yield out;
+        }
       }
+      completed = true;
+    } finally {
+      await this.audit.create({
+        tenantId: audit.tenantId,
+        userId: audit.userId,
+        action: 'SAVER_EXPORTED',
+        meta: { ...audit.meta, count, completed },
+      });
     }
   }
+}
+
+/** Formato, filtros e contagens; nunca nome, número ou LID. */
+interface SaverExportAuditMeta {
+  tenantId: string;
+  userId: string;
+  meta: Record<string, unknown>;
 }
 
 function normalizeOptions(raw: SaverExportOptions | undefined): SaverExportOptions {

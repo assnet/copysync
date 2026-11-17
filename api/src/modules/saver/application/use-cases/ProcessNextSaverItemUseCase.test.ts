@@ -1,7 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   ProcessNextSaverItemUseCase,
+  SAVER_CONTACTS_ALERT_THRESHOLD,
   SAVER_DISCONNECTED_RETRY_MS,
+  SAVER_ITEM_MAX_AGE_MS,
   SAVER_PAUSE_MS,
 } from './ProcessNextSaverItemUseCase';
 import { makeSaverStepHarness, member, type SaverStepHarness } from './saverTestFakes';
@@ -183,6 +185,34 @@ describe('ProcessNextSaverItemUseCase', () => {
     expect(extraction(h).status).toBe(E.CANCELLED);
   });
 
+  it('SAVER-47: pedido de super admin processa no tenant sem produto; pedido comum do mesmo tenant não', async () => {
+    const h = makeSaverStepHarness();
+    h.entitlements.set(T, { saver_contacts: null });
+    h.groups.add('g1', T);
+    h.groups.add('g2', T);
+    h.queue.superAdmins.add('root');
+    h.queue.addItem({ id: 'i1', sessionId: S, tenantId: T, groupId: 'g1', extractionId: 'ext-comum' }, 'user-1');
+    h.queue.addItem({ id: 'i2', sessionId: S, tenantId: T, groupId: 'g2', extractionId: 'ext-root' }, 'root');
+    h.reads.set('g2@g.us', [member('5511999990001')]);
+
+    expect((await run(h)).outcomes[0]!.outcome).toBe('PRODUCT_INACTIVE');
+    expect(item(h, 'i1').status).toBe(I.CANCELLED);
+    expect(item(h, 'i2').status).toBe(I.QUEUED);
+
+    expect((await run(h, at(10_000))).outcomes[0]!.outcome).toBe('DONE');
+    expect(item(h, 'i2').status).toBe(I.DONE);
+    expect(h.engineCalls).toEqual([{ sessionId: S, groupJid: 'g2@g.us' }]);
+  });
+
+  it('SAVER-47: tenant comum sem produto e sem super admin continua sem extrair', async () => {
+    const h = setup();
+    h.activeTenants.clear();
+    h.queue.extractions[0]!.requestedByUserId = 'user-1';
+    await run(h);
+    expect(item(h).status).toBe(I.CANCELLED);
+    expect(h.engineCalls).toHaveLength(0);
+  });
+
   it('falha ao ler o acesso devolve o item sem decidir nem contar tentativa', async () => {
     const h = setup();
     h.productError = new Error('db down');
@@ -197,6 +227,90 @@ describe('ProcessNextSaverItemUseCase', () => {
     await run(h);
     expect(item(h).status).toBe(I.CANCELLED);
     expect(h.engineCalls).toHaveLength(0);
+  });
+
+  it('grupo removido durante a leitura: nada gravado, item segue CANCELLED e o grupo não volta', async () => {
+    const h = setup();
+    h.reads.set('g1@g.us', [member('5511999990001')]);
+    h.duringRead = async () => {
+      await h.queue.cancelPendingByGroup(T, 'g1', NOW);
+      await h.groups.markRemoved(T, 'g1', NOW);
+    };
+    const r = await run(h);
+    expect(r.outcomes[0]!.outcome).toBe('CANCELLED');
+    expect(item(h).status).toBe(I.CANCELLED);
+    expect(h.store.links).toHaveLength(0);
+    expect(h.groups.scans).toHaveLength(0);
+    expect(extraction(h)).toMatchObject({ status: E.CANCELLED, doneGroups: 0, membersFound: 0 });
+    expect(h.groups.groups[0]!.removedAt).not.toBeNull();
+  });
+
+  it('erro depois de cancelado: o reagendamento não ressuscita o item', async () => {
+    const h = setup();
+    h.reads.set('g1@g.us', new SessionNotConnectedError(S));
+    h.duringRead = async () => {
+      await h.queue.cancelPendingByGroup(T, 'g1', NOW);
+    };
+    await run(h);
+    expect(item(h).status).toBe(I.CANCELLED);
+  });
+
+  describe('teto de idade dos adiamentos', () => {
+    const OLD = new Date(NOW.getTime() - SAVER_ITEM_MAX_AGE_MS);
+    const old = (h: SaverStepHarness) => { item(h).createdAt = OLD; };
+
+    it('sessão desconectada há mais de 24 h desde o pedido → FAILED com o código atual', async () => {
+      const h = setup();
+      old(h);
+      h.reads.set('g1@g.us', new SessionNotConnectedError(S));
+      expect((await run(h)).outcomes[0]!.outcome).toBe('FAILED');
+      expect(item(h)).toMatchObject({ status: I.FAILED, errorCode: 'SESSION_NOT_CONNECTED' });
+      expect(extraction(h).status).toBe(E.FAILED);
+    });
+
+    it('limite de taxa e conflito também param no teto', async () => {
+      const rate = setup();
+      old(rate);
+      rate.reads.set('g1@g.us', new EngineRateLimitedError());
+      await run(rate);
+      expect(item(rate)).toMatchObject({ status: I.FAILED, errorCode: 'ENGINE_RATE_LIMITED' });
+
+      const conflict = setup();
+      old(conflict);
+      conflict.store.applyError = new ConcurrentWriteConflictError('SaverContact');
+      await run(conflict);
+      expect(item(conflict)).toMatchObject({ status: I.FAILED, errorCode: 'CONCURRENT_WRITE_CONFLICT' });
+    });
+
+    it('dentro das 24 h segue adiando', async () => {
+      const h = setup();
+      item(h).createdAt = new Date(NOW.getTime() - SAVER_ITEM_MAX_AGE_MS + 1);
+      h.reads.set('g1@g.us', new SessionNotConnectedError(S));
+      await run(h);
+      expect(item(h).status).toBe(I.QUEUED);
+    });
+  });
+
+  it('alerta em log (sem bloquear) quando o tenant passa de 500 mil contatos vinculados', async () => {
+    const h = setup();
+    const warn = vi.fn();
+    h.deps.log = { warn } as never;
+    const base = SAVER_CONTACTS_ALERT_THRESHOLD - 1;
+    h.store.memberships.countDistinctContacts = async () => base;
+    h.reads.set('g1@g.us', [member('551100001'), member('551100002')]);
+    await run(h);
+    expect(item(h).status).toBe(I.DONE);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]![0]).toEqual({ tenantId: T, contacts: base + 2, threshold: SAVER_CONTACTS_ALERT_THRESHOLD });
+
+    // Já acima: não repete a cada leitura
+    h.store.memberships.countDistinctContacts = async () => SAVER_CONTACTS_ALERT_THRESHOLD + 10;
+    h.groups.add('g2', T);
+    h.queue.addItem({ id: 'i2', extractionId: 'ext-2', sessionId: S, tenantId: T, groupId: 'g2' });
+    h.reads.set('g2@g.us', [member('551100009')]);
+    await run(h, at(10_000));
+    expect(item(h, 'i2').status).toBe(I.DONE);
+    expect(warn).toHaveBeenCalledTimes(1);
   });
 
   it('fechamento: um DONE e um FAILED → PARTIAL', async () => {

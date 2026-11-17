@@ -25,6 +25,7 @@ export interface ISaverGroupRepository {
   findByJids(tenantId: string, groupJids: readonly string[]): Promise<SaverGroup[]>;
   /** Cria ou reativa (`removedAt = null`) por `(tenantId, groupJid)`; atualiza nome e sessão. */
   upsertMany(tenantId: string, sessionId: string, groups: readonly SaverGroupUpsertInput[]): Promise<SaverGroup[]>;
+  /** Grupo removido não é tocado (leitura que terminou depois da remoção). */
   recordScan(tenantId: string, groupId: string, scan: SaverGroupScanInput): Promise<void>;
   /** Grupos não removidos (limite `saver_groups`). */
   countActive(tenantId: string): Promise<number>;

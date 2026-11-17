@@ -54,7 +54,7 @@ export class PrismaSaverGroupRepository implements ISaverGroupRepository {
 
   async recordScan(tenantId: string, groupId: string, scan: SaverGroupScanInput): Promise<void> {
     await this.prisma.saverGroup.updateMany({
-      where: { id: groupId, tenantId },
+      where: { id: groupId, tenantId, removedAt: null },
       data: {
         sessionId: scan.sessionId,
         lastScannedAt: scan.at,

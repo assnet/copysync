@@ -1,5 +1,6 @@
 import type { PlatformSaverContact } from '../entities/SaverEntities';
 import type { MergeGroupReadResult } from '../services/mergeGroupRead';
+import type { SaverItemClaim } from './ISaverExtractionQueue';
 
 /**
  * Base da PLATAFORMA (sem `tenantId`). Só use cases `Platform*` (super admin) e a gravação da extração
@@ -50,10 +51,29 @@ export interface IPlatformSaverContactRepository {
    * advisory lock). Insert que bate na unicidade (outro tenant gravou antes) vira update. Devolve os ids
    * finais dos inserts, na ordem de `contactInserts`, e quantos foram realmente criados.
    * Corrida perdida com outra gravação (unicidade, fusão, deadlock) lança `ConcurrentWriteConflictError` (retentável).
+   * Na mesma transação, nesta ordem: trava do tenant, item (`FOR UPDATE`), grupo. Claim perdido (item
+   * cancelado/retomado) ou grupo removido durante a leitura = `CLAIM_LOST`; o teto `saver_contacts` é recontado
+   * sob a trava do tenant e `fitsContacts` falso = `LIMIT_REACHED`. Nos dois casos nada é gravado.
    */
   applyGroupRead(
     tenantId: string,
     groupId: string,
     result: MergeGroupReadResult,
-  ): Promise<{ insertedIds: string[]; created: number }>;
+    claim: SaverItemClaim,
+    fitsContacts: (usage: SaverContactUsage) => boolean,
+  ): Promise<ApplyGroupReadOutcome>;
 }
+
+/**
+ * Teto = contatos DISTINTOS vinculados ao tenant (grupos ativos). Já vinculado não consome; contato da base
+ * (de outro tenant) consome no primeiro vínculo; insert novo sempre consome.
+ */
+export interface SaverContactUsage {
+  used: number;
+  adding: number;
+}
+
+export type ApplyGroupReadOutcome =
+  | { status: 'APPLIED'; insertedIds: string[]; created: number }
+  | { status: 'CLAIM_LOST' }
+  | { status: 'LIMIT_REACHED' };
