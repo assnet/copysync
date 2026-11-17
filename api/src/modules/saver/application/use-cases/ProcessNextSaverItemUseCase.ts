@@ -6,7 +6,7 @@ import type { IPlatformSaverContactRepository } from '../../domain/contracts/IPl
 import type { SaverExtractionItem } from '../../domain/entities/SaverEntities';
 import { SaverExtractionItemStatus } from '../../domain/enums/SaverEnums';
 import { mergeGroupRead, normalizeLid, normalizePhone, type SaverReadMember } from '../../domain/services/mergeGroupRead';
-import { fitsSaverLimit, readSaverLimit, SAVER_LIMIT_KEYS } from '../../domain/services/saverLimits';
+import { effectiveSaverLimits, fitsSaverLimit } from '../../domain/services/saverLimits';
 import type { IProductAccessReader } from '../../../tenants/domain/contracts/IProductAccessReader';
 import type { IEntitlementSnapshotReader } from '../../../tenants/domain/contracts/IEntitlementSnapshotReader';
 import { AppError } from '../../../../shared/errors/AppError';
@@ -128,11 +128,12 @@ export class ProcessNextSaverItemUseCase {
   private async processItem(item: SaverExtractionItem, now: Date): Promise<SaverItemOutcome> {
     const { queue } = this.deps;
     let active: boolean;
+    let pilot = false;
     try {
-      // SAVER-47: super admin pilota no próprio tenant sem plano; o pedido dele processa sem o produto.
-      active =
-        (await this.deps.products.has(item.tenantId, 'SAVER')) ||
-        (await queue.requestedBySuperAdmin(item.extractionId));
+      // SAVER-47: super admin pilota no próprio tenant sem plano; o pedido dele processa sem o produto,
+      // com os limites do preset SAVER_MAX (teto de contatos ilimitado).
+      active = await this.deps.products.has(item.tenantId, 'SAVER');
+      if (!active) active = pilot = await queue.requestedBySuperAdmin(item.extractionId);
     } catch {
       // Leitura do acesso falhou: não decide nada, devolve sem contar tentativa.
       return this.requeue(item, now, SAVER_DISCONNECTED_RETRY_MS, item.attempts, null, 'RETRY', 'UNEXPECTED');
@@ -151,7 +152,7 @@ export class ProcessNextSaverItemUseCase {
 
     try {
       const members = await this.deps.engine.getGroupMembers(item.sessionId, group.groupJid);
-      return await this.store(item, group.id, members, now);
+      return await this.store(item, group.id, members, now, pilot);
     } catch (err) {
       return this.handleError(item, now, err);
     }
@@ -162,6 +163,7 @@ export class ProcessNextSaverItemUseCase {
     groupId: string,
     members: SaverReadMember[],
     now: Date,
+    pilot: boolean,
   ): Promise<SaverItemOutcome> {
     const { platformContacts, memberships, groups } = this.deps;
     const phones = uniq(members.map((m) => normalizePhone(m.phone)));
@@ -171,7 +173,7 @@ export class ProcessNextSaverItemUseCase {
       memberships.listGroupMemberships(item.tenantId, groupId),
     ]);
     const merged = mergeGroupRead({ contacts, memberships: current, members, now, extractionId: item.extractionId });
-    const limit = readSaverLimit(await this.deps.entitlements.readAll(item.tenantId), SAVER_LIMIT_KEYS.CONTACTS);
+    const limit = effectiveSaverLimits(await this.deps.entitlements.readAll(item.tenantId), pilot).contacts;
 
     // Teto recontado sob a trava do tenant dentro da gravação (duas sessões do tenant não passam juntas).
     // Claim perdido durante a leitura (grupo removido, extração cancelada, trava retomada): nada é gravado,

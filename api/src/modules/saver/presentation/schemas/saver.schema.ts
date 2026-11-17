@@ -127,6 +127,7 @@ export const overviewResponse = envelope(obj({
   permissions,
   config: overviewConfig,
   queueRunning: { type: 'boolean' },
+  pilot: { type: 'boolean' },
 }));
 
 export const sessionGroupsResponse = envelope({

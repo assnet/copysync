@@ -46,6 +46,7 @@ Planos `SAVER_LITE/PRO/MAX` (`tenants/domain/planPresets.ts`, `SAVER_PLAN_PRESET
   `SAVER_UNAVAILABLE`. Sem produto, antes vale `PRODUCT_UNAVAILABLE`.
 - `GET /saver/access` (só `authHook`) diz ao painel se o item aparece. Não olha entitlement: o cadeado vem do produto.
 - Super admin passa o gate de produto e a audiência (piloto no próprio tenant sem plano).
+- Piloto (SAVER-47): super admin em tenant **sem** o produto `SAVER` usa os limites do preset `SAVER_MAX` (`effectiveSaverLimits`/`isSaverPilot` em `domain/services/saverLimits.ts`, via `loadSaverLimits`) no resumo (`pilot: true`), no pedido, na config e no teto de contatos do job (item `requestedBySuperAdmin`). Tenant com o produto usa os entitlements, mesmo para super admin. Não estender o piloto a ADMIN nem criar cache de limites.
 
 ## Permissões
 

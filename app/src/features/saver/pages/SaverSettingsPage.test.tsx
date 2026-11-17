@@ -24,6 +24,7 @@ const overview = (configure: boolean, autoRefreshEnabled = true): SaverOverview 
   permissions: { view: true, extract: true, export: configure, configure },
   config: { ...baseConfig, namePrefix: 'Lead' },
   queueRunning: true,
+  pilot: false,
 });
 const details = (over: Partial<SaverConfigDetails> = {}): SaverConfigDetails => ({
   ...baseConfig, autoRefreshAvailable: true, configured: false, updatedAt: null, ...over,

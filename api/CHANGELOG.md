@@ -17,6 +17,24 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.100.2] — 2026-11-17 — Piloto do Saver com limites do MAX (app 0.123.2)
+
+### Fixed
+
+#### api — saver
+
+- **`saverLimits.ts`** — `isSaverPilot` e `effectiveSaverLimits` (puras): super admin em tenant sem o produto `SAVER` usa o preset `SAVER_MAX`. Antes os limites vinham dos entitlements ausentes (= 0) e o piloto do SAVER-47 recebia `PLAN_LIMIT_REACHED`.
+- **`saverEffectiveLimits.ts`** (novo) — `loadSaverLimits` lê entitlements e, só para super admin, o produto (`IProductAccessReader`, sem cache novo).
+- **`GetSaverOverviewUseCase.ts`** — limites efetivos e campo `pilot` (presenter e schema).
+- **`RequestSaverExtractionUseCase.ts`**, **`SaverConfigUseCases.ts`** — validam `saver_groups`/`saver_group_scans_per_day` e `saver_auto_refresh_enabled` pelos limites efetivos.
+- **`ProcessNextSaverItemUseCase.ts`** — item `requestedBySuperAdmin` em tenant sem produto grava sem teto de `saver_contacts`; com produto, teto do tenant.
+
+#### app — saver
+
+- **`SaverLimitBanner.tsx`**, **`SaverGroupsPage.tsx`**, **`strings.ts`** — com `pilot`, aviso "Modo piloto do super admin" com os limites do MAX; contagens e botão "Salvar contatos" funcionam (sem "0 de 0").
+
+---
+
 ## [0.100.1] — 2026-11-17 — Checkout do Saver por link de redirecionamento (app 0.123.1)
 
 ### Added

@@ -20,6 +20,7 @@ import { env } from '../../../shared/config/env';
 import { featureAudienceReader } from '../../tenants/infrastructure/featureAudience';
 import type { IFeatureAudienceReader } from '../../tenants/domain/contracts/IFeatureAudienceRepository';
 import { PrismaEntitlementReader } from '../../tenants/infrastructure/repositories/PrismaEntitlementReader';
+import { productAccessReader } from '../../tenants/infrastructure/productAccessContainer';
 import { GetSaverOverviewUseCase } from '../application/use-cases/GetSaverOverviewUseCase';
 import { ListSaverSessionGroupsUseCase } from '../application/use-cases/ListSaverSessionGroupsUseCase';
 import { PrismaSaverSessionReader } from './repositories/PrismaSaverSessionReader';
@@ -94,6 +95,7 @@ const saverQueueRunning = (): boolean =>
 
 const getOverview = lazy(() => new GetSaverOverviewUseCase({
     entitlements: entitlements(),
+    products: productAccessReader(),
     groups: groups(),
     memberships: memberships(),
     queue: queue(),
@@ -119,6 +121,7 @@ const listSessionGroups = lazy(() => new ListSaverSessionGroupsUseCase({
 const requestExtraction = lazy(() => new RequestSaverExtractionUseCase({
   sessions: sessionReader(),
   entitlements: entitlements(),
+  products: productAccessReader(),
   queue: queue(),
   engine: activeEngine,
 }));
@@ -143,8 +146,8 @@ export const saverPlatformUseCases = {
 
 // ── Exportação e configuração do tenant (T17, T18) ──
 const exportSavedContacts = lazy(() => new ExportSavedContactsUseCase(groups(), memberships(), exportGrants(), audit()));
-const getConfig           = lazy(() => new GetSaverConfigUseCase(configs(), entitlements()));
-const updateConfig        = lazy(() => new UpdateSaverConfigUseCase(configs(), entitlements()));
+const getConfig           = lazy(() => new GetSaverConfigUseCase(configs(), entitlements(), productAccessReader()));
+const updateConfig        = lazy(() => new UpdateSaverConfigUseCase(configs(), entitlements(), productAccessReader()));
 const listExportGrants    = lazy(() => new ListSaverExportGrantsUseCase(team(), exportGrants()));
 const setExportGrant      = lazy(() => new SetSaverExportGrantUseCase(team(), exportGrants(), audit()));
 

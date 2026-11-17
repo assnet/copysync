@@ -1,3 +1,5 @@
+import { SAVER_PLAN_PRESETS } from '../../../tenants/domain/planPresets';
+
 /**
  * Limites do Saver lidos do snapshot de entitlements (design.md §2.1, SAVER-03). Função pura.
  * Diferente do resto do projeto: chave AUSENTE = 0 / desligado; JSON `null` explícito = ilimitado.
@@ -60,4 +62,18 @@ export function fitsSaverLimit(limit: SaverLimit, used: number, adding: number):
 export function remainingSaverLimit(limit: SaverLimit, used: number): number | null {
   if (limit === null) return null;
   return Math.max(0, limit - used);
+}
+
+/**
+ * SAVER-47: o super admin pilota o Saver num tenant SEM o produto `SAVER` ativo. Sem plano os limites
+ * seriam 0; no piloto valem os do preset `SAVER_MAX`. Tenant com o produto ativo usa os entitlements
+ * normais, mesmo para o super admin. Usuário comum sem produto nunca é piloto (o gate barra antes).
+ */
+export function isSaverPilot(actorIsSuperAdmin: boolean, tenantHasSaverProduct: boolean): boolean {
+  return actorIsSuperAdmin && !tenantHasSaverProduct;
+}
+
+/** Limites efetivos: preset `SAVER_MAX` no piloto; senão o snapshot do tenant. */
+export function effectiveSaverLimits(snapshot: EntitlementSnapshot, pilot: boolean): SaverLimits {
+  return readSaverLimits(pilot ? SAVER_PLAN_PRESETS.SAVER_MAX : snapshot);
 }

@@ -1,12 +1,14 @@
 import type { IEntitlementSnapshotReader } from '../../../tenants/domain/contracts/IEntitlementSnapshotReader';
+import type { IProductAccessReader } from '../../../tenants/domain/contracts/IProductAccessReader';
 import type { ISaverExtractionQueue } from '../../domain/contracts/ISaverExtractionQueue';
 import type { ISaverSessionReader } from '../../domain/contracts/ISaverSessionReader';
-import { fitsSaverLimit, readSaverLimits, SAVER_LIMIT_KEYS } from '../../domain/services/saverLimits';
+import { fitsSaverLimit, SAVER_LIMIT_KEYS } from '../../domain/services/saverLimits';
 import { PlanLimitReachedError } from '../../../../shared/errors/internal/PlanErrors';
 import { ValidationError } from '../../../../shared/errors/internal/ResourceErrors';
 import { SAVER_SCAN_WINDOW_MS } from './GetSaverOverviewUseCase';
 import type { SaverGroupListingEngine } from './ListSaverSessionGroupsUseCase';
 import { assertCanSaver, type SaverActor } from './saverActor';
+import { loadSaverLimits } from './saverEffectiveLimits';
 import { toSaverExtractionDTO, type SaverExtractionDTO } from './saverExtractionDTO';
 import { bareGroupJid, requireSaverSession } from './saverSessionAccess';
 
@@ -20,6 +22,7 @@ export interface RequestSaverExtractionInput {
 export interface RequestSaverExtractionDeps {
   sessions: ISaverSessionReader;
   entitlements: IEntitlementSnapshotReader;
+  products: Pick<IProductAccessReader, 'has'>;
   queue: Pick<ISaverExtractionQueue, 'requestGroups'>;
   engine: () => SaverGroupListingEngine;
   now?: () => Date;
@@ -51,7 +54,8 @@ export class RequestSaverExtractionUseCase {
     }
 
     const now = this.deps.now?.() ?? new Date();
-    const limits = readSaverLimits(await this.deps.entitlements.readAll(tenantId));
+    // SAVER-47: super admin sem o produto no tenant valida pelo preset SAVER_MAX.
+    const { limits } = await loadSaverLimits(this.deps, actor);
     // Contagem, gravação e fila numa transação sob a trava do tenant: pedidos simultâneos não passam do teto.
     const extraction = await this.deps.queue.requestGroups(
       {
