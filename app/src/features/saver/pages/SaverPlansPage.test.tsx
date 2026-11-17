@@ -9,6 +9,8 @@ const sub = vi.hoisted(() => ({ getSubscription: vi.fn() }));
 const tenant = vi.hoisted(() => ({ value: { activeTenantId: 't1', tenants: [{ id: 't1', role: 'ADMIN' }] } }));
 vi.mock('@/services/subscription.service', () => ({ subscriptionService: sub }));
 vi.mock('@/contexts/TenantContext', () => ({ useTenant: () => tenant.value }));
+const auth = vi.hoisted(() => ({ user: { id: 'u1', isSuperAdmin: false } }));
+vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => auth }));
 
 import { SaverPlansPage } from './SaverPlansPage';
 import { saverPlansStrings as t } from '../plans/strings';
@@ -25,6 +27,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   window.sessionStorage.clear();
   tenant.value = { activeTenantId: 't1', tenants: [{ id: 't1', role: 'ADMIN' }] };
+  auth.user.isSuperAdmin = false;
 });
 
 describe('SaverPlansPage', () => {
@@ -65,5 +68,14 @@ describe('SaverPlansPage', () => {
     page();
     expect(screen.getAllByText(t.card.operatorHint)).toHaveLength(3);
     expect(screen.queryByRole('link', { name: t.card.cta })).toBeNull();
+  });
+
+  it('super admin sem papel na conta vê os botões, não a orientação do operador', async () => {
+    auth.user.isSuperAdmin = true;
+    tenant.value = { activeTenantId: 't1', tenants: [] };
+    sub.getSubscription.mockResolvedValue(withSaver(null));
+    page();
+    expect(screen.queryByText(t.card.operatorHint)).toBeNull();
+    expect(screen.getAllByRole('link', { name: t.card.cta })).toHaveLength(3);
   });
 });

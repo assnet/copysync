@@ -1,5 +1,6 @@
 import { Alert, AlertTitle, Box, Grid, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
 import { PageHeader, SwipeCards } from '@/components';
+import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/contexts/TenantContext';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { SAVER_PLAN_CATALOG, type SaverBillingPeriod } from '../plans/catalog';
@@ -15,7 +16,9 @@ export function SaverPlansPage() {
   const [period, setPeriod] = usePersistedState<SaverBillingPeriod>('saverPlans.period', 'annual');
   const currentSlug = useSaverCurrentPlan();
   const { tenants, activeTenantId } = useTenant();
-  const canSubscribe = tenants.find((x) => x.id === activeTenantId)?.role === 'ADMIN';
+  const isSuperAdmin = useAuth().user?.isSuperAdmin === true;
+  // ADMIN da conta ou super admin (que ativa planos pelo suporte); operador vê a orientação.
+  const canSubscribe = isSuperAdmin || tenants.find((x) => x.id === activeTenantId)?.role === 'ADMIN';
   const initialKey = SAVER_PLAN_CATALOG.find((p) => p.planSlug === currentSlug)?.tier
     ?? SAVER_PLAN_CATALOG.find((p) => p.recommended)?.tier;
 
