@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   ProcessNextSaverItemUseCase,
+  SAVER_CONTACTS_ALERT_THRESHOLD,
   SAVER_DISCONNECTED_RETRY_MS,
   SAVER_ITEM_MAX_AGE_MS,
   SAVER_PAUSE_MS,
@@ -288,6 +289,28 @@ describe('ProcessNextSaverItemUseCase', () => {
       await run(h);
       expect(item(h).status).toBe(I.QUEUED);
     });
+  });
+
+  it('alerta em log (sem bloquear) quando o tenant passa de 500 mil contatos vinculados', async () => {
+    const h = setup();
+    const warn = vi.fn();
+    h.deps.log = { warn } as never;
+    const base = SAVER_CONTACTS_ALERT_THRESHOLD - 1;
+    h.store.memberships.countDistinctContacts = async () => base;
+    h.reads.set('g1@g.us', [member('551100001'), member('551100002')]);
+    await run(h);
+    expect(item(h).status).toBe(I.DONE);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]![0]).toEqual({ tenantId: T, contacts: base + 2, threshold: SAVER_CONTACTS_ALERT_THRESHOLD });
+
+    // Já acima: não repete a cada leitura
+    h.store.memberships.countDistinctContacts = async () => SAVER_CONTACTS_ALERT_THRESHOLD + 10;
+    h.groups.add('g2', T);
+    h.queue.addItem({ id: 'i2', extractionId: 'ext-2', sessionId: S, tenantId: T, groupId: 'g2' });
+    h.reads.set('g2@g.us', [member('551100009')]);
+    await run(h, at(10_000));
+    expect(item(h, 'i2').status).toBe(I.DONE);
+    expect(warn).toHaveBeenCalledTimes(1);
   });
 
   it('fechamento: um DONE e um FAILED → PARTIAL', async () => {

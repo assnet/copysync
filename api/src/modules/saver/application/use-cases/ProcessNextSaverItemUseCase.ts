@@ -10,6 +10,7 @@ import { fitsSaverLimit, readSaverLimit, SAVER_LIMIT_KEYS } from '../../domain/s
 import type { IProductAccessReader } from '../../../tenants/domain/contracts/IProductAccessReader';
 import type { IEntitlementSnapshotReader } from '../../../tenants/domain/contracts/IEntitlementSnapshotReader';
 import { AppError } from '../../../../shared/errors/AppError';
+import { logger } from '../../../../shared/logger/logger';
 
 /** Ritmo por sessão: 1 grupo a cada 3–5 s (sorteio), design.md §4.3. */
 export const SAVER_SCAN_MIN_GAP_MS = 3_000;
@@ -23,6 +24,8 @@ export const SAVER_PAUSE_MS = 15 * 60_000;
 /** Corrida perdida com outra gravação (outro tenant): repete logo, sem contar tentativa. */
 export const SAVER_CONFLICT_RETRY_MS = 5_000;
 export const SAVER_MAX_ATTEMPTS = 3;
+/** Alerta de volume (design.md §3): tenant passa disto em contatos vinculados → `warn`, sem bloquear. */
+export const SAVER_CONTACTS_ALERT_THRESHOLD = 500_000;
 /**
  * Teto de idade dos adiamentos sem tentativa (sessão desconectada, limite de taxa, conflito, leitura do
  * acesso): item pedido há mais que isso vira FAILED com o código atual, para não prender o índice de pendente.
@@ -58,6 +61,8 @@ export interface ProcessNextSaverItemDeps {
   entitlements: IEntitlementSnapshotReader;
   /** [0, 1); injetado nos testes. */
   random?: () => number;
+  /** Padrão: logger do processo. */
+  log?: Pick<typeof logger, 'warn'>;
 }
 
 export interface ProcessNextSaverItemInput {
@@ -171,12 +176,16 @@ export class ProcessNextSaverItemUseCase {
     // Teto recontado sob a trava do tenant dentro da gravação (duas sessões do tenant não passam juntas).
     // Claim perdido durante a leitura (grupo removido, extração cancelada, trava retomada): nada é gravado,
     // nem vínculo, nem varredura, nem desfecho; o status de quem cancelou prevalece.
+    let usage = { used: 0, adding: 0 };
     const applied = await platformContacts.applyGroupRead(
       item.tenantId,
       groupId,
       merged,
       { itemId: item.id, lockedUntil: item.lockedUntil },
-      ({ used, adding }) => limit === null || fitsSaverLimit(limit, used, adding),
+      (u) => {
+        usage = u;
+        return limit === null || fitsSaverLimit(limit, u.used, u.adding);
+      },
     );
     if (applied.status === 'CLAIM_LOST') return 'CANCELLED';
     if (applied.status === 'LIMIT_REACHED') {
@@ -184,6 +193,7 @@ export class ProcessNextSaverItemUseCase {
       await this.finish(item, now, SaverExtractionItemStatus.FAILED, SAVER_ITEM_ERRORS.PLAN_LIMIT);
       return 'FAILED';
     }
+    this.alertVolume(item.tenantId, usage.used, usage.used + usage.adding);
     const counts = countMembers(members);
     await groups.recordScan(item.tenantId, groupId, {
       sessionId: item.sessionId,
@@ -203,6 +213,15 @@ export class ProcessNextSaverItemUseCase {
       newContacts: applied.created,
     });
     return 'DONE';
+  }
+
+  /** Só na travessia do limiar (não a cada leitura); `after` é teto (insert que virou update conta). */
+  private alertVolume(tenantId: string, before: number, after: number): void {
+    if (before > SAVER_CONTACTS_ALERT_THRESHOLD || after <= SAVER_CONTACTS_ALERT_THRESHOLD) return;
+    (this.deps.log ?? logger).warn(
+      { tenantId, contacts: after, threshold: SAVER_CONTACTS_ALERT_THRESHOLD },
+      'saver tenant contacts above alert threshold',
+    );
   }
 
   private async handleError(item: SaverExtractionItem, now: Date, err: unknown): Promise<SaverItemOutcome> {
