@@ -22,6 +22,12 @@ describe('describeSaverError', () => {
     expect(e.message).toBe(s.limitReached(s.limitKeys.saver_groups!, 10));
   });
 
+  it('PLAN_LIMIT_REACHED com teto 0: o plano não inclui (nunca "limite de 0")', () => {
+    const e = describeSaverError({ code: 'PLAN_LIMIT_REACHED', status: 403, meta: { key: 'saver_groups', limit: 0 } });
+    expect(e).toMatchObject({ kind: 'limitReached', limit: 0 });
+    expect(e.message).toBe(s.limitNotIncluded(s.limitKeys.saver_groups!));
+  });
+
   it('PLAN_LIMIT_REACHED sem meta cai no texto genérico do limite', () => {
     expect(describeSaverError({ code: 'PLAN_LIMIT_REACHED' }).message).toBe(s.errors.PLAN_LIMIT_REACHED);
   });

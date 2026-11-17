@@ -16,6 +16,8 @@ const sessionsSvc = vi.hoisted(() => ({ list: vi.fn() }));
 vi.mock('@/services/saver.service', () => ({ saverService: svc }));
 vi.mock('@/services/session.service', () => ({ sessionService: sessionsSvc }));
 vi.mock('@/contexts/TenantContext', () => ({ useTenant: () => ({ activeTenantId: 't1' }) }));
+const auth = vi.hoisted(() => ({ user: { id: 'u1', isSuperAdmin: false } }));
+vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => auth }));
 
 import { SaverGroupsPage } from './SaverGroupsPage';
 import { saverStrings as s } from '../strings';
@@ -66,6 +68,7 @@ async function pickSession(user: ReturnType<typeof userEvent.setup>, name: strin
 
 beforeEach(() => {
   vi.clearAllMocks();
+  auth.user.isSuperAdmin = false;
   window.sessionStorage.clear();
   window.localStorage.clear();
   svc.getOverview.mockResolvedValue(overview());
@@ -176,6 +179,41 @@ describe('SaverGroupsPage', () => {
     expect(await screen.findByText(g.limitBanner.reached(s.limitKeys.saver_group_scans_per_day!))).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: g.limitBanner.cta }));
     expect(screen.getByTestId('where')).toHaveTextContent('/saver/plans');
+  });
+
+  it.each(['light', 'dark'] as const)('sem plano (%s): diz que o plano não inclui, sem "0 de 0" nem limite esgotado', async (mode) => {
+    svc.getOverview.mockResolvedValue(overview({ groups: usage(0, 0), contacts: usage(0, 0), groupScansPerDay: usage(0, 0) }));
+    const user = userEvent.setup();
+    page(mode);
+    expect(await screen.findByText(g.noPlan.title)).toBeInTheDocument();
+    expect(screen.queryByText('0 de 0')).toBeNull();
+    expect(screen.queryByText(g.limitBanner.title)).toBeNull();
+    expect(screen.queryByText(g.noPlan.pilotTitle)).toBeNull();
+    await user.click(screen.getByRole('button', { name: g.noPlan.cta }));
+    expect(screen.getByTestId('where')).toHaveTextContent('/saver/plans');
+  });
+
+  it('super admin sem plano vê o modo piloto; sem "Restam 0" nem aviso de excesso, envio desligado', async () => {
+    auth.user.isSuperAdmin = true;
+    svc.getOverview.mockResolvedValue(overview({ groups: usage(0, 0), contacts: usage(0, 0), groupScansPerDay: usage(0, 0) }));
+    svc.listSessionGroups.mockResolvedValue([live('a@g.us', 'Vendas')]);
+    const user = userEvent.setup();
+    page();
+    expect(await screen.findByText(g.noPlan.pilotTitle)).toBeInTheDocument();
+    expect(screen.getByText(g.noPlan.pilotBody)).toBeInTheDocument();
+    expect(screen.queryByText(g.noPlan.title)).toBeNull();
+    await pickSession(user, 'Atendimento');
+    await user.click(await screen.findByText('Vendas'));
+    expect(screen.queryByText(g.table.scansLeft(0))).toBeNull();
+    expect(screen.queryByText(g.table.overScans(0))).toBeNull();
+    expect(screen.getByRole('button', { name: g.table.submit(1) })).toBeDisabled();
+  });
+
+  it('um limite 0 com os outros no plano: "não incluso" no item, sem faixa de esgotado', async () => {
+    svc.getOverview.mockResolvedValue(overview({ groupScansPerDay: usage(0, 0) }));
+    page();
+    expect(await screen.findByText(s.limits.notIncluded)).toBeInTheDocument();
+    expect(screen.queryByText(g.limitBanner.title)).toBeNull();
   });
 
   it('PLAN_LIMIT_REACHED do pedido vira a faixa de limite', async () => {

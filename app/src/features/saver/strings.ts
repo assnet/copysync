@@ -94,6 +94,8 @@ export const saverStrings = {
 
   limits: {
     unlimited: 'Ilimitado',
+    /** Limite 0: o plano não inclui (nunca "0 de 0"). */
+    notIncluded: 'Não incluso no plano',
     usage: (used: number, limit: number | null) =>
       limit === null ? `${used.toLocaleString('pt-BR')} · ilimitado` : `${used.toLocaleString('pt-BR')} de ${limit.toLocaleString('pt-BR')}`,
   },
@@ -110,6 +112,14 @@ export const saverStrings = {
     limitBanner: {
       title: 'Limite do plano',
       reached: (what: string) => `Você usou todo o limite de ${what} do seu plano.`,
+      cta: 'Ver planos',
+    },
+    /** Conta sem plano do Saver (todos os limites 0). Super admin vê o modo piloto. */
+    noPlan: {
+      title: 'Seu plano ainda não inclui o Saver',
+      body: 'Escolha um plano para salvar grupos, guardar os contatos e baixar a lista quando quiser.',
+      pilotTitle: 'Modo piloto do super admin',
+      pilotBody: 'Esta conta não tem plano do Saver, então os limites ficam zerados. Você vê a tela para conferir, mas a leitura de grupos só é liberada quando a conta tiver um plano.',
       cta: 'Ver planos',
     },
     queueStopped: 'A leitura de grupos está pausada no momento. Seu pedido entra na fila e começa assim que ela voltar.',
@@ -256,5 +266,7 @@ export const saverStrings = {
     saver_contacts: 'contatos guardados',
     saver_group_scans_per_day: 'leituras de grupo nas últimas 24 horas',
   } as Record<string, string>,
+  /** `PLAN_LIMIT_REACHED` com limite 0: o plano não inclui o recurso. */
+  limitNotIncluded: (what: string) => `Seu plano não inclui ${what}.`,
   limitReached: (what: string, limit: number) => `Você chegou ao limite de ${limit.toLocaleString('pt-BR')} ${what} do seu plano.`,
 };
