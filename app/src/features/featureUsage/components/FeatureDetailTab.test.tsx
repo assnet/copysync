@@ -189,7 +189,7 @@ describe('FeatureDetailTab', () => {
 
   it('recurso fora dos filtros de tipo/plano: aviso com "Limpar filtros" e "Voltar", sem lista de contas', async () => {
     const user = userEvent.setup();
-    window.sessionStorage.setItem('ui.usage.filters', JSON.stringify({ v: 1, d: { kinds: ['AUDIENCE'], plan: 'SAVER_MAX' } }));
+    window.sessionStorage.setItem('ui.usage.filters', JSON.stringify({ v: 1, d: { kinds: ['AUDIENCE'], plan: 'SAVER_MAX', preset: '7d', tenantStatus: 'ALL', tenantId: TENANT_ID } }));
     getDetail.mockResolvedValue({ ...detailFixture(), inScope: false });
     renderAt(DETAIL_PATH);
     expect(await screen.findByText(S.detail.outOfScopeTitle)).toBeInTheDocument();
@@ -198,8 +198,13 @@ describe('FeatureDetailTab', () => {
     expect(getTenants).not.toHaveBeenCalled();
     getDetail.mockResolvedValue({ ...detailFixture(), inScope: true });
     await user.click(screen.getByRole('button', { name: S.actions.clearFilters }));
-    expect(await screen.findByText('Loja Alfa')).toBeInTheDocument();
-    expect(getDetail).toHaveBeenLastCalledWith('offer_hunter', expect.objectContaining({ kind: 'ACTION,AUTOMATIC' }));
+    expect(await screen.findByRole('cell', { name: 'Loja Alfa' })).toBeInTheDocument();
+    // Limpa só tipo e plano: conta, período e status ficam.
+    const query = getDetail.mock.lastCall?.[1] as Record<string, unknown>;
+    expect(query).toMatchObject({ kind: 'ACTION,AUTOMATIC,AUDIENCE,ACCESS', tenantStatus: 'ALL', tenantId: TENANT_ID });
+    expect(query).not.toHaveProperty('plan');
+    const filters = JSON.parse(window.sessionStorage.getItem('ui.usage.filters') ?? '{}').d;
+    expect(filters).toMatchObject({ preset: '7d', tenantStatus: 'ALL', tenantId: TENANT_ID, plan: 'all' });
   });
 
   it('"Atualizar" mantém as contas anteriores com carregando e nunca mostra a lista vazia na espera', async () => {

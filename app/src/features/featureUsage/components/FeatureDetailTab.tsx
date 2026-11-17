@@ -4,7 +4,7 @@ import { Alert, Button, Stack, Typography } from '@mui/material';
 import { ArrowLeft, FilterX, SearchX } from 'lucide-react';
 import { AppIcon, EmptyState, ServiceUpdatingState } from '@/components';
 import { serverNow } from '@/services/serverClock';
-import { DEFAULT_USAGE_FILTERS, clearUsageFilters, featureDescription, featureLabel, withPeriod } from '../rules';
+import { DEFAULT_USAGE_FILTERS, clearKindAndPlanFilters, featureDescription, featureLabel, withPeriod } from '../rules';
 import { featureUsageStrings as S } from '../strings';
 import { USAGE_PATH } from '../paths';
 import { useUsagePage } from '../hooks/useUsagePage';
@@ -71,7 +71,7 @@ export default function FeatureDetailTab() {
         description={S.detail.outOfScopeDescription}
         action={(
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'center' }}>
-            <Button variant="outlined" onClick={() => setFilters(clearUsageFilters(filters))} sx={{ minHeight: 44 }}>
+            <Button variant="outlined" onClick={() => setFilters(clearKindAndPlanFilters(filters))} sx={{ minHeight: 44 }}>
               {S.actions.clearFilters}
             </Button>
             {back}

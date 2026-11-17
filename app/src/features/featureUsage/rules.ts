@@ -243,6 +243,15 @@ export function clearUsageFilters(filters: UsageFilters): UsageFilters {
   return { ...DEFAULT_USAGE_FILTERS, kinds: [...DEFAULT_USAGE_FILTERS.kinds], sort: filters.sort };
 }
 
+/**
+ * "Limpar filtros" do aviso "fora dos filtros de tipo ou plano": libera todos os tipos e todos os planos e mantém o
+ * resto (conta, período, status, produto, ordenação). Todos os tipos, não o padrão: recurso só de audiência ficaria
+ * fora de novo com o padrão (ação + automático).
+ */
+export function clearKindAndPlanFilters(filters: UsageFilters): UsageFilters {
+  return { ...filters, kinds: [...USAGE_KINDS], plan: DEFAULT_USAGE_FILTERS.plan };
+}
+
 /** Liga/desliga um tipo; nunca deixa a lista vazia. */
 export function toggleKind(kinds: readonly UsageKind[], kind: UsageKind): UsageKind[] {
   const next = kinds.includes(kind) ? kinds.filter((k) => k !== kind) : [...kinds, kind];
