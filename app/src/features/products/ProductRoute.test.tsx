@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { renderWithTheme } from '@/test/renderWithTheme';
-import { ProductRoute } from './ProductRoute';
+import { ProductHomeRedirect, ProductRoute } from './ProductRoute';
 
 const tenant = vi.hoisted(() => ({
   value: { activeTenantId: 't1', tenantsLoaded: false, tenants: [] as Array<{ id: string; products?: string[] }> },
@@ -44,5 +44,37 @@ describe('ProductRoute', () => {
     tenant.value = { activeTenantId: 't1', tenantsLoaded: true, tenants: [{ id: 't1', products: ['SAVER'] }] };
     renderAt('dark');
     expect(screen.getByText('vitrine')).toBeInTheDocument();
+  });
+});
+
+describe('ProductHomeRedirect', () => {
+  function renderHome() {
+    return renderWithTheme(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route index element={<ProductHomeRedirect />} />
+          <Route path="/dashboard" element={<p>dashboard</p>} />
+          <Route path="/settings/subscription" element={<p>assinatura</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+  }
+
+  it('carregando: indicador', () => {
+    tenant.value = { activeTenantId: 't1', tenantsLoaded: false, tenants: [] };
+    renderHome();
+    expect(screen.getByRole('status')).toBeInTheDocument();
+  });
+
+  it('com Afiliados: dashboard', () => {
+    tenant.value = { activeTenantId: 't1', tenantsLoaded: true, tenants: [{ id: 't1', products: ['AFFILIATES', 'CHAT'] }] };
+    renderHome();
+    expect(screen.getByText('dashboard')).toBeInTheDocument();
+  });
+
+  it('só-Saver sem tela: assinatura', () => {
+    tenant.value = { activeTenantId: 't1', tenantsLoaded: true, tenants: [{ id: 't1', products: ['SAVER'] }] };
+    renderHome();
+    expect(screen.getByText('assinatura')).toBeInTheDocument();
   });
 });

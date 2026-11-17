@@ -4,5 +4,5 @@ export {
   type ProductKey,
 } from './productAccess';
 export { useProductAccess, type ProductAccess } from './useProductAccess';
-export { ProductRoute, ProductAccessLoading } from './ProductRoute';
+export { ProductRoute, ProductAccessLoading, ProductHomeRedirect } from './ProductRoute';
 export { productAccessStrings } from './strings';

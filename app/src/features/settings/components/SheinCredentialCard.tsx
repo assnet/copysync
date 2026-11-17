@@ -24,6 +24,7 @@ import { settingsStrings } from '../strings';
 import { sheinCardState, showsRiskBanner, type SheinCardState } from '../utils/sheinCardState';
 import { AffiliateCardShell } from './AffiliateCardShell';
 import { MarketplaceRiskNoticeDialog } from './MarketplaceRiskNoticeDialog';
+import { PRODUCT_PLANS_PATH } from '@/features/products/productAccess';
 
 const ta = settingsStrings.affiliate;
 const t = ta.shein;
@@ -403,7 +404,7 @@ export function SheinCredentialCard({
       <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} flexWrap="wrap" useFlexGap>
         {state === 'locked' && (
           <Tooltip title={t.lockedTooltip} describeChild>
-            <Button variant="contained" fullWidth startIcon={<AppIcon icon={Lock} size="sm" />} onClick={() => navigate('/plans')}>
+            <Button variant="contained" fullWidth startIcon={<AppIcon icon={Lock} size="sm" />} onClick={() => navigate(PRODUCT_PLANS_PATH.AFFILIATES)}>
               {t.lockedAction}
             </Button>
           </Tooltip>

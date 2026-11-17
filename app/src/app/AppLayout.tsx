@@ -488,7 +488,8 @@ export function AppLayout() {
                       try {
                         await switchTenant(t.id);
                         // Recarga completa: páginas, SSE/WebSocket e rascunhos são por tenant.
-                        window.location.assign('/dashboard');
+                        // `/` resolve o início pelos produtos do tenant novo.
+                        window.location.assign('/');
                       } catch {
                         setSwitchError(true);
                       }
