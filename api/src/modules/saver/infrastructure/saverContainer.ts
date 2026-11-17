@@ -16,6 +16,9 @@ import type { ISaverTeamReader } from '../domain/contracts/ISaverTeamReader';
 import type { ISaverExtractionQueue } from '../domain/contracts/ISaverExtractionQueue';
 import type { ISaverSessionStateStore } from '../domain/contracts/ISaverSessionStateStore';
 import type { ISaverConfigRepository } from '../domain/contracts/ISaverConfigRepository';
+import { env } from '../../../shared/config/env';
+import { PrismaEntitlementReader } from '../../tenants/infrastructure/repositories/PrismaEntitlementReader';
+import { GetSaverOverviewUseCase } from '../application/use-cases/GetSaverOverviewUseCase';
 
 /*
  * Composição do Saver (molde `linkRotationContainer.ts`). Tudo lazy: importar não toca banco.
@@ -46,4 +49,24 @@ export const saverContainer = {
   get queue(): ISaverExtractionQueue { return queue(); },
   get sessionStates(): ISaverSessionStateStore { return sessionStates(); },
   get configs(): ISaverConfigRepository { return configs(); },
+
+  get getOverview(): GetSaverOverviewUseCase { return getOverview(); },
 };
+
+/*
+ * Use cases do tenant (T10–T12). Ficam no fim do arquivo para não conflitar com outras tasks.
+ * `SAVER_EXTRACTION_WORKER_ENABLED` nasce no T14: lida por chave até lá (ausente = fila parada).
+ */
+const entitlements = lazy(() => new PrismaEntitlementReader(prisma));
+const saverQueueRunning = (): boolean =>
+  (env as unknown as Record<string, unknown>)['SAVER_EXTRACTION_WORKER_ENABLED'] === true;
+
+const getOverview = lazy(() => new GetSaverOverviewUseCase({
+    entitlements: entitlements(),
+    groups: groups(),
+    memberships: memberships(),
+    queue: queue(),
+    configs: configs(),
+    exportGrants: exportGrants(),
+    queueRunning: saverQueueRunning,
+}));
