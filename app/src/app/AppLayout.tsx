@@ -450,6 +450,10 @@ export function AppLayout() {
           // numa viewport de 390px e criavam rolagem horizontal no mobile.
           minWidth: 0,
           overflowX: 'hidden',
+          // O main é quem rola (overflow-x hidden torna overflow-y auto). `relative` faz dele o bloco de
+          // referência dos filhos `position: absolute` (ex.: texto só para leitor de tela em tabelas);
+          // sem isso eles ficavam presos à janela e criavam uma 2ª barra de rolagem na página.
+          position: 'relative',
           // padding em vez de margin: a margem do main colapsava com a margem negativa
           // que as páginas usam para anular o padding do wrapper, e o conteúdo subia
           // para trás da AppBar fixa no mobile.

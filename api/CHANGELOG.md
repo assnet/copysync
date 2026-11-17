@@ -19,6 +19,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [0.100.4] — 2026-11-17 — Saver: número oculto (fontes locais, aviso de sessão não admin) e tela Grupos (app 0.123.5)
 
+### Fixed
+
+- **`app/AppLayout.tsx`** (app 0.123.6) — barra de rolagem duplicada em telas longas (ex.: `/saver`): o `main` passa a ser `position: relative`, então textos ocultos de acessibilidade (`position: absolute`) não escapam mais para a janela.
+
 ### Added
 
 #### Backend — saver / messaging ([`docs/saver.md`](../docs/saver.md), "Número oculto")
