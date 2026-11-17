@@ -13,6 +13,11 @@ describe('productsOfTenant', () => {
     expect(productsOfTenant({ products: ['SAVER', 'FUTURO'] })).toEqual(['SAVER']);
     expect(productsOfTenant({ products: [] })).toEqual([]);
   });
+
+  it('super admin passa o gate: todos os produtos, mesmo sem a linha', () => {
+    expect(productsOfTenant({ role: 'SUPER_ADMIN', products: ['AFFILIATES', 'CHAT'] })).toEqual(['AFFILIATES', 'CHAT', 'SAVER']);
+    expect(productsOfTenant({ role: 'ADMIN', products: ['SAVER'] })).toEqual(['SAVER']);
+  });
 });
 
 describe('resolveHomePath', () => {

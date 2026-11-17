@@ -48,11 +48,17 @@ export function plansPathFor(product: ProductKey): string {
   return (PRODUCT_PLANS_PATH as Partial<Record<ProductKey, string>>)[product] ?? SUBSCRIPTION_PATH;
 }
 
+/** Papel do super admin em `GET /tenants`: passa o gate de produto da API (PROD-09, SAVER-47). */
+const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
+
 /**
  * Produtos de um tenant já carregado. Sem o campo (API antiga) = legado; chaves que o
- * painel não conhece são ignoradas.
+ * painel não conhece são ignoradas. Super admin = todos (a API deixa passar: suporte e piloto).
  */
-export function productsOfTenant(tenant: { products?: readonly string[] } | null | undefined): ProductKey[] {
+export function productsOfTenant(
+  tenant: { products?: readonly string[]; role?: string } | null | undefined,
+): ProductKey[] {
+  if (tenant?.role === SUPER_ADMIN_ROLE) return [...PRODUCTS];
   if (!tenant || !Array.isArray(tenant.products)) return [...LEGACY_PRODUCTS];
   return tenant.products.filter(isProductKey);
 }
