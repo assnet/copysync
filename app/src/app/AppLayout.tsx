@@ -24,6 +24,7 @@ import {
   type NavLink, type NavigationModel, type NavigationState,
 } from '@/features/navigation';
 import { useOfferHunterAccess } from '@/features/offerHunter/hooks/useOfferHunterAccess';
+import { useSaverAccess } from '@/features/saver/hooks/useSaverAccess';
 import { NavLinkItem } from './nav/NavLinkItem';
 import { ProductNavItem } from './nav/ProductNavItem';
 import { useProductAccess } from '@/features/products';
@@ -334,11 +335,13 @@ export function AppLayout() {
   const isSuperAdmin = Boolean(user?.isSuperAdmin);
   // Caçador de Ofertas: visibilidade pela API (mesma consulta do guard `OfferHunterRoute`)
   const { visible: offerHunterVisible } = useOfferHunterAccess();
+  // Saver: audiência pela API (mesma consulta do guard `SaverRoute`); falso some com o produto inteiro.
+  const { visible: saverVisible } = useSaverAccess();
   // Produtos do tenant ativo: produto fora do plano aparece com cadeado (só a vitrine).
   const productAccess = useProductAccess();
   const navModel = useMemo(
-    () => buildNavigation({ isSuperAdmin, offerHunterVisible, products: productAccess.products }),
-    [isSuperAdmin, offerHunterVisible, productAccess.products],
+    () => buildNavigation({ isSuperAdmin, offerHunterVisible, saverVisible, products: productAccess.products }),
+    [isSuperAdmin, offerHunterVisible, saverVisible, productAccess.products],
   );
   const nav = useNavigationState(navModel, location.pathname);
 

@@ -55,6 +55,7 @@ describe('ProductHomeRedirect', () => {
           <Route index element={<ProductHomeRedirect />} />
           <Route path="/dashboard" element={<p>dashboard</p>} />
           <Route path="/settings/subscription" element={<p>assinatura</p>} />
+          <Route path="/saver" element={<p>saver</p>} />
         </Routes>
       </MemoryRouter>,
     );
@@ -72,8 +73,14 @@ describe('ProductHomeRedirect', () => {
     expect(screen.getByText('dashboard')).toBeInTheDocument();
   });
 
-  it('só-Saver sem tela: assinatura', () => {
+  it('só-Saver: início no Saver', () => {
     tenant.value = { activeTenantId: 't1', tenantsLoaded: true, tenants: [{ id: 't1', products: ['SAVER'] }] };
+    renderHome();
+    expect(screen.getByText('saver')).toBeInTheDocument();
+  });
+
+  it('sem produto: assinatura', () => {
+    tenant.value = { activeTenantId: 't1', tenantsLoaded: true, tenants: [{ id: 't1', products: [] }] };
     renderHome();
     expect(screen.getByText('assinatura')).toBeInTheDocument();
   });

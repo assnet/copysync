@@ -158,6 +158,19 @@ describe('AdminPlanEntitlementsPage', () => {
     await waitFor(() => expect(screen.getByRole('checkbox', { name: t.audience.aria('Caçador de Ofertas') })).not.toBeChecked());
   });
 
+  it('linha "Saver" só de audiência: "—" nas colunas de plano, Switch só em "Só super admin"', async () => {
+    vi.spyOn(adminPlanEntitlementsService, 'list').mockResolvedValue({
+      plans: ['COPYSYNC_LITE', 'COPYSYNC_PRO', 'COPYSYNC_MAX'],
+      entitlements: [{ key: 'saver', plans: {}, superAdminOnly: true }],
+    });
+    renderWithTheme(<AdminPlanEntitlementsPage />, 'dark');
+    expect(await screen.findByText('Saver')).toBeInTheDocument();
+    for (const p of ['LITE', 'PRO', 'MAX']) expect(screen.queryByRole('checkbox', { name: t.switchAria('Saver', p) })).toBeNull();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.getAllByLabelText(t.audience.noneAria)).toHaveLength(3);
+    expect(screen.getByRole('checkbox', { name: t.audience.aria('Saver') })).toBeChecked();
+  });
+
   it('serviço da audiência chama PUT /:key/audience', async () => {
     const { apiClient } = await import('@/services/apiClient');
     const put = vi.spyOn(apiClient, 'put').mockResolvedValue({ data: { data: { key: 'offer_hunter_enabled', superAdminOnly: true } } });

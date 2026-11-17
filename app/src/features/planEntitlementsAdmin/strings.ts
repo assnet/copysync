@@ -24,6 +24,10 @@ export const planEntitlementsAdminStrings = {
       label: 'Caçador de Ofertas',
       description: 'Buscar ofertas automaticamente no catálogo da Shein.',
     },
+    saver: {
+      label: 'Saver',
+      description: 'Produto Saver no menu. Quem tem o plano só vê quando a opção "Só super admin" está desligada.',
+    },
     offer_hunter_finds_per_day: {
       label: 'Achados por dia do Caçador',
       description: 'Quantas ofertas o Caçador pode encontrar por dia em cada cliente.',

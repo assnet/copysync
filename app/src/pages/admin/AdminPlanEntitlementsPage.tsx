@@ -123,7 +123,15 @@ export function AdminPlanEntitlementsPage() {
                           const plan = planName(p);
                           const missing = raw === null || raw === undefined;
                           const type = row.type;
-                          if (type?.kind === 'integer') {
+                          // Linha só de audiência (produto, não preset): nada a gravar por plano
+                          if (!type) {
+                            return (
+                              <TableCell key={p} align="center">
+                                <Typography component="span" variant="body2" color="text.secondary" aria-label={t.audience.noneAria}>{t.audience.none}</Typography>
+                              </TableCell>
+                            );
+                          }
+                          if (type.kind === 'integer') {
                             const id = cellId(row.key, p);
                             const current = typeof raw === 'number' ? raw : null;
                             const draft = drafts[id] ?? (current === null ? '' : String(current));

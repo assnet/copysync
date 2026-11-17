@@ -21,8 +21,9 @@ describe('resolveHomePath', () => {
     expect(resolveHomePath(['SAVER', 'AFFILIATES'])).toBe('/dashboard');
   });
 
-  it('só-Saver sem tela registrada = assinatura (sem laço)', () => {
-    expect(resolveHomePath(['SAVER'])).toBe(SUBSCRIPTION_PATH);
+  it('só-Saver: início no Saver; nenhum produto = assinatura', () => {
+    expect(resolveHomePath(['SAVER'])).toBe('/saver');
+    expect(resolveHomePath([])).toBe(SUBSCRIPTION_PATH);
   });
 
   it('nenhum produto = assinatura', () => {
@@ -39,6 +40,6 @@ describe('hasProduct / plansPathFor', () => {
   it('vitrine por produto; Chat acompanha Afiliados; sem vitrine = assinatura', () => {
     expect(plansPathFor('AFFILIATES')).toBe('/affiliates/plans');
     expect(plansPathFor('CHAT')).toBe(PRODUCT_PLANS_PATH.AFFILIATES);
-    expect(plansPathFor('SAVER')).toBe(SUBSCRIPTION_PATH);
+    expect(plansPathFor('SAVER')).toBe('/saver/plans');
   });
 });
