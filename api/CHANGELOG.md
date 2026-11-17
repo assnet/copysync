@@ -17,6 +17,45 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.100.0] — 2026-11-17 — Acesso por produto e módulo Saver (app 0.123.0)
+
+### Added
+
+#### tenants / integrations — acesso por produto ([`docs/acesso-por-produto.md`](../docs/acesso-por-produto.md))
+
+- **`resolveProductAccess.ts`**, **`planCatalog.ts`**, **`sharedEntitlements.ts`** — regra pura de produto (`AFFILIATES`, `CHAT`, `SAVER`): legado sem linha = ativo (sem backfill), produto novo sem linha = inativo; `resolvePlan(planSlug, permissions)` delega Afiliados a `resolveEffectivePlanSlug` e reconhece `copysync-saver-*`/`SAVER_{TIER}`; chaves compartilhadas (`whatsapp_sessions`, `telegram_sessions`) = maior entre os produtos ativos.
+- **Migrations `20261117110000_create_tenant_products`, `20261117110100_add_audit_action_tenant_product_changed`** — tabela `tenant_products` (só `CREATE TABLE`, sem INSERT) e `TENANT_PRODUCT_CHANGED`.
+- **`productGate.ts`**, **`app/productRoutes.ts`** — gate HTTP logo após `tenantHook` por `withProduct` + `ROUTE_PRODUCT_MAP`, atrás de `PRODUCT_ACCESS_GATE_MODE=off|log|enforce` (padrão `off`). Produto novo sempre exigido; legado só em `enforce`; falha de leitura bloqueia só produto novo (503); super admin passa. Teste falha se rota de produto ficar sem âncora.
+- **`ApplyBillingEventUseCase.ts`**, **`ProvisionTenantUseCase.ts`**, **`PrismaBillingReconcileRepository.ts`**, **`productBilling.ts`** — webhook, provisionamento e reconciliação por produto; caminho de Afiliados sem linha de produto inalterado; linha `source=ADMIN` nunca desativada; preset de produto novo sem as chaves compartilhadas + merge.
+- **`PUT /admin/tenants/:tenantId/products/:product`** (`SetTenantProductUseCase`) — concessão manual pelo super admin, auditada. `GET /tenants`, `/me`, login e `GET /subscription` ganham `products`.
+- Segundo plano e públicas (envio de ofertas, sync de membros, captura, ingestão do chat, rodízio e vitrine públicos, extensão por cookie) respeitam Afiliados/Chat inativo em `enforce`.
+- `/admin/plan-entitlements`: cada recurso só é editável nos planos do produto dono (400 no PUT cruzado).
+
+#### saver — módulo Saver ([`docs/saver.md`](../docs/saver.md))
+
+- **Migrations `20261117120000_create_saver_tables`, `20261117120100_add_audit_actions_saver`, `20261117120200_add_saver_plan_presets`** — tabelas do Saver (base de contatos da plataforma única por telefone/LID, vínculos por grupo do tenant, extrações, fila, liberações, config) e presets `SAVER_LITE/PRO/MAX`.
+- **`IMessagingEngine.getGroupMembers`** (Baileys; Telegram não suportado; remoto) e `ENGINE_RATE_LIMITED` só na leitura de grupo.
+- **`modules/saver/*`** — resumo, grupos da sessão, pedido/cancelamento/remoção com limites sob advisory lock por tenant, passo da extração com teto `saver_contacts` transacional e pausas com teto de 24 h, manutenção de extrações órfãs (sessão excluída), exportação CSV/vCard por stream auditada, config e liberação de exportar, base da plataforma só super admin (cursor keyset assinado, nome da conta, exportação auditada).
+- **`SaverExtractionJob`** — só no `worker`, sob `SAVER_EXTRACTION_WORKER_ENABLED` (padrão `false`; ligar no `http` e no `worker`).
+- Audiência `saver` (`SAVER_AUDIENCE`, padrão `super_admin`; flag em `/admin/plan-entitlements`): fora da audiência = 403 `SAVER_UNAVAILABLE`. Plano de Afiliados nunca dá Saver.
+
+#### Painel (app/)
+
+- **`features/products/*`**, menu por produto com cadeado, `ProductRoute`/`ProductHomeRedirect`, 403 `PRODUCT_UNAVAILABLE` leva à vitrine, assinatura com um cartão por produto.
+- **`features/saver/*`**, **`features/saverAdmin/*`** — Saver no menu (só com audiência), Grupos, Exportar, Configurações, Planos (`/saver/plans`) e Base de contatos (`/admin/saver`), com privacidade, i18n e claro/escuro.
+
+### Changed
+
+- **`BaileysErrorTranslator.ts`** — `translateGroupReadError` traduz limite de taxa para 429 só na leitura de grupo; envio e pareamento seguem 503.
+
+#### Ordem de deploy
+
+1. Deploy com `PRODUCT_ACCESS_GATE_MODE=off` (padrão), `SAVER_EXTRACTION_WORKER_ENABLED=false`, `SAVER_AUDIENCE=super_admin`. Nada muda para clientes.
+2. `log` na Render ≥ 48 h sem `would_block` em tenants existentes; depois `enforce`.
+3. Só então ligar a fila do Saver e conceder o Saver a pilotos.
+
+---
+
 ## [0.99.0] — 2026-11-16 — Nível do tenant pelas permissões da assinatura
 
 ### Added
