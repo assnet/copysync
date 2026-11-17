@@ -83,11 +83,11 @@ export const saverContainer = {
 
 /*
  * Use cases do tenant (T10–T12). Ficam no fim do arquivo para não conflitar com outras tasks.
- * `SAVER_EXTRACTION_WORKER_ENABLED` nasce no T14: lida por chave até lá (ausente = fila parada).
+ * `queueRunning` = `SAVER_EXTRACTION_WORKER_ENABLED` (ligar no `http` e no `worker`: o job só sobe no `worker`).
  */
 const entitlements = lazy(() => new PrismaEntitlementReader(prisma));
 const saverQueueRunning = (): boolean =>
-  (env as unknown as Record<string, unknown>)['SAVER_EXTRACTION_WORKER_ENABLED'] === true;
+  env.SAVER_EXTRACTION_WORKER_ENABLED;
 
 const getOverview = lazy(() => new GetSaverOverviewUseCase({
     entitlements: entitlements(),
