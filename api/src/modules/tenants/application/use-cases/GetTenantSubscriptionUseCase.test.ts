@@ -4,6 +4,7 @@ import type { ITenantRepository } from '../../domain/contracts/ITenantRepository
 import type { SubscriptionUsage } from '../../domain/services/subscriptionLimits';
 import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
 import { GetTenantSubscriptionUseCase } from './GetTenantSubscriptionUseCase';
+import type { TenantProduct } from '../../domain/contracts/ITenantProductRepository';
 
 const ch = (whatsapp: number, telegram: number) => ({ whatsapp, telegram });
 const USAGE: SubscriptionUsage = {
@@ -24,11 +25,11 @@ function tenant(over: Partial<TenantProps> = {}): Tenant {
   });
 }
 
-function build(found: Tenant | null, values: Record<string, unknown> = {}, usage = USAGE) {
+function build(found: Tenant | null, values: Record<string, unknown> = {}, usage = USAGE, rows: TenantProduct[] = []) {
   const repo = { findById: vi.fn().mockResolvedValue(found) } as unknown as ITenantRepository;
   const readAll = vi.fn().mockResolvedValue(values);
   const read = vi.fn().mockResolvedValue(usage);
-  return { uc: new GetTenantSubscriptionUseCase(repo, { readAll }, { read }), repo, readAll, read };
+  return { uc: new GetTenantSubscriptionUseCase(repo, { readAll }, { read }, { findAll: async () => rows }), repo, readAll, read };
 }
 
 const item = (out: { limits: { key: string }[] }, key: string) => out.limits.find((l) => l.key === key);
@@ -83,5 +84,20 @@ describe('GetTenantSubscriptionUseCase', () => {
     expect(item(pro, 'mercado_livre_affiliate_tags')).toMatchObject({ kind: 'count', channel: null, used: 2, limit: 2 });
     const none = await build(tenant({ planSlug: null })).uc.execute('t1');
     expect(item(none, 'mercado_livre_affiliate_tags')).toMatchObject({ limit: 1 });
+  });
+
+  it('legado sem linha: products = Afiliados com plano e vencimento do tenant; sem itens do Saver', async () => {
+    const exp = new Date('2026-12-01T00:00:00Z');
+    const out = await build(tenant({ subscriptionExpiresAt: exp })).uc.execute('t1');
+    expect(out.products).toEqual([{ product: 'AFFILIATES', planSlug: 'COPYSYNC_PRO', expiresAt: exp, source: null }]);
+    expect(out.limits.some((l) => l.product === 'SAVER')).toBe(false);
+  });
+
+  it('só-Saver: products = Saver da linha; itens do Saver presentes', async () => {
+    const row = (product: 'AFFILIATES' | 'SAVER', status: 'ACTIVE' | 'INACTIVE', planSlug: string | null): TenantProduct =>
+      ({ tenantId: 't1', product, status, planSlug, expiresAt: null, source: 'ADMIN', inactiveSince: null, updatedAt: new Date(0) });
+    const out = await build(tenant({ planSlug: null }), {}, USAGE, [row('AFFILIATES', 'INACTIVE', null), row('SAVER', 'ACTIVE', 'SAVER_PRO')]).uc.execute('t1');
+    expect(out.products).toEqual([{ product: 'SAVER', planSlug: 'SAVER_PRO', expiresAt: null, source: 'ADMIN' }]);
+    expect(out.limits.filter((l) => l.product === 'SAVER').map((l) => l.key)).toContain('saver_groups');
   });
 });

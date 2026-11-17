@@ -96,4 +96,24 @@ describe('subscriptionLimits', () => {
     expect(r.storefront_enabled.enabled).toBe(true);
     expect(r.offer_story_enabled.enabled).toBe(false);
   });
+
+  it('produto por chave: sessões compartilhadas (null), Saver próprio, resto Afiliados', () => {
+    const m = Object.fromEntries(SUBSCRIPTION_LIMIT_ITEMS.map((i) => [i.key, i.product]));
+    expect(m.whatsapp_sessions).toBeNull();
+    expect(m.telegram_sessions).toBeNull();
+    expect(m.monitored_groups).toBe('AFFILIATES');
+    expect(m.storefront_enabled).toBe('AFFILIATES');
+    expect(m.saver_groups).toBe('SAVER');
+    expect(m.saver_auto_refresh_enabled).toBe('SAVER');
+  });
+
+  it('itens do Saver só com o produto; ausente = 0/desligado, null = ilimitado', () => {
+    expect(buildSubscriptionLimits({}, usage).some((i) => i.product === 'SAVER')).toBe(false);
+    expect(buildSubscriptionLimits({}, usage, ['AFFILIATES', 'CHAT']).some((i) => i.product === 'SAVER')).toBe(false);
+    const r = byKey(buildSubscriptionLimits({ saver_contacts: null, saver_group_scans_per_day: 20 }, usage, ['SAVER']));
+    expect(r.saver_groups).toMatchObject({ kind: 'count', used: null, limit: 0, enabled: false });
+    expect(r.saver_contacts).toMatchObject({ limit: null, enabled: true });
+    expect(r.saver_group_scans_per_day).toMatchObject({ kind: 'daily', limit: 20, enabled: true });
+    expect(r.saver_auto_refresh_enabled).toMatchObject({ kind: 'feature', enabled: false });
+  });
 });

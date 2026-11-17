@@ -1,5 +1,17 @@
 import type { TenantStatus } from '../../domain/entities/Tenant';
 import type { SubscriptionLimitItem } from '../../domain/services/subscriptionLimits';
+import type { ProductKey } from '../../domain/services/resolveProductAccess';
+import type { TenantProductSource } from '../../domain/contracts/ITenantProductRepository';
+
+/** Produto com acesso (cartão da tela). Afiliados sem linha usa `Tenant.planSlug`/vencimento. */
+export interface SubscriptionProductOutput {
+  product: ProductKey;
+  /** Plano interno cru (`COPYSYNC_*`, `SAVER_*`); o presenter descarta desconhecido. */
+  planSlug: string | null;
+  expiresAt: Date | null;
+  /** `null` = sem linha em `tenant_products` (legado). */
+  source: TenantProductSource | null;
+}
 
 /** Saída de `GetTenantSubscriptionUseCase` (tela "Assinatura"). Datas cruas: o presenter serializa. */
 export interface GetTenantSubscriptionOutput {
@@ -11,4 +23,5 @@ export interface GetTenantSubscriptionOutput {
   /** `null` = sem vencimento conhecido. */
   expiresAt: Date | null;
   limits: SubscriptionLimitItem[];
+  products: SubscriptionProductOutput[];
 }
