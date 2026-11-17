@@ -25,6 +25,18 @@ export interface SaverConfig {
   autoRefresh: boolean;
 }
 
+/** `GET`/`PUT /saver/config` (só `ADMIN`): a configuração e o que o plano permite. */
+export interface SaverConfigDetails extends SaverConfig {
+  /** Plano inclui a atualização diária (`saver_auto_refresh_enabled`). */
+  autoRefreshAvailable: boolean;
+  /** `false` = nunca salva (valores padrão). */
+  configured: boolean;
+  updatedAt: string | null;
+}
+
+/** Tamanho máximo do prefixo de nome (`SAVER_PREFIX_MAX` na API). */
+export const SAVER_PREFIX_MAX = 40;
+
 /** `GET /saver/overview`. */
 export interface SaverOverview {
   groups: SaverUsage;
@@ -86,13 +98,18 @@ export interface RequestSaverExtractionInput {
 
 export type UpdateSaverConfigInput = Partial<SaverConfig>;
 
-/** `GET /saver/permissions`: operadores do tenant e a liberação de exportar. */
+/** `GET /saver/permissions` (só `ADMIN`): operadores do tenant e a liberação de exportar. */
 export interface SaverExportGrant {
   userId: string;
   name: string;
   email: string;
-  role: SaverRole;
-  export: boolean;
+  canExport: boolean;
+}
+
+/** `PUT /saver/permissions/:userId`. */
+export interface SaverExportGrantChange {
+  userId: string;
+  canExport: boolean;
 }
 
 export interface SaverExportOptions {

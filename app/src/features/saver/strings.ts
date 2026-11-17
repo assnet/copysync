@@ -31,6 +31,67 @@ export const saverStrings = {
     comingSoon: 'Esta tela está sendo preparada.',
   },
 
+  /** Tela de configurações (T25). */
+  settings: {
+    loading: 'Carregando as configurações',
+    loadError: 'Não foi possível carregar as configurações.',
+    retry: 'Tentar de novo',
+    readOnly: 'Só o administrador da conta altera estas configurações. Você vê os padrões em uso.',
+    defaults: {
+      title: 'Padrões da exportação',
+      subtitle: 'Já vêm marcados ao baixar os contatos. Dá para trocar em cada exportação.',
+    },
+    prefix: {
+      label: 'Prefixo do nome',
+      placeholder: 'Ex.: Cliente',
+      help: 'Vai antes do nome de cada contato no arquivo, para achar todos juntos na agenda.',
+      example: (prefix: string) => `Na agenda: "${prefix} Maria Souza"`,
+      tooLong: (max: number) => `Use até ${max} caracteres.`,
+      counter: (used: number, max: number) => `${used}/${max}`,
+    },
+    excludeAdmins: {
+      title: 'Deixar os administradores do grupo de fora',
+      description: 'Quem administra o grupo não entra no arquivo.',
+    },
+    format: {
+      label: 'Formato do arquivo',
+      CSV: 'Planilha (CSV)',
+      VCARD: 'Agenda (vCard)',
+      help: {
+        CSV: 'Abre no Excel e no Google Planilhas.',
+        VCARD: 'Importa direto na agenda do celular.',
+      },
+    },
+    autoRefresh: {
+      title: 'Atualização diária',
+      description: 'Lê de novo, uma vez por dia, os grupos salvos para trazer quem entrou.',
+      unavailable: 'Seu plano não inclui a atualização diária. Veja os planos para liberar.',
+      unavailableShort: 'Não incluída no seu plano',
+    },
+    save: 'Salvar',
+    saving: 'Salvando',
+    discard: 'Descartar alterações',
+    unsaved: 'Alterações não salvas',
+    saved: 'Configurações salvas.',
+    lastSaved: (when: string) => `Salvo em ${when}`,
+    neverSaved: 'Usando os valores padrão.',
+  },
+
+  /** Seção "Quem pode exportar" (só `ADMIN`). */
+  grants: {
+    title: 'Quem pode exportar',
+    subtitle: 'Administradores sempre podem. Operadores só baixam os contatos se você liberar.',
+    empty: 'Nenhum operador na equipe ainda.',
+    emptyHint: 'Quem entrar na conta como operador aparece aqui para você liberar a exportação.',
+    loadError: 'Não foi possível carregar a equipe.',
+    switchLabel: (name: string) => `Liberar a exportação para ${name}`,
+    tooltipOn: 'Pode baixar os contatos. Clique para tirar a liberação.',
+    tooltipOff: 'Não pode baixar os contatos. Clique para liberar.',
+    allowed: 'Pode exportar',
+    blocked: 'Sem permissão',
+    toggleFailed: 'Não foi possível mudar a permissão. Ela voltou ao que era.',
+  },
+
   limits: {
     unlimited: 'Ilimitado',
     usage: (used: number, limit: number | null) =>
