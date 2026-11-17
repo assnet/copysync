@@ -1,3 +1,4 @@
+import type { IProductAccessReader } from '../../../tenants/domain/contracts/IProductAccessReader';
 import { logger } from '../../../../shared/logger/logger';
 import type { ILinkClickRepository } from '../../domain/contracts/ILinkClickRepository';
 import type { ILinkDomainRepository } from '../../domain/contracts/ILinkDomainRepository';
@@ -42,6 +43,8 @@ export interface ResolvePublicLinkDeps {
   store: ILinkRotationPublicStore;
   /** `LINK_CLICK_SALT`; null = recurso não configurado no ambiente → `unavailable`. */
   clickSalt: string | null;
+  /** Produto Afiliados inativo = tenant não ativo (design product-access §3.5). Ausente = sempre ativo. */
+  products?: Pick<IProductAccessReader, 'has'>;
   now?: () => Date;
   /** 0 ≤ rng() < 1 (WEIGHTED/RANDOM). */
   rng?: () => number;
@@ -87,6 +90,7 @@ export class ResolvePublicLinkUseCase {
     if (!salt) return { kind: 'unavailable' };
     if (!found.tenantActive) return { kind: 'unavailable' };
     const { rotation } = found;
+    if (deps.products && !(await deps.products.has(rotation.tenantId, 'AFFILIATES'))) return { kind: 'unavailable' };
 
     if (PAUSED.has(rotation.status)) return { kind: 'paused', title: await this.title(rotation, null) };
 

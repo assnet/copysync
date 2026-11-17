@@ -34,6 +34,7 @@ import { PrismaStorefrontRepository } from './repositories/PrismaStorefrontRepos
 import { PrismaStorefrontOfferRepository } from './repositories/PrismaStorefrontOfferRepository';
 import { SharpStorefrontImageProcessor } from './adapters/SharpStorefrontImageProcessor';
 import { StorefrontMediaStore } from './adapters/StorefrontMediaStore';
+import { backgroundProductAccessReader } from '../../tenants/infrastructure/productAccessContainer';
 
 /*
  * Composição da Página de Ofertas (design.md §4.3). Tudo lazy: importar não toca banco, disco nem
@@ -101,7 +102,7 @@ const useCases = lazy(() => ({
   delete:       new DeleteStorefrontUseCase(deps()),
 }));
 
-const publicRenderer = lazy(() => new RenderPublicStorefrontUseCase(deps()));
+const publicRenderer = lazy(() => new RenderPublicStorefrontUseCase(deps(), backgroundProductAccessReader()));
 
 export const storefrontContainer = {
   /** Use cases do painel do tenant (`/storefront`). */
