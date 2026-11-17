@@ -11,6 +11,9 @@ const usage: SubscriptionUsage = {
   offerHunterFindsToday: 4,
   aiRequestsToday: null,
   mercadoLivreAffiliateTags: 2,
+  saverGroups: 3,
+  saverContacts: 120,
+  saverGroupScans: 4,
 };
 
 const byKey = (items: ReturnType<typeof buildSubscriptionLimits>) => Object.fromEntries(items.map((i) => [i.key, i]));
@@ -111,9 +114,10 @@ describe('subscriptionLimits', () => {
     expect(buildSubscriptionLimits({}, usage).some((i) => i.product === 'SAVER')).toBe(false);
     expect(buildSubscriptionLimits({}, usage, ['AFFILIATES', 'CHAT']).some((i) => i.product === 'SAVER')).toBe(false);
     const r = byKey(buildSubscriptionLimits({ saver_contacts: null, saver_group_scans_per_day: 20 }, usage, ['SAVER']));
-    expect(r.saver_groups).toMatchObject({ kind: 'count', used: null, limit: 0, enabled: false });
-    expect(r.saver_contacts).toMatchObject({ limit: null, enabled: true });
-    expect(r.saver_group_scans_per_day).toMatchObject({ kind: 'daily', limit: 20, enabled: true });
+    expect(r.saver_groups).toMatchObject({ kind: 'count', used: 3, limit: 0, enabled: false });
+    expect(r.saver_contacts).toMatchObject({ used: 120, limit: null, enabled: true });
+    expect(r.saver_group_scans_per_day).toMatchObject({ kind: 'daily', used: 4, limit: 20, enabled: true });
+    expect(r.saver_auto_refresh_enabled).toMatchObject({ used: null });
     expect(r.saver_auto_refresh_enabled).toMatchObject({ kind: 'feature', enabled: false });
   });
 });
