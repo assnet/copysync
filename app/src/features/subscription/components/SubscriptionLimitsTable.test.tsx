@@ -88,6 +88,22 @@ describe('SubscriptionLimitsTable', () => {
     expect(row('chave_desconhecida')).toBeNull();
   });
 
+  it('Saver: uso com contador e, sem plano (limite 0), "A partir do LITE" sem "0 de 0" nem barra', () => {
+    renderWithTheme(
+      <SubscriptionLimitsTable
+        channel="whatsapp"
+        onChannelChange={vi.fn()}
+        limits={[L('saver_groups', null, 'count', 3, 10), L('saver_contacts', null, 'count', 0, 0), L('saver_group_scans_per_day', null, 'daily', 0, 0)]}
+      />,
+    );
+    expect(within(row('saver_groups')).getByText(t.limits.usage(3, 10))).toBeInTheDocument();
+    for (const key of ['saver_contacts', 'saver_group_scans_per_day']) {
+      expect(within(row(key)).getByText(t.limits.availableFrom('LITE'))).toBeInTheDocument();
+      expect(within(row(key)).queryByText(/0 de 0/)).toBeNull();
+      expect(bar(key)).toBeNull();
+    }
+  });
+
   it('Tooltip com o hint do limite', async () => {
     setup();
     const label = within(row('monitored_groups')).getByText(t.limit.monitored_groups.label);

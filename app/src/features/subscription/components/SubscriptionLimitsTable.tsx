@@ -8,7 +8,7 @@ import { minPlanFor, SAVER_MIN_TIER, subscriptionStrings, SUBSCRIPTION_LIMIT_KEY
 import { usageToneFor } from '../usageTone';
 
 const t = subscriptionStrings;
-const CHANNELS: SubscriptionChannel[] = ['whatsapp', 'telegram'];
+const ALL_CHANNELS: readonly SubscriptionChannel[] = ['whatsapp', 'telegram'];
 const CHANNEL_ICON = { whatsapp: WhatsAppIcon, telegram: TelegramIcon } as const;
 const PROGRESS_COLOR = { default: 'primary', warning: 'warning', error: 'error' } as const;
 
@@ -31,7 +31,7 @@ function UsageCell({ item, label }: { item: SubscriptionLimitItem & { key: Subsc
       : <Chip size="small" variant="outlined" label={lockedLabel(item.key)} />;
   }
   if (item.limit === 0) return <Chip size="small" variant="outlined" label={lockedLabel(item.key)} />;
-  // Sem contador na API (`used` null: Saver, grupos por link, achados do caçador): nunca "0 de N".
+  // Sem contador na API (`used` null: grupos por link, achados do caçador): nunca "0 de N".
   if (item.used == null) return <Typography variant="body2" color="text.secondary">{t.limits.usageUnavailable}</Typography>;
   if (item.limit == null) {
     return <Typography variant="body2">{daily ? t.limits.usageUnlimitedToday(used) : t.limits.usageUnlimited(used)}</Typography>;
@@ -105,6 +105,8 @@ export interface SubscriptionLimitsTableProps {
   onChannelChange: (channel: SubscriptionChannel) => void;
   /** Título do cartão (assinatura por produto). Padrão: "Limites do plano". */
   title?: string;
+  /** Canais exibidos (padrão: todos). Um só canal = sem abas, com o nome do canal no lugar. */
+  channels?: readonly SubscriptionChannel[];
 }
 
 /**
@@ -112,18 +114,30 @@ export interface SubscriptionLimitsTableProps {
  * (`channel: null`). Barra de uso com a mesma cor do chip do gerador (`usageToneFor`, política por chave); ilimitado
  * mostra só o uso; limite 0 ou recurso desligado mostra o menor plano que libera.
  */
-export function SubscriptionLimitsTable({ limits, channel, onChannelChange, title = t.limits.title }: SubscriptionLimitsTableProps) {
+export function SubscriptionLimitsTable({
+  limits, channel: selected, onChannelChange, title = t.limits.title, channels = ALL_CHANNELS,
+}: SubscriptionLimitsTableProps) {
   const mode = useTheme().palette.mode;
-  const known = limits.filter((l): l is SubscriptionLimitItem & { key: SubscriptionLimitKey } => isKnownKey(l.key));
+  const known = limits.filter((l): l is SubscriptionLimitItem & { key: SubscriptionLimitKey } =>
+    isKnownKey(l.key) && (l.channel == null || channels.includes(l.channel)));
+  // Aba salva de um canal que não aparece mais (ex.: Telegram num tenant só-Saver): primeiro canal exibido.
+  const channel = channels.includes(selected) ? selected : channels[0] ?? selected;
   const channelItems = known.filter((l) => l.channel === channel);
   const generalItems = known.filter((l) => l.channel == null);
   // Produto sem limite por canal (ex.: só recursos gerais): sem abas de canal.
   const hasChannels = known.some((l) => l.channel != null);
+  const tabs = hasChannels && channels.length > 1;
 
   return (
     <SectionCard title={title}>
       <Stack spacing={2}>
-        {hasChannels && (
+        {hasChannels && !tabs && (
+          <Typography variant="subtitle2" component="h3" sx={{ px: { xs: 1, sm: 2 }, display: 'inline-flex', alignItems: 'center', gap: 1 }}>
+            <AppIcon icon={CHANNEL_ICON[channel]} style={{ color: brandColor(channel, mode) }} />
+            {t.channel[channel]}
+          </Typography>
+        )}
+        {tabs && (
           <Tabs
             value={channel}
             onChange={(_, v: SubscriptionChannel) => onChannelChange(v)}
@@ -131,7 +145,7 @@ export function SubscriptionLimitsTable({ limits, channel, onChannelChange, titl
             variant="scrollable"
             allowScrollButtonsMobile
           >
-            {CHANNELS.map((ch) => (
+            {channels.map((ch) => (
               <Tab
                 key={ch}
                 value={ch}

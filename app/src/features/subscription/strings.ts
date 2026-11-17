@@ -145,11 +145,12 @@ export const subscriptionStrings = {
     suspendedOn: (date: string) => `Suspensa desde ${date}`,
   },
 
+  /** Sem plano ativo: assinar. Com plano ativo: trocar (mesmo texto em todo produto). */
   cta: {
     label: 'Ver planos e assinar',
-    /** Leitor de tela: o link abre outra aba. */
-    newTab: 'Ver planos e assinar (abre em nova aba)',
-    tooltip: 'Conclua a assinatura do seu plano na página de pagamento segura.',
+    tooltip: 'Escolha o plano e o período antes de seguir para o pagamento seguro.',
+    changeLabel: 'Trocar de plano',
+    changeTooltip: 'Compare os planos e mude quando quiser. O seu plano atual aparece destacado.',
     /** OPERATOR não assina (D4). */
     operatorHint: 'Para mudar de plano, fale com o administrador da conta.',
   },

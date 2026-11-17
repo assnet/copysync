@@ -9,7 +9,7 @@ import { subscriptionService } from '@/services/subscription.service';
 import { SubscriptionPlanCard } from '@/features/subscription/components/SubscriptionPlanCard';
 import { SubscriptionLimitsTable } from '@/features/subscription/components/SubscriptionLimitsTable';
 import { subscriptionStrings, type SubscriptionChannel } from '@/features/subscription/strings';
-import { limitsForProduct, productLabel, subscriptionProductCards } from '@/features/subscription/productLimits';
+import { limitsForProduct, productLabel, subscriptionChannels, subscriptionProductCards } from '@/features/subscription/productLimits';
 import type { SubscriptionResponse } from '@/types/api.types';
 
 const t = subscriptionStrings;
@@ -18,7 +18,7 @@ const isChannel = (v: unknown): v is SubscriptionChannel => v === 'whatsapp' || 
 /**
  * Configurações > Assinatura (SUB-10, D3): um cartão de plano + limites por produto com acesso
  * (docs/acesso-por-produto.md); sessões, recurso da conta, ficam no primeiro. Tenant legado = um só cartão
- * de Afiliados, igual a antes. Dado do servidor é
+ * de Afiliados, igual a antes. Telegram só aparece se algum produto com acesso o usa (`subscriptionChannels`). Dado do servidor é
  * recarregado a cada visita (nunca persistido); só a aba de canal fica em `usePersistedState` (`tab`).
  */
 export function SubscriptionPage() {
@@ -81,6 +81,7 @@ export function SubscriptionPage() {
           {redirected && <Alert severity="info">{t.pending.redirected}</Alert>}
           {subscriptionProductCards(data).map((card, i, all) => {
             const multi = all.length > 1;
+            const channels = subscriptionChannels(all);
             return (
               <Stack spacing={3} key={card.product} data-product={card.product}>
                 <SubscriptionPlanCard
@@ -95,6 +96,7 @@ export function SubscriptionPage() {
                   channel={channel}
                   onChannelChange={setChannel}
                   title={multi ? t.limits.productTitle(productLabel(card.product)) : undefined}
+                  channels={channels}
                 />
               </Stack>
             );

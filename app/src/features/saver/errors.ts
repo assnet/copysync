@@ -46,7 +46,9 @@ export function describeSaverError(err: unknown): SaverError {
     const limitKey = typeof e?.meta?.key === 'string' ? e.meta.key : undefined;
     const limit = typeof e?.meta?.limit === 'number' ? e.meta.limit : undefined;
     const what = limitKey ? s.limitKeys[limitKey] : undefined;
-    const message = what && limit !== undefined ? s.limitReached(what, limit) : s.errors.PLAN_LIMIT_REACHED!;
+    const message = !what || limit === undefined
+      ? s.errors.PLAN_LIMIT_REACHED!
+      : limit === 0 ? s.limitNotIncluded(what) : s.limitReached(what, limit);
     return { kind: 'limitReached', code, message, limitKey, limit };
   }
 

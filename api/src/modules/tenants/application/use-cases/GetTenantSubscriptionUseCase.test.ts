@@ -16,6 +16,9 @@ const USAGE: SubscriptionUsage = {
   offerHunterFindsToday: 4,
   aiRequestsToday: null,
   mercadoLivreAffiliateTags: 2,
+  saverGroups: 3,
+  saverContacts: 120,
+  saverGroupScans: 4,
 };
 
 function tenant(over: Partial<TenantProps> = {}): Tenant {

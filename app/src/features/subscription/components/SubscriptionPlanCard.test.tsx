@@ -29,6 +29,8 @@ const setup = (sub: Partial<SubscriptionResponse> = {}, mode: 'light' | 'dark' =
   );
 
 const cta = () => screen.getByRole('link', { name: new RegExp(t.cta.label) });
+const change = () => screen.getByRole('link', { name: new RegExp(t.cta.changeLabel) });
+const anyCta = new RegExp(`${t.cta.label}|${t.cta.changeLabel}`);
 
 
 describe('SubscriptionPlanCard', () => {
@@ -43,11 +45,27 @@ describe('SubscriptionPlanCard', () => {
     expect(container.textContent).not.toMatch(/R\$/);
   });
 
-  it('CTA com plano leva à vitrine interna (nunca ao pagamento do plano atual)', () => {
+  it('plano ativo: "Trocar de plano" leva à vitrine interna (nunca ao pagamento do plano atual)', () => {
     setup();
-    const link = cta();
+    const link = change();
     expect(link).toHaveAttribute('href', AFFILIATE_PLANS_PATH);
     expect(link).not.toHaveAttribute('target');
+    expect(screen.queryByRole('link', { name: new RegExp(t.cta.label) })).toBeNull();
+  });
+
+  it('plano com pendência: volta a "Ver planos e assinar"', () => {
+    setup({ status: 'SUSPENDED', suspendedAt: '2026-10-01T15:00:00.000Z' });
+    expect(cta()).toHaveAttribute('href', AFFILIATE_PLANS_PATH);
+    expect(screen.queryByRole('link', { name: new RegExp(t.cta.changeLabel) })).toBeNull();
+  });
+
+  it('produto sem plano assina; com plano troca', () => {
+    const saver = (tier: 'pro' | null) => ({ product: 'SAVER' as const, item: { product: 'SAVER', planSlug: null, tier, expiresAt: null, source: null } });
+    const { unmount } = setup({}, 'light', { product: saver(null) });
+    expect(cta()).toHaveAttribute('href', '/saver/plans');
+    unmount();
+    setup({}, 'dark', { product: saver('pro') });
+    expect(change()).toHaveAttribute('href', '/saver/plans');
   });
 
   it('SUSPENDED (escuro): chip warning, aviso e data da suspensão', () => {
@@ -84,12 +102,12 @@ describe('SubscriptionPlanCard', () => {
         </PrivacyProvider>
       </MemoryRouter>,
     );
-    expect(screen.queryByRole('link', { name: new RegExp(t.cta.label) })).toBeNull();
+    expect(screen.queryByRole('link', { name: anyCta })).toBeNull();
   });
 
   it('OPERATOR não vê CTA, vê o aviso do administrador', () => {
     setup({}, 'light', { canSubscribe: false });
-    expect(screen.queryByRole('link', { name: new RegExp(t.cta.label) })).toBeNull();
+    expect(screen.queryByRole('link', { name: anyCta })).toBeNull();
     expect(screen.getByText(t.cta.operatorHint)).toBeInTheDocument();
   });
 });

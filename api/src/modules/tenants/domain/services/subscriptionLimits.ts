@@ -33,6 +33,12 @@ export interface SubscriptionUsage {
   aiRequestsToday: number | null;
   /** Etiquetas do Mercado Livre em uso: principal + vinculadas dentro do limite do plano (0 sem credencial). */
   mercadoLivreAffiliateTags: number;
+  /** Saver: grupos salvos não removidos (`ISaverGroupRepository.countActive`). */
+  saverGroups: number;
+  /** Saver: contatos distintos vinculados a grupo salvo não removido (`countDistinctContacts`). */
+  saverContacts: number;
+  /** Saver: leituras de grupo nas últimas 24 h corridas, sem as canceladas (`countScansSince`). */
+  saverGroupScans: number;
 }
 
 export interface SubscriptionLimitItem extends SubscriptionLimitItemDef {
@@ -104,7 +110,7 @@ export const SUBSCRIPTION_LIMIT_ITEMS: readonly SubscriptionLimitItemDef[] = [
   feature(ENTITLEMENT_KEYS.CAPTURE_OUTSIDE_WINDOW_ENABLED),
   feature(ENTITLEMENT_KEYS.MARKETPLACE_SHEIN_ENABLED),
   feature(ENTITLEMENT_KEYS.OFFER_HUNTER_ENABLED),
-  /** Saver: ausente = 0/desligado (`ABSENT_IS_ZERO`); sem contador de uso aqui (`used` null). */
+  /** Saver: ausente = 0/desligado (`ABSENT_IS_ZERO`); uso com as regras do Saver (`GetSaverOverviewUseCase`). */
   item(ENTITLEMENT_KEYS.SAVER_GROUPS, 'count', 'SAVER'),
   item(ENTITLEMENT_KEYS.SAVER_CONTACTS, 'count', 'SAVER'),
   item(ENTITLEMENT_KEYS.SAVER_GROUP_SCANS_PER_DAY, 'daily', 'SAVER'),
@@ -142,6 +148,9 @@ function usedOf(def: SubscriptionLimitItemDef, usage: SubscriptionUsage): number
   if (def.key === ENTITLEMENT_KEYS.OFFER_HUNTER_FINDS_PER_DAY) return usage.offerHunterFindsToday;
   if (def.key === ENTITLEMENT_KEYS.AI_REQUESTS_PER_DAY) return usage.aiRequestsToday;
   if (def.key === ENTITLEMENT_KEYS.MERCADO_LIVRE_AFFILIATE_TAGS) return usage.mercadoLivreAffiliateTags;
+  if (def.key === ENTITLEMENT_KEYS.SAVER_GROUPS) return usage.saverGroups;
+  if (def.key === ENTITLEMENT_KEYS.SAVER_CONTACTS) return usage.saverContacts;
+  if (def.key === ENTITLEMENT_KEYS.SAVER_GROUP_SCANS_PER_DAY) return usage.saverGroupScans;
   const c = KEY_TO_COUNT.get(def.key);
   return c ? usage[c.kind][c.channel] : null;
 }

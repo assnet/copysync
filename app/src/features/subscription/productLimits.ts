@@ -5,7 +5,7 @@
 import { isProductKey, type ProductKey } from '@/features/products';
 import { navigationStrings } from '@/features/navigation';
 import type { SubscriptionLimitItem, SubscriptionProductItem, SubscriptionResponse } from '@/types/api.types';
-import { SAVER_MIN_TIER } from './strings';
+import { SAVER_MIN_TIER, type SubscriptionChannel } from './strings';
 
 /** Recurso da conta, comum a todos os produtos (mesmo `SHARED_KEYS` da API). */
 const SHARED_LIMIT_KEYS: readonly string[] = ['whatsapp_sessions', 'telegram_sessions'];
@@ -40,6 +40,17 @@ export function limitsForProduct(limits: readonly SubscriptionLimitItem[], produ
     const owner = productOfLimit(l);
     return owner === product || (withShared && owner === null);
   });
+}
+
+/** Produtos que usam Telegram; o Saver é só WhatsApp. */
+const TELEGRAM_PRODUCTS: readonly ProductKey[] = ['AFFILIATES', 'CHAT'];
+
+/**
+ * Canais exibidos na tabela de limites: Telegram só se algum produto com acesso usa Telegram. Tenant só-Saver
+ * vê apenas WhatsApp (sessões do Telegram não servem a nenhum produto dele).
+ */
+export function subscriptionChannels(cards: readonly SubscriptionProductCard[]): SubscriptionChannel[] {
+  return cards.some((c) => TELEGRAM_PRODUCTS.includes(c.product)) ? ['whatsapp', 'telegram'] : ['whatsapp'];
 }
 
 const PRODUCT_LABEL: Record<ProductKey, string> = {

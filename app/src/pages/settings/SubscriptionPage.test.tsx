@@ -3,6 +3,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { CssBaseline, ThemeProvider } from '@mui/material';
 import { renderWithTheme } from '@/test/renderWithTheme';
+import { writePersisted } from '@/hooks/usePersistedState';
 import { buildTheme } from '@/theme/theme';
 import { PrivacyProvider } from '@/features/privacy';
 import { PLAN_CATALOG } from '@/features/plans/catalog';
@@ -45,6 +46,8 @@ const page = (path = '/settings/subscription') => (
 );
 
 const renderPage = (path = '/settings/subscription', mode: 'light' | 'dark' = 'light') => renderWithTheme(page(path), mode);
+
+const anyCta = new RegExp(`${t.cta.label}|${t.cta.changeLabel}`);
 
 const rowKeys = () => Array.from(document.querySelectorAll('tr[data-key]')).map((r) => r.getAttribute('data-key'));
 
@@ -95,13 +98,13 @@ describe('SubscriptionPage', () => {
     svc.getSubscription.mockResolvedValue(sub);
     renderPage();
     expect(await screen.findByText(t.cta.operatorHint)).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: new RegExp(t.cta.label) })).toBeNull();
+    expect(screen.queryByRole('link', { name: anyCta })).toBeNull();
   });
 
-  it('ADMIN confirmado vê o botão de assinar', async () => {
+  it('ADMIN confirmado com plano ativo vê o botão de trocar', async () => {
     svc.getSubscription.mockResolvedValue(sub);
     renderPage();
-    expect(await screen.findByRole('link', { name: new RegExp(t.cta.label) })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: new RegExp(t.cta.changeLabel) })).toBeInTheDocument();
     expect(screen.queryByText(t.cta.operatorHint)).toBeNull();
   });
 
@@ -110,7 +113,7 @@ describe('SubscriptionPage', () => {
     svc.getSubscription.mockResolvedValue(sub);
     renderPage();
     await screen.findByText(pro.name);
-    expect(screen.queryByRole('link', { name: new RegExp(t.cta.label) })).toBeNull();
+    expect(screen.queryByRole('link', { name: anyCta })).toBeNull();
   });
 
   it('troca de tenant mostra skeleton e não o nome da conta anterior', async () => {
@@ -173,7 +176,7 @@ describe('SubscriptionPage', () => {
       expect(saver.querySelector('[role="tablist"]')).toBeNull();
       expect(screen.getByText(t.limits.availableFrom('PRO'))).toBeInTheDocument();
       // Cada produto leva à própria vitrine
-      const links = screen.getAllByRole('link', { name: new RegExp(t.cta.label) });
+      const links = screen.getAllByRole('link', { name: new RegExp(t.cta.changeLabel) });
       expect(links.map((a) => a.getAttribute('href'))).toEqual(['/affiliates/plans', '/saver/plans']);
     });
 
@@ -183,6 +186,25 @@ describe('SubscriptionPage', () => {
       expect(await screen.findByText('Saver PRO')).toBeInTheDocument();
       expect(screen.queryByText(pro.name)).toBeNull();
       expect(rowKeys()).toEqual(['whatsapp_sessions', 'saver_groups', 'saver_auto_refresh_enabled']);
+    });
+
+    it.each(['light', 'dark'] as const)('só-Saver (%s): só WhatsApp, sem abas, mesmo com a aba Telegram salva', async (mode) => {
+      writePersisted('subscription.channel', 'telegram');
+      const base = withProducts([saverItem]);
+      svc.getSubscription.mockResolvedValue({ ...base, limits: [...base.limits, { ...sub.limits[1], product: null }] });
+      renderPage('/settings/subscription', mode);
+      expect(await screen.findByText('Saver PRO')).toBeInTheDocument();
+      expect(screen.queryByRole('tablist')).toBeNull();
+      expect(screen.getByRole('heading', { name: t.channel.whatsapp })).toBeInTheDocument();
+      expect(rowKeys()).toEqual(['whatsapp_sessions', 'saver_groups', 'saver_auto_refresh_enabled']);
+    });
+
+    it('Afiliados + Saver: abas WhatsApp e Telegram no cartão com sessões', async () => {
+      const base = withProducts([{ product: 'AFFILIATES', planSlug: 'COPYSYNC_PRO', tier: 'pro', expiresAt: null, source: null }, saverItem]);
+      svc.getSubscription.mockResolvedValue({ ...base, limits: [...base.limits, { ...sub.limits[1], product: null }] });
+      renderPage();
+      await screen.findByText('Saver PRO');
+      expect(screen.getByRole('tab', { name: new RegExp(t.channel.telegram) })).toBeInTheDocument();
     });
   });
 });

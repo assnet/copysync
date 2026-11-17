@@ -1,3 +1,4 @@
+import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/contexts/TenantContext';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, AlertTitle, Box, Button, CircularProgress, Stack, Tooltip, Typography } from '@mui/material';
@@ -14,7 +15,7 @@ import type { SaverExtraction, SaverGroup } from '../types';
 import { ExtractionProgress } from '../components/groups/ExtractionProgress';
 import { GroupSelectionTable } from '../components/groups/GroupSelectionTable';
 import { SavedGroupsTable } from '../components/groups/SavedGroupsTable';
-import { SaverLimitBanner, limitBannerMessage } from '../components/groups/SaverLimitBanner';
+import { SaverLimitBanner, SaverNoPlanNotice, limitBannerMessage, saverWithoutPlan } from '../components/groups/SaverLimitBanner';
 import { SaverUsageStrip } from '../components/groups/SaverUsageStrip';
 import { SessionPicker } from '../components/groups/SessionPicker';
 import { ExportDialog } from '../components/export/ExportDialog';
@@ -32,6 +33,7 @@ export function SaverGroupsPage() {
   const navigate = useNavigate();
   // Estado de trabalho por conta: sessão, seleção e extração de uma conta nunca valem em outra.
   const { activeTenantId } = useTenant();
+  const isSuperAdmin = useAuth().user?.isSuperAdmin === true;
   const KEY = `${KEY_BASE}.${activeTenantId ?? 'none'}`;
   const overview = useSaverOverview();
   const sessions = useSaverSessions();
@@ -73,9 +75,12 @@ export function SaverGroupsPage() {
   const ov = overview.data;
   const canExtract = ov?.permissions.extract ?? false;
   const canConfigure = ov?.permissions.configure ?? false;
-  const scansLeft = ov?.groupScansPerDay.remaining ?? null;
+  // Leituras fora do plano (limite 0): sem "Restam 0", sem aviso de excesso; o botão fica desligado.
+  const scansExcluded = ov?.groupScansPerDay.limit === 0;
+  const scansLeft = scansExcluded ? null : ov?.groupScansPerDay.remaining ?? null;
   const tooMany = selection.length > SAVER_MAX_GROUPS_PER_REQUEST;
   const overScans = scansLeft !== null && selection.length > scansLeft;
+  const noPlan = saverWithoutPlan(ov);
   const limitMessage = limitBannerMessage(ov, requestError?.kind === 'limitReached' ? requestError.message : null);
   const unsupported = telegram || live.error?.kind === 'unsupportedChannel';
   const disconnected = !unsupported && (offline || live.error?.kind === 'sessionNotConnected');
@@ -132,7 +137,7 @@ export function SaverGroupsPage() {
     setExported(filename);
   };
 
-  const submitDisabled = !canExtract || requesting || selection.length === 0 || tooMany || overScans;
+  const submitDisabled = !canExtract || scansExcluded || requesting || selection.length === 0 || tooMany || overScans;
   const submitHint = !canExtract ? g.table.noExtractPermission : tooMany ? g.table.tooMany(SAVER_MAX_GROUPS_PER_REQUEST) : '';
   const hiddenTotal = (saved.data ?? []).reduce((n, x) => n + x.lidOnlyCount, 0);
   const canExport = ov?.permissions.export ?? false;
@@ -232,8 +237,8 @@ export function SaverGroupsPage() {
       <PageHeader title={s.pages.groups.title} subtitle={s.pages.groups.subtitle} />
       <Stack spacing={2.5}>
         {overview.error && <Alert severity="error">{overview.error.message}</Alert>}
-        {ov && <SaverUsageStrip overview={ov} />}
-        {limitMessage && <SaverLimitBanner message={limitMessage} />}
+        {noPlan ? <SaverNoPlanNotice pilot={isSuperAdmin} /> : ov && <SaverUsageStrip overview={ov} />}
+        {limitMessage && !noPlan && <SaverLimitBanner message={limitMessage} />}
         {ov && !ov.queueRunning && <Alert severity="info">{g.queueStopped}</Alert>}
 
         {progress.extraction && (

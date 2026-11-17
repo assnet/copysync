@@ -7,12 +7,10 @@ import { ENTITLEMENT_KEYS } from '../../domain/entitlementKeys';
 import { identifierLimitOf } from '../../domain/services/affiliateIdentifierLimit';
 import { effectiveLinkedIdentifiers } from '../../../integrations/domain/services/effectiveLinkedIdentifiers';
 import { PrismaEntitlementReader } from './PrismaEntitlementReader';
-
-type UsagePrisma = Pick<
-  PrismaClient,
-  | 'session' | 'monitoredGroup' | 'broadcastGroup' | 'linkRotation' | 'offer' | 'offerHuntFind' | 'aiUsageLog'
-  | 'affiliateCredential' | 'tenantEntitlement'
->;
+import { SAVER_SCAN_WINDOW_MS } from '../../../saver/application/use-cases/GetSaverOverviewUseCase';
+import { SaverExtractionItemStatus } from '../../../saver/domain/enums/SaverEnums';
+import { PrismaSaverGroupRepository } from '../../../saver/infrastructure/repositories/PrismaSaverGroupRepository';
+import { PrismaSaverMembershipRepository } from '../../../saver/infrastructure/repositories/PrismaSaverMembershipRepository';
 
 /** Mesmo filtro de `PrismaOfferRepository` (`countsTowardGeneratorQuota`): o caçador tem teto próprio (D4). */
 const generatorOffersSince = (tenantId: string, since: Date): Prisma.OfferWhereInput => ({
@@ -29,11 +27,13 @@ const generatorOffersSince = (tenantId: string, since: Date): Prisma.OfferWhereI
  * - achados do caçador: `offer_hunt_finds` desde o mesmo início do dia (teto do caçador);
  * - IA: só `source = PLATFORM`, a mesma base do teto diário (`PrismaAiUsageLogRepository`);
  * - etiquetas do ML: conjunto **efetivo** (`effectiveLinkedIdentifiers` com o limite do plano), o mesmo
- *   `used` de `GET …/MERCADO_LIVRE/identifiers`; plano rebaixado não mostra uso acima do limite.
+ *   `used` de `GET …/MERCADO_LIVRE/identifiers`; plano rebaixado não mostra uso acima do limite;
+ * - Saver: os mesmos contadores de `GetSaverOverviewUseCase` (grupos não removidos pelo repositório do Saver,
+ *   contatos distintos vinculados a esses grupos, leituras nas últimas 24 h corridas sem as canceladas).
  */
 export class PrismaTenantUsageReader implements ITenantUsageReader {
   constructor(
-    private readonly prisma: UsagePrisma,
+    private readonly prisma: PrismaClient,
     private readonly now: () => Date = () => new Date(),
   ) {}
 
@@ -41,6 +41,7 @@ export class PrismaTenantUsageReader implements ITenantUsageReader {
     const since = startOfDayInZone(this.now());
     const [
       sessions, groups, linkRotations, offerGenerationsToday, offerHunterFindsToday, aiRequestsToday, mercadoLivreAffiliateTags,
+      saverGroups, saverContacts, saverGroupScans,
     ] = await Promise.all([
       this.countSessions(tenantId),
       this.countGroups(tenantId),
@@ -49,10 +50,22 @@ export class PrismaTenantUsageReader implements ITenantUsageReader {
       this.prisma.offerHuntFind.count({ where: { tenantId, createdAt: { gte: since } } }),
       this.prisma.aiUsageLog.count({ where: { tenantId, source: 'PLATFORM', createdAt: { gte: since } } }),
       this.countMercadoLivreTags(tenantId),
+      new PrismaSaverGroupRepository(this.prisma).countActive(tenantId),
+      new PrismaSaverMembershipRepository(this.prisma).countDistinctContacts(tenantId),
+      this.countSaverScans(tenantId),
     ]);
     return {
       sessions, ...groups, linkRotations, offerGenerationsToday, offerHunterFindsToday, aiRequestsToday, mercadoLivreAffiliateTags,
+      saverGroups, saverContacts, saverGroupScans,
     };
+  }
+
+  /** Mesmo filtro de `PrismaSaverExtractionQueue.countScansSince` (janela de `SAVER_SCAN_WINDOW_MS`). */
+  private countSaverScans(tenantId: string): Promise<number> {
+    const since = new Date(this.now().getTime() - SAVER_SCAN_WINDOW_MS);
+    return this.prisma.saverExtractionItem.count({
+      where: { tenantId, createdAt: { gte: since }, status: { not: SaverExtractionItemStatus.CANCELLED } },
+    });
   }
 
   private async countMercadoLivreTags(tenantId: string): Promise<number> {
