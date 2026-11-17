@@ -13,6 +13,13 @@ import type {
  */
 
 const nav = navigationStrings.links;
+
+/** "1 uso", "+1 conta", "2 usos": singular só para 1 (com ou sem sinal). Aceita número já formatado. */
+const count = (value: string | number, one: string, many: string) =>
+  `${value} ${/^[+-]?1$/.test(String(value)) ? one : many}`;
+const uses = (v: string | number) => count(v, 'uso', 'usos');
+const accounts = (v: string | number) => count(v, 'conta', 'contas');
+const days = (v: string | number) => count(v, 'dia', 'dias');
 const planNames = planEntitlementsAdminStrings.planName;
 
 /** Rótulo e descrição de cada chave do catálogo (`contracts/feature-usage/catalog.json`). */
@@ -177,11 +184,11 @@ export const featureUsageStrings = {
     customFrom: 'De',
     customTo: 'Até',
     customApply: 'Aplicar período',
-    customHint: (max: number) => `Até ${max} dias, terminando hoje ou antes.`,
+    customHint: (max: number) => `Até ${days(max)}, terminando hoje ou antes.`,
 
     granularity: 'Agrupar por',
     granularities,
-    dayDisabledHint: (max: number) => `"Dia" vale para períodos de até ${max} dias. Acima disso, agrupe por semana ou mês.`,
+    dayDisabledHint: (max: number) => `"Dia" vale para períodos de até ${days(max)}. Acima disso, agrupe por semana ou mês.`,
 
     product: 'Produto',
     allProducts: 'Todos os produtos',
@@ -189,7 +196,7 @@ export const featureUsageStrings = {
 
     kind: 'Tipo de uso',
     allKinds: 'Todos os tipos',
-    kindSelected: (n: number) => `${n} tipos`,
+    kindSelected: (n: number) => count(n, 'tipo', 'tipos'),
     kindHint: 'Quem fez o uso. Recurso sem nenhum dos tipos escolhidos sai da tela.',
     kindMinOne: 'Escolha ao menos um tipo.',
 
@@ -219,10 +226,10 @@ export const featureUsageStrings = {
     invalid: 'Informe as duas datas.',
     order: 'A data inicial é depois da final.',
     future: 'O período não pode terminar depois de hoje.',
-    tooLong: (max: number) => `Escolha até ${max} dias.`,
+    tooLong: (max: number) => `Escolha até ${days(max)}.`,
   },
   /** A API recusou o período (400 `USAGE_METRICS_RANGE_INVALID`): a tela voltou ao preset padrão. */
-  rangeReset: (max: number) => `O período passou do limite de ${max} dias. Voltamos para os últimos 30 dias.`,
+  rangeReset: (max: number) => `O período passou do limite de ${days(max)}. Voltamos para os últimos 30 dias.`,
   /** Mesmo caso, sem o teto na resposta (`meta.maxDays` ausente). */
   rangeResetNeutral: 'O período passou do limite permitido. Voltamos para os últimos 30 dias.',
 
@@ -251,7 +258,7 @@ export const featureUsageStrings = {
     topFeature: {
       label: 'Mais usado',
       help: 'Recurso com mais contas que usaram no período.',
-      context: (tenants: string) => `${tenants} ${tenants === '1' ? 'conta' : 'contas'}`,
+      context: (tenants: string) => accounts(tenants),
       none: 'Nenhum uso no período',
     },
   },
@@ -262,8 +269,8 @@ export const featureUsageStrings = {
     noBaseHint: 'O período anterior começa antes do primeiro dado deste recurso ou da retenção da fonte.',
     flat: 'igual ao período anterior',
     newUse: 'novo no período',
-    tenantsDelta: (signed: string) => `${signed} ${signed === '+1' || signed === '-1' ? 'conta' : 'contas'}`,
-    usesDelta: (signed: string) => `${signed} usos`,
+    tenantsDelta: (signed: string) => accounts(signed),
+    usesDelta: (signed: string) => uses(signed),
     percent: (signed: string) => `${signed} vs. período anterior`,
     previousLabel: 'Período anterior',
   },
@@ -286,7 +293,7 @@ export const featureUsageStrings = {
     subtitle: 'Por contas que usaram, por usos ou pela tendência.',
     aria: 'Ranking dos recursos no período',
     tableAria: 'Tabela do ranking dos recursos',
-    barValue: (tenants: string, uses: string) => `${tenants} ${tenants === '1' ? 'conta' : 'contas'} · ${uses} usos`,
+    barValue: (tenants: string, n: string) => `${accounts(tenants)} · ${uses(n)}`,
     tenantsAxis: 'Contas que usaram',
     usesAxis: 'Usos',
     trendAxis: 'Tendência dos usos',
@@ -334,7 +341,7 @@ export const featureUsageStrings = {
     title: 'Contagem parcial',
     dataSince: (day: string) => `Dados desde ${day}.`,
     noData: 'Sem dados ainda.',
-    retentionDays: (days: number) => `A fonte guarda ${days} dias.`,
+    retentionDays: (n: number) => `A fonte guarda ${days(n)}.`,
   },
 
   plansTab: {
@@ -345,10 +352,10 @@ export const featureUsageStrings = {
     familyHint: 'Cada conta tem um plano em cada família. As famílias não se somam.',
     featureColumn: 'Recurso',
     cell: (active: string, total: string) => `${active} de ${total}`,
-    cellAria: (feature: string, plan: string, active: string, total: string, uses: string) =>
-      `${feature}, ${plan}: ${active} de ${total} contas, ${uses} usos`,
-    uses: (uses: string) => `${uses} usos`,
-    planTenants: (n: string) => `${n} ${n === '1' ? 'conta' : 'contas'}`,
+    cellAria: (feature: string, plan: string, active: string, total: string, n: string) =>
+      `${feature}, ${plan}: ${active} de ${accounts(total)}, ${uses(n)}`,
+    uses: (n: string) => uses(n),
+    planTenants: (n: string) => accounts(n),
     noTenants: '—',
     noTenantsHint: 'Nenhuma conta neste plano no recorte.',
     empty: 'Nenhum recurso desta família no recorte.',
