@@ -27,6 +27,7 @@ export const ROUTE_PRODUCT_MAP: Readonly<Record<string, RouteProductClass>> = {
   chatWsRoutes: 'CHAT',
   affiliateCredentialRoutes: 'AFFILIATES',
   marketplaceRiskAdminRoutes: 'TENANT',
+  tenantProductAdminRoutes: 'TENANT',
   offerRoutes: 'AFFILIATES',
   offerHuntRoutes: 'AFFILIATES',
   offerHuntAiSuggestRoutes: 'AFFILIATES',

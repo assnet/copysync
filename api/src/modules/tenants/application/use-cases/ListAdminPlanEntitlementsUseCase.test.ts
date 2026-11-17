@@ -3,6 +3,8 @@ import { ListAdminPlanEntitlementsUseCase } from './ListAdminPlanEntitlementsUse
 import { ADMIN_EDITABLE_ENTITLEMENT_KEYS } from '../../domain/adminEditableEntitlements';
 import type { IPlanEntitlementPresetRepository } from '../../domain/contracts/IPlanEntitlementPresetRepository';
 
+const SAVER_NULL = { SAVER_LITE: null, SAVER_PRO: null, SAVER_MAX: null };
+
 function fakeRepo(rows: Awaited<ReturnType<IPlanEntitlementPresetRepository['listByKeys']>>) {
   return { listByKeys: vi.fn(async () => rows), setForPlan: vi.fn() } satisfies IPlanEntitlementPresetRepository;
 }
@@ -21,7 +23,7 @@ describe('ListAdminPlanEntitlementsUseCase', () => {
     expect(out[0]).toEqual({
       key: 'marketplace_shein_enabled',
       type: { kind: 'boolean' },
-      plans: { COPYSYNC_LITE: false, COPYSYNC_PRO: null, COPYSYNC_MAX: true },
+      plans: { COPYSYNC_LITE: false, COPYSYNC_PRO: null, COPYSYNC_MAX: true, ...SAVER_NULL },
       superAdminOnly: null,
     });
     expect(out.map((r) => r.key)).toEqual(['marketplace_shein_enabled', 'offer_hunter_enabled', 'offer_hunter_finds_per_day']);
@@ -33,7 +35,7 @@ describe('ListAdminPlanEntitlementsUseCase', () => {
     expect(out.find((r) => r.key === 'offer_hunter_finds_per_day')).toEqual({
       key: 'offer_hunter_finds_per_day',
       type: { kind: 'integer', min: 0, max: 100 },
-      plans: { COPYSYNC_LITE: null, COPYSYNC_PRO: null, COPYSYNC_MAX: 10 },
+      plans: { COPYSYNC_LITE: null, COPYSYNC_PRO: null, COPYSYNC_MAX: 10, ...SAVER_NULL },
       superAdminOnly: null,
     });
   });
@@ -41,7 +43,7 @@ describe('ListAdminPlanEntitlementsUseCase', () => {
   it('banco sem presets: todas as chaves com null em todos os planos', async () => {
     const out = await new ListAdminPlanEntitlementsUseCase(fakeRepo([]), audience).execute();
     expect(out).toHaveLength(ADMIN_EDITABLE_ENTITLEMENT_KEYS.length);
-    expect(out[0].plans).toEqual({ COPYSYNC_LITE: null, COPYSYNC_PRO: null, COPYSYNC_MAX: null });
+    expect(out[0].plans).toEqual({ COPYSYNC_LITE: null, COPYSYNC_PRO: null, COPYSYNC_MAX: null, ...SAVER_NULL });
   });
 
   it('superAdminOnly só na chave com audiência (flag efetiva); demais null', async () => {

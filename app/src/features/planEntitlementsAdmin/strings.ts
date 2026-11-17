@@ -9,7 +9,10 @@ export const planEntitlementsAdminStrings = {
   columns: { feature: 'Recurso', audience: 'Só super admin' },
 
   /** Nome de exibição do plano (o mesmo da vitrine em `features/plans/catalog.ts`). */
-  planName: { COPYSYNC_LITE: 'LITE', COPYSYNC_PRO: 'PRO', COPYSYNC_MAX: 'MAX' } as Record<string, string>,
+  planName: {
+    COPYSYNC_LITE: 'LITE', COPYSYNC_PRO: 'PRO', COPYSYNC_MAX: 'MAX',
+    SAVER_LITE: 'Saver LITE', SAVER_PRO: 'Saver PRO', SAVER_MAX: 'Saver MAX',
+  } as Record<string, string>,
 
   /** Rótulo e descrição curta por chave; chave sem texto mostra o próprio nome técnico. */
   features: {

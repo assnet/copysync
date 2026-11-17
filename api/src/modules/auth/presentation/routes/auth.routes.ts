@@ -31,6 +31,7 @@ import { PrismaPasswordResetRepository } from '../../infrastructure/repositories
 import { PrismaAuditLogRepository } from '../../../../shared/audit/PrismaAuditLogRepository';
 import { passwordResetRoutes } from './passwordReset.routes';
 import { AuthPresenter } from '../presenters/AuthPresenter';
+import { productAccessReader } from '../../../tenants/infrastructure/productAccessContainer';
 import {
   loginBodySchema,
   refreshBodySchema,
@@ -71,7 +72,7 @@ const requestPasswordReset = new RequestPasswordResetUseCase(
   userRepo, passwordResetRepo, loginGuard, emailSender, env.PANEL_URL, createEmailRef(env.JWT_SECRET),
 );
 const resetPassword = new ResetPasswordUseCase(userRepo, passwordResetRepo, loginGuard, new PrismaAuditLogRepository());
-const createLoginSession = new CreateLoginSessionUseCase(userRepo, authRepo);
+const createLoginSession = new CreateLoginSessionUseCase(userRepo, authRepo, productAccessReader);
 const loginUseCase = new LoginUseCase(userRepo, loginGuard, loginChallenge, createLoginSession, bcryptPasswordVerifier);
 const verifyLoginCodeUseCase = new VerifyLoginCodeUseCase(userRepo, loginGuard, loginChallenge, createLoginSession);
 const resendLoginCodeUseCase = new ResendLoginCodeUseCase(userRepo, loginChallenge);

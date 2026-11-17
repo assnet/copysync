@@ -6,7 +6,7 @@ import { SetPlanEntitlementUseCase } from '../../application/use-cases/SetPlanEn
 import { SetFeatureAudienceUseCase } from '../../application/use-cases/SetFeatureAudienceUseCase';
 import { createPlanEntitlementPresetRepository, prismaPlanEntitlementTransaction } from '../../infrastructure/planEntitlementTransaction';
 import { featureAudienceReader, prismaFeatureAudienceTransaction } from '../../infrastructure/featureAudience';
-import { PLAN_SLUGS } from '../../domain/planPresets';
+import { ALL_PLAN_SLUGS } from '../../domain/planCatalog';
 
 const preHandler = [authHook, superAdminHook];
 const tags = ['Plan entitlements (admin)'];
@@ -43,7 +43,7 @@ const listResponse = {
             properties: {
               key: { type: 'string' },
               type: valueType,
-              plans: { type: 'object', properties: Object.fromEntries(PLAN_SLUGS.map((p) => [p, presetValue])) },
+              plans: { type: 'object', properties: Object.fromEntries(ALL_PLAN_SLUGS.map((p) => [p, presetValue])) },
               superAdminOnly: { type: ['boolean', 'null'] },
             },
           },
@@ -106,7 +106,7 @@ export async function planEntitlementAdminRoutes(app: FastifyInstance): Promise<
     schema: { tags, summary: 'Chaves editáveis (tipo e faixa) × planos, com o valor atual do preset', response: { 200: listResponse } },
   }, async (_request, reply) => {
     const entitlements = await list().execute();
-    return reply.status(200).send({ success: true, data: { plans: [...PLAN_SLUGS], entitlements } });
+    return reply.status(200).send({ success: true, data: { plans: [...ALL_PLAN_SLUGS], entitlements } });
   });
 
   // Antes de `/:planSlug/:key`: segmento estático vence o parâmetro ("audience" não é chave de entitlement)

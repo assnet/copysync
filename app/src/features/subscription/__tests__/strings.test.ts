@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 // Fonte única das chaves na API (arquivo puro, sem dependências): chave nova sem linha nesta tela falha aqui.
 import { ENTITLEMENT_KEYS } from '../../../../../api/src/modules/tenants/domain/entitlementKeys';
 import { PRIVACY_SCREENS } from '@/features/privacy';
-import { SUBSCRIPTION_LIMIT_KEYS, minPlanFor, planNameOf, subscriptionStrings } from '../strings';
+import { SAVER_MIN_TIER, SUBSCRIPTION_LIMIT_KEYS, minPlanFor, planNameOf, subscriptionStrings } from '../strings';
 
 function leaves(obj: unknown, path = ''): [string, unknown][] {
   if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
@@ -28,7 +28,9 @@ describe('subscriptionStrings', () => {
     for (const key of SUBSCRIPTION_LIMIT_KEYS) {
       expect(subscriptionStrings.limit[key].label, key).toBeTruthy();
       expect(subscriptionStrings.limit[key].hint, key).toBeTruthy();
-      expect(minPlanFor(key), key).not.toBeNull();
+      // Chave do Saver: tier mínimo próprio; o catálogo de Afiliados não se aplica.
+      if (key in SAVER_MIN_TIER) expect(minPlanFor(key), key).toBeNull();
+      else expect(minPlanFor(key), key).not.toBeNull();
     }
   });
 

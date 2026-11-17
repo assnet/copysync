@@ -5,9 +5,10 @@ import { ListUserTenantsUseCase } from '../../application/use-cases/ListUserTena
 import { SwitchTenantUseCase } from '../../application/use-cases/SwitchTenantUseCase';
 import { TenantPresenter } from '../presenters/TenantPresenter';
 import { PrismaUserRepository } from '../../../users/infrastructure/repositories/PrismaUserRepository';
+import { productAccessReader } from '../../infrastructure/productAccessContainer';
 
 const userRepo = new PrismaUserRepository();
-const listUserTenantsUseCase = new ListUserTenantsUseCase(userRepo);
+const listUserTenantsUseCase = new ListUserTenantsUseCase(userRepo, productAccessReader);
 const switchTenantUseCase = new SwitchTenantUseCase(userRepo);
 
 const switchBodySchema = {
@@ -32,7 +33,7 @@ export async function tenantRoutes(app: FastifyInstance): Promise<void> {
       schema: {
         tags: ['Tenants'],
         summary: 'Listar tenants do usuário',
-        description: 'Retorna todos os tenants aos quais o usuário autenticado pertence.',
+        description: 'Retorna todos os tenants aos quais o usuário autenticado pertence, com os produtos que cada um acessa.',
         security: [{ bearerAuth: [] }],
         response: {
           200: {

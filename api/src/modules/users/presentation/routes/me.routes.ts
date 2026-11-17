@@ -8,10 +8,14 @@ import { changePasswordBodySchema } from '../schemas/change-password.schema';
 import type { ChangePasswordInputDto } from '../../application/dtos/ChangePasswordInputDto';
 import { GetCheckoutPrefillUseCase } from '../../application/use-cases/GetCheckoutPrefillUseCase';
 import { CheckoutPrefillPresenter } from '../presenters/CheckoutPrefillPresenter';
+import { ListUserTenantsUseCase } from '../../../tenants/application/use-cases/ListUserTenantsUseCase';
+import { TenantPresenter } from '../../../tenants/presentation/presenters/TenantPresenter';
+import { productAccessReader } from '../../../tenants/infrastructure/productAccessContainer';
 
 const userRepo = new PrismaUserRepository();
 const changePasswordUseCase = new ChangePasswordUseCase(userRepo);
 const checkoutPrefillUseCase = new GetCheckoutPrefillUseCase(userRepo);
+const listUserTenantsUseCase = new ListUserTenantsUseCase(userRepo, productAccessReader);
 
 /**
  * /me route — returns the authenticated user's profile and tenant memberships.
@@ -29,24 +33,19 @@ export async function meRoutes(app: FastifyInstance): Promise<void> {
         description: 'Retorna os dados do usuário autenticado e os tenants aos quais ele pertence.',
         security: [{ bearerAuth: [] }],
         response: {
+          // Envelope `{ success, data }` do `httpResponse.ok` (sem ele o serializador devolvia `{}`).
           200: {
             type: 'object',
             properties: {
-              id: { type: 'string' },
-              name: { type: 'string' },
-              email: { type: 'string', format: 'email' },
-              isSuperAdmin: { type: 'boolean' },
-              tenants: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    id: { type: 'string' },
-                    name: { type: 'string' },
-                    slug: { type: 'string' },
-                    role: { type: 'string' },
-                    status: { type: 'string' },
-                  },
+              success: { type: 'boolean' },
+              data: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string' },
+                  name: { type: 'string' },
+                  email: { type: 'string', format: 'email' },
+                  isSuperAdmin: { type: 'boolean' },
+                  tenants: { type: 'array', items: { $ref: 'TenantItem#' } },
                 },
               },
             },
@@ -61,20 +60,14 @@ export async function meRoutes(app: FastifyInstance): Promise<void> {
       const user = await userRepo.findById(userId);
       if (!user) throw new NotFoundError('User', userId);
 
-      const tenants = await userRepo.findTenantsForUser(userId);
+      const { tenants } = await listUserTenantsUseCase.execute({ userId });
 
       httpResponse.ok(reply, {
         id: user.id,
         name: user.name,
         email: user.email,
         isSuperAdmin: user.isSuperAdmin,
-        tenants: tenants.map((t) => ({
-          id: t.tenantId,
-          name: t.tenantName,
-          slug: t.tenantSlug,
-          role: t.role,
-          status: t.tenantStatus,
-        })),
+        tenants: tenants.map(TenantPresenter.toTenantItem),
       });
     },
   );

@@ -50,6 +50,12 @@ describe('SetPlanEntitlementUseCase', () => {
     expect(transaction).not.toHaveBeenCalled();
   });
 
+  it('plano de produto novo (ALL_PLAN_SLUGS) é aceito', async () => {
+    const { uc, presets } = setup();
+    await uc.execute({ ...ok, planSlug: 'SAVER_PRO' });
+    expect(presets.setForPlan).toHaveBeenCalledWith({ planSlug: 'SAVER_PRO', key: 'marketplace_shein_enabled', value: true });
+  });
+
   it('plano desconhecido → ValidationError 400, sem abrir transação', async () => {
     const { uc, transaction } = setup();
     const err = await uc.execute({ ...ok, planSlug: 'pro' }).catch((e) => e);

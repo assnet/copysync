@@ -4,7 +4,7 @@ import {
 import { Info } from 'lucide-react';
 import { AppIcon, SectionCard, TelegramIcon, WhatsAppIcon, brandColor } from '@/components';
 import type { SubscriptionLimitItem } from '@/types/api.types';
-import { minPlanFor, subscriptionStrings, SUBSCRIPTION_LIMIT_KEYS, type SubscriptionChannel, type SubscriptionLimitKey } from '../strings';
+import { minPlanFor, SAVER_MIN_TIER, subscriptionStrings, SUBSCRIPTION_LIMIT_KEYS, type SubscriptionChannel, type SubscriptionLimitKey } from '../strings';
 import { usageToneFor } from '../usageTone';
 
 const t = subscriptionStrings;
@@ -16,6 +16,8 @@ const isKnownKey = (key: string): key is SubscriptionLimitKey => (SUBSCRIPTION_L
 
 /** "A partir do X" pelo menor plano que libera a chave; nenhum libera → "Não incluso". */
 function lockedLabel(key: SubscriptionLimitKey): string {
+  const saverTier = SAVER_MIN_TIER[key];
+  if (saverTier) return t.limits.availableFrom(saverTier);
   const plan = minPlanFor(key);
   return plan ? t.limits.availableFrom(plan.name) : t.limits.notIncluded;
 }
@@ -99,6 +101,8 @@ export interface SubscriptionLimitsTableProps {
   /** Aba de canal (controlada: a página guarda em `usePersistedState`, escopo `tab`). */
   channel: SubscriptionChannel;
   onChannelChange: (channel: SubscriptionChannel) => void;
+  /** Título do cartão (assinatura por produto). Padrão: "Limites do plano". */
+  title?: string;
 }
 
 /**
@@ -106,34 +110,38 @@ export interface SubscriptionLimitsTableProps {
  * (`channel: null`). Barra de uso com a mesma cor do chip do gerador (`usageToneFor`, política por chave); ilimitado
  * mostra só o uso; limite 0 ou recurso desligado mostra o menor plano que libera.
  */
-export function SubscriptionLimitsTable({ limits, channel, onChannelChange }: SubscriptionLimitsTableProps) {
+export function SubscriptionLimitsTable({ limits, channel, onChannelChange, title = t.limits.title }: SubscriptionLimitsTableProps) {
   const mode = useTheme().palette.mode;
   const known = limits.filter((l): l is SubscriptionLimitItem & { key: SubscriptionLimitKey } => isKnownKey(l.key));
   const channelItems = known.filter((l) => l.channel === channel);
   const generalItems = known.filter((l) => l.channel == null);
+  // Produto sem limite por canal (ex.: só recursos gerais): sem abas de canal.
+  const hasChannels = known.some((l) => l.channel != null);
 
   return (
-    <SectionCard title={t.limits.title}>
+    <SectionCard title={title}>
       <Stack spacing={2}>
-        <Tabs
-          value={channel}
-          onChange={(_, v: SubscriptionChannel) => onChannelChange(v)}
-          aria-label={t.limits.channelTabsLabel}
-          variant="scrollable"
-          allowScrollButtonsMobile
-        >
-          {CHANNELS.map((ch) => (
-            <Tab
-              key={ch}
-              value={ch}
-              label={t.channel[ch]}
-              iconPosition="start"
-              icon={<AppIcon icon={CHANNEL_ICON[ch]} style={{ color: brandColor(ch, mode) }} />}
-              sx={{ minHeight: 48 }}
-            />
-          ))}
-        </Tabs>
-        {channelItems.length > 0 && <LimitsGrid items={channelItems} caption={`${t.limits.title}: ${t.channel[channel]}`} />}
+        {hasChannels && (
+          <Tabs
+            value={channel}
+            onChange={(_, v: SubscriptionChannel) => onChannelChange(v)}
+            aria-label={t.limits.channelTabsLabel}
+            variant="scrollable"
+            allowScrollButtonsMobile
+          >
+            {CHANNELS.map((ch) => (
+              <Tab
+                key={ch}
+                value={ch}
+                label={t.channel[ch]}
+                iconPosition="start"
+                icon={<AppIcon icon={CHANNEL_ICON[ch]} style={{ color: brandColor(ch, mode) }} />}
+                sx={{ minHeight: 48 }}
+              />
+            ))}
+          </Tabs>
+        )}
+        {channelItems.length > 0 && <LimitsGrid items={channelItems} caption={`${title}: ${t.channel[channel]}`} />}
         {generalItems.length > 0 && (
           <Box>
             <Typography variant="subtitle2" component="h3" sx={{ px: { xs: 1, sm: 2 }, pb: 1 }}>{t.limits.general}</Typography>
