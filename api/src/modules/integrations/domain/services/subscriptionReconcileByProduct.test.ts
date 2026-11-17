@@ -131,3 +131,37 @@ describe('decideReconcile por produto', () => {
     expect(decideReconcile({ ...local, lastBillingEventSeq: 9n }, snap([saver()]), NOW, G)).toEqual({ kind: 'stale' });
   });
 });
+
+describe('decideReconcile por produto: estado estável não escreve', () => {
+  const saverRow: LocalProductState = { active: true, planSlug: 'SAVER_PRO', expiresAt: new Date(FUTURE) };
+
+  it('Afiliados + Saver em dia, sem linha AFFILIATES: noop (não aplica a cada passada)', () => {
+    expect(decideReconcile({ ...local, products: rows([['SAVER', saverRow]]) }, snap([sub(), saver()]), NOW, G)).toEqual({ kind: 'noop' });
+  });
+
+  it('linha AFFILIATES ativa: só o status conta (plano vive no tenant)', () => {
+    const products = rows([['SAVER', saverRow], ['AFFILIATES', { active: true, planSlug: null, expiresAt: null }]]);
+    expect(decideReconcile({ ...local, products }, snap([sub(), saver()]), NOW, G)).toEqual({ kind: 'noop' });
+  });
+
+  it('Afiliados cortado com linha inativa já gravada: noop', () => {
+    const products = rows([['SAVER', saverRow], ['AFFILIATES', { active: false, planSlug: null, expiresAt: null }]]);
+    expect(decideReconcile({ ...local, products }, snap([sub({ billingStatus: 'REFUNDED' }), saver()]), NOW, G)).toEqual({ kind: 'noop' });
+  });
+
+  it('linha ADMIN ativa sem assinatura que dê acesso: nunca desativa', () => {
+    const products = rows([['SAVER', { ...saverRow, source: 'ADMIN' }]]);
+    expect(decideReconcile({ ...local, products }, snap([sub(), saver({ billingStatus: 'REFUNDED' })]), NOW, G)).toEqual({ kind: 'noop' });
+    expect(decideReconcile({ ...local, products }, snap([sub()]), NOW, G)).toEqual({ kind: 'noop' });
+  });
+
+  it('linha BILLING ativa de produto novo sem assinatura na central: desativa', () => {
+    const d = decideReconcile({ ...local, products: rows([['SAVER', saverRow]]) }, snap([sub()]), NOW, G);
+    expect(d).toMatchObject({ kind: 'apply', reasons: ['products_changed'], products: [{ product: 'AFFILIATES', active: true }, { product: 'SAVER', active: false }] });
+  });
+
+  it('tenant sem produto novo em lugar nenhum: decisão sem products', () => {
+    expect(decideReconcile({ ...local, products: new Map() }, snap([sub()]), NOW, G)).toEqual({ kind: 'noop' });
+    expect(decideReconcile({ ...local, products: new Map() }, snap([sub({ planSlug: 'x' })]), NOW, G)).toEqual({ kind: 'unknown_plan' });
+  });
+});

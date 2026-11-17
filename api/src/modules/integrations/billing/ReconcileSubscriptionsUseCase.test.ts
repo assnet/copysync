@@ -182,3 +182,40 @@ describe('ReconcileSubscriptionsUseCase', () => {
     expect(busy.repo.releaseLease).not.toHaveBeenCalled();
   });
 });
+
+describe('ReconcileSubscriptionsUseCase por produto', () => {
+  const saver = sub({ id: 'sv', planSlug: 'copysync-saver-pro-mensal' });
+  function productHarness(local: LocalBillingState) {
+    const decisions: ReconcileDecision[] = [];
+    const repo: IBillingReconcileRepository = {
+      acquireLease: vi.fn(async () => true),
+      releaseLease: vi.fn(async () => undefined),
+      listCandidates: vi.fn(async () => [{ tenantId: 't1', billingCustomerId: 'c-t1' }]),
+      markExamined: vi.fn(async () => undefined),
+      reconcileLocked: vi.fn(async (_c: ReconcileCandidate, decide: (s: LocalBillingState) => ReconcileDecision) => {
+        const decision = decide(local);
+        decisions.push(decision);
+        return { decision, found: true };
+      }),
+    };
+    const invalidated: string[] = [];
+    const client: IHubSubscriptionsClient = { fetchByCustomer: vi.fn(async () => ok([saver])) };
+    const uc = new ReconcileSubscriptionsUseCase(client, repo, { batchSize: 10, leaseTtlMs: 1000, graceMs: 24 * 3_600_000 }, () => NOW, () => undefined, (id) => invalidated.push(id));
+    return { uc, decisions, invalidated };
+  }
+
+  it('kind products conta como corrigido e invalida o cache de produtos', async () => {
+    const h = productHarness(state({ planSlug: null, products: new Map() }));
+    expect(await h.uc.execute()).toMatchObject({ corrected: 1, errors: 0 });
+    expect(h.decisions[0]).toMatchObject({ kind: 'products', reasons: ['products_changed'] });
+    expect(h.invalidated).toEqual(['t1']);
+  });
+
+  it('linha igual à central: noop, sem invalidar', async () => {
+    const products = new Map([['SAVER' as const, { active: true, planSlug: 'SAVER_PRO', expiresAt: new Date('2026-12-07T12:00:00Z') }]]);
+    const h = productHarness(state({ planSlug: null, products }));
+    expect(await h.uc.execute()).toMatchObject({ corrected: 0 });
+    expect(h.decisions[0]).toEqual({ kind: 'noop' });
+    expect(h.invalidated).toEqual([]);
+  });
+});
