@@ -33,6 +33,7 @@ const TENANTS: UsageTenantEntry[] = [
 const FIRST: Record<string, string | null> = Object.fromEntries(FEATURE_USAGE_CATALOG.map((f) => [f.key, '2026-01-01']));
 FIRST.panel_login = '2026-10-08'; // 40 dias atrás
 FIRST.telegram_session = null;
+FIRST.chat_send = null; // só do contador: sem dado antes da data de corte
 
 const DEFAULT_FILTERS: FeatureUsageFilters = { kinds: ['ACTION', 'AUTOMATIC'], tenantStatus: 'ACTIVE', includeInternal: false };
 

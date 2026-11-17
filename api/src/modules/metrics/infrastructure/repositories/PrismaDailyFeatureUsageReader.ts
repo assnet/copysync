@@ -31,7 +31,8 @@ export function toDailyFeatureUsageRow(raw: RawDailyRow): FeatureUsageRow {
  * Leitor do agregado `feature_usage_daily` (P2): mesma forma do leitor sob demanda. Até 90 dias (ou com
  * granularidade `day`) devolve linha por dia; acima, com semana/mês, o SQL agrupa por `date_trunc` (segunda-feira,
  * como `bucketOf`) e devolve `activeDays`/`lastDay` da linha. Sempre filtra por período; uma instrução por vez no
- * orçamento do pedido; guarda de 300 mil linhas.
+ * orçamento do pedido; guarda de 300 mil linhas. Com `currentFrom`, o agrupamento separa o período anterior do
+ * atual. Devolve também o maior `updatedAt` (`freshAt` da resposta).
  */
 export class PrismaDailyFeatureUsageReader implements IFeatureUsageReader {
   constructor(
@@ -52,7 +53,12 @@ export class PrismaDailyFeatureUsageReader implements IFeatureUsageReader {
     const period = Prisma.sql`"day" >= ${fromDay}::date AND "day" < ${toDayExclusive}::date AND "featureKey" IN (${keyList})`;
     const limit = this.rowGuard + 1;
 
-    const grouped = input.granularity !== 'day' && days > DAILY_USAGE_DAY_ROWS_MAX_DAYS;
+    // Bucket que cruza o início do período atual vira duas linhas: anterior e atual nunca se misturam
+    const currentDay = input.currentFrom ? dayInZone(input.currentFrom) : null;
+    // O tamanho que decide é o do período pedido (sem o anterior): 90 dias + anterior ainda é linha por dia
+    const periodDays = currentDay ? daysInclusive(currentDay, addDays(toDayExclusive, -1)) : days;
+    const grouped = input.granularity !== 'day' && periodDays > DAILY_USAGE_DAY_ROWS_MAX_DAYS;
+    const side = currentDay ? Prisma.sql`, ("day" >= ${currentDay}::date)` : Prisma.empty;
     const sql = grouped
       ? Prisma.sql`
           SELECT to_char(date_trunc(${Prisma.raw(input.granularity === 'month' ? "'month'" : "'week'")}, "day"::timestamp)::date, 'YYYY-MM-DD') AS day,
@@ -61,7 +67,7 @@ export class PrismaDailyFeatureUsageReader implements IFeatureUsageReader {
                  to_char(max("day"), 'YYYY-MM-DD') AS "lastDay"
           FROM "feature_usage_daily"
           WHERE ${period}
-          GROUP BY 1, "tenantId", "featureKey", "kind"
+          GROUP BY 1, "tenantId", "featureKey", "kind"${side}
           LIMIT ${limit}::int`
       : Prisma.sql`
           SELECT to_char("day", 'YYYY-MM-DD') AS day, "tenantId", "featureKey", "kind",
@@ -83,6 +89,13 @@ export class PrismaDailyFeatureUsageReader implements IFeatureUsageReader {
         GROUP BY "featureKey"`,
     );
     for (const r of first) if (r.key in firstDataDay) firstDataDay[r.key as FeatureUsageKey] = r.first;
-    return { rows, firstDataDay };
+
+    // `timestamp` sem fuso gravado em UTC: texto ISO para não depender do `TimeZone` da sessão
+    const [fresh] = await runWithinBudget<{ at: string | null }>(
+      input.budget,
+      this.prisma,
+      Prisma.sql`SELECT to_char(MAX("updatedAt"), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at FROM "feature_usage_daily"`,
+    );
+    return { rows, firstDataDay, latestUpdate: fresh?.at ? new Date(fresh.at) : null };
   }
 }

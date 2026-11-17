@@ -9,9 +9,17 @@ import {
   rankFeatureTenants,
 } from '../../domain/services/aggregateFeatureUsage';
 import { FEATURE_USAGE_CATALOG, type FeatureUsagePlanFamily } from '../../domain/services/featureUsageCatalog';
-import { type UsagePeriod, resolveUsagePeriod } from '../../domain/services/featureUsagePeriod';
+import type { UsagePeriod } from '../../domain/services/featureUsagePeriod';
 import { resolveUsageFeature } from './GetFeatureUsageDetailUseCase';
-import { type FeatureUsageDeps, type FeatureUsageQueryInput, USAGE_LIVE_MAX_DAYS, toUsageFilters } from './GetFeatureUsageSummaryUseCase';
+import {
+  type FeatureUsageDeps,
+  type FeatureUsageQueryInput,
+  chooseUsageSource,
+  readUsageRows,
+  resolveUsageRequestPeriod,
+  toUsageFilters,
+  usageMaxDaysFor,
+} from './GetFeatureUsageSummaryUseCase';
 import { createFeatureUsageTenantCursor, featureUsageTenantScope, readFeatureUsageTenantCursor } from './featureUsageTenantCursor';
 
 /** Teto da espera pela gravação da auditoria; estouro = log `warn` e a resposta segue. */
@@ -98,7 +106,7 @@ export class ListFeatureUsageTenantsUseCase {
     const { feature, inScope } = resolveUsageFeature(catalog, input);
     const filters = toUsageFilters(input);
     const now = (this.deps.now ?? (() => new Date()))();
-    const period = resolveUsagePeriod({ from: input.from, to: input.to, granularity: input.granularity, now, maxDays: USAGE_LIVE_MAX_DAYS });
+    const period = resolveUsageRequestPeriod(input, now, usageMaxDaysFor(this.deps));
     const auditFilters = scopeFilters(input, period);
     // O id da conta filtrada entra no escopo só pelo hash (cursor de outra conta não vale).
     const scope = featureUsageTenantScope(feature.key, { ...auditFilters, tenantId: input.tenantId ?? null });
@@ -108,11 +116,14 @@ export class ListFeatureUsageTenantsUseCase {
     if (!inScope) return { items: [], nextCursor: null };
 
     const out = await this.deps.gate.runExclusive(async (budget) => {
-      const read = await this.deps.reader.read({
+      // Só o período atual: a janela não alcança o anterior e as linhas agrupadas não cruzam o início
+      const { source } = await chooseUsageSource(this.deps, period, budget);
+      const read = await readUsageRows(this.deps, {
+        features: [feature],
         from: period.fromInstant,
         toExclusive: period.toExclusive,
-        featureKeys: [feature.key],
         granularity: period.granularity,
+        source,
         budget,
       });
       const tenants = scopedTenants(await this.deps.directory.list(budget), filters, feature.planFamily);

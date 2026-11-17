@@ -1,15 +1,16 @@
 import { UsageMetricsFeatureNotFoundError } from '../../../../shared/errors/internal/UsageMetricsErrors';
 import { type FeatureUsageAggregate, type FeatureUsageItem, aggregateFeatureUsage } from '../../domain/services/aggregateFeatureUsage';
 import { FEATURE_USAGE_CATALOG, type FeatureUsageDefinition, findFeature } from '../../domain/services/featureUsageCatalog';
-import { resolveUsagePeriod } from '../../domain/services/featureUsagePeriod';
 import {
   type FeatureUsageDeps,
   type FeatureUsageQueryInput,
   type FeatureUsageRangeOutput,
-  USAGE_LIVE_MAX_DAYS,
+  type FeatureUsageResponseSource,
   rangeOf,
   readFeatureUsage,
+  resolveUsageRequestPeriod,
   scopedFeatures,
+  usageMaxDaysFor,
   toUsageFilters,
 } from './GetFeatureUsageSummaryUseCase';
 
@@ -19,7 +20,7 @@ export interface GetFeatureUsageDetailInput extends FeatureUsageQueryInput {
 
 export interface FeatureUsageDetailOutput {
   range: FeatureUsageRangeOutput;
-  source: 'live';
+  source: FeatureUsageResponseSource;
   freshAt: Date;
   population: FeatureUsageAggregate['population'];
   /** `false` quando tipo ou plano excluem o recurso: resposta zerada, sem ir ao banco. */
@@ -75,10 +76,12 @@ export class GetFeatureUsageDetailUseCase {
     const catalog = this.deps.catalog ?? FEATURE_USAGE_CATALOG;
     const { feature, inScope } = resolveUsageFeature(catalog, input);
     if (!inScope) {
+      // Sem banco (nem o marco): o maior teto possível; nada é lido, então não há fonte a limitar
       const now = (this.deps.now ?? (() => new Date()))();
-      const period = resolveUsagePeriod({ from: input.from, to: input.to, granularity: input.granularity, now, maxDays: USAGE_LIVE_MAX_DAYS });
+      const maxDays = usageMaxDaysFor(this.deps);
+      const period = resolveUsageRequestPeriod(input, now, maxDays);
       return {
-        range: rangeOf(period, USAGE_LIVE_MAX_DAYS),
+        range: rangeOf(period, maxDays),
         source: 'live',
         freshAt: now,
         population: { tenants: 0, internalExcluded: 0, byPlan: [] },
@@ -97,13 +100,14 @@ export class GetFeatureUsageDetailUseCase {
       period: read.period,
       filters,
       now: read.now,
+      source: read.source,
     });
     const item = agg.features[0];
     if (!item) throw new UsageMetricsFeatureNotFoundError();
     return {
-      range: rangeOf(read.period, USAGE_LIVE_MAX_DAYS),
-      source: 'live',
-      freshAt: read.now,
+      range: rangeOf(read.period, read.maxDays),
+      source: read.source,
+      freshAt: read.freshAt,
       population: agg.population,
       inScope: true,
       feature: item,

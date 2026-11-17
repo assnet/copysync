@@ -8,6 +8,8 @@ import { UnauthorizedError } from '../../../../shared/errors/internal/AuthErrors
 import { PrismaAuditLogRepository } from '../../../../shared/audit/PrismaAuditLogRepository';
 import { PrismaLiveFeatureUsageReader } from '../../infrastructure/repositories/PrismaLiveFeatureUsageReader';
 import { PrismaUsageTenantDirectory } from '../../infrastructure/repositories/PrismaUsageTenantDirectory';
+import { PrismaDailyFeatureUsageReader } from '../../infrastructure/repositories/PrismaDailyFeatureUsageReader';
+import { PrismaFeatureUsageRollupStateRepository } from '../../infrastructure/repositories/PrismaFeatureUsageRollupStateRepository';
 import type { UsageTenantDirectoryEntry } from '../../domain/contracts/IUsageTenantDirectory';
 import { resolveUsageQuery } from '../schemas/featureUsage.schema';
 
@@ -57,7 +59,11 @@ function mockReads() {
   const list = vi.spyOn(PrismaUsageTenantDirectory.prototype, 'list').mockResolvedValue(TENANTS);
   const names = vi.spyOn(PrismaUsageTenantDirectory.prototype, 'names').mockResolvedValue(new Map([['t1', 'Conta Um']]));
   const audit = vi.spyOn(PrismaAuditLogRepository.prototype, 'create').mockResolvedValue();
-  return { read, list, names, audit };
+  // Sem marco do backfill: fonte viva; o agregado só responde pelos recursos do contador (vazio aqui)
+  const state = vi.spyOn(PrismaFeatureUsageRollupStateRepository.prototype, 'get')
+    .mockResolvedValue({ backfillCompletedAt: null, backfilledFrom: null, backfillCursor: null });
+  const daily = vi.spyOn(PrismaDailyFeatureUsageReader.prototype, 'read').mockResolvedValue({ rows: [], firstDataDay: {}, latestUpdate: null });
+  return { read, list, names, audit, state, daily };
 }
 
 describe('auth', () => {
@@ -139,10 +145,22 @@ describe('GET /summary', () => {
     ['kind inválido', 'kind=ACTION,FOO'],
     ['tenantStatus inválido', 'tenantStatus=DELETED'],
   ])('%s: 400 de validação', async (_label, qs) => {
-    const { read } = mockReads();
+    const { read, daily, state } = mockReads();
     const res = await app.inject({ method: 'GET', url: `${URL}/summary?${qs}` });
     expect(res.statusCode).toBe(400);
     expect(res.json().error.code).toBe('HTTP_ERROR');
+    expect(read).not.toHaveBeenCalled();
+    expect(daily).not.toHaveBeenCalled();
+    expect(state).not.toHaveBeenCalled();
+  });
+
+  it('com o marco do backfill: 200 dias por semana respondem do agregado com teto 400', async () => {
+    const { read, daily, state } = mockReads();
+    state.mockResolvedValue({ backfillCompletedAt: new Date('2026-11-10T00:00:00Z'), backfilledFrom: '2025-10-26', backfillCursor: null });
+    daily.mockResolvedValue({ rows: [ROW], firstDataDay: { offer_generator: '2025-10-26' }, latestUpdate: new Date('2026-11-17T14:45:00Z') });
+    const res = await app.inject({ method: 'GET', url: `${URL}/summary?from=2026-05-02&to=2026-11-17&granularity=week` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toMatchObject({ source: 'daily', freshAt: '2026-11-17T14:45:00.000Z', range: { maxDays: 400 } });
     expect(read).not.toHaveBeenCalled();
   });
 

@@ -1,4 +1,6 @@
-import type { PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
+import type { UsageReadBudget } from '../../domain/contracts/IUsageReadGate';
+import { runWithinBudget } from './featureUsageReadTimeout';
 import type {
   FeatureUsageRollupState,
   IFeatureUsageRollupStateRepository,
@@ -28,7 +30,7 @@ export function parseFeatureUsageRollupState(value: unknown): FeatureUsageRollup
   };
 }
 
-type Db = Pick<PrismaClient, 'platformSetting' | '$executeRaw'>;
+type Db = Pick<PrismaClient, 'platformSetting' | '$executeRaw' | '$transaction' | '$executeRawUnsafe' | '$queryRaw'>;
 
 /**
  * Estado interno do job (molde `PrismaFeatureAudienceRepository`): upsert com merge `jsonb ||` numa instrução,
@@ -40,7 +42,15 @@ export class PrismaFeatureUsageRollupStateRepository implements IFeatureUsageRol
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  async get(): Promise<FeatureUsageRollupState> {
+  async get(budget?: UsageReadBudget): Promise<FeatureUsageRollupState> {
+    if (budget) {
+      const [hit] = await runWithinBudget<{ value: unknown }>(
+        budget,
+        this.prisma,
+        Prisma.sql`SELECT "value" FROM "platform_settings" WHERE "key" = ${FEATURE_USAGE_ROLLUP_SETTINGS_KEY}`,
+      );
+      return parseFeatureUsageRollupState(hit?.value);
+    }
     const row = await this.prisma.platformSetting.findUnique({ where: { key: FEATURE_USAGE_ROLLUP_SETTINGS_KEY }, select: { value: true } });
     return parseFeatureUsageRollupState(row?.value);
   }

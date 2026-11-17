@@ -9,6 +9,7 @@ import { RollupFeatureUsageUseCase } from '../application/use-cases/RollupFeatur
 import { RecordFeatureUsageUseCase } from '../application/use-cases/RecordFeatureUsageUseCase';
 import type { IFeatureUsageRecorder } from '../domain/contracts/IFeatureUsageRecorder';
 import { FEATURE_USAGE_ROLLUP_READ_BUDGET_MS, FeatureUsageRollupJob } from './jobs/FeatureUsageRollupJob';
+import { PrismaDailyFeatureUsageReader } from './repositories/PrismaDailyFeatureUsageReader';
 import { PrismaFeatureUsageDailyRepository } from './repositories/PrismaFeatureUsageDailyRepository';
 import { PrismaFeatureUsageRollupStateRepository } from './repositories/PrismaFeatureUsageRollupStateRepository';
 import { FEATURE_USAGE_SOURCES, PrismaLiveFeatureUsageReader } from './repositories/PrismaLiveFeatureUsageReader';
@@ -16,8 +17,9 @@ import { PrismaUsageTenantDirectory } from './repositories/PrismaUsageTenantDire
 import { createReadBudget, usageReadGate } from './repositories/featureUsageReadTimeout';
 
 /**
- * Composição do uso dos recursos (super admin). P1: leitura sob demanda das tabelas de domínio, uma leitura
- * de uso por processo (`usageReadGate`, compartilhado pelas três rotas) com orçamento de 2 s por pedido.
+ * Composição do uso dos recursos (super admin). Uma leitura de uso por processo (`usageReadGate`, compartilhado
+ * pelas três rotas) com orçamento de 2 s por pedido. Fonte por pedido: agregado diário quando o marco do backfill
+ * cobre o período, senão sob demanda; recurso só do contador sempre do agregado.
  */
 let deps: FeatureUsageDeps | undefined;
 let getSummary: GetFeatureUsageSummaryUseCase | undefined;
@@ -28,6 +30,8 @@ let recorder: IFeatureUsageRecorder | undefined;
 function featureUsageDeps(): FeatureUsageDeps {
   return (deps ??= {
     reader: new PrismaLiveFeatureUsageReader(prisma),
+    dailyReader: new PrismaDailyFeatureUsageReader(prisma),
+    rollupState: new PrismaFeatureUsageRollupStateRepository(prisma),
     directory: new PrismaUsageTenantDirectory(prisma),
     gate: usageReadGate,
   });

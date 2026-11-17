@@ -4,6 +4,7 @@ import {
   FEATURE_USAGE_ROLLUP_SETTINGS_KEY,
   PrismaFeatureUsageRollupStateRepository,
 } from './PrismaFeatureUsageRollupStateRepository';
+import { createReadBudget } from './featureUsageReadTimeout';
 
 /** Marco do backfill em `platform_settings` contra o Postgres descartável. */
 const clean = () => prisma.platformSetting.deleteMany({ where: { key: FEATURE_USAGE_ROLLUP_SETTINGS_KEY } });
@@ -38,6 +39,8 @@ describe('PrismaFeatureUsageRollupStateRepository', () => {
 
     const other = new PrismaFeatureUsageRollupStateRepository(prisma);
     expect(await other.get()).toEqual({ backfillCompletedAt: done, backfilledFrom: '2026-10-26', backfillCursor: '2026-11-08' });
+    // Leitura do painel: mesma resposta, dentro do orçamento do pedido
+    expect(await other.get(createReadBudget())).toEqual({ backfillCompletedAt: done, backfilledFrom: '2026-10-26', backfillCursor: '2026-11-08' });
     const row = await prisma.platformSetting.findUnique({ where: { key: FEATURE_USAGE_ROLLUP_SETTINGS_KEY } });
     expect(row?.updatedById).toBeNull();
     expect(row?.updatedAt.toISOString()).toBe('2026-11-17T10:00:00.000Z');
