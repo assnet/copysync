@@ -1,0 +1,389 @@
+{
+  "range": {
+    "from": "2026-08-18",
+    "to": "2026-11-15",
+    "timeZone": "America/Sao_Paulo",
+    "previousFrom": "2026-05-20",
+    "previousTo": "2026-08-17",
+    "granularity": "week",
+    "maxDays": 90
+  },
+  "source": "live",
+  "freshAt": "2026-11-17T18:02:11.000Z",
+  "population": {
+    "tenants": 15,
+    "internalExcluded": 4,
+    "byPlan": [
+      {
+        "family": "AFFILIATES",
+        "plan": "COPYSYNC_LITE",
+        "tenants": 5
+      },
+      {
+        "family": "AFFILIATES",
+        "plan": "COPYSYNC_PRO",
+        "tenants": 3
+      },
+      {
+        "family": "AFFILIATES",
+        "plan": "COPYSYNC_MAX",
+        "tenants": 4
+      },
+      {
+        "family": "AFFILIATES",
+        "plan": "NONE",
+        "tenants": 3
+      },
+      {
+        "family": "SAVER",
+        "plan": "SAVER_PRO",
+        "tenants": 2
+      },
+      {
+        "family": "SAVER",
+        "plan": "NONE",
+        "tenants": 13
+      }
+    ]
+  },
+  "totals": {
+    "activeTenants": 9,
+    "activeTenantsPrevious": null,
+    "featuresUsed": 4,
+    "featuresNeverUsed": 1,
+    "topFeature": "offer_generator"
+  },
+  "features": [
+    {
+      "key": "offer_generator",
+      "product": "AFFILIATES",
+      "planFamily": "AFFILIATES",
+      "kinds": [
+        "ACTION"
+      ],
+      "coverage": "FULL",
+      "coverageReasons": [],
+      "retentionDays": null,
+      "firstDataDay": "2026-03-02",
+      "dataFrom": "2026-03-02",
+      "uses": 412,
+      "usesPrevious": 350,
+      "activeTenants": 8,
+      "activeTenantsPrevious": 6,
+      "reach": 0.5333,
+      "lastUsedDay": "2026-11-15",
+      "byKind": [
+        {
+          "kind": "ACTION",
+          "uses": 412,
+          "activeTenants": 8
+        }
+      ],
+      "byPlan": [
+        {
+          "plan": "COPYSYNC_LITE",
+          "tenants": 5,
+          "activeTenants": 2,
+          "uses": 61
+        },
+        {
+          "plan": "COPYSYNC_PRO",
+          "tenants": 3,
+          "activeTenants": 2,
+          "uses": 110
+        },
+        {
+          "plan": "COPYSYNC_MAX",
+          "tenants": 4,
+          "activeTenants": 4,
+          "uses": 241
+        },
+        {
+          "plan": "NONE",
+          "tenants": 3,
+          "activeTenants": 0,
+          "uses": 0
+        }
+      ],
+      "eligibleTenants": null,
+      "adoption": null,
+      "recurringTenants": null,
+      "retainedTenants": null
+    },
+    {
+      "key": "offer_hunter",
+      "product": "AFFILIATES",
+      "planFamily": "AFFILIATES",
+      "kinds": [
+        "ACTION",
+        "AUTOMATIC"
+      ],
+      "coverage": "FULL",
+      "coverageReasons": [],
+      "retentionDays": null,
+      "firstDataDay": "2026-11-03",
+      "dataFrom": "2026-11-03",
+      "uses": 37,
+      "usesPrevious": null,
+      "activeTenants": 3,
+      "activeTenantsPrevious": null,
+      "reach": 0.2,
+      "lastUsedDay": "2026-11-14",
+      "byKind": [
+        {
+          "kind": "ACTION",
+          "uses": 9,
+          "activeTenants": 3
+        },
+        {
+          "kind": "AUTOMATIC",
+          "uses": 28,
+          "activeTenants": 2
+        }
+      ],
+      "byPlan": [
+        {
+          "plan": "COPYSYNC_LITE",
+          "tenants": 5,
+          "activeTenants": 0,
+          "uses": 0
+        },
+        {
+          "plan": "COPYSYNC_PRO",
+          "tenants": 3,
+          "activeTenants": 0,
+          "uses": 0
+        },
+        {
+          "plan": "COPYSYNC_MAX",
+          "tenants": 4,
+          "activeTenants": 3,
+          "uses": 37
+        },
+        {
+          "plan": "NONE",
+          "tenants": 3,
+          "activeTenants": 0,
+          "uses": 0
+        }
+      ],
+      "eligibleTenants": null,
+      "adoption": null,
+      "recurringTenants": null,
+      "retainedTenants": null
+    },
+    {
+      "key": "link_rotation_click",
+      "product": "AFFILIATES",
+      "planFamily": "AFFILIATES",
+      "kinds": [
+        "AUDIENCE"
+      ],
+      "coverage": "PARTIAL",
+      "coverageReasons": [
+        "EXISTING_ONLY",
+        "RETENTION"
+      ],
+      "retentionDays": 90,
+      "firstDataDay": "2026-07-01",
+      "dataFrom": "2026-08-19",
+      "uses": 128,
+      "usesPrevious": null,
+      "activeTenants": 2,
+      "activeTenantsPrevious": null,
+      "reach": 0.1333,
+      "lastUsedDay": "2026-11-13",
+      "byKind": [
+        {
+          "kind": "AUDIENCE",
+          "uses": 128,
+          "activeTenants": 2
+        }
+      ],
+      "byPlan": [
+        {
+          "plan": "COPYSYNC_LITE",
+          "tenants": 5,
+          "activeTenants": 0,
+          "uses": 0
+        },
+        {
+          "plan": "COPYSYNC_PRO",
+          "tenants": 3,
+          "activeTenants": 1,
+          "uses": 40
+        },
+        {
+          "plan": "COPYSYNC_MAX",
+          "tenants": 4,
+          "activeTenants": 1,
+          "uses": 88
+        },
+        {
+          "plan": "NONE",
+          "tenants": 3,
+          "activeTenants": 0,
+          "uses": 0
+        }
+      ],
+      "eligibleTenants": null,
+      "adoption": null,
+      "recurringTenants": null,
+      "retainedTenants": null
+    },
+    {
+      "key": "saver_extraction",
+      "product": "SAVER",
+      "planFamily": "SAVER",
+      "kinds": [
+        "ACTION"
+      ],
+      "coverage": "FULL",
+      "coverageReasons": [],
+      "retentionDays": null,
+      "firstDataDay": "2026-11-10",
+      "dataFrom": "2026-11-10",
+      "uses": 5,
+      "usesPrevious": null,
+      "activeTenants": 2,
+      "activeTenantsPrevious": null,
+      "reach": 0.1333,
+      "lastUsedDay": "2026-11-15",
+      "byKind": [
+        {
+          "kind": "ACTION",
+          "uses": 5,
+          "activeTenants": 2
+        }
+      ],
+      "byPlan": [
+        {
+          "plan": "SAVER_PRO",
+          "tenants": 2,
+          "activeTenants": 2,
+          "uses": 5
+        },
+        {
+          "plan": "NONE",
+          "tenants": 13,
+          "activeTenants": 0,
+          "uses": 0
+        }
+      ],
+      "eligibleTenants": null,
+      "adoption": null,
+      "recurringTenants": null,
+      "retainedTenants": null
+    },
+    {
+      "key": "telegram_session",
+      "product": "SESSION",
+      "planFamily": "AFFILIATES",
+      "kinds": [
+        "ACTION"
+      ],
+      "coverage": "FULL",
+      "coverageReasons": [],
+      "retentionDays": null,
+      "firstDataDay": null,
+      "dataFrom": null,
+      "uses": 0,
+      "usesPrevious": null,
+      "activeTenants": 0,
+      "activeTenantsPrevious": null,
+      "reach": 0.0,
+      "lastUsedDay": null,
+      "byKind": [
+        {
+          "kind": "ACTION",
+          "uses": 0,
+          "activeTenants": 0
+        }
+      ],
+      "byPlan": [
+        {
+          "plan": "COPYSYNC_LITE",
+          "tenants": 5,
+          "activeTenants": 0,
+          "uses": 0
+        },
+        {
+          "plan": "COPYSYNC_PRO",
+          "tenants": 3,
+          "activeTenants": 0,
+          "uses": 0
+        },
+        {
+          "plan": "COPYSYNC_MAX",
+          "tenants": 4,
+          "activeTenants": 0,
+          "uses": 0
+        },
+        {
+          "plan": "NONE",
+          "tenants": 3,
+          "activeTenants": 0,
+          "uses": 0
+        }
+      ],
+      "eligibleTenants": null,
+      "adoption": null,
+      "recurringTenants": null,
+      "retainedTenants": null
+    }
+  ],
+  "series": [
+    {
+      "bucket": "2026-08-17",
+      "activeTenants": 0
+    },
+    {
+      "bucket": "2026-08-24",
+      "activeTenants": 1
+    },
+    {
+      "bucket": "2026-08-31",
+      "activeTenants": 1
+    },
+    {
+      "bucket": "2026-09-07",
+      "activeTenants": 2
+    },
+    {
+      "bucket": "2026-09-14",
+      "activeTenants": 2
+    },
+    {
+      "bucket": "2026-09-21",
+      "activeTenants": 3
+    },
+    {
+      "bucket": "2026-09-28",
+      "activeTenants": 4
+    },
+    {
+      "bucket": "2026-10-05",
+      "activeTenants": 4
+    },
+    {
+      "bucket": "2026-10-12",
+      "activeTenants": 5
+    },
+    {
+      "bucket": "2026-10-19",
+      "activeTenants": 6
+    },
+    {
+      "bucket": "2026-10-26",
+      "activeTenants": 7
+    },
+    {
+      "bucket": "2026-11-02",
+      "activeTenants": 8
+    },
+    {
+      "bucket": "2026-11-09",
+      "activeTenants": 9
+    }
+  ]
+}

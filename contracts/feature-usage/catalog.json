@@ -1,0 +1,28 @@
+{
+  "featureKeys": [
+    "offer_generator",
+    "group_monitoring",
+    "offer_hunter",
+    "offer_dispatch",
+    "ai_rewrite",
+    "link_rotation",
+    "link_rotation_click",
+    "storefront",
+    "offer_story",
+    "affiliate_credentials",
+    "extension_sync",
+    "whatsapp_session",
+    "telegram_session",
+    "saver_extraction",
+    "saver_export",
+    "panel_login"
+  ],
+  "coverageReasonCodes": [
+    "EXISTING_ONLY",
+    "RETENTION",
+    "AI_HEADLINE_ONLY",
+    "MIXED_EVENTS",
+    "MIXED_TRIGGERS",
+    "TOKEN_CHANGE_ONLY"
+  ]
+}
