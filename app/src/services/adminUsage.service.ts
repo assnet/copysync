@@ -1,6 +1,6 @@
 import { apiClient } from './apiClient';
 import type { ApiSuccess } from '@/types/api.types';
-import type { UsageFeatureDetail, UsageQuery, UsageSummary, UsageTenantsPage } from '@/features/featureUsage/types';
+import type { UsageFeatureDetailResponse, UsageQuery, UsageSummary, UsageTenantsPage } from '@/features/featureUsage/types';
 
 /**
  * Canal de leitura: quem pede no mesmo canal substitui o pedido anterior ainda na fila (resumo da página, tendência
@@ -109,7 +109,7 @@ export const adminUsageService = {
    * filtros de tipo/plano volta zerado com `inScope: false`; 404 `USAGE_METRICS_FEATURE_NOT_FOUND` só para chave
    * fora do catálogo.
    */
-  getDetail(featureKey: string, query: UsageQuery, channel: 'detail' | 'trend' = 'detail'): Promise<UsageFeatureDetail> {
+  getDetail(featureKey: string, query: UsageQuery, channel: 'detail' | 'trend' = 'detail'): Promise<UsageFeatureDetailResponse> {
     return read(channel, `/admin/usage/features/${encodeURIComponent(featureKey)}`, query);
   },
 

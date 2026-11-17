@@ -150,6 +150,15 @@ export interface UsageFeatureDetail {
   series: UsageFeatureSeriesPoint[];
 }
 
+/**
+ * Detalhe como a API responde. `inScope = false`: os filtros de tipo/plano excluem o recurso e os números vêm
+ * zerados (404 só para chave fora do catálogo). Ausente vale `true` (fixture antiga do contrato). Fica fora de
+ * `UsageFeatureDetail` porque o mapa de forma de `contract.test.ts` exige todo campo do tipo base.
+ */
+export interface UsageFeatureDetailResponse extends UsageFeatureDetail {
+  inScope?: boolean;
+}
+
 export interface UsageTenantItem {
   tenantId: string;
   /** Único dado sensível da feature: sempre sob `Blurred` (`usage.tenantName`). Nunca persistido. */

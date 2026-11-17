@@ -2,11 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { isServiceUnavailable } from '@/services/apiClient';
 import { adminUsageService } from '@/services/adminUsage.service';
 import { USAGE_ERROR_CODES, usageErrorCode, isUsageReadSuperseded, rangeInvalidMaxDays } from '../rules';
-import type { UsageFeatureDetail, UsageQuery } from '../types';
+import type { UsageFeatureDetailResponse, UsageQuery } from '../types';
 
 export interface UsageDetailState {
   /** Resposta do recorte atual; `null` enquanto não há resposta para ele. Nunca persistida. */
-  data: UsageFeatureDetail | null;
+  data: UsageFeatureDetailResponse | null;
   loading: boolean;
   error: boolean;
   /** 503 `USAGE_METRICS_READ_UNAVAILABLE`. */
@@ -14,6 +14,8 @@ export interface UsageDetailState {
   unavailable: boolean;
   /** 404 `USAGE_METRICS_FEATURE_NOT_FOUND`: chave fora do catálogo. */
   notFound: boolean;
+  /** Resposta do recorte atual com `inScope: false`: tipo/plano excluem o recurso. */
+  outOfScope: boolean;
   reload: () => void;
 }
 
@@ -30,7 +32,7 @@ export function useUsageDetail(
 ): UsageDetailState {
   const { refreshKey } = options;
   const queryKey = JSON.stringify(query);
-  const [result, setResult] = useState<{ key: string; data: UsageFeatureDetail } | null>(null);
+  const [result, setResult] = useState<{ key: string; data: UsageFeatureDetailResponse } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [slow, setSlow] = useState(false);
@@ -84,6 +86,7 @@ export function useUsageDetail(
     slow,
     unavailable,
     notFound,
+    outOfScope: result !== null && result.key === queryKey && result.data.inScope === false,
     reload,
   };
 }

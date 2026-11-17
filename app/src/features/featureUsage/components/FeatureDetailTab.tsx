@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { Alert, Button, Stack, Typography } from '@mui/material';
-import { ArrowLeft, SearchX } from 'lucide-react';
+import { ArrowLeft, FilterX, SearchX } from 'lucide-react';
 import { AppIcon, EmptyState, ServiceUpdatingState } from '@/components';
 import { serverNow } from '@/services/serverClock';
-import { DEFAULT_USAGE_FILTERS, featureDescription, featureLabel, withPeriod } from '../rules';
+import { DEFAULT_USAGE_FILTERS, clearUsageFilters, featureDescription, featureLabel, withPeriod } from '../rules';
 import { featureUsageStrings as S } from '../strings';
 import { USAGE_PATH } from '../paths';
 import { useUsagePage } from '../hooks/useUsagePage';
@@ -35,7 +35,8 @@ export default function FeatureDetailTab() {
       setFilters(withPeriod(filters, { preset: DEFAULT_USAGE_FILTERS.preset }, serverNow()));
     },
   });
-  const ready = detail.loading ? null : detail.data;
+  // Fora do recorte não há contas a listar.
+  const ready = detail.loading || detail.outOfScope ? null : detail.data;
   const tenants = useUsageTenants(key, query, ready);
 
   // A lista registra os nomes carregados (só em memória) para o chip da conta filtrada.
@@ -62,7 +63,23 @@ export default function FeatureDetailTab() {
   }
 
   let body;
-  if (detail.unavailable && !detail.data) body = <ServiceUpdatingState onRetry={detail.reload} />;
+  if (detail.outOfScope) {
+    body = (
+      <EmptyState
+        icon={<AppIcon icon={FilterX} size="lg" aria-hidden />}
+        title={S.detail.outOfScopeTitle}
+        description={S.detail.outOfScopeDescription}
+        action={(
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'center' }}>
+            <Button variant="outlined" onClick={() => setFilters(clearUsageFilters(filters))} sx={{ minHeight: 44 }}>
+              {S.actions.clearFilters}
+            </Button>
+            {back}
+          </Stack>
+        )}
+      />
+    );
+  } else if (detail.unavailable && !detail.data) body = <ServiceUpdatingState onRetry={detail.reload} />;
   else if ((detail.error || detail.slow) && !detail.data && !detail.loading) {
     body = <UsageRetryAlert slow={detail.slow} onRetry={detail.reload} message={S.errors.detailFailed} />;
   } else if (!detail.data) body = <FeatureDetailSkeleton />;

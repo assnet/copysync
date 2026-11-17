@@ -364,6 +364,8 @@ export const featureUsageStrings = {
     byPlanTitle: 'Por plano',
     notFoundTitle: 'Recurso não encontrado',
     notFoundDescription: 'Este recurso não existe ou saiu do catálogo.',
+    outOfScopeTitle: 'Este recurso está fora dos filtros de tipo ou plano',
+    outOfScopeDescription: 'Os filtros de tipo de uso ou de plano deixam este recurso de fora. Limpe os filtros para ver o uso dele.',
     loading: 'Carregando detalhes do recurso',
   },
 
