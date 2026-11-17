@@ -9,7 +9,7 @@ import type {
   PlatformSaverContactRow,
 } from '../../domain/contracts/IPlatformSaverContactRepository';
 import type { ContactMerge, ContactUpdate, MergeGroupReadResult } from '../../domain/services/mergeGroupRead';
-import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
+import { ConcurrentWriteConflictError, NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
 import { PrismaSaverMapper } from '../mappers/PrismaSaverMapper';
 
 type Tx = Prisma.TransactionClient;
@@ -100,6 +100,16 @@ export class PrismaPlatformSaverContactRepository implements IPlatformSaverConta
     groupId: string,
     result: MergeGroupReadResult,
   ): Promise<{ insertedIds: string[]; created: number }> {
+    return this.applyInTransaction(tenantId, groupId, result).catch((err: unknown) => {
+      throw isWriteRace(err) ? new ConcurrentWriteConflictError('SaverContact') : err;
+    });
+  }
+
+  private applyInTransaction(
+    tenantId: string,
+    groupId: string,
+    result: MergeGroupReadResult,
+  ): Promise<{ insertedIds: string[]; created: number }> {
     return this.prisma.$transaction(
       async (tx) => {
         const group = await tx.saverGroup.findFirst({ where: { id: groupId, tenantId }, select: { id: true } });
@@ -125,6 +135,15 @@ export class PrismaPlatformSaverContactRepository implements IPlatformSaverConta
       { timeout: APPLY_TIMEOUT_MS, maxWait: APPLY_TIMEOUT_MS },
     );
   }
+}
+
+/** Prisma: unicidade (P2002), conflito/deadlock (P2034); SQL cru (P2010) com SQLSTATE de unicidade, deadlock ou serialização. */
+const RACE_SQLSTATES = new Set(['23505', '40P01', '40001']);
+function isWriteRace(err: unknown): boolean {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError)) return false;
+  if (err.code === 'P2002' || err.code === 'P2034') return true;
+  const sqlState = (err.meta as { code?: unknown } | undefined)?.code;
+  return err.code === 'P2010' && typeof sqlState === 'string' && RACE_SQLSTATES.has(sqlState);
 }
 
 interface ListSqlRow {
@@ -171,7 +190,7 @@ async function applyMerge(tx: Tx, { survivorId, absorbedId }: ContactMerge): Pro
     SELECT "id" FROM "saver_contacts" WHERE "id" = ANY(${[survivorId, absorbedId]}::text[]) ORDER BY "id" COLLATE "C" FOR UPDATE`;
   const ids = new Set(alive.map((r) => r.id));
   if (!ids.has(absorbedId)) return; // outra gravação já fundiu
-  if (!ids.has(survivorId)) throw new NotFoundError('SaverContact', survivorId);
+  if (!ids.has(survivorId)) throw new ConcurrentWriteConflictError('SaverContact');
 
   await tx.$executeRaw`
     UPDATE "saver_group_memberships" sm SET
@@ -226,7 +245,7 @@ async function applyInserts(
     for (const c of conflicted) {
       // Telefone é o dado principal; sem ele, o LID identifica.
       const id = (c.phone && byPhone.get(c.phone)) || (c.lid && byLid.get(c.lid)) || null;
-      if (!id) throw new NotFoundError('SaverContact', c.phone ?? c.lid ?? undefined);
+      if (!id) throw new ConcurrentWriteConflictError('SaverContact');
       insertedIds[c.index] = id;
       conflictUpdates.push({
         id,

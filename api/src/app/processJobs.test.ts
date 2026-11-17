@@ -7,10 +7,11 @@ const ALL: ProcessJob[] = [
   'linkRotationSync', 'sessionBootstrap', 'sessionReconciler', 'leaseKeeper',
   'sessionAdoption', 'workerHeartbeat', 'capacityAlert', 'outboundTmpSweep',
   'opsMetricsSampler', 'workerAutoscaler', 'inactiveTenantSweep', 'infraCostSnapshot', 'offerHunterScheduler',
+  'saverExtraction',
 ];
 
 describe('jobsFor', () => {
-  it('all liga os 21 jobs', () => {
+  it('all liga os 22 jobs', () => {
     expect([...jobsFor('all')].sort()).toEqual([...ALL].sort());
   });
 
@@ -75,5 +76,11 @@ describe('jobsFor', () => {
     expect(jobsFor('worker').has('offerHunterScheduler')).toBe(true);
     expect(jobsFor('all').has('offerHunterScheduler')).toBe(true);
     expect(jobsFor('http').has('offerHunterScheduler')).toBe(false);
+  });
+
+  it('extração do Saver só em worker/all, nunca no http (T14)', () => {
+    expect(jobsFor('worker').has('saverExtraction')).toBe(true);
+    expect(jobsFor('all').has('saverExtraction')).toBe(true);
+    expect(jobsFor('http').has('saverExtraction')).toBe(false);
   });
 });

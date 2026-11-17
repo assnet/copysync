@@ -359,6 +359,13 @@ const envSchema = z.object({
     .string()
     .transform((v) => v === 'true')
     .default('false'),
+  // ── Saver: extração de membros de grupo em segundo plano (.specs/features/saver, T14) ──
+  // Desligado por padrão: `.env` aponta para produção (escreve no banco e lê grupos no WhatsApp).
+  // `true` só na Render (worker/all) ou com banco local.
+  SAVER_EXTRACTION_WORKER_ENABLED: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
   // ── Métricas de recursos (.specs/features/monitoring-queue-isolation, entrega E) ──
   // Sampler de 60 s só em worker/all. Desligado por padrão; liga só na Render após RENDER_API_KEY.
   OPS_METRICS_SAMPLER_ENABLED: z
