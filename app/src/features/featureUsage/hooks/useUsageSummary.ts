@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isServiceUnavailable } from '@/services/apiClient';
 import { adminUsageService } from '@/services/adminUsage.service';
-import { USAGE_ERROR_CODES, usageErrorCode } from '../rules';
+import { USAGE_ERROR_CODES, usageErrorCode, isUsageReadSuperseded } from '../rules';
 import type { UsageQuery, UsageSummary } from '../types';
 
 export interface UsageSummaryState {
@@ -14,13 +14,19 @@ export interface UsageSummaryState {
   slow: boolean;
   /** API fora do ar (deploy): `ServiceUpdatingState`. Só limpa quando uma leitura conclui. */
   unavailable: boolean;
+  /**
+   * A última leitura pedida (recorte, "Atualizar" e "Tentar de novo") concluiu com sucesso. Calculado na renderização:
+   * fica `false` já na renderização que muda o recorte. A tendência só lê com `ready` (depois do resumo).
+   */
+  ready: boolean;
   reload: () => void;
 }
 
 /**
  * Resumo do uso (`GET /admin/usage/summary`). A query vem pronta (`toUsageQuery`) e a chave dela decide quando
  * recarregar. O `apiClient` não cancela pedido: resposta de recorte antigo é descartada pelo id do pedido.
- * `enabled = false` (detalhe aberto) não dispara leitura: a página nunca tem duas leituras de uso em voo.
+ * A leitura passa pela fila do serviço (uma por vez por aba; o duplo efeito do StrictMode reaproveita o pedido em
+ * voo). `enabled = false` (detalhe aberto) não pede o resumo.
  * 400 `USAGE_METRICS_RANGE_INVALID` chama `onRangeInvalid` (a tela volta ao preset padrão), sem virar erro genérico.
  */
 export function useUsageSummary(
@@ -29,13 +35,14 @@ export function useUsageSummary(
 ): UsageSummaryState {
   const { enabled = true, refreshKey = 0, onRangeInvalid } = options;
   const queryKey = JSON.stringify(query);
-  const [result, setResult] = useState<{ key: string; data: UsageSummary } | null>(null);
+  const [result, setResult] = useState<{ key: string; read: string; data: UsageSummary } | null>(null);
   const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState(false);
   const [slow, setSlow] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
   const [retry, setRetry] = useState(0);
   const request = useRef(0);
+  const readId = `${queryKey}|${refreshKey}|${retry}`;
   const rangeInvalid = useRef(onRangeInvalid);
   rangeInvalid.current = onRangeInvalid;
 
@@ -46,17 +53,18 @@ export function useUsageSummary(
       return;
     }
     const id = ++request.current;
+    const read = `${queryKey}|${refreshKey}|${retry}`;
     setLoading(true);
     setError(false);
     setSlow(false);
     adminUsageService.getSummary(JSON.parse(queryKey) as UsageQuery)
       .then((data) => {
         if (id !== request.current) return;
-        setResult({ key: queryKey, data });
+        setResult({ key: queryKey, read, data });
         setUnavailable(false);
       })
       .catch((err: unknown) => {
-        if (id !== request.current) return;
+        if (id !== request.current || isUsageReadSuperseded(err)) return;
         const code = usageErrorCode(err);
         if (code === USAGE_ERROR_CODES.rangeInvalid) {
           rangeInvalid.current?.();
@@ -80,6 +88,7 @@ export function useUsageSummary(
     error,
     slow,
     unavailable,
+    ready: enabled && result !== null && result.read === readId,
     reload,
   };
 }

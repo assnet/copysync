@@ -575,7 +575,12 @@ export const USAGE_ERROR_CODES = {
   featureNotFound: 'USAGE_METRICS_FEATURE_NOT_FOUND',
   cursorInvalid: 'USAGE_METRICS_CURSOR_INVALID',
   readUnavailable: 'USAGE_METRICS_READ_UNAVAILABLE',
+  /** Do painel (fila de `adminUsage.service`): pedido descartado antes de ir à rede por um mais novo. Ignorar. */
+  readSuperseded: 'USAGE_READ_SUPERSEDED',
 } as const;
+
+/** Pedido substituído na fila por um mais novo do mesmo canal: não é erro de tela. */
+export const isUsageReadSuperseded = (err: unknown): boolean => usageErrorCode(err) === USAGE_ERROR_CODES.readSuperseded;
 
 /** Código do erro normalizado pelo `apiClient` (`{ code }`). */
 export function usageErrorCode(err: unknown): string | null {

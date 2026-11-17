@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { Box, MenuItem, Skeleton, Stack, TextField } from '@mui/material';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { adminUsageService } from '@/services/adminUsage.service';
-import { USAGE_ERROR_CODES, clearUsageFilters, featureLabel, usageErrorCode } from '../rules';
+import { USAGE_ERROR_CODES, clearUsageFilters, featureLabel, usageErrorCode, isUsageReadSuperseded } from '../rules';
 import { featureUsageStrings as S } from '../strings';
 import type { UsageFeatureDetail, UsageFeatureItem, UsageQuery, UsageSort, UsageSummary } from '../types';
 import { useUsagePage } from '../hooks/useUsagePage';
@@ -22,8 +22,9 @@ const parseTrendFeature = (raw: unknown): string | null => (typeof raw === 'stri
 const chartFallback = <Skeleton variant="rounded" sx={{ height: { xs: 280, md: 360 } }} aria-label={S.states.loading} />;
 
 /**
- * Série de um recurso para a tendência (`GET /admin/usage/features/:key`, só a série é usada aqui). Só lê com o
- * resumo parado (`enabled`): a página nunca tem duas leituras de uso em voo. Resposta de pedido antigo é descartada.
+ * Série de um recurso para a tendência (`GET /admin/usage/features/:key`, só a série é usada aqui). Só lê depois que
+ * o resumo do recorte atual concluiu (`enabled = summary.ready`) e pelo canal `trend` da fila do serviço (uma leitura
+ * por vez por aba; troca rápida de recurso descarta o pedido ainda na fila). Resposta de pedido antigo é descartada.
  */
 function useTrendFeatureDetail(featureKey: string | null, query: UsageQuery, enabled: boolean, refreshKey: number) {
   const queryKey = JSON.stringify(query);
@@ -39,10 +40,10 @@ function useTrendFeatureDetail(featureKey: string | null, query: UsageQuery, ena
     setError(false);
     setSlow(false);
     if (!featureKey || !enabled) return;
-    adminUsageService.getDetail(featureKey, JSON.parse(queryKey) as UsageQuery)
+    adminUsageService.getDetail(featureKey, JSON.parse(queryKey) as UsageQuery, 'trend')
       .then((data) => { if (current === request.current) setResult({ id, data }); })
       .catch((err: unknown) => {
-        if (current !== request.current) return;
+        if (current !== request.current || isUsageReadSuperseded(err)) return;
         const isSlow = usageErrorCode(err) === USAGE_ERROR_CODES.readUnavailable;
         setSlow(isSlow);
         setError(!isSlow);
@@ -61,7 +62,7 @@ function OverviewContent({ summary }: { summary: UsageSummary }) {
   });
   // Recurso salvo que saiu do recorte volta para o geral (sem apagar a escolha).
   const trendFeature: UsageFeatureItem | null = features.find((f) => f.key === trendKey) ?? null;
-  const detail = useTrendFeatureDetail(trendFeature?.key ?? null, query, !summaryState.loading, refreshKey);
+  const detail = useTrendFeatureDetail(trendFeature?.key ?? null, query, summaryState.ready, refreshKey);
   useEffect(() => { if (detail.data) reportMaxDays(detail.data.range.maxDays); }, [detail.data, reportMaxDays]);
 
   const options = useMemo(

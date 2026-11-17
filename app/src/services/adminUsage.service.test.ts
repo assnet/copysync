@@ -1,0 +1,101 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { adminUsageService, resetUsageReadQueue } from './adminUsage.service';
+import { apiClient } from './apiClient';
+
+vi.mock('./apiClient', () => ({ apiClient: { get: vi.fn() } }));
+
+const get = vi.mocked(apiClient.get);
+
+interface Pending { url: string; params: Record<string, string>; resolve: (v: unknown) => void; reject: (e: unknown) => void }
+let pending: Pending[];
+let inFlight: number;
+let maxInFlight: number;
+
+beforeEach(() => {
+  resetUsageReadQueue();
+  pending = [];
+  inFlight = 0;
+  maxInFlight = 0;
+  get.mockReset();
+  get.mockImplementation(((url: string, config?: { params?: Record<string, string> }) => {
+    inFlight += 1;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    return new Promise((resolve, reject) => {
+      const done = () => { inFlight -= 1; };
+      pending.push({
+        url,
+        params: config?.params ?? {},
+        resolve: (v) => { done(); resolve({ data: { data: v } }); },
+        reject: (e) => { done(); reject(e); },
+      });
+    });
+  }) as unknown as typeof apiClient.get);
+});
+
+afterEach(() => {
+  resetUsageReadQueue();
+});
+
+const flush = () => new Promise((r) => setTimeout(r, 0));
+
+describe('fila de leituras de uso', () => {
+  it('uma leitura por vez entre os quatro endpoints; a próxima sai quando a anterior termina', async () => {
+    const a = adminUsageService.getSummary({ from: '1' });
+    const b = adminUsageService.getDetail('offer_hunter', { from: '1' }, 'trend');
+    const c = adminUsageService.getDetail('offer_generator', { from: '1' });
+    const d = adminUsageService.getTenants('offer_generator', { from: '1' });
+    await flush();
+    expect(get).toHaveBeenCalledTimes(1);
+    for (const value of ['s', 't', 'd', 'l']) {
+      pending[pending.length - 1].resolve(value);
+      await flush();
+    }
+    await expect(Promise.all([a, b, c, d])).resolves.toEqual(['s', 't', 'd', 'l']);
+    expect(get.mock.calls.map((call) => call[0])).toEqual([
+      '/admin/usage/summary',
+      '/admin/usage/features/offer_hunter',
+      '/admin/usage/features/offer_generator',
+      '/admin/usage/features/offer_generator/tenants',
+    ]);
+    expect(maxInFlight).toBe(1);
+  });
+
+  it('pedido superado no mesmo canal é descartado antes de ir à rede', async () => {
+    const first = adminUsageService.getSummary({ from: '1' });
+    const second = adminUsageService.getSummary({ from: '2' });
+    const third = adminUsageService.getSummary({ from: '3' });
+    await expect(second).rejects.toMatchObject({ code: 'USAGE_READ_SUPERSEDED' });
+    pending[0].resolve('um');
+    await flush();
+    pending[1].resolve('três');
+    await expect(first).resolves.toBe('um');
+    await expect(third).resolves.toBe('três');
+    expect(get.mock.calls.map((call) => (call[1] as { params: Record<string, string> }).params.from)).toEqual(['1', '3']);
+    expect(maxInFlight).toBe(1);
+  });
+
+  it('mesma chave em voo ou na fila reaproveita a promessa (StrictMode)', async () => {
+    const a = adminUsageService.getSummary({ from: '1', to: '2' });
+    const b = adminUsageService.getSummary({ to: '2', from: '1' });
+    expect(b).toBe(a);
+    const c = adminUsageService.getDetail('x', { from: '1' });
+    const d = adminUsageService.getDetail('x', { from: '1' });
+    expect(d).toBe(c);
+    pending[0].resolve('ok');
+    await flush();
+    pending[1].resolve('det');
+    await expect(d).resolves.toBe('det');
+    expect(get).toHaveBeenCalledTimes(2);
+  });
+
+  it('erro não trava a fila e não tem retry automático', async () => {
+    const a = adminUsageService.getSummary({ from: '1' });
+    const b = adminUsageService.getDetail('x', { from: '1' });
+    pending[0].reject({ code: 'USAGE_METRICS_READ_UNAVAILABLE' });
+    await expect(a).rejects.toMatchObject({ code: 'USAGE_METRICS_READ_UNAVAILABLE' });
+    await flush();
+    pending[1].resolve('det');
+    await expect(b).resolves.toBe('det');
+    expect(get).toHaveBeenCalledTimes(2);
+  });
+});

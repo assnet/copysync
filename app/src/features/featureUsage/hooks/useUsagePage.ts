@@ -14,7 +14,7 @@ export interface UsagePageValue {
   query: UsageQuery;
   /** Teto do período em vigor: `range.maxDays` da última resposta ou o do painel. */
   maxDays: number;
-  /** Resumo (desligado no detalhe: uma leitura de uso por vez). */
+  /** Resumo (desligado no detalhe, que não usa o resumo). */
   summary: UsageSummaryState;
   /** Muda a cada "Atualizar" do cabeçalho; hooks de leitura das abas incluem nas dependências. */
   refreshKey: number;

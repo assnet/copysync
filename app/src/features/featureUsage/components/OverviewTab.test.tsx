@@ -28,7 +28,7 @@ function renderTab(summary: UsageSummary, opts: { filters?: UsageFilters; mode?:
     setFilters: opts.setFilters ?? vi.fn(),
     query: { from: summary.range.from, to: summary.range.to },
     maxDays: 90,
-    summary: { data: summary, loading: false, error: false, slow: false, unavailable: false, reload: vi.fn() },
+    summary: { data: summary, loading: false, error: false, slow: false, unavailable: false, ready: true, reload: vi.fn() },
     refreshKey: 0,
     reportMaxDays: vi.fn(),
     featureKey: null,
@@ -149,7 +149,7 @@ describe('OverviewTab', () => {
 
     await user.click(within(trend).getByRole('combobox', { name: S.trend.featureSelect }));
     await user.click(await screen.findByRole('option', { name: label(detail.feature.key) }));
-    await waitFor(() => expect(getDetail).toHaveBeenCalledWith(detail.feature.key, expect.any(Object)));
+    await waitFor(() => expect(getDetail).toHaveBeenCalledWith(detail.feature.key, expect.any(Object), 'trend'));
     expect(await within(trend).findByText(S.trend.subtitleFeature(label(detail.feature.key)))).toBeInTheDocument();
     if (detail.feature.usesPrevious !== null) {
       expect(within(trend).getByText(S.trend.previousHint)).toBeInTheDocument();

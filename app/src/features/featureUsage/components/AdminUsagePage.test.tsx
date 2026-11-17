@@ -25,6 +25,7 @@ vi.mock('@/services/adminUsage.service', () => ({
 }));
 
 const getSummary = vi.mocked(adminUsageService.getSummary);
+const getDetail = vi.mocked(adminUsageService.getDetail);
 
 function renderAt(path: string, mode: 'light' | 'dark' = 'light') {
   return renderWithTheme(
@@ -49,6 +50,7 @@ function deferred<T>() {
 beforeEach(() => {
   window.sessionStorage.clear();
   getSummary.mockResolvedValue(summaryFixture());
+  getDetail.mockReturnValue(new Promise(() => {}));
 });
 
 afterEach(() => {

@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { adminUsageService } from '@/services/adminUsage.service';
-import { USAGE_ERROR_CODES, usageErrorCode } from '../rules';
+import { USAGE_ERROR_CODES, usageErrorCode, isUsageReadSuperseded } from '../rules';
 import type { UsageQuery, UsageTenantItem } from '../types';
-import type { UsageReadQueue } from './useUsageDetail';
 
 export interface UsageTenantsState {
   rows: UsageTenantItem[];
@@ -21,13 +20,13 @@ export interface UsageTenantsState {
 /**
  * Contas que mais usam o recurso (`GET /admin/usage/features/:key/tenants`). Só lê depois que o detalhe respondeu:
  * `after` é a resposta do detalhe do recorte atual (`null` enquanto ele carrega). Cada resposta nova do detalhe
- * recomeça a lista do início. Página só pelo `nextCursor` opaco (nunca `limit`/`offset`); nada é persistido.
+ * recomeça a lista do início. Leituras pela fila do serviço (uma por vez por aba). Página só pelo `nextCursor`
+ * opaco (nunca `limit`/`offset`); nada é persistido.
  */
 export function useUsageTenants(
   featureKey: string,
   query: UsageQuery,
   after: object | null,
-  queue: UsageReadQueue,
 ): UsageTenantsState {
   const queryKey = JSON.stringify(query);
   const [rows, setRows] = useState<UsageTenantItem[]>([]);
@@ -53,7 +52,7 @@ export function useUsageTenants(
     setError(false);
     setSlow(false);
     setMoreError(false);
-    queue(() => adminUsageService.getTenants(featureKey, JSON.parse(queryKey) as UsageQuery))
+    adminUsageService.getTenants(featureKey, JSON.parse(queryKey) as UsageQuery)
       .then((page) => {
         if (id !== request.current) return;
         setRows(page.items);
@@ -61,7 +60,7 @@ export function useUsageTenants(
         setDoneFor(token);
       })
       .catch((err: unknown) => {
-        if (id !== request.current) return;
+        if (id !== request.current || isUsageReadSuperseded(err)) return;
         setRows([]);
         setNextCursor(null);
         const isSlow = usageErrorCode(err) === USAGE_ERROR_CODES.readUnavailable;
@@ -72,7 +71,7 @@ export function useUsageTenants(
       .finally(() => {
         if (id === request.current) setLoading(false);
       });
-  }, [featureKey, queryKey, queue]);
+  }, [featureKey, queryKey]);
 
   useEffect(() => {
     if (after === null) {
@@ -93,14 +92,14 @@ export function useUsageTenants(
     const cursor = nextCursor;
     setLoadingMore(true);
     setMoreError(false);
-    queue(() => adminUsageService.getTenants(featureKey, JSON.parse(queryKey) as UsageQuery, cursor))
+    adminUsageService.getTenants(featureKey, JSON.parse(queryKey) as UsageQuery, cursor)
       .then((page) => {
         if (id !== request.current) return;
         setRows((prev) => [...prev, ...page.items.filter((t) => !prev.some((p) => p.tenantId === t.tenantId))]);
         setNextCursor(page.nextCursor);
       })
       .catch((err: unknown) => {
-        if (id !== request.current) return;
+        if (id !== request.current || isUsageReadSuperseded(err)) return;
         if (usageErrorCode(err) === USAGE_ERROR_CODES.cursorInvalid) {
           setCursorReset(true);
           load(true);
@@ -111,7 +110,7 @@ export function useUsageTenants(
       .finally(() => {
         if (id === request.current) setLoadingMore(false);
       });
-  }, [featureKey, queryKey, nextCursor, loadingMore, load, queue]);
+  }, [featureKey, queryKey, nextCursor, loadingMore, load]);
 
   return {
     rows,

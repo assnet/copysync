@@ -76,7 +76,7 @@ afterEach(() => {
 });
 
 describe('FeatureDetailTab', () => {
-  it('lê o detalhe pela chave da URL e só depois a lista de contas (nunca duas leituras em voo)', async () => {
+  it('lê o detalhe pela chave da URL e só depois a lista de contas (a fila da rede está em UsageReadQueue.test)', async () => {
     const d = deferred<UsageFeatureDetail>();
     getDetail.mockReturnValueOnce(d.promise);
     renderAt(DETAIL_PATH);
@@ -93,18 +93,6 @@ describe('FeatureDetailTab', () => {
     expect(query).not.toHaveProperty('offset');
     expect(screen.getByText(S.detail.measuresTitle)).toBeInTheDocument();
     expect(screen.getByText(S.detail.byKindTitle)).toBeInTheDocument();
-  });
-
-  it('trocar o filtro com a lista em voo só pede o detalhe depois que ela termina', async () => {
-    const user = userEvent.setup();
-    const pending = deferred<UsageTenantsPage>();
-    getTenants.mockReturnValueOnce(pending.promise);
-    renderAt(DETAIL_PATH);
-    await waitFor(() => expect(getTenants).toHaveBeenCalledTimes(1));
-    await user.click(screen.getByRole('button', { name: S.filters.presets['7d'] }));
-    expect(getDetail).toHaveBeenCalledTimes(1);
-    await act(async () => { pending.resolve(page([tenant()])); });
-    await waitFor(() => expect(getDetail).toHaveBeenCalledTimes(2));
   });
 
   it('"Carregar mais" espera a leitura anterior e só envia o cursor recebido', async () => {

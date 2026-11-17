@@ -27,7 +27,7 @@ const TAB_LABELS = { overview: S.tabs.overview, plans: S.tabs.plans } as const;
 
 /**
  * Uso dos recursos (super admin): cabeçalho, abas por sub-rota, filtros persistidos (`usage.filters`, escopo `tab`) e
- * o resumo compartilhado com as abas por contexto. No detalhe o resumo não é lido (uma leitura de uso por vez).
+ * o resumo compartilhado com as abas por contexto. No detalhe o resumo não é lido; toda leitura passa pela fila de `adminUsage.service` (uma por vez por aba).
  */
 export function AdminUsagePage() {
   const { pathname } = useLocation();

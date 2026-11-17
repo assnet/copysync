@@ -8,7 +8,7 @@ import { DEFAULT_USAGE_FILTERS, featureDescription, featureLabel, withPeriod } f
 import { featureUsageStrings as S } from '../strings';
 import { USAGE_PATH } from '../paths';
 import { useUsagePage } from '../hooks/useUsagePage';
-import { useUsageDetail, useUsageReadQueue } from '../hooks/useUsageDetail';
+import { useUsageDetail } from '../hooks/useUsageDetail';
 import { useUsageTenants } from '../hooks/useUsageTenants';
 import { FeatureDetail, FeatureDetailSkeleton } from './FeatureDetail';
 import { FeatureTenantsTable } from './FeatureTenantsTable';
@@ -17,18 +17,17 @@ import { UsageContextLine, UsageRetryAlert } from './UsageSummaryGate';
 /**
  * Detalhe de um recurso (`/admin/usage/features/:key`, aba Visão geral marcada). O recurso vem da URL e o dado do
  * servidor pela chave (sobrevive a reload). O resumo da página fica desligado aqui; detalhe, lista de contas e
- * "Carregar mais" passam pela mesma fila: uma leitura de uso por vez, e a lista só depois da resposta do detalhe.
+ * "Carregar mais" passam pela fila do serviço (uma leitura de uso por vez por aba), e a lista só sai depois da
+ * resposta do detalhe.
  */
 export default function FeatureDetailTab() {
   const { featureKey, query, refreshKey, reportMaxDays, filters, setFilters, maxDays, accountNames } = useUsagePage();
   const key = featureKey ?? '';
-  const queue = useUsageReadQueue();
   /** Teto que a API recusou no detalhe (400): aviso local até a próxima resposta. */
   const [rangeResetMax, setRangeResetMax] = useState<number | null>(null);
 
   const detail = useUsageDetail(key, query, {
     refreshKey,
-    queue,
     reportMaxDays,
     onRangeInvalid: () => {
       setRangeResetMax(maxDays);
@@ -36,7 +35,7 @@ export default function FeatureDetailTab() {
     },
   });
   const ready = detail.loading ? null : detail.data;
-  const tenants = useUsageTenants(key, query, ready, queue);
+  const tenants = useUsageTenants(key, query, ready);
 
   // A lista registra os nomes carregados (só em memória) para o chip da conta filtrada.
   const { remember } = accountNames;

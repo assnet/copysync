@@ -1,24 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isServiceUnavailable } from '@/services/apiClient';
 import { adminUsageService } from '@/services/adminUsage.service';
-import { USAGE_ERROR_CODES, usageErrorCode } from '../rules';
+import { USAGE_ERROR_CODES, usageErrorCode, isUsageReadSuperseded } from '../rules';
 import type { UsageFeatureDetail, UsageQuery } from '../types';
-
-/**
- * Fila de leituras do detalhe: cada leitura só começa quando a anterior terminou (sucesso ou erro). O `apiClient`
- * não cancela pedido e a API recusa a segunda leitura de uso simultânea (503), então detalhe, lista de contas e
- * "Carregar mais" passam todos por aqui — a tela nunca tem duas leituras de uso em voo.
- */
-export type UsageReadQueue = <T>(read: () => Promise<T>) => Promise<T>;
-
-export function useUsageReadQueue(): UsageReadQueue {
-  const tail = useRef<Promise<unknown>>(Promise.resolve());
-  return useCallback(<T,>(read: () => Promise<T>) => {
-    const next = tail.current.then(read, read);
-    tail.current = next.catch(() => undefined);
-    return next;
-  }, []);
-}
 
 export interface UsageDetailState {
   /** Resposta do recorte atual; `null` enquanto não há resposta para ele. Nunca persistida. */
@@ -35,15 +19,16 @@ export interface UsageDetailState {
 
 /**
  * Detalhe de um recurso (`GET /admin/usage/features/:key`). Recarrega quando a query, a chave ou o `refreshKey`
- * mudam; resposta de recorte antigo é descartada pelo id do pedido. Informa o teto do período (`range.maxDays`).
+ * mudam; resposta de recorte antigo é descartada pelo id do pedido. A leitura passa pela fila do serviço (uma por
+ * vez por aba; o duplo efeito do StrictMode reaproveita o pedido em voo). Informa o teto do período (`range.maxDays`).
  * 400 `USAGE_METRICS_RANGE_INVALID` chama `onRangeInvalid`.
  */
 export function useUsageDetail(
   featureKey: string,
   query: UsageQuery,
-  options: { refreshKey: number; queue: UsageReadQueue; reportMaxDays: (n: number) => void; onRangeInvalid?: () => void },
+  options: { refreshKey: number; reportMaxDays: (n: number) => void; onRangeInvalid?: () => void },
 ): UsageDetailState {
-  const { refreshKey, queue } = options;
+  const { refreshKey } = options;
   const queryKey = JSON.stringify(query);
   const [result, setResult] = useState<{ key: string; data: UsageFeatureDetail } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -62,7 +47,7 @@ export function useUsageDetail(
     setError(false);
     setSlow(false);
     setNotFound(false);
-    queue(() => adminUsageService.getDetail(featureKey, JSON.parse(queryKey) as UsageQuery))
+    adminUsageService.getDetail(featureKey, JSON.parse(queryKey) as UsageQuery)
       .then((data) => {
         if (id !== request.current) return;
         setResult({ key: queryKey, data });
@@ -70,7 +55,7 @@ export function useUsageDetail(
         callbacks.current.reportMaxDays(data.range.maxDays);
       })
       .catch((err: unknown) => {
-        if (id !== request.current) return;
+        if (id !== request.current || isUsageReadSuperseded(err)) return;
         const code = usageErrorCode(err);
         if (code === USAGE_ERROR_CODES.rangeInvalid) {
           callbacks.current.onRangeInvalid?.();
@@ -88,7 +73,7 @@ export function useUsageDetail(
       .finally(() => {
         if (id === request.current) setLoading(false);
       });
-  }, [featureKey, queryKey, refreshKey, retry, queue]);
+  }, [featureKey, queryKey, refreshKey, retry]);
 
   const reload = useCallback(() => setRetry((n) => n + 1), []);
 

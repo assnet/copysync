@@ -18,7 +18,7 @@ function renderTab(filters: UsageFilters = DEFAULT_USAGE_FILTERS) {
     setFilters: vi.fn(),
     query: {},
     maxDays: 90,
-    summary: { data: summaryFixture(), loading: false, error: false, slow: false, unavailable: false, reload: vi.fn() },
+    summary: { data: summaryFixture(), loading: false, error: false, slow: false, unavailable: false, ready: true, reload: vi.fn() },
     refreshKey: 0,
     reportMaxDays: vi.fn(),
     featureKey: null,
