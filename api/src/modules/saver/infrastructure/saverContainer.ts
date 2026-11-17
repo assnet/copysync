@@ -23,6 +23,13 @@ import {
   ListPlatformSaverContactsUseCase,
 } from '../application/use-cases/PlatformSaverContactsUseCases';
 import { ExportSavedContactsUseCase } from '../application/use-cases/ExportSavedContactsUseCase';
+import {
+  GetSaverConfigUseCase,
+  ListSaverExportGrantsUseCase,
+  SetSaverExportGrantUseCase,
+  UpdateSaverConfigUseCase,
+} from '../application/use-cases/SaverConfigUseCases';
+import { PrismaEntitlementReader } from '../../tenants/infrastructure/repositories/PrismaEntitlementReader';
 
 /*
  * Composição do Saver (molde `linkRotationContainer.ts`). Tudo lazy: importar não toca banco.
@@ -68,8 +75,17 @@ export const saverPlatformUseCases = {
 };
 
 // ── Exportação e configuração do tenant (T17, T18) ──
+const entitlements        = lazy(() => new PrismaEntitlementReader(prisma));
 const exportSavedContacts = lazy(() => new ExportSavedContactsUseCase(groups(), memberships(), exportGrants(), audit()));
+const getConfig           = lazy(() => new GetSaverConfigUseCase(configs(), entitlements()));
+const updateConfig        = lazy(() => new UpdateSaverConfigUseCase(configs(), entitlements()));
+const listExportGrants    = lazy(() => new ListSaverExportGrantsUseCase(team(), exportGrants()));
+const setExportGrant      = lazy(() => new SetSaverExportGrantUseCase(team(), exportGrants(), audit()));
 
 export const saverTenantUseCases = {
   get exportSavedContacts(): ExportSavedContactsUseCase { return exportSavedContacts(); },
+  get getConfig(): GetSaverConfigUseCase { return getConfig(); },
+  get updateConfig(): UpdateSaverConfigUseCase { return updateConfig(); },
+  get listExportGrants(): ListSaverExportGrantsUseCase { return listExportGrants(); },
+  get setExportGrant(): SetSaverExportGrantUseCase { return setExportGrant(); },
 };
