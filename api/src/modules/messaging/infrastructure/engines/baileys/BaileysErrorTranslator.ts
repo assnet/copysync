@@ -9,6 +9,7 @@ import { AppError } from '../../../../../shared/errors/AppError';
 import {
   EngineNotReadyError,
   EngineTemporarilyUnavailableError,
+  EngineRateLimitedError,
   RecoverableConnectionError,
   PairingFailedError,
   MessageSendFailedError,
@@ -148,8 +149,22 @@ export function translateDisconnect(
 /**
  * Translate a generic error raised while calling a Baileys socket method.
  */
+/**
+ * Limite de taxa do WhatsApp num IQ (ex.: `groupMetadata`). A lib (`assertNodeErrorFree`)
+ * lança `new Boom(attrs.text, { data: +attrs.code })`: o código 429 vai em `data`, o texto
+ * `rate-overlimit` na mensagem e `output.statusCode` fica 500.
+ */
+function isRateOverlimit(err: unknown): boolean {
+  if (!isBoomLike(err)) return false;
+  const data = (err as { data?: unknown }).data;
+  const message = err instanceof Error ? err.message.toLowerCase() : '';
+  return data === 429 || message === 'rate-overlimit';
+}
+
 export function translateEngineError(err: unknown): AppError {
   if (err instanceof AppError) return err;
+
+  if (isRateOverlimit(err)) return new EngineRateLimitedError();
 
   if (isBoomLike(err)) {
     const reason = err.output?.statusCode as DisconnectReason | undefined;
