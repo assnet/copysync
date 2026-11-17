@@ -17,6 +17,9 @@ vi.mock('@/services/serverClock', async (importOriginal) => ({
   serverNow: () => Date.UTC(2026, 10, 18, 1, 0, 0),
 }));
 
+// O x-charts não carrega no jsdom (ESM do @mui/material/styles): o gráfico vira um marcador; os números estão nos rótulos e nas tabelas.
+vi.mock('@mui/x-charts/BarChart', () => ({ BarChart: () => <div data-testid="bar-chart" /> }));
+vi.mock('@mui/x-charts/LineChart', () => ({ LineChart: () => <div data-testid="line-chart" /> }));
 vi.mock('@/services/adminUsage.service', () => ({
   adminUsageService: { getSummary: vi.fn(), getDetail: vi.fn(), getTenants: vi.fn() },
 }));
@@ -57,8 +60,9 @@ describe('AdminUsagePage', () => {
     renderAt(USAGE_PATH);
     expect(await screen.findByText(S.kpis.activeTenants.value('9', '15'))).toBeInTheDocument();
     expect(screen.getByText(S.kpis.featuresUsed.value('4', '5'))).toBeInTheDocument();
-    expect(screen.getByText('Gerador de ofertas')).toBeInTheDocument();
-    expect(screen.getByText(S.comparison.noBase)).toBeInTheDocument();
+    const kpis = within(screen.getByRole('group', { name: S.kpis.aria }));
+    expect(kpis.getByText('Gerador de ofertas')).toBeInTheDocument();
+    expect(kpis.getByText(S.comparison.noBase)).toBeInTheDocument();
     // Não existe indicador de usos somados.
     expect(within(screen.getByRole('group', { name: S.kpis.aria })).queryByText(/^Usos$/)).toBeNull();
     expect(getSummary).toHaveBeenCalledWith({
