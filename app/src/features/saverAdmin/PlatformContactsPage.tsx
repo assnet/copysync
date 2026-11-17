@@ -13,9 +13,12 @@ import { PlatformContactsFooter } from './PlatformContactsFooter';
 import { PlatformContactsSummary } from './PlatformContactsSummary';
 import { PlatformContactsTable } from './PlatformContactsTable';
 import { saverAdminStrings as s } from './strings';
-import { EMPTY_PLATFORM_FILTERS, normalizePlatformFilters, type PlatformContactFilters } from './types';
+import { EMPTY_PLATFORM_FILTERS, normalizePlatformFilters, readPlatformFilters, type PlatformContactFilters } from './types';
 import { usePlatformContacts } from './usePlatformContacts';
 import { usePlatformContactsSummary } from './usePlatformContactsSummary';
+
+/** Salvo na aba; a leitura passa por `readPlatformFilters` (forma e invariantes conferidas também no reload). */
+const FILTERS_PERSIST = { version: 1, deserialize: readPlatformFilters };
 
 /** Espera da busca antes de consultar (cada consulta vai para a auditoria). */
 export const SEARCH_DEBOUNCE_MS = 400;
@@ -26,7 +29,7 @@ export const SEARCH_DEBOUNCE_MS = 400;
  * carregam à parte: se falharem, a lista segue.
  */
 export function PlatformContactsPage() {
-  const [filters, setFilters] = usePersistedState<PlatformContactFilters>('saverAdmin.filters', EMPTY_PLATFORM_FILTERS, { version: 1 });
+  const [filters, setFilters] = usePersistedState<PlatformContactFilters>('saverAdmin.filters', EMPTY_PLATFORM_FILTERS, FILTERS_PERSIST);
   /**
    * Único caminho de escrita dos filtros (campos, barras dos indicadores, "Limpar"): sempre sobre o valor mais
    * recente e sempre normalizado (DDD só com o Brasil), venha a alteração de onde vier.
@@ -93,7 +96,7 @@ export function PlatformContactsPage() {
       <Stack gap={3}>
         <PlatformContactsSummary
           state={summary}
-          onPickDdi={(ddi) => updateFilters((prev) => ({ ...prev, ddi, ddd: '' }))}
+          onPickDdi={(ddi) => updateFilters((prev) => ({ ...prev, ddi }))}
           onPickDdd={(ddd) => updateFilters((prev) => ({ ...prev, ddd }))}
         />
 

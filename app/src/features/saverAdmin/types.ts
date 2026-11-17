@@ -1,3 +1,5 @@
+import { isCountryCode } from './phoneRegions';
+
 /** Contrato de `/admin/saver` (presenter `platformContact*` da API). Datas em ISO. */
 export interface PlatformContact {
   id: string;
@@ -68,6 +70,23 @@ export const EMPTY_PLATFORM_FILTERS: PlatformContactFilters = { search: '', tena
  */
 export function normalizePlatformFilters(f: PlatformContactFilters): PlatformContactFilters {
   return f.ddi !== '55' && f.ddd !== '' ? { ...f, ddd: '' } : f;
+}
+
+/**
+ * Filtros lidos do navegador (`deserialize` do `usePersistedState`): o salvo pode ser de outra versão da
+ * tela ou ter sido mexido. Só texto nos campos conhecidos, DDI só se for código de país inteiro, e a mesma
+ * normalização da escrita. Qualquer outra coisa = sem filtros.
+ */
+export function readPlatformFilters(raw: unknown): PlatformContactFilters {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return EMPTY_PLATFORM_FILTERS;
+  const saved = raw as Record<string, unknown>;
+  const text = (key: keyof PlatformContactFilters) => (typeof saved[key] === 'string' ? (saved[key] as string) : '');
+  const ddi = text('ddi');
+  return normalizePlatformFilters({
+    search: text('search'), tenantId: text('tenantId'), from: text('from'), to: text('to'),
+    ddi: isCountryCode(ddi) ? ddi : '',
+    ddd: /^\d{2}$/.test(text('ddd')) ? text('ddd') : '',
+  });
 }
 
 /** `GET /admin/saver/contacts/summary`: só contagens agregadas (nenhum dado de contato). */

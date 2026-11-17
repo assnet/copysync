@@ -103,8 +103,9 @@ já em cache: `memberCount = size ?? participants.length`; `kind` por `isCommuni
   `{ total, filtered, withPhone, lidOnly, topDdi[≤5], topDdd[≤8], ddiBase, dddBase }`. `total` = base inteira;
   `filtered` = casa com os filtros, partido em `withPhone`/`lidOnly`. Os rankings ignoram o próprio filtro de DDI/DDD
   (a tela destaca a barra filtrada sem as outras sumirem); `topDdd` só vem com `ddi = 55` e só com DDD em uso;
-  `ddiBase`/`dddBase` são o total de cada ranking (base das porcentagens; `dddBase` soma só o que o ranking soma,
-  DDD inexistente fica fora). Uma contagem por prefixo de 4 dígitos (`GROUP BY LEFT(phone, 4)`) dobrada por
+  `ddiBase`/`dddBase` são o total de cada ranking (base das porcentagens) e somam só o que o ranking soma:
+  telefone sem DDI reconhecido (ex.: começando por 0) fica fora de `ddiBase` e DDD inexistente fora de `dddBase`;
+  os dois seguem contando em `withPhone`. Uma contagem por prefixo de 4 dígitos (`GROUP BY LEFT(phone, 4)`) dobrada por
   `domain/services/phoneRegions.ts`: DDI tem 1 a 3 dígitos e os códigos não são prefixo um do outro, então a função
   conhece os de 1 e 2 dígitos e o resto tem 3. `SET LOCAL statement_timeout` de 3 s na mesma transação das duas
   contagens; estourou = 503 `SAVER_SUMMARY_UNAVAILABLE`.
@@ -123,7 +124,8 @@ já em cache: `memberCount = size ?? participants.length`; `kind` por `isCommuni
   filtro a tela mostra o resumo anterior inteiro (esmaecido) e o rodapé só usa o total quando ele é dos filtros da
   lista. Campos de filtro alteram o estado por atualização funcional (o DDI digitado é aplicado por timer de 400 ms
   e não pode desfazer outra escolha) e toda escrita passa por `updateFilters` da página, que aplica
-  `normalizePlatformFilters` (DDD só com `ddi = 55`, num lugar só). Barras ficam desabilitadas enquanto o resumo na
+  `normalizePlatformFilters` (DDD só com `ddi = 55`, num lugar só); a leitura do salvo passa por
+  `readPlatformFilters` (`deserialize`), que aplica a mesma regra e descarta forma ou DDI inválidos. Barras ficam desabilitadas enquanto o resumo na
   tela é de outros filtros. Código de país começando por 0 é recusado no painel e na API. Nomes de país e região de
   DDD ficam em `strings.ts`.
 - Não fazer: `substring(phone, 1, 2)` para achar o DDI; `limit`/`offset` vindo do painel; borrar os indicadores

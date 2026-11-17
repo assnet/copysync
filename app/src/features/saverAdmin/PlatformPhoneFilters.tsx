@@ -9,14 +9,19 @@ import { saverAdminStrings as s } from './strings';
 interface Props {
   ddi: string;
   ddd: string;
-  /** Só o pedaço que muda; quem recebe aplica sobre o valor mais recente. Trocar o DDI sempre limpa o DDD. */
-  onChange: (patch: { ddi: string; ddd: string } | { ddd: string }) => void;
+  /**
+   * Só o pedaço que muda; quem recebe aplica sobre o valor mais recente. Este campo não limpa o DDD ao trocar
+   * o país: isso é da normalização dos filtros (`normalizePlatformFilters`), único lugar da regra.
+   */
+  onChange: (patch: { ddi: string } | { ddd: string }) => void;
 }
 
 /** Valor de ação do seletor (não é país). */
 const OTHER = '__other__';
 /** Espera antes de aplicar o código digitado (cada consulta vai para a auditoria). */
 export const CUSTOM_DDI_DEBOUNCE_MS = 400;
+/** Janela, após abrir "Outro código", em que perder o foco é efeito da abertura e não saída do usuário. */
+export const OPEN_BLUR_GRACE_MS = 250;
 
 const code = (text: string) => <Box component="span" sx={{ ...NUMERIC, fontWeight: 700, minWidth: '3.25em', display: 'inline-block' }}>{text}</Box>;
 
@@ -34,15 +39,16 @@ export function PlatformPhoneFilters({ ddi, ddd, onChange }: Props) {
   const [custom, setCustom] = useState(!listed);
   const [draft, setDraft] = useState(listed ? '' : ddi);
   const emitted = useRef<string | null>(null);
-  /** O usuário já digitou neste campo desde que ele abriu (sair sem ter digitado não fecha o campo). */
-  const touched = useRef(false);
+  /** Quando o campo abriu por "Outro código…" (para ignorar a perda de foco espúria da abertura). */
+  const openedAt = useRef(0);
+  const inputRef = useRef<HTMLInputElement>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const draftState = countryCodeDraft(draft);
 
   const emit = (next: string) => {
     emitted.current = next;
-    onChangeRef.current({ ddi: next, ddd: '' });
+    onChangeRef.current({ ddi: next });
   };
 
   useEffect(() => {
@@ -50,7 +56,6 @@ export function PlatformPhoneFilters({ ddi, ddd, onChange }: Props) {
     emitted.current = null;
     if (own) return;
     const other = ddi !== '' && !COMMON_DDIS.includes(ddi);
-    touched.current = false;
     setCustom(other);
     setDraft(other ? ddi : '');
   }, [ddi]);
@@ -79,7 +84,7 @@ export function PlatformPhoneFilters({ ddi, ddd, onChange }: Props) {
   const enterCustom = () => {
     if (!wantCustom.current) return;
     wantCustom.current = false;
-    touched.current = false;
+    openedAt.current = Date.now();
     setCustom(true);
     setDraft('');
     if (ddi) emit('');
@@ -91,13 +96,17 @@ export function PlatformPhoneFilters({ ddi, ddd, onChange }: Props) {
   };
   /**
    * Ao sair do campo sem um código inteiro (vazio, pela metade ou inválido): volta ao seletor e o filtro
-   * de país zera na hora, sem esperar o timer (vale depois que o usuário digitou algo). País que está na lista também volta a aparecer no seletor.
+   * de país zera na hora, sem esperar o timer. País que está na lista também volta a aparecer no seletor.
+   * Única exceção: perda de foco logo na abertura (o menu do seletor ainda devolvendo o foco) não fecha o
+   * campo; o foco volta para ele.
    */
   const leaveField = () => {
     if (draftState !== 'valid') {
-      // Só depois de o usuário ter digitado: a perda de foco de quando o campo acaba de abrir (o menu do
-      // seletor devolvendo o foco) não pode fechá-lo.
-      if (touched.current) backToList();
+      if (Date.now() - openedAt.current < OPEN_BLUR_GRACE_MS) {
+        requestAnimationFrame(() => inputRef.current?.focus());
+        return;
+      }
+      backToList();
     } else if (draft === ddi && COMMON_DDIS.includes(draft)) {
       setCustom(false);
       setDraft('');
@@ -108,14 +117,17 @@ export function PlatformPhoneFilters({ ddi, ddd, onChange }: Props) {
   return (
     <>
       {custom ? (
+        // "Sair do campo" = o foco deixar o campo inteiro: ir do texto para o botão de voltar (Tab) não conta,
+        // senão o campo sumia com o foco dentro. `display: contents` mantém o campo como item da grade.
+        <Box sx={{ display: 'contents' }} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) leaveField(); }}>
         <TextField
           size="small"
           label={s.filters.customDdi}
           placeholder={s.filters.customDdiPlaceholder}
           value={draft}
           autoFocus={draft === ''}
-          onChange={(e) => { touched.current = true; setDraft(e.target.value.replace(/\D+/g, '').slice(0, 3)); }}
-          onBlur={leaveField}
+          inputRef={inputRef}
+          onChange={(e) => setDraft(e.target.value.replace(/\D+/g, '').slice(0, 3))}
           error={draftState === 'invalid'}
           helperText={draftState === 'invalid' ? s.filters.customDdiInvalid : draftState === 'incomplete' ? s.filters.customDdiIncomplete : undefined}
           inputProps={{ inputMode: 'numeric', 'aria-label': s.filters.customDdi }}
@@ -131,6 +143,7 @@ export function PlatformPhoneFilters({ ddi, ddd, onChange }: Props) {
             ),
           }}
         />
+        </Box>
       ) : (
         <Tooltip title={s.filters.ddiHint} arrow placement="top">
           <TextField

@@ -13,7 +13,7 @@ vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { isSuperAdmi
 import { PlatformContactsFooter } from './PlatformContactsFooter';
 import { PlatformContactsPage } from './PlatformContactsPage';
 import { saverAdminStrings as s } from './strings';
-import { EMPTY_PLATFORM_FILTERS, normalizePlatformFilters } from './types';
+import { EMPTY_PLATFORM_FILTERS, normalizePlatformFilters, readPlatformFilters } from './types';
 
 const contact = (id: string) => ({
   id, name: `Contato ${id}`, phone: `551198765000${id}`, lid: null, tenantCount: 1, groupCount: 1,
@@ -184,6 +184,20 @@ describe('filtros por país (DDI) e DDD', () => {
     expect(screen.getByRole('combobox', { name: s.filters.ddi })).toHaveTextContent(s.filters.allCountries);
   });
 
+  it('"Outro código" aberto e abandonado sem digitar: ao sair do campo o seletor volta', async () => {
+    const user = userEvent.setup();
+    page();
+    await waitFor(() => expect(svc.listContacts).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole('combobox', { name: s.filters.ddi }));
+    await user.click(await screen.findByRole('option', { name: s.filters.otherDdi }));
+    expect(await screen.findByRole('textbox', { name: s.filters.customDdi })).toHaveValue('');
+    await new Promise((r) => setTimeout(r, 300)); // passa a janela da abertura
+    await user.click(screen.getByRole('textbox', { name: s.filters.search }));
+    expect(await screen.findByRole('combobox', { name: s.filters.ddi })).toHaveTextContent(s.filters.allCountries);
+    expect(screen.queryByRole('textbox', { name: s.filters.customDdi })).not.toBeInTheDocument();
+    expect(svc.listContacts).toHaveBeenCalledTimes(1);
+  });
+
   it('código que nunca vira país (começa por 0) mostra erro, não ajuda; nada é aplicado', async () => {
     const user = userEvent.setup();
     page();
@@ -257,7 +271,22 @@ describe('resumo e lista coerentes durante a troca de filtro', () => {
     expect(tile('summary-filtered').getByText(s.summary.shareOfBase('2,8%'))).toBeInTheDocument();
   });
 
-  it('resumo de outros filtros na tela: barras desabilitadas; DDD nunca é gravado com país diferente do Brasil', async () => {
+  it('trocar o país com DDD escolhido: a escrita passa pela normalização e o DDD some do estado e da API', async () => {
+    window.sessionStorage.setItem('ui.saverAdmin.filters', JSON.stringify({ v: 1, d: { ...EMPTY_PLATFORM_FILTERS, ddi: '55', ddd: '11' } }));
+    const user = userEvent.setup();
+    page();
+    await waitFor(() => expect(lastFilters()).toEqual({ ...EMPTY_PLATFORM_FILTERS, ddi: '55', ddd: '11' }));
+    // O seletor de país só escreve `ddi`; quem zera o DDD é a normalização por onde toda escrita passa.
+    await user.click(screen.getByRole('combobox', { name: s.filters.ddi }));
+    await user.click(await screen.findByRole('option', { name: '+351 Portugal' }));
+    await waitFor(() => expect(lastFilters()).toEqual({ ...EMPTY_PLATFORM_FILTERS, ddi: '351' }));
+    expect(svc.getSummary).toHaveBeenLastCalledWith({ ...EMPTY_PLATFORM_FILTERS, ddi: '351' });
+    expect(JSON.parse(window.sessionStorage.getItem('ui.saverAdmin.filters')!).d).toEqual({ ...EMPTY_PLATFORM_FILTERS, ddi: '351' });
+    // Nenhuma chamada saiu com DDD e país diferente do Brasil.
+    for (const [f] of [...svc.listContacts.mock.calls, ...svc.getSummary.mock.calls]) expect(f.ddi === '55' || f.ddd === '').toBe(true);
+  });
+
+  it('resumo de outros filtros na tela: barra desabilitada não dispara nada', async () => {
     window.sessionStorage.setItem('ui.saverAdmin.filters', JSON.stringify({ v: 1, d: { ...EMPTY_PLATFORM_FILTERS, ddi: '55' } }));
     svc.getSummary.mockReset();
     svc.getSummary.mockResolvedValueOnce(BR_SUMMARY).mockImplementationOnce(() => new Promise(() => {}));
@@ -265,18 +294,37 @@ describe('resumo e lista coerentes durante a troca de filtro', () => {
     page();
     expect(await screen.findByText(s.summary.dddTitle)).toBeInTheDocument();
     for (const bar of screen.getAllByTestId('summary-bar')) expect(bar).toBeEnabled();
-
     await user.click(screen.getByRole('combobox', { name: s.filters.ddi }));
     await user.click(await screen.findByRole('option', { name: '+351 Portugal' }));
     await waitFor(() => expect(lastFilters()).toEqual({ ...EMPTY_PLATFORM_FILTERS, ddi: '351' }));
-    // As barras de DDD do resumo antigo seguem na tela, mas não aplicam nada.
     const stale = screen.getAllByTestId('summary-bar');
     expect(stale).toHaveLength(2);
     for (const bar of stale) expect(bar).toBeDisabled();
+    const calls = svc.listContacts.mock.calls.length;
     fireEvent.click(stale[0]!);
     await new Promise((r) => setTimeout(r, 50));
+    expect(svc.listContacts).toHaveBeenCalledTimes(calls);
     expect(lastFilters()).toEqual({ ...EMPTY_PLATFORM_FILTERS, ddi: '351' });
-    expect(JSON.parse(window.sessionStorage.getItem('ui.saverAdmin.filters')!).d).toMatchObject({ ddi: '351', ddd: '' });
+  });
+
+  it('reload com filtros salvos incoerentes: DDD sem Brasil some, forma estranha vira sem filtros; "Limpar" coerente', async () => {
+    window.sessionStorage.setItem('ui.saverAdmin.filters', JSON.stringify({ v: 1, d: { ...EMPTY_PLATFORM_FILTERS, ddi: '351', ddd: '11' } }));
+    const user = userEvent.setup();
+    const first = page();
+    await waitFor(() => expect(lastFilters()).toEqual({ ...EMPTY_PLATFORM_FILTERS, ddi: '351' }));
+    expect(svc.getSummary).toHaveBeenLastCalledWith({ ...EMPTY_PLATFORM_FILTERS, ddi: '351' });
+    expect(screen.getByRole('combobox', { name: s.filters.ddd })).toHaveAttribute('aria-disabled', 'true');
+    await user.click(screen.getByRole('button', { name: s.filters.clear }));
+    await waitFor(() => expect(lastFilters()).toEqual(EMPTY_PLATFORM_FILTERS));
+    expect(screen.getByRole('button', { name: s.filters.clear })).toBeDisabled();
+    first.unmount();
+
+    expect(readPlatformFilters('lixo')).toBe(EMPTY_PLATFORM_FILTERS);
+    expect(readPlatformFilters(null)).toBe(EMPTY_PLATFORM_FILTERS);
+    expect(readPlatformFilters([1])).toBe(EMPTY_PLATFORM_FILTERS);
+    expect(readPlatformFilters({ search: 7, tenantId: 't1', ddi: '5', ddd: '11', extra: true })).toEqual({ ...EMPTY_PLATFORM_FILTERS, tenantId: 't1' });
+    expect(readPlatformFilters({ search: 'ana', from: '2026-11-01' })).toEqual({ ...EMPTY_PLATFORM_FILTERS, search: 'ana', from: '2026-11-01' });
+    expect(readPlatformFilters({ ddi: '55', ddd: '1x' })).toEqual({ ...EMPTY_PLATFORM_FILTERS, ddi: '55' });
   });
 
   it('normalização dos filtros: DDD só sobrevive com o Brasil', () => {
