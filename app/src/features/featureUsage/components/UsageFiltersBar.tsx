@@ -8,7 +8,6 @@ import { AppIcon } from '@/components';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { serverNow } from '@/services/serverClock';
 import { HelpTip } from '@/features/opsMetrics/components/HelpTip';
-import { Blurred } from '@/features/privacy/components/Blurred';
 import { useBlur } from '@/features/privacy/PrivacyContext';
 import {
   accountChipLabel, activeFiltersCount, clearUsageFilters, granularityOptions, kindLabel, planLabel, presetsWithin,
@@ -16,6 +15,7 @@ import {
   USAGE_PRODUCTS, USAGE_TENANT_STATUSES, validateCustomRange, withPeriod, type UsageRangeError,
 } from '../rules';
 import { featureUsageStrings as S } from '../strings';
+import { BlurredAccountName } from './BlurredAccountName';
 import type { UsageFilters, UsageGranularity, UsageKind, UsagePeriodPreset, UsagePlan, UsageProduct, UsageTenantStatusFilter } from '../types';
 
 const f = S.filters;
@@ -228,14 +228,18 @@ function SelectControls({ filters, onChange }: Pick<UsageFiltersBarProps, 'filte
   );
 }
 
-/** Chip removível da conta filtrada: nome já carregado ou id curto, sempre sob `Blurred`. */
+/**
+ * Chip removível da conta filtrada: nome já carregado ou id curto, sob `Blurred`. Com a flag ligada o chip se anuncia
+ * pelo id curto (`aria-label`) e o nome fica fora da árvore acessível.
+ */
 export function AccountChip({ tenantId, name, onRemove }: { tenantId: string; name?: string; onRemove: () => void }) {
   const blur = useBlur('usage.tenantName');
   return (
     <Tooltip title={f.accountHint}>
       <Chip
         icon={<AppIcon icon={Building2} size="sm" aria-hidden />}
-        label={<Blurred when={blur} inline radius={5}>{accountChipLabel(tenantId, name)}</Blurred>}
+        aria-label={blur ? f.accountShort(tenantId) : undefined}
+        label={<BlurredAccountName blur={blur} tenantId={tenantId} name={accountChipLabel(tenantId, name)} />}
         onDelete={onRemove}
         deleteIcon={<AppIcon icon={X} size="sm" aria-label={f.removeAccount} role="button" />}
         variant="outlined"

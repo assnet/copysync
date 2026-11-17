@@ -132,6 +132,15 @@ describe('FeatureDetailTab', () => {
     expect(name.closest('[data-blurred]')).not.toBeNull();
     // O rótulo acessível da ação não vaza o nome borrado.
     expect(screen.getByRole('button', { name: S.actions.filterByAccountAria(S.filters.accountShort(TENANT_ID)) })).toBeInTheDocument();
+    // `Blurred` deixa o nome no DOM: fora da árvore acessível, e o leitor de tela lê o id curto.
+    expect(name.closest('[aria-hidden="true"]')).not.toBeNull();
+    const row = name.closest('tr')!;
+    expect(within(row as HTMLElement).getByText(S.filters.accountShort(TENANT_ID))).toBeInTheDocument();
+    // Chip da conta filtrada: nome borrado e rótulo acessível só com o id curto.
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: S.actions.filterByAccountAria(S.filters.accountShort(TENANT_ID)) }));
+    const chip = await screen.findByLabelText(S.filters.accountShort(TENANT_ID), { selector: '.MuiChip-root' });
+    expect(within(chip).getByText('Loja Alfa').closest('[aria-hidden="true"]')).not.toBeNull();
   });
 
   it('filtrar por esta conta: chip com o nome, só o id salvo; após reload o chip mostra o id curto', async () => {

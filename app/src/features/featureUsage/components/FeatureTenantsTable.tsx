@@ -4,13 +4,14 @@ import {
 } from '@mui/material';
 import { Filter } from 'lucide-react';
 import { AppIcon, SectionCard } from '@/components';
-import { Blurred, useBlur } from '@/features/privacy';
+import { useBlur } from '@/features/privacy';
 import { CursorResetNotice } from '@/features/infraCosts/components/CursorResetNotice';
 import { formatDay, formatInteger, planLabel } from '../rules';
 import { featureUsageStrings as S } from '../strings';
 import type { UsageTenantItem } from '../types';
 import type { UsageTenantsState } from '../hooks/useUsageTenants';
 import { UsageRetryAlert } from './UsageSummaryGate';
+import { BlurredAccountName } from './BlurredAccountName';
 
 const t = S.tenants;
 const col = t.columns;
@@ -22,7 +23,7 @@ function TenantRow({ row, blur, filtered, onFilter }: {
   return (
     <TableRow selected={filtered}>
       <TableCell sx={{ fontWeight: 600, minWidth: 120, maxWidth: { xs: 160, sm: 280 }, overflowWrap: 'anywhere' }}>
-        <Blurred when={blur} inline radius={5}>{row.tenantName}</Blurred>
+        <BlurredAccountName blur={blur} tenantId={row.tenantId} name={row.tenantName} />
         {row.internal && (
           <Tooltip title={t.internalHint} enterTouchDelay={0}>
             <Chip size="small" variant="outlined" label={t.internal} sx={{ ml: 1 }} />
@@ -38,7 +39,7 @@ function TenantRow({ row, blur, filtered, onFilter }: {
         <Tooltip title={S.actions.filterByAccount}>
           <span>
             <IconButton
-              // O nome não entra no rótulo acessível quando está borrado (leitor de tela não pode furar a privacidade).
+              // Borrado: o rótulo usa o id curto e o nome na célula fica `aria-hidden` (o `Blurred` deixa o texto no DOM).
               aria-label={S.actions.filterByAccountAria(blur ? S.filters.accountShort(row.tenantId) : row.tenantName)}
               onClick={() => onFilter(row.tenantId)}
               disabled={filtered}
@@ -54,7 +55,8 @@ function TenantRow({ row, blur, filtered, onFilter }: {
 }
 
 /**
- * Contas que mais usam o recurso (ordem por usos, da API). Nome sob a flag `usage.tenantName`; "filtrar por esta
+ * Contas que mais usam o recurso (ordem por usos, da API). Nome sob a flag `usage.tenantName` (borrado e fora da
+ * árvore acessível, que lê o id curto); "filtrar por esta
  * conta" grava só o `tenantId` nos filtros. "Carregar mais" segue o `nextCursor`; cursor inválido recarrega do
  * início com aviso (que recebe o foco).
  */
