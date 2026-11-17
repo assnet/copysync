@@ -1,0 +1,47 @@
+import type { PlatformSaverContact } from '../entities/SaverEntities';
+
+/**
+ * Base da PLATAFORMA (sem `tenantId`). Só use cases `Platform*` (super admin) e a gravação da extração
+ * usam este contrato; caminho de tenant usa `ISaverMembershipRepository`.
+ */
+export interface PlatformSaverContactFilter {
+  search: string | null;
+  tenantId: string | null;
+  from: Date | null;
+  to: Date | null;
+}
+
+export interface PlatformSaverContactRow extends PlatformSaverContact {
+  tenantCount: number;
+  groupCount: number;
+  firstExtractedAt: Date | null;
+  lastExtractedAt: Date | null;
+}
+
+export interface PlatformSaverContactLink {
+  tenantId: string;
+  groupId: string;
+  groupName: string;
+  name: string | null;
+  isAdmin: boolean;
+  firstExtractedAt: Date;
+  lastExtractedAt: Date;
+  leftAt: Date | null;
+}
+
+/** Posição de keyset (`lastSeenAt` desc, `id`); o cursor assinado é da aplicação. */
+export interface PlatformSaverContactKey {
+  lastSeenAt: Date;
+  id: string;
+}
+
+export interface IPlatformSaverContactRepository {
+  /** Só os contatos cujo `phone`/`lid` está na leitura; nunca a tabela inteira. */
+  findByKeys(phones: readonly string[], lids: readonly string[]): Promise<PlatformSaverContact[]>;
+  list(
+    filter: PlatformSaverContactFilter,
+    after: PlatformSaverContactKey | null,
+    limit: number,
+  ): Promise<PlatformSaverContactRow[]>;
+  findLinks(contactId: string): Promise<PlatformSaverContactLink[]>;
+}
