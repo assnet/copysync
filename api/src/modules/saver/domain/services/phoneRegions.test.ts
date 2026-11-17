@@ -17,13 +17,14 @@ describe('ddiOf', () => {
     expect(ddiOf('')).toBeNull();
     expect(ddiOf('+5511')).toBeNull();
     expect(ddiOf('35')).toBeNull();
+    expect(ddiOf('0551199990000')).toBeNull();
   });
 });
 
 describe('isCountryCode', () => {
   it('só código inteiro de país', () => {
     for (const ok of ['1', '7', '55', '44', '351', '595']) expect(isCountryCode(ok), ok).toBe(true);
-    for (const bad of ['5', '551', '12', '35', '', 'ab', '5511']) expect(isCountryCode(bad), bad).toBe(false);
+    for (const bad of ['5', '551', '12', '35', '', 'ab', '5511', '0', '00', '000', '055', '099']) expect(isCountryCode(bad), bad).toBe(false);
   });
 });
 

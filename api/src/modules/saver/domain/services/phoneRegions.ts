@@ -26,7 +26,8 @@ const BRAZIL_DDD_SET = new Set(BRAZIL_DDDS);
 
 /** DDI do telefone (ou de um prefixo dele com 3+ dígitos). `null` = não dá para saber. */
 export function ddiOf(phone: string | null | undefined): string | null {
-  if (!phone || !/^\d+$/.test(phone)) return null;
+  // Nenhum código de país começa por 0.
+  if (!phone || !/^[1-9]\d*$/.test(phone)) return null;
   if (ONE_DIGIT_DDI.has(phone[0]!)) return phone[0]!;
   if (phone.length >= 2 && TWO_DIGIT_DDI.has(phone.slice(0, 2))) return phone.slice(0, 2);
   return phone.length >= 3 ? phone.slice(0, 3) : null;

@@ -135,7 +135,7 @@ describe('filtros por DDI e DDD', () => {
     const { r } = repo(rowsOf(1));
     const { a } = auditRepo();
     const uc = new ListPlatformSaverContactsUseCase(r, a);
-    const bad = [{ ddi: ' 55 ' }, { ddi: '55', ddd: ' 11' }, { ddi: '5' }, { ddi: '551' }, { ddi: '5a' }, { ddi: '5511' }, { ddi: '55', ddd: '1' }, { ddi: '55', ddd: '119' }, { ddi: '351', ddd: '11' }, { ddd: '11' }];
+    const bad = [{ ddi: '0' }, { ddi: '055' }, { ddi: ' 55 ' }, { ddi: '55', ddd: ' 11' }, { ddi: '5' }, { ddi: '551' }, { ddi: '5a' }, { ddi: '5511' }, { ddi: '55', ddd: '1' }, { ddi: '55', ddd: '119' }, { ddi: '351', ddd: '11' }, { ddd: '11' }];
     for (const q of bad) {
       await expect(uc.execute({ actor: SUPER, ...q }), JSON.stringify(q)).rejects.toMatchObject({ statusCode: 400, code: 'VALIDATION_ERROR' });
     }
