@@ -28,6 +28,19 @@ import { RemoveSaverGroupUseCase } from '../application/use-cases/RemoveSaverGro
 import { ListSaverGroupsUseCase } from '../application/use-cases/ListSaverGroupsUseCase';
 import { getActiveEngine } from '../../../shared/engine/activeEngine';
 import { EngineNotReadyError } from '../../../shared/errors/internal/MessagingErrors';
+import { PrismaAuditLogRepository } from '../../../shared/audit/PrismaAuditLogRepository';
+import {
+  ExportPlatformSaverContactsUseCase,
+  GetPlatformSaverContactUseCase,
+  ListPlatformSaverContactsUseCase,
+} from '../application/use-cases/PlatformSaverContactsUseCases';
+import { ExportSavedContactsUseCase } from '../application/use-cases/ExportSavedContactsUseCase';
+import {
+  GetSaverConfigUseCase,
+  ListSaverExportGrantsUseCase,
+  SetSaverExportGrantUseCase,
+  UpdateSaverConfigUseCase,
+} from '../application/use-cases/SaverConfigUseCases';
 
 /*
  * Composição do Saver (molde `linkRotationContainer.ts`). Tudo lazy: importar não toca banco.
@@ -111,3 +124,30 @@ const getExtraction    = lazy(() => new GetSaverExtractionUseCase({ queue: queue
 const cancelExtraction = lazy(() => new CancelSaverExtractionUseCase({ queue: queue() }));
 const removeGroup      = lazy(() => new RemoveSaverGroupUseCase({ groups: groups(), queue: queue() }));
 const listGroups       = lazy(() => new ListSaverGroupsUseCase({ groups: groups() }));
+
+// ── Base da plataforma (T16, só super admin) ──
+const audit = lazy(() => new PrismaAuditLogRepository());
+const listPlatformContacts   = lazy(() => new ListPlatformSaverContactsUseCase(platformContacts(), audit()));
+const getPlatformContact     = lazy(() => new GetPlatformSaverContactUseCase(platformContacts(), audit()));
+const exportPlatformContacts = lazy(() => new ExportPlatformSaverContactsUseCase(platformContacts(), audit()));
+
+export const saverPlatformUseCases = {
+  get listContacts(): ListPlatformSaverContactsUseCase { return listPlatformContacts(); },
+  get getContact(): GetPlatformSaverContactUseCase { return getPlatformContact(); },
+  get exportContacts(): ExportPlatformSaverContactsUseCase { return exportPlatformContacts(); },
+};
+
+// ── Exportação e configuração do tenant (T17, T18) ──
+const exportSavedContacts = lazy(() => new ExportSavedContactsUseCase(groups(), memberships(), exportGrants(), audit()));
+const getConfig           = lazy(() => new GetSaverConfigUseCase(configs(), entitlements()));
+const updateConfig        = lazy(() => new UpdateSaverConfigUseCase(configs(), entitlements()));
+const listExportGrants    = lazy(() => new ListSaverExportGrantsUseCase(team(), exportGrants()));
+const setExportGrant      = lazy(() => new SetSaverExportGrantUseCase(team(), exportGrants(), audit()));
+
+export const saverTenantUseCases = {
+  get exportSavedContacts(): ExportSavedContactsUseCase { return exportSavedContacts(); },
+  get getConfig(): GetSaverConfigUseCase { return getConfig(); },
+  get updateConfig(): UpdateSaverConfigUseCase { return updateConfig(); },
+  get listExportGrants(): ListSaverExportGrantsUseCase { return listExportGrants(); },
+  get setExportGrant(): SetSaverExportGrantUseCase { return setExportGrant(); },
+};
