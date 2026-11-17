@@ -399,6 +399,10 @@ const envSchema = z.object({
   // Só VALOR INICIAL da audiência (chave nunca gravada): quem decide é a flag "Só super admin" em
   // /admin/plan-entitlements (`platform_settings.feature_audience`). Não ler em código novo.
   OFFER_HUNTER_AUDIENCE: z.enum(['super_admin', 'entitled']).default('super_admin'),
+  // ── Saver (.specs/features/saver, SAVER-47) ─────────────────────────────
+  // Só VALOR INICIAL da audiência do produto (chave `saver` nunca gravada); depois manda a flag
+  // "Só super admin" em /admin/plan-entitlements. Não ler em código novo.
+  SAVER_AUDIENCE: z.enum(['super_admin', 'entitled']).default('super_admin'),
   // Job que roda as caçadas agendadas, só em worker/all. Desligado por padrão; liga só na Render.
   OFFER_HUNTER_JOB_ENABLED: z
     .string()

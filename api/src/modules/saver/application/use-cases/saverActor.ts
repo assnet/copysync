@@ -28,3 +28,16 @@ export async function loadSaverGrants(
 export function assertCanSaver(actor: SaverActor, action: SaverAction, grants: SaverGrants = NO_SAVER_GRANTS): void {
   if (!canSaver(actor.role, action, grants)) throw new ForbiddenError(`Saver action not allowed: ${action}`);
 }
+
+/**
+ * Checagem com leitura da liberação: só `OPERATOR` em `export` consulta (a cada chamada, então
+ * liberação revogada vale na requisição seguinte). Sem repositório, liberação = nenhuma.
+ */
+export async function assertSaverPermission(
+  actor: SaverActor,
+  action: SaverAction,
+  grants?: Pick<ISaverExportGrantRepository, 'hasGrant'>,
+): Promise<void> {
+  const effective = action === 'export' && grants ? await loadSaverGrants(grants, actor) : NO_SAVER_GRANTS;
+  assertCanSaver(actor, action, effective);
+}

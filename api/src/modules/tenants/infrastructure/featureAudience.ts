@@ -4,11 +4,13 @@ import { UnitOfWork } from '../../../shared/database/UnitOfWork';
 import { FeatureAudienceReader, type FeatureAudienceDefaults } from '../application/services/FeatureAudienceReader';
 import type { FeatureAudienceTransaction } from '../application/use-cases/SetFeatureAudienceUseCase';
 import { ENTITLEMENT_KEYS } from '../domain/entitlementKeys';
+import { SAVER_AUDIENCE_KEY } from '../domain/featureAudience';
 import { PrismaFeatureAudienceRepository } from './repositories/PrismaFeatureAudienceRepository';
 
-/** Valor inicial (chave nunca gravada): `OFFER_HUNTER_AUDIENCE`, lida a cada uso. `super_admin` = só super admin. */
+/** Valor inicial (chave nunca gravada): `OFFER_HUNTER_AUDIENCE`/`SAVER_AUDIENCE`, lidas a cada uso. `super_admin` = só super admin. */
 export const featureAudienceDefaults: FeatureAudienceDefaults = () => ({
   [ENTITLEMENT_KEYS.OFFER_HUNTER_ENABLED]: env.OFFER_HUNTER_AUDIENCE !== 'entitled',
+  [SAVER_AUDIENCE_KEY]: env.SAVER_AUDIENCE !== 'entitled',
 });
 
 let reader: FeatureAudienceReader | null = null;

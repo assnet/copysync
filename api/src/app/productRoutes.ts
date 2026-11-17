@@ -14,7 +14,6 @@ export type RouteProductClass = ProductKey | 'TENANT';
  * Classe de cada plugin registrado em `routes.ts` (chave = identificador do plugin lá). Fonte única da
  * classificação: `productRoutes.test.ts` falha se um `app.register` de `routes.ts` não estiver aqui ou
  * se a classe não bater com o `withProduct` usado. Plugin novo entra aqui antes de ir para `routes.ts`.
- * `SAVER` já é aceito: as rotas do produto entram com `withProduct('SAVER', …)` quando existirem.
  */
 export const ROUTE_PRODUCT_MAP: Readonly<Record<string, RouteProductClass>> = {
   authRoutes: 'TENANT',
@@ -50,6 +49,8 @@ export const ROUTE_PRODUCT_MAP: Readonly<Record<string, RouteProductClass>> = {
   billingRoutes: 'TENANT',
   extensionRoutes: 'AFFILIATES',
   mediaUploadRoutes: 'TENANT',
+  saverRoutes: 'SAVER',
+  saverAdminRoutes: 'TENANT',
 };
 
 type Handler = NonNullable<RouteOptions['preHandler']>;
@@ -102,6 +103,7 @@ export function listUngatedProductRoutes(): readonly UngatedProductRoute[] {
  *   instalação (design §3.5).
  * - Extensão com Bearer sem tenant (sessões da extensão do usuário) e ciclo de vida (público): sem tenant.
  * - `GET /offer-hunts/access`: só diz se o menu do caçador aparece (nunca 403, sem dado do tenant).
+ * - `GET /saver/access`: idem para o item Saver (audiência do produto, design §2.3 do Saver).
  * `HEAD` automático do Fastify não entra (o teste ignora).
  */
 export const UNGATED_PRODUCT_ROUTE_EXCEPTIONS: ReadonlySet<string> = new Set<string>([
@@ -116,6 +118,7 @@ export const UNGATED_PRODUCT_ROUTE_EXCEPTIONS: ReadonlySet<string> = new Set<str
   'POST /extension/lifecycle/uninstall',
   'POST /extension/lifecycle/feedback',
   'GET /offer-hunts/access',
+  'GET /saver/access',
 ]);
 
 export interface ProductRouteDeps {

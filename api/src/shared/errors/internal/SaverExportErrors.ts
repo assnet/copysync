@@ -15,3 +15,10 @@ export class SaverCursorInvalidError extends AppError {
     super('SAVER_CURSOR_INVALID', 'Page cursor is invalid or expired, reload the list', 400, { field: 'cursor' });
   }
 }
+
+/** Audiência do Saver (flag "Só super admin", `SAVER_AUDIENCE` só valor inicial): fora da prévia. Depois do gate de produto. */
+export class SaverUnavailableError extends AppError {
+  constructor() {
+    super('SAVER_UNAVAILABLE', 'Saver is not available for this account', 403);
+  }
+}

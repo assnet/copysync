@@ -10,7 +10,7 @@ function fakeRepo(rows: Awaited<ReturnType<IPlanEntitlementPresetRepository['lis
   return { listByKeys: vi.fn(async () => rows), setForPlan: vi.fn() } satisfies IPlanEntitlementPresetRepository;
 }
 
-const audience = { all: async () => ({ offer_hunter_enabled: true }) };
+const audience = { all: async () => ({ offer_hunter_enabled: true, saver: true }) };
 
 describe('ListAdminPlanEntitlementsUseCase', () => {
   it('consulta só a allowlist e devolve chave × plano; sem preset = null', async () => {
@@ -28,7 +28,7 @@ describe('ListAdminPlanEntitlementsUseCase', () => {
       ...AFFILIATES_OWNED,
       superAdminOnly: null,
     });
-    expect(out.map((r) => r.key)).toEqual(['marketplace_shein_enabled', 'offer_hunter_enabled', 'offer_hunter_finds_per_day']);
+    expect(out.map((r) => r.key)).toEqual(['marketplace_shein_enabled', 'offer_hunter_enabled', 'offer_hunter_finds_per_day', 'saver']);
   });
 
   it('chave numérica devolve tipo inteiro com faixa e o valor do preset', async () => {
@@ -45,16 +45,23 @@ describe('ListAdminPlanEntitlementsUseCase', () => {
 
   it('banco sem presets: todas as chaves com null em todos os planos', async () => {
     const out = await new ListAdminPlanEntitlementsUseCase(fakeRepo([]), audience).execute();
-    expect(out).toHaveLength(ADMIN_EDITABLE_ENTITLEMENT_KEYS.length);
+    expect(out).toHaveLength(ADMIN_EDITABLE_ENTITLEMENT_KEYS.length + 1);
     expect(out[0].plans).toEqual({ COPYSYNC_LITE: null, COPYSYNC_PRO: null, COPYSYNC_MAX: null, ...SAVER_NULL });
     // Shein e Caçador são de Afiliados: nenhum plano Saver editável
-    for (const row of out) expect(row).toMatchObject(AFFILIATES_OWNED);
+    for (const row of out.filter((r) => r.type)) expect(row).toMatchObject(AFFILIATES_OWNED);
   });
 
   it('superAdminOnly só na chave com audiência (flag efetiva); demais null', async () => {
-    const out = await new ListAdminPlanEntitlementsUseCase(fakeRepo([]), { all: async () => ({ offer_hunter_enabled: false }) }).execute();
+    const out = await new ListAdminPlanEntitlementsUseCase(fakeRepo([]), { all: async () => ({ offer_hunter_enabled: false, saver: true }) }).execute();
     expect(Object.fromEntries(out.map((r) => [r.key, r.superAdminOnly]))).toEqual({
-      marketplace_shein_enabled: null, offer_hunter_enabled: false, offer_hunter_finds_per_day: null,
+      marketplace_shein_enabled: null, offer_hunter_enabled: false, offer_hunter_finds_per_day: null, saver: true,
     });
+  });
+
+  it('audiência fora da allowlist (Saver): linha só com a flag, plans vazio e sem type', async () => {
+    const out = await new ListAdminPlanEntitlementsUseCase(fakeRepo([]), { all: async () => ({ offer_hunter_enabled: true, saver: false }) }).execute();
+    const row = out.find((r) => r.key === 'saver');
+    expect(row).toEqual({ key: 'saver', plans: {}, product: 'SAVER', editablePlans: [], superAdminOnly: false });
+    expect(row).not.toHaveProperty('type');
   });
 });
