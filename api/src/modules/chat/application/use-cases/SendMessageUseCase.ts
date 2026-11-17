@@ -9,6 +9,13 @@ import { ChatMessageDirection, ChatMessageType } from '../../domain/enums/ChatMe
 import { logger } from '../../../../shared/logger/logger';
 import { resolveConversationTarget, buildEngineMessageRef } from './resolveConversationTarget';
 import type { ChatMessageDto, QuotedMessageSummary } from './ListMessagesUseCase';
+import { type IFeatureUsageRecorder, recordFeatureUsage } from '../../../metrics/domain/contracts/IFeatureUsageRecorder';
+
+/** Quem pediu o envio: `PANEL` = pessoa no painel do chat (conta em `chat_send`); `AUTOMATION` = sistema (oferta). */
+export type ChatSendOrigin = 'PANEL' | 'AUTOMATION';
+
+/** Chave do contador de uso para envio feito no painel. */
+export const CHAT_SEND_USAGE_KEY = 'chat_send';
 
 export interface SendMessageInput {
   conversationId: string;
@@ -19,6 +26,8 @@ export interface SendMessageInput {
   mentions?: string[] | null;
   /** Prévia de link montada pelo sistema (oferta). A rota do painel não envia. */
   linkPreview?: OutboundLinkPreview | null;
+  /** Obrigatório: só `PANEL` soma no uso do chat. */
+  origin: ChatSendOrigin;
 }
 
 export class SendMessageUseCase {
@@ -29,6 +38,9 @@ export class SendMessageUseCase {
     private readonly engine: IMessagingEngine | null,
     /** Opcional: grava a imagem da prévia de link enviada. Sem ele, a prévia fica sem miniatura. */
     private readonly files: IMediaFileStore | null = null,
+    /** Contador de uso (fail-open). Sem ele nada é contado. */
+    private readonly usage: IFeatureUsageRecorder | null = null,
+    private readonly now: () => Date = () => new Date(),
   ) {}
 
   async execute(input: SendMessageInput): Promise<ChatMessageDto> {
@@ -106,6 +118,15 @@ export class SendMessageUseCase {
       externalMessageId,
       ...(linkPreview ? { linkPreview } : {}),
     });
+
+    // Uso do chat: só envio feito por pessoa no painel; sem esperar e sem falhar o envio
+    if (input.origin === 'PANEL') {
+      recordFeatureUsage(
+        this.usage,
+        { tenantId: input.tenantId, featureKey: CHAT_SEND_USAGE_KEY, kind: 'ACTION', at: this.now() },
+        (err) => logger.warn({ err: (err as Error)?.name }, 'chat send usage not counted'),
+      );
+    }
 
     // Atualiza preview da última mensagem na conversa
     await this.conversationRepo.updateLastMessage(

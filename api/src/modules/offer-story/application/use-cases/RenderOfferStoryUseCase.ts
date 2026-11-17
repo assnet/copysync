@@ -18,6 +18,10 @@ import {
 } from '../../../../shared/errors/internal/OfferStoryErrors';
 import { logger } from '../../../../shared/logger/logger';
 import { requireOfferStoryEnabled, type OfferStoryUseCaseDeps } from './offerStoryUseCaseDeps';
+import { recordFeatureUsage } from '../../../metrics/domain/contracts/IFeatureUsageRecorder';
+
+/** Chave do contador de uso da arte gerada. */
+export const OFFER_STORY_USAGE_KEY = 'offer_story';
 
 const AI_TIMEOUT_MS = 8_000;
 const AI_MAX_OUTPUT_TOKENS = 80;
@@ -94,6 +98,13 @@ export class RenderOfferStoryUseCase {
       throw new MediaProcessingFailedError('Offer story render failed');
     }
     if (!productImage || rendered.imageDropped) warnings.add('NO_IMAGE');
+
+    // Arte gerada = 1 uso (com ou sem título da IA); sem esperar e sem falhar a arte
+    recordFeatureUsage(
+      this.deps.usage,
+      { tenantId, featureKey: OFFER_STORY_USAGE_KEY, kind: 'ACTION', at: (this.deps.now ?? (() => new Date()))() },
+      (err) => logger.warn({ tenantId, err: (err as Error)?.name }, 'offer story usage not counted'),
+    );
 
     return {
       image: `data:${rendered.mimeType};base64,${rendered.buffer.toString('base64')}`,

@@ -17,6 +17,8 @@ import {
   ChatMessageType,
 } from '../../domain/enums/ChatMessageEnums';
 import { errorHandler } from '../../../../shared/http/errorHandler';
+import { PrismaChatConversationRepository } from '../../infrastructure/repositories/PrismaChatConversationRepository';
+import { PrismaChatMessageRepository } from '../../infrastructure/repositories/PrismaChatMessageRepository';
 
 /*
  * Exceção justificada à matriz do TESTING.md (como a T15): o que se testa aqui é o contrato
@@ -34,6 +36,16 @@ vi.mock('../../../../shared/http/hooks/tenantHook', () => ({
   tenantHook: async (request: { tenantContext?: unknown }) => {
     request.tenantContext = { userId: 'user-a', tenantId: 'tenant-a', role: 'ADMIN', isSuperAdmin: false };
   },
+}));
+
+const usage = vi.hoisted(() => ({
+  recorder: { increment: vi.fn(async () => undefined), markOnce: vi.fn(async () => undefined) },
+  engine: null as unknown,
+}));
+vi.mock('../../../metrics/infrastructure/featureUsageContainer', () => ({ featureUsageRecorder: () => usage.recorder }));
+vi.mock('../../../../shared/engine/activeEngine', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  getActiveEngine: () => usage.engine,
 }));
 
 const PREFIX = '/api/chat';
@@ -92,6 +104,7 @@ describe('POST /conversations/:id/messages/media', () => {
       uploadId: UPLOAD_ID,
       caption: 'legenda',
       quotedMessageId: 'msg-0',
+      origin: 'PANEL',
     });
   });
 
@@ -170,8 +183,34 @@ describe('POST /conversations/:id/messages (texto)', () => {
     expect(res.statusCode).toBe(201);
     expect(res.json()).toEqual({ success: true, data: apresentada(dto) });
     expect(execute).toHaveBeenCalledWith({
-      conversationId: 'conv-1', tenantId: 'tenant-a', content: 'oi', quotedMessageId: 'msg-0',
+      conversationId: 'conv-1', tenantId: 'tenant-a', content: 'oi', quotedMessageId: 'msg-0', origin: 'PANEL',
     });
+  });
+
+  it('envio pelo painel soma 1 no uso do chat (use case de verdade, repositórios e engine falsos)', async () => {
+    usage.recorder.increment.mockClear();
+    const now = new Date('2026-11-20T12:00:00Z');
+    usage.engine = { sendTextMessage: vi.fn(async () => ({ messageId: 'EXT-1', sentAt: now })) };
+    vi.spyOn(PrismaChatConversationRepository.prototype, 'findById').mockResolvedValue({
+      id: 'conv-1', tenantId: 'tenant-a', sessionId: 'sess-1', isGroup: true, groupJid: '1203@g.us', contactId: null,
+    } as never);
+    vi.spyOn(PrismaChatConversationRepository.prototype, 'updateLastMessage').mockResolvedValue(undefined as never);
+    vi.spyOn(PrismaChatMessageRepository.prototype, 'create').mockImplementation(async (data) => ({
+      id: 'msg-1', tenantId: 'tenant-a', conversationId: 'conv-1', direction: data.direction, type: data.type,
+      content: data.content, mediaUrl: null, mimeType: null, fileName: null, durationSeconds: null,
+      externalMessageId: data.externalMessageId, status: ChatMessageStatus.SENT, isDeleted: false, quotedMessageId: null,
+      sentAt: now, createdAt: now, fromParticipant: null, fromParticipantName: null, linkPreview: null,
+    }) as never);
+    try {
+      const res = await app.inject({ method: 'POST', url: `${PREFIX}/conversations/conv-1/messages`, payload: { content: 'oi' } });
+      expect(res.statusCode).toBe(201);
+      expect(usage.recorder.increment).toHaveBeenCalledTimes(1);
+      expect(usage.recorder.increment).toHaveBeenCalledWith(
+        expect.objectContaining({ tenantId: 'tenant-a', featureKey: 'chat_send', kind: 'ACTION' }),
+      );
+    } finally {
+      usage.engine = null;
+    }
   });
 
   it('continua recusando corpo sem conteúdo com 400', async () => {

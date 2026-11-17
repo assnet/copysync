@@ -6,6 +6,8 @@ import { GetFeatureUsageSummaryUseCase, type FeatureUsageDeps } from '../applica
 import { GetFeatureUsageDetailUseCase } from '../application/use-cases/GetFeatureUsageDetailUseCase';
 import { ListFeatureUsageTenantsUseCase } from '../application/use-cases/ListFeatureUsageTenantsUseCase';
 import { RollupFeatureUsageUseCase } from '../application/use-cases/RollupFeatureUsageUseCase';
+import { RecordFeatureUsageUseCase } from '../application/use-cases/RecordFeatureUsageUseCase';
+import type { IFeatureUsageRecorder } from '../domain/contracts/IFeatureUsageRecorder';
 import { FEATURE_USAGE_ROLLUP_READ_BUDGET_MS, FeatureUsageRollupJob } from './jobs/FeatureUsageRollupJob';
 import { PrismaFeatureUsageDailyRepository } from './repositories/PrismaFeatureUsageDailyRepository';
 import { PrismaFeatureUsageRollupStateRepository } from './repositories/PrismaFeatureUsageRollupStateRepository';
@@ -21,6 +23,7 @@ let deps: FeatureUsageDeps | undefined;
 let getSummary: GetFeatureUsageSummaryUseCase | undefined;
 let getDetail: GetFeatureUsageDetailUseCase | undefined;
 let listTenants: ListFeatureUsageTenantsUseCase | undefined;
+let recorder: IFeatureUsageRecorder | undefined;
 
 function featureUsageDeps(): FeatureUsageDeps {
   return (deps ??= {
@@ -40,6 +43,11 @@ export function getFeatureUsageDetailUseCase(): GetFeatureUsageDetailUseCase {
 
 export function listFeatureUsageTenantsUseCase(): ListFeatureUsageTenantsUseCase {
   return (listTenants ??= new ListFeatureUsageTenantsUseCase({ ...featureUsageDeps(), audit: new PrismaAuditLogRepository() }));
+}
+
+/** Contador de uso (Story, chat): grava em `feature_usage_daily` a partir da data de corte de cada recurso. */
+export function featureUsageRecorder(): IFeatureUsageRecorder {
+  return (recorder ??= new RecordFeatureUsageUseCase({ daily: new PrismaFeatureUsageDailyRepository(prisma) }));
 }
 
 /**

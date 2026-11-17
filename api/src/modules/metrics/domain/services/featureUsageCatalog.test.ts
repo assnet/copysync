@@ -24,10 +24,10 @@ describe('catálogo de recursos medidos', () => {
     for (const r of used) expect(contract.coverageReasonCodes).toContain(r);
   });
 
-  it('tem 16 chaves únicas em snake_case e sem a marca', () => {
+  it('tem 17 chaves únicas em snake_case e sem a marca', () => {
     const list = keys(FEATURE_USAGE_CATALOG);
-    expect(list).toHaveLength(16);
-    expect(new Set(list).size).toBe(16);
+    expect(list).toHaveLength(17);
+    expect(new Set(list).size).toBe(17);
     for (const k of list) expect(k).toMatch(/^[a-z]+(_[a-z]+)*$/);
     const text = JSON.stringify(FEATURE_USAGE_CATALOG).toLowerCase();
     expect(text).not.toMatch(/copysync|waioprime/);
@@ -52,6 +52,7 @@ describe('catálogo de recursos medidos', () => {
       saver_extraction: [],
       saver_export: [],
       panel_login: ['RETENTION'],
+      chat_send: [],
     });
   });
 
@@ -78,7 +79,13 @@ describe('catálogo de recursos medidos', () => {
     for (const f of FEATURE_USAGE_CATALOG) {
       if (f.source === 'RECORDED') expect(f.recordedFrom).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     }
-    expect(FEATURE_USAGE_CATALOG.every((f) => f.phase === 1 && f.recordedFrom === undefined)).toBe(true);
+    // P2: só o Story ganha corte (fonte viva antes dele) e o chat nasce só do contador
+    const withCut = FEATURE_USAGE_CATALOG.filter((f) => f.recordedFrom !== undefined).map((f) => [f.key, f.source, f.phase]);
+    expect(withCut).toEqual([
+      ['offer_story', 'LIVE', 1],
+      ['chat_send', 'RECORDED', 2],
+    ]);
+    expect(FEATURE_USAGE_CATALOG.filter((f) => f.key !== 'chat_send').every((f) => f.phase === 1)).toBe(true);
   });
 
   it('devolve undefined para chave fora do catálogo', () => {
@@ -95,12 +102,12 @@ describe('catálogo de recursos medidos', () => {
     const standard = keys(featuresFor({ kinds: ['ACTION', 'AUTOMATIC'] }));
     expect(standard).not.toContain('panel_login');
     expect(standard).not.toContain('link_rotation_click');
-    expect(standard).toHaveLength(14);
+    expect(standard).toHaveLength(15);
 
     expect(keys(featuresFor({ kinds: ['ACCESS'] }))).toEqual(['panel_login']);
     expect(keys(featuresFor({ kinds: ['AUDIENCE'] }))).toEqual(['link_rotation_click']);
-    expect(featuresFor({})).toHaveLength(16);
-    expect(featuresFor({ kinds: [] })).toHaveLength(16);
+    expect(featuresFor({})).toHaveLength(17);
+    expect(featuresFor({ kinds: [] })).toHaveLength(17);
   });
 
   it('filtra por produto e combina com o tipo', () => {
@@ -113,11 +120,15 @@ describe('catálogo de recursos medidos', () => {
       'offer_hunter',
     ]);
     expect(featuresFor({ product: 'ACCESS', kinds: ['ACTION'] })).toEqual([]);
-    expect(featuresFor({ product: 'CHAT' })).toEqual([]);
+    expect(keys(featuresFor({ product: 'CHAT' }))).toEqual(['chat_send']);
   });
 
   it('escolhe a fonte pela data de corte', () => {
-    const base = findFeature('offer_story')!;
+    const story = findFeature('offer_story')!;
+    expect(sourceOn(story, '2026-11-18')).toBe('LIVE');
+    expect(sourceOn(story, '2026-11-19')).toBe('RECORDED');
+    expect(sourceOn(findFeature('chat_send')!, '2026-11-18')).toBe('LIVE'); // antes do corte: nada a contar
+    const base: FeatureUsageDefinition = { ...story, recordedFrom: undefined };
     const withCut: FeatureUsageDefinition = { ...base, source: 'RECORDED', recordedFrom: '2026-12-01' };
     expect(sourceOn(withCut, '2026-11-30')).toBe('LIVE');
     expect(sourceOn(withCut, '2026-12-01')).toBe('RECORDED');

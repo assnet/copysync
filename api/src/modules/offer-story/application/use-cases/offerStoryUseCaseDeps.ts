@@ -3,6 +3,7 @@ import type { IOfferImageFetcher } from '../../../campaigns/domain/contracts/IOf
 import type { ResolveAffiliateProductUseCase } from '../../../campaigns/application/use-cases/ResolveAffiliateProductUseCase';
 import type { IAiTextGenerator } from '../../../assistants/domain/contracts/IAiTextGenerator';
 import type { IOfferStoryRenderer } from '../../domain/contracts/IOfferStoryRenderer';
+import type { IFeatureUsageRecorder } from '../../../metrics/domain/contracts/IFeatureUsageRecorder';
 import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
 import { PlanFeatureUnavailableError } from '../../../../shared/errors/internal/PlanErrors';
 
@@ -18,6 +19,10 @@ export interface OfferStoryUseCaseDeps {
   renderer: IOfferStoryRenderer;
   /** Teto da IA antes de cair no título original (ms). Padrão 8 s; injetável para teste. */
   aiTimeoutMs?: number;
+  /** Contador de uso (`offer_story`, fail-open): só soma a partir da data de corte. */
+  usage: IFeatureUsageRecorder;
+  /** Relógio do contador; padrão `new Date()`. */
+  now?: () => Date;
 }
 
 /** Gate do plano: só `offer_story_enabled === true` libera (ausente/false/inválido bloqueiam). */

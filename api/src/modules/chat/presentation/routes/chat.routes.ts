@@ -60,6 +60,7 @@ import { env } from '../../../../shared/config/env';
 import { GetContactByIdUseCase } from '../../application/use-cases/GetContactByIdUseCase';
 import { MarkConversationAsReadUseCase } from '../../application/use-cases/MarkConversationAsReadUseCase';
 import { getActiveEngine } from '../../../../shared/engine/activeEngine';
+import { featureUsageRecorder } from '../../../metrics/infrastructure/featureUsageContainer';
 
 import type { ConversationStatus } from '../../domain/enums/ConversationStatus';
 
@@ -224,8 +225,12 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       };
 
       // Instanciado por request para capturar o estado atual da engine
-      const sendMessageUseCase = new SendMessageUseCase(messageRepo, conversationRepo, contactRepo, getActiveEngine());
-      const result = await sendMessageUseCase.execute({ conversationId: id, tenantId, content, quotedMessageId, mentions });
+      const sendMessageUseCase = new SendMessageUseCase(
+        messageRepo, conversationRepo, contactRepo, getActiveEngine(), null, featureUsageRecorder(),
+      );
+      const result = await sendMessageUseCase.execute({
+        conversationId: id, tenantId, content, quotedMessageId, mentions, origin: 'PANEL',
+      });
       httpResponse.created(reply, ChatPresenter.presentMessage(result));
     },
   );
@@ -254,6 +259,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
         limits:           chatMediaContainer.outboundLimits(),
         tmpPathFor:       chatMediaContainer.voiceTmpPath,
         images:           mediaContainer.imageTranscoder,
+        usage:            featureUsageRecorder(),
       });
       const { message, replayed } = await useCase.execute({
         tenantId,
@@ -262,6 +268,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
         uploadId:        body.uploadId,
         caption:         body.caption,
         quotedMessageId: body.quotedMessageId,
+        origin:          'PANEL',
       });
 
       const data = ChatPresenter.presentMessage(message);

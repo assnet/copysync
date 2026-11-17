@@ -69,7 +69,7 @@ describe('recorte por tipo', () => {
     expect(keysOf(out)).not.toContain('panel_login');
     expect(keysOf(out)).not.toContain('link_rotation_click');
     expect(out.neverUsed).not.toContain('panel_login');
-    expect(out.totals.featuresUsed + out.totals.featuresNeverUsed).toBe(14);
+    expect(out.totals.featuresUsed + out.totals.featuresNeverUsed).toBe(15);
     expect(out.totals.featuresUsed).toBe(1);
   });
 

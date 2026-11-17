@@ -177,7 +177,7 @@ export const FEATURE_USAGE_SOURCES: readonly FeatureUsageSourceQuery[] = [
 
 /** Primeiro dado de cada recurso: uma instrução, mesmo `WHERE` de classificação, sem período nem `GROUP BY`. */
 /** Um ramo por recurso: `MIN` da coluna de data da fonte (sem conteúdo, sem período). */
-const FIRST_DATA_BRANCHES: Record<FeatureUsageKey, Prisma.Sql> = {
+const FIRST_DATA_BRANCHES: Partial<Record<FeatureUsageKey, Prisma.Sql>> = {
   offer_generator: Prisma.sql`SELECT 'offer_generator' AS key, MIN("createdAt") AS first FROM "offers" WHERE "origin" = 'GENERATOR'`,
   group_monitoring: Prisma.sql`SELECT 'group_monitoring' AS key, MIN("createdAt") AS first FROM "offers" WHERE "origin" = 'MONITORING'`,
   offer_dispatch: Prisma.sql`SELECT 'offer_dispatch' AS key, MIN("updatedAt") AS first FROM "offer_dispatches" WHERE "status" = 'SENT'`,
@@ -199,7 +199,10 @@ const FIRST_DATA_BRANCHES: Record<FeatureUsageKey, Prisma.Sql> = {
 /** `UNION ALL` só com os ramos dos recursos pedidos (ordem do catálogo); `null` se nenhum. */
 export function firstDataDaysSql(keys: Iterable<FeatureUsageKey>): Prisma.Sql | null {
   const wanted = new Set(keys);
-  const branches = FEATURE_USAGE_CATALOG.filter((f) => wanted.has(f.key)).map((f) => FIRST_DATA_BRANCHES[f.key]);
+  // Recurso só do contador (`RECORDED`) não tem fonte viva: fica de fora.
+  const branches = FEATURE_USAGE_CATALOG.filter((f) => wanted.has(f.key))
+    .map((f) => FIRST_DATA_BRANCHES[f.key])
+    .filter((b): b is Prisma.Sql => b !== undefined);
   return branches.length === 0 ? null : Prisma.join(branches, '\n  UNION ALL ', '', '');
 }
 

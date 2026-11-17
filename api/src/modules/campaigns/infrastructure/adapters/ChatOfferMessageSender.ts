@@ -19,6 +19,7 @@ import type { IOfferPreviewImage } from '../../domain/contracts/IOfferPreviewIma
 import type { IMediaFileStore } from '../../../media/domain/contracts/IMediaFileStore';
 import type { OutboundLinkPreview } from '../../../messaging/domain/contracts/IMessagingEngine';
 import { pickPreviewUrl } from '../../domain/services/pickPreviewUrl';
+import type { IFeatureUsageRecorder } from '../../../metrics/domain/contracts/IFeatureUsageRecorder';
 
 const log = logger.child({ module: 'ChatOfferMessageSender' });
 
@@ -31,6 +32,8 @@ const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(r
 export interface ChatOfferMessageSenderDeps {
   previewImage?: () => IOfferPreviewImage;
   files?: () => IMediaFileStore;
+  /** Mesmo contador do painel; o envio sai como `AUTOMATION` e por isso não soma em `chat_send`. */
+  usage?: () => IFeatureUsageRecorder;
 }
 
 /**
@@ -89,7 +92,10 @@ export class ChatOfferMessageSender implements IOfferMessageSender {
       chatMediaContainer.contactRepo,
       engine,
       this.deps.files?.() ?? null,
-    ).execute({ tenantId, conversationId, content: text, mentions, ...(linkPreview ? { linkPreview } : {}) });
+      this.deps.usage?.() ?? null,
+    ).execute({
+      tenantId, conversationId, content: text, mentions, origin: 'AUTOMATION', ...(linkPreview ? { linkPreview } : {}),
+    });
     if (!message.externalMessageId || message.status === ChatMessageStatus.FAILED) {
       throw new MessageSendFailedError('no external message id');
     }

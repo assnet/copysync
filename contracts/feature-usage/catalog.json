@@ -15,7 +15,8 @@
     "telegram_session",
     "saver_extraction",
     "saver_export",
-    "panel_login"
+    "panel_login",
+    "chat_send"
   ],
   "coverageReasonCodes": [
     "EXISTING_ONLY",

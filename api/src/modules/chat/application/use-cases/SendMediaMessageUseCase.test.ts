@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import type { IFeatureUsageRecorder } from '../../../metrics/domain/contracts/IFeatureUsageRecorder';
 import { SendMediaMessageUseCase } from './SendMediaMessageUseCase';
 import {
   ChatMessageDirection,
@@ -102,6 +103,7 @@ function makeDeps(o: {
   promoteError?: Error;
   enqueued?: boolean;
   transcodeError?: Error;
+  usage?: IFeatureUsageRecorder;
 } = {}) {
   const calls: string[] = [];
   const track = <A extends unknown[], R>(name: string, impl: (...args: A) => R) =>
@@ -194,14 +196,18 @@ function makeDeps(o: {
     limits: LIMITS,
     tmpPathFor,
     images,
+    usage: o.usage,
+    now: () => NOW,
   });
   return { useCase, calls, messageRepo, conversationRepo, uploads, processor, files, queue, engine, images };
 }
 
 type Deps = ReturnType<typeof makeDeps>;
 
-const enviar = (d: Deps, over: { caption?: string | null; quotedMessageId?: string | null } = {}) =>
-  d.useCase.execute({ tenantId: TENANT, userId: USER, conversationId: CONVERSA, uploadId: UPLOAD, ...over });
+const enviar = (
+  d: Deps,
+  over: { caption?: string | null; quotedMessageId?: string | null; origin?: 'PANEL' | 'AUTOMATION' } = {},
+) => d.useCase.execute({ tenantId: TENANT, userId: USER, conversationId: CONVERSA, uploadId: UPLOAD, origin: 'PANEL', ...over });
 
 const gravado = (d: Deps) => d.messageRepo.create.mock.calls[0][0];
 
@@ -609,5 +615,27 @@ describe('SendMediaMessageUseCase — foto WebP', () => {
     expect(d.files.promote).not.toHaveBeenCalled();
     expect(d.messageRepo.create).not.toHaveBeenCalled();
     expect(d.uploads.releaseConsume).toHaveBeenCalledWith(UPLOAD);
+  });
+});
+
+describe('SendMediaMessageUseCase — uso do chat', () => {
+  const usageOf = (impl: () => Promise<void>) => ({ increment: vi.fn(impl), markOnce: vi.fn(async () => undefined) });
+
+  it('mídia do painel soma 1; automática e confirmação repetida não somam', async () => {
+    const usage = usageOf(async () => undefined);
+    await enviar(makeDeps({ usage }));
+    expect(usage.increment).toHaveBeenCalledWith({ tenantId: TENANT, featureKey: 'chat_send', kind: 'ACTION', at: NOW });
+    await enviar(makeDeps({ usage }), { origin: 'AUTOMATION' });
+    await enviar(makeDeps({
+      usage,
+      begin: { outcome: 'consumed', messageId: 'msg-antiga', record: registro({ state: 'CONSUMED', messageId: 'msg-antiga' }) },
+    }));
+    expect(usage.increment).toHaveBeenCalledTimes(1);
+  });
+
+  it('contador que rejeita ou trava não muda o resultado', async () => {
+    const reference = await enviar(makeDeps({ usage: usageOf(async () => undefined) }));
+    await expect(enviar(makeDeps({ usage: usageOf(async () => { throw new Error('down'); }) }))).resolves.toEqual(reference);
+    await expect(enviar(makeDeps({ usage: usageOf(() => new Promise<void>(() => {})) }))).resolves.toEqual(reference);
   });
 });

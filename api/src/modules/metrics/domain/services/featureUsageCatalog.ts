@@ -54,7 +54,8 @@ export type FeatureUsageKey =
   | 'telegram_session'
   | 'saver_extraction'
   | 'saver_export'
-  | 'panel_login';
+  | 'panel_login'
+  | 'chat_send';
 
 export interface FeatureUsageDefinition {
   key: FeatureUsageKey;
@@ -80,6 +81,18 @@ function live(def: Def): FeatureUsageDefinition {
   return { possibleCoverageReasons: [], ...def, source: 'LIVE', phase: 1 };
 }
 
+/** Recurso só do contador (P2): sem fonte anterior ao corte. */
+function recorded(def: Def & { recordedFrom: string }): FeatureUsageDefinition {
+  return { possibleCoverageReasons: [], ...def, source: 'RECORDED', phase: 2 };
+}
+
+/**
+ * Datas de corte (Brasília) da P2: dia seguinte ao deploy previsto (2026-11-18). Se o deploy atrasar, adiar
+ * antes de ligar (R2 e checklist da T24). A partir do corte só o contador conta; antes, a fonte viva.
+ */
+export const OFFER_STORY_RECORDED_FROM = '2026-11-19';
+export const CHAT_SEND_RECORDED_FROM = '2026-11-19';
+
 export const FEATURE_USAGE_CATALOG: readonly FeatureUsageDefinition[] = [
   live({ key: 'offer_generator', product: 'AFFILIATES', planFamily: 'AFFILIATES', kinds: ['ACTION'] }),
   live({ key: 'group_monitoring', product: 'AFFILIATES', planFamily: 'AFFILIATES', kinds: ['AUTOMATIC'] }),
@@ -97,7 +110,15 @@ export const FEATURE_USAGE_CATALOG: readonly FeatureUsageDefinition[] = [
     retentionDays: 90,
   }),
   live({ key: 'storefront', product: 'AFFILIATES', planFamily: 'AFFILIATES', kinds: ['ACTION'], possibleCoverageReasons: ['EXISTING_ONLY'] }),
-  live({ key: 'offer_story', product: 'AFFILIATES', planFamily: 'AFFILIATES', kinds: ['ACTION'], possibleCoverageReasons: ['AI_HEADLINE_ONLY'] }),
+  // `LIVE` com corte: antes de `recordedFrom` o título da IA (`ai_usage_logs`), a partir dele o contador.
+  live({
+    key: 'offer_story',
+    product: 'AFFILIATES',
+    planFamily: 'AFFILIATES',
+    kinds: ['ACTION'],
+    possibleCoverageReasons: ['AI_HEADLINE_ONLY'],
+    recordedFrom: OFFER_STORY_RECORDED_FROM,
+  }),
   live({ key: 'affiliate_credentials', product: 'AFFILIATES', planFamily: 'AFFILIATES', kinds: ['ACTION'], possibleCoverageReasons: ['MIXED_EVENTS'] }),
   live({ key: 'extension_sync', product: 'AFFILIATES', planFamily: 'AFFILIATES', kinds: ['ACTION'], possibleCoverageReasons: ['TOKEN_CHANGE_ONLY'] }),
   live({ key: 'whatsapp_session', product: 'SESSION', planFamily: 'AFFILIATES', kinds: ['ACTION'] }),
@@ -105,6 +126,8 @@ export const FEATURE_USAGE_CATALOG: readonly FeatureUsageDefinition[] = [
   live({ key: 'saver_extraction', product: 'SAVER', planFamily: 'SAVER', kinds: ['ACTION'] }),
   live({ key: 'saver_export', product: 'SAVER', planFamily: 'SAVER', kinds: ['ACTION'] }),
   live({ key: 'panel_login', product: 'ACCESS', planFamily: 'AFFILIATES', kinds: ['ACCESS'], possibleCoverageReasons: ['RETENTION'], retentionDays: 30 }),
+  // Só envio feito no painel (`origin = PANEL`); oferta automática fica em `offer_dispatch`.
+  recorded({ key: 'chat_send', product: 'CHAT', planFamily: 'AFFILIATES', kinds: ['ACTION'], recordedFrom: CHAT_SEND_RECORDED_FROM }),
 ];
 
 export function findFeature(

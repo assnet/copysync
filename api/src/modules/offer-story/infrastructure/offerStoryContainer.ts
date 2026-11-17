@@ -7,6 +7,7 @@ import type { OfferStoryUseCaseDeps } from '../application/use-cases/offerStoryU
 import { ListOfferStoryTemplatesUseCase } from '../application/use-cases/ListOfferStoryTemplatesUseCase';
 import { RenderOfferStoryUseCase } from '../application/use-cases/RenderOfferStoryUseCase';
 import { SatoriOfferStoryRenderer } from './adapters/SatoriOfferStoryRenderer';
+import { featureUsageRecorder } from '../../metrics/infrastructure/featureUsageContainer';
 
 /*
  * Composição do Story de Oferta (design.md "Infraestrutura"). Tudo lazy: importar não toca banco,
@@ -23,6 +24,7 @@ const deps = lazy((): OfferStoryUseCaseDeps => ({
   imageFetcher:   new HttpOfferImageFetcher(),
   ai:             assistantsContainer.aiTextGenerator(),
   renderer:       new SatoriOfferStoryRenderer(),
+  usage:          featureUsageRecorder(),
 }));
 
 const useCases = lazy(() => ({

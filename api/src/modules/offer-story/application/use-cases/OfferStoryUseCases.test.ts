@@ -200,3 +200,38 @@ describe('RenderOfferStoryUseCase', () => {
     expect(await code(render.execute(base))).toMatchObject({ code: 'MEDIA_PROCESSOR_UNAVAILABLE', status: 503 });
   });
 });
+
+describe('RenderOfferStoryUseCase — uso do recurso', () => {
+  it('arte gerada soma 1 em offer_story com conta, chave, tipo e instante', async () => {
+    const { fakes, render } = setup();
+    await render.execute(base);
+    expect(fakes.usage.calls).toEqual([{ tenantId: TENANT, featureKey: 'offer_story', kind: 'ACTION', at: new Date('2026-11-19T15:00:00Z') }]);
+  });
+
+  it('falha antes da arte não soma', async () => {
+    const { fakes, render } = setup();
+    fakes.renderer.error = new Error('boom');
+    await expect(render.execute(base)).rejects.toBeInstanceOf(AppError);
+    expect(fakes.usage.calls).toHaveLength(0);
+  });
+
+  it('contador que rejeita ou trava não muda a arte', async () => {
+    const ok = setup();
+    const reference = await ok.render.execute(base);
+    const failing = setup();
+    failing.fakes.usage.fail = true;
+    await expect(failing.render.execute(base)).resolves.toEqual(reference);
+    const hanging = setup();
+    hanging.fakes.usage.hang = true;
+    await expect(hanging.render.execute(base)).resolves.toEqual(reference);
+  });
+
+  it('use case depende só do contrato do contador (nada da infraestrutura de métricas)', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    for (const f of ['RenderOfferStoryUseCase.ts', 'offerStoryUseCaseDeps.ts']) {
+      const src = readFileSync(resolve(__dirname, f), 'utf8');
+      expect(src).not.toMatch(/metrics\/(infrastructure|application)/);
+    }
+  });
+});

@@ -65,7 +65,7 @@ function makeDeps(overrides?: {
 }
 
 const enviar = (d: ReturnType<typeof makeDeps>, quotedMessageId: string | null = 'msg-citada') =>
-  d.useCase.execute({ conversationId: CONVERSA, tenantId: TENANT, content: 'resposta', quotedMessageId });
+  d.useCase.execute({ conversationId: CONVERSA, tenantId: TENANT, content: 'resposta', quotedMessageId, origin: 'PANEL' });
 
 const engineInput = (d: ReturnType<typeof makeDeps>) => vi.mocked(d.engine!.sendTextMessage).mock.calls[0][0];
 const created = (d: ReturnType<typeof makeDeps>) => vi.mocked(d.messageRepo.create).mock.calls[0][0];
@@ -197,7 +197,7 @@ describe('SendMessageUseCase — prévia de link', () => {
     thumbnailJpeg: Buffer.from('thumb'), imageJpeg: Buffer.from('big'),
   };
   const enviarComPrevia = (d: ReturnType<typeof makeDeps>) =>
-    d.useCase.execute({ conversationId: CONVERSA, tenantId: TENANT, content: 'oferta https://amzn.to/x', linkPreview: preview });
+    d.useCase.execute({ conversationId: CONVERSA, tenantId: TENANT, content: 'oferta https://amzn.to/x', linkPreview: preview, origin: 'AUTOMATION' });
   const store = (saveBuffer = vi.fn(async (_b: Buffer, name: string) => `https://cdn/media/${name}`)) =>
     ({ files: { saveBuffer } as unknown as IMediaFileStore, saveBuffer });
 
@@ -241,5 +241,49 @@ describe('SendMessageUseCase — prévia de link', () => {
     expect(engineInput(d)).not.toHaveProperty('linkPreview');
     expect(created(d)).not.toHaveProperty('linkPreview');
     expect(saveBuffer).not.toHaveBeenCalled();
+  });
+});
+
+describe('SendMessageUseCase — uso do chat', () => {
+  const AT = new Date('2026-11-19T00:30:00.000Z');
+  const usageOf = (impl: () => Promise<void>) => ({ increment: vi.fn(impl), markOnce: vi.fn(async () => undefined) });
+  const build = (usage: ReturnType<typeof usageOf>) => {
+    const d = makeDeps({ files: null });
+    const deps = d.useCase as unknown as Record<string, unknown>;
+    const useCase = new SendMessageUseCase(
+      deps.messageRepo as IChatMessageRepository,
+      deps.conversationRepo as IChatConversationRepository,
+      deps.contactRepo as IChatContactRepository,
+      d.engine,
+      null,
+      usage,
+      () => AT,
+    );
+    return { useCase, d };
+  };
+  const input = (origin: 'PANEL' | 'AUTOMATION') =>
+    ({ conversationId: CONVERSA, tenantId: TENANT, content: 'oi', origin }) as const;
+
+  it('envio do painel soma 1 com conta, chave, tipo e instante (nada além)', async () => {
+    const usage = usageOf(async () => undefined);
+    await build(usage).useCase.execute(input('PANEL'));
+    expect(usage.increment).toHaveBeenCalledTimes(1);
+    expect(usage.increment).toHaveBeenCalledWith({ tenantId: TENANT, featureKey: 'chat_send', kind: 'ACTION', at: AT });
+  });
+
+  it('envio automático não soma', async () => {
+    const usage = usageOf(async () => undefined);
+    await build(usage).useCase.execute(input('AUTOMATION'));
+    expect(usage.increment).not.toHaveBeenCalled();
+  });
+
+  it('contador que rejeita ou trava não muda o resultado nem segura o envio', async () => {
+    const reference = await build(usageOf(async () => undefined)).useCase.execute(input('PANEL'));
+    const rejecting = await build(usageOf(async () => { throw new Error('down'); })).useCase.execute(input('PANEL'));
+    expect(rejecting).toEqual(reference);
+    // Promessa que nunca resolve: se o envio esperasse o contador, este teste estouraria o tempo
+    await expect(build(usageOf(() => new Promise<void>(() => {}))).useCase.execute(input('PANEL'))).resolves.toEqual(reference);
+    const throwing = { increment: vi.fn(() => { throw new Error('sync'); }), markOnce: vi.fn() };
+    await expect(build(throwing as never).useCase.execute(input('PANEL'))).resolves.toEqual(reference);
   });
 });

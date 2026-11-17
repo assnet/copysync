@@ -10,6 +10,7 @@ import type {
 } from '../../domain/contracts/IOfferStoryRenderer';
 import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
 import type { OfferStoryUseCaseDeps } from './offerStoryUseCaseDeps';
+import type { FeatureUsageEvent, IFeatureUsageRecorder } from '../../../metrics/domain/contracts/IFeatureUsageRecorder';
 
 export const TENANT = 'tenant-1';
 
@@ -81,12 +82,28 @@ export class FakeOfferStoryRenderer implements IOfferStoryRenderer {
   }
 }
 
+/** Contador de uso em memória; `fail` = rejeita, `hang` = nunca responde. */
+export class FakeUsageRecorder implements IFeatureUsageRecorder {
+  calls: FeatureUsageEvent[] = [];
+  fail = false;
+  hang = false;
+  async increment(event: FeatureUsageEvent): Promise<void> {
+    this.calls.push(event);
+    if (this.hang) return new Promise(() => {});
+    if (this.fail) throw new Error('usage down');
+  }
+  async markOnce(event: FeatureUsageEvent): Promise<void> {
+    return this.increment(event);
+  }
+}
+
 export interface OfferStoryFakes {
   entitlements: FakeEntitlementReader;
   resolveProduct: FakeResolveProduct;
   imageFetcher: FakeImageFetcher;
   ai: FakeAiTextGenerator;
   renderer: FakeOfferStoryRenderer;
+  usage: FakeUsageRecorder;
 }
 
 /** Deps completas com fakes; timeout da IA curto para o teste de IA travada. */
@@ -94,6 +111,7 @@ export function makeOfferStoryDeps(): { deps: Required<OfferStoryUseCaseDeps>; f
   const fakes: OfferStoryFakes = {
     entitlements: new FakeEntitlementReader(), resolveProduct: new FakeResolveProduct(),
     imageFetcher: new FakeImageFetcher(), ai: new FakeAiTextGenerator(), renderer: new FakeOfferStoryRenderer(),
+    usage: new FakeUsageRecorder(),
   };
-  return { deps: { ...fakes, aiTimeoutMs: 20 }, fakes };
+  return { deps: { ...fakes, aiTimeoutMs: 20, now: () => new Date('2026-11-19T15:00:00Z') }, fakes };
 }

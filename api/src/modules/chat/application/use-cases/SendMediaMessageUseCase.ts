@@ -39,6 +39,8 @@ import {
 import { logger } from '../../../../shared/logger/logger';
 import { resolveConversationTarget } from './resolveConversationTarget';
 import type { ChatMessageDto } from './ListMessagesUseCase';
+import { type IFeatureUsageRecorder, recordFeatureUsage } from '../../../metrics/domain/contracts/IFeatureUsageRecorder';
+import { CHAT_SEND_USAGE_KEY, type ChatSendOrigin } from './SendMessageUseCase';
 
 export interface SendMediaMessageInput {
   tenantId: string;
@@ -47,6 +49,8 @@ export interface SendMediaMessageInput {
   uploadId: string;
   caption?: string | null;
   quotedMessageId?: string | null;
+  /** Obrigatório: só `PANEL` soma no uso do chat. */
+  origin: ChatSendOrigin;
 }
 
 export interface SendMediaMessageOutput {
@@ -69,6 +73,9 @@ export interface SendMediaMessageDeps {
   tmpPathFor: (uploadId: string, ext: string) => string;
   /** Foto WebP vira JPEG: o app Android não exibe foto WebP (ver `inlineImageFormat`). */
   images: IImageTranscoder;
+  /** Contador de uso (fail-open). Sem ele nada é contado. */
+  usage?: IFeatureUsageRecorder | null;
+  now?: () => Date;
 }
 
 /** Arquivo pronto e promovido, com o que a mensagem precisa gravar. */
@@ -173,6 +180,15 @@ export class SendMediaMessageUseCase {
         lastMessageAt:      message.createdAt,
       }),
     );
+
+    // Uso do chat: mídia gravada pelo painel conta (confirmação repetida já voltou acima); sem esperar
+    if (input.origin === 'PANEL') {
+      recordFeatureUsage(
+        this.deps.usage,
+        { tenantId, featureKey: CHAT_SEND_USAGE_KEY, kind: 'ACTION', at: (this.deps.now ?? (() => new Date()))() },
+        (err) => logger.warn({ err: (err as Error)?.name }, 'chat media send usage not counted'),
+      );
+    }
 
     // 10. Enfileira; recusa (fila cheia ou em drain) vira FAILED reenviável
     const accepted = queue.enqueue({

@@ -1,4 +1,5 @@
 import { prisma } from '../../../shared/database/prisma.client';
+import { featureUsageRecorder } from '../../metrics/infrastructure/featureUsageContainer';
 import { currentWorkerId } from '../../../shared/config/workerIdentity';
 import { SecretCipherFactory } from '../../../shared/security/SecretCipherFactory';
 import { mediaContainer } from '../../media/infrastructure/mediaContainer';
@@ -103,6 +104,7 @@ const previewImage = lazy(
 const sender       = lazy(() => new ChatOfferMessageSender(undefined, {
   previewImage: previewImage,
   files:        () => mediaContainer.mediaFileStore,
+  usage:        featureUsageRecorder,
 }));
 const texts        = lazy(() => new OfferTextComposer(new LazyAiTextGenerator(), entitlements()));
 
