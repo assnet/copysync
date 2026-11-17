@@ -59,6 +59,8 @@ import type { InfraCostSnapshotJob } from '../modules/metrics/infrastructure/job
 import { startInfraCostSnapshotJob } from '../modules/metrics/infrastructure/infraCostSnapshotStart';
 import { createOfferHuntSchedulerJob, type OfferHuntSchedulerJob } from '../modules/campaigns/infrastructure/jobs/OfferHuntSchedulerJob';
 import { startOfferHunterSchedulerJob } from '../modules/campaigns/infrastructure/offerHunterSchedulerStart';
+import { startSaverExtractionJob } from '../modules/saver/infrastructure/jobs/startSaverExtractionJob';
+import { createSaverExtractionJob } from '../modules/saver/infrastructure/jobs/createSaverExtractionJob';
 import type { IMessagingEngine } from '../modules/messaging/domain/contracts/IMessagingEngine';
 import type { ISessionSocketControl } from '../modules/messaging/domain/contracts/ISessionSocketControl';
 import { currentRole, runsSessions, type ProcessRole } from '../shared/config/processRole';
@@ -322,6 +324,15 @@ async function start(): Promise<void> {
     logger.info('Link rotation member sync job started');
   }
 
+  // ── Saver: extração de membros dos grupos (.specs/features/saver T14) ───────
+  // Só worker/all e com SAVER_EXTRACTION_WORKER_ENABLED; cada processo lê só as próprias sessões (lease),
+  // tick de 2 s sem sobreposição; manutenção 1×/h no cluster via lease `saver-maintenance`.
+  const saverExtractionJob = startSaverExtractionJob(
+    jobs.has('saverExtraction') && env.SAVER_EXTRACTION_WORKER_ENABLED,
+    createSaverExtractionJob,
+  );
+  if (saverExtractionJob) logger.info('Saver extraction job started');
+
   // ── Hub outbox worker + retention ─────────────────────────────────────────
   let hubOutboxWorker: HubOutboxWorker | null = null;
   let extensionRetentionJob: ExtensionRetentionJob | null = null;
@@ -579,6 +590,11 @@ async function start(): Promise<void> {
       await linkRotationMemberSyncJob?.stop();
     } catch (err) {
       logger.error({ err }, 'Link rotation member sync job stop failed during shutdown');
+    }
+    try {
+      await saverExtractionJob?.stop();
+    } catch (err) {
+      logger.error({ err }, 'Saver extraction job stop failed during shutdown');
     }
     try {
       await hubOutboxWorker?.stop();
