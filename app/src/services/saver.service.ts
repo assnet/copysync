@@ -1,7 +1,7 @@
 import { apiClient } from './apiClient';
 import type { ApiSuccess } from '@/types/api.types';
 import type {
-  RequestSaverExtractionInput, SaverAccess, SaverConfig, SaverExportFile, SaverExportGrant, SaverExportInput,
+  RequestSaverExtractionInput, SaverAccess, SaverConfigDetails, SaverExportFile, SaverExportGrant, SaverExportGrantUpdate, SaverExportInput,
   SaverExtraction, SaverGroup, SaverOverview, SaverSessionGroup, UpdateSaverConfigInput,
 } from '@/features/saver/types';
 
@@ -57,9 +57,10 @@ export const saverService = {
     return res.data.data;
   },
 
+  /** Cancela o que ainda está na fila; devolve a extração atualizada. */
   async cancelExtraction(id: string): Promise<SaverExtraction> {
-    const res = await apiClient.post<ApiSuccess<SaverExtraction>>(`${BASE}/extractions/${enc(id)}/cancel`);
-    return res.data.data;
+    const res = await apiClient.post<ApiSuccess<{ extraction: SaverExtraction; cancelledItems: number }>>(`${BASE}/extractions/${enc(id)}/cancel`);
+    return res.data.data.extraction;
   },
 
   async listGroups(): Promise<SaverGroup[]> {
@@ -77,18 +78,18 @@ export const saverService = {
     return res.data.data;
   },
 
-  async setExportGrant(userId: string, allowed: boolean): Promise<SaverExportGrant> {
-    const res = await apiClient.put<ApiSuccess<SaverExportGrant>>(`${BASE}/permissions/${enc(userId)}`, { export: allowed });
+  async setExportGrant(userId: string, allowed: boolean): Promise<SaverExportGrantUpdate> {
+    const res = await apiClient.put<ApiSuccess<SaverExportGrantUpdate>>(`${BASE}/permissions/${enc(userId)}`, { export: allowed });
     return res.data.data;
   },
 
-  async getConfig(): Promise<SaverConfig> {
-    const res = await apiClient.get<ApiSuccess<SaverConfig>>(`${BASE}/config`);
+  async getConfig(): Promise<SaverConfigDetails> {
+    const res = await apiClient.get<ApiSuccess<SaverConfigDetails>>(`${BASE}/config`);
     return res.data.data;
   },
 
-  async updateConfig(body: UpdateSaverConfigInput): Promise<SaverConfig> {
-    const res = await apiClient.put<ApiSuccess<SaverConfig>>(`${BASE}/config`, body);
+  async updateConfig(body: UpdateSaverConfigInput): Promise<SaverConfigDetails> {
+    const res = await apiClient.put<ApiSuccess<SaverConfigDetails>>(`${BASE}/config`, body);
     return res.data.data;
   },
 

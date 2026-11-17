@@ -86,18 +86,36 @@ export interface RequestSaverExtractionInput {
 
 export type UpdateSaverConfigInput = Partial<SaverConfig>;
 
+/** `GET`/`PUT /saver/config`: a configuração com o que o plano permite e se já foi gravada. */
+export interface SaverConfigDetails extends SaverConfig {
+  /** O plano inclui a atualização diária. */
+  autoRefreshAvailable: boolean;
+  /** `false` = ainda nos padrões (nunca gravada). */
+  configured: boolean;
+  updatedAt: string | null;
+}
+
 /** `GET /saver/permissions`: operadores do tenant e a liberação de exportar. */
 export interface SaverExportGrant {
   userId: string;
   name: string;
   email: string;
-  role: SaverRole;
-  export: boolean;
+  canExport: boolean;
+}
+
+/** `PUT /saver/permissions/:userId`. */
+export interface SaverExportGrantUpdate {
+  userId: string;
+  canExport: boolean;
 }
 
 export interface SaverExportOptions {
-  namePrefix?: string | null;
+  /** Prefixo do nome (até 40 caracteres). */
+  prefix?: string | null;
   excludeAdmins?: boolean;
+  /** Só quem ainda está no grupo. */
+  onlyActive?: boolean;
+  /** Uma linha por contato e grupo (CSV ganha a coluna `Grupo`). */
   onePerGroup?: boolean;
   onlyWithPhone?: boolean;
 }
@@ -106,7 +124,7 @@ export interface SaverExportOptions {
 export interface SaverExportInput {
   format: SaverExportFormat;
   groupIds: string[] | 'all';
-  options: SaverExportOptions;
+  options?: SaverExportOptions;
 }
 
 /** Arquivo pronto para o download por `Blob`. */

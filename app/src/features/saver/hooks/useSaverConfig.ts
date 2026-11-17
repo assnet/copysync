@@ -2,10 +2,10 @@ import { useCallback, useState } from 'react';
 import { useTenant } from '@/contexts/TenantContext';
 import { saverService } from '@/services/saver.service';
 import { describeSaverError, type SaverError } from '../errors';
-import type { SaverConfig, UpdateSaverConfigInput } from '../types';
+import type { SaverConfigDetails, UpdateSaverConfigInput } from '../types';
 import { useSaverResource, type SaverResource } from './useSaverResource';
 
-export interface SaverConfigState extends SaverResource<SaverConfig> {
+export interface SaverConfigState extends SaverResource<SaverConfigDetails> {
   saving: boolean;
   saveError: SaverError | null;
   /** Grava e troca o dado local pela resposta; `false` em falha (o rascunho fica). */
