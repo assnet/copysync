@@ -10,6 +10,7 @@ import type {
   LocalBillingState, LocalProductState, LocalTenantStatus, ProductReconcileEntry, ReconcileDecision,
 } from '../../domain/services/subscriptionReconcile';
 import { syncPlanEntitlements } from '../../billing/syncPlanEntitlements';
+import { SHARED_KEYS } from '../../../tenants/domain/sharedEntitlements';
 import { mergeProductSharedEntitlements, syncProductPlanEntitlements, writeBillingProductRow } from '../../billing/productBilling';
 import { createTenantProductRepository } from '../../../tenants/infrastructure/productAccessContainer';
 import type { ProductKey } from '../../../tenants/domain/services/resolveProductAccess';
@@ -144,7 +145,10 @@ export class PrismaBillingReconcileRepository implements IBillingReconcileReposi
         data.suspendedAt = null;
       }
       await tx.tenant.update({ where: { id: row.id }, data });
-      await syncPlanEntitlements(tx, row.id, decision.planSlug);
+      // Tenant com linha de produto (inclusive ADMIN sem assinatura na central): chaves compartilhadas só pelo
+      // merge, senão o preset de Afiliados apagaria a contribuição do outro produto (PROD-18).
+      const productAware = products.size > 0 || Boolean(decision.products);
+      await syncPlanEntitlements(tx, row.id, decision.planSlug, productAware ? { excludeKeys: SHARED_KEYS } : undefined);
       await this.advanceWatermark(tx, row.id, decision.advanceTo);
       await this.audit(tx, row, decision.activate ? 'TENANT_STATUS_CHANGED' : 'TENANT_UPDATED', {
         reasons: decision.reasons,
@@ -154,6 +158,7 @@ export class PrismaBillingReconcileRepository implements IBillingReconcileReposi
         lastSeq: decision.advanceTo?.toString() ?? null,
       });
       if (decision.products) await this.applyProducts(tx, row.id, decision.products, { suspended: false });
+      else if (productAware) await mergeProductSharedEntitlements(tx, row.id);
       return { decision, found: true };
     }, TX_OPTIONS);
   }
