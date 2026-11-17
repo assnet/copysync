@@ -75,11 +75,23 @@ describe('pickGrantingSubscription', () => {
   it('unknownPlanPermissions lista só o que não é nível do CopySync', () => {
     expect(unknownPlanPermissions(['COPYSYNC_PRO', 'OUTRA', ' COPYSYNC_MAX '])).toEqual(['OUTRA']);
     expect(unknownPlanPermissions(undefined)).toEqual([]);
+    expect(unknownPlanPermissions(null)).toEqual([]);
+    // Caixa e espaços: só trim; minúscula é desconhecida; ordem e duplicatas preservadas
+    expect(unknownPlanPermissions(['copysync_pro', 'X', 'X', ' COPYSYNC_LITE'])).toEqual(['copysync_pro', 'X', 'X']);
+    // Permissão de produto conhecido (Saver) não gera aviso
+    expect(unknownPlanPermissions(['SAVER_PRO', ' SAVER_MAX ', 'SAVER_GOLD', 'saver_lite'])).toEqual(['SAVER_GOLD', 'saver_lite']);
   });
 
   it('acesso só com plano desconhecido → planSlug null', () => {
     expect(pickGrantingSubscription([sub({ planSlug: 'x' })], NOW, G)).toEqual({ grants: true, sub: null, planSlug: null });
     expect(pickGrantingSubscription([], NOW, G)).toEqual({ grants: false, sub: null, planSlug: null });
+  });
+
+  it('assinatura conhecida sem acesso não define plano; desconhecida com acesso mantém grants', () => {
+    const subs = [sub({ id: 'a', planSlug: 'copysync-max-mensal', billingStatus: 'REFUNDED' }), sub({ id: 'b', planSlug: 'x' })];
+    expect(pickGrantingSubscription(subs, NOW, G)).toEqual({ grants: true, sub: null, planSlug: null });
+    const mixed = [sub({ id: 'a', planSlug: 'x' }), sub({ id: 'b', planSlug: 'copysync-lite-mensal' })];
+    expect(pickGrantingSubscription(mixed, NOW, G)).toMatchObject({ grants: true, planSlug: 'COPYSYNC_LITE', sub: { id: 'b' } });
   });
 });
 
@@ -135,5 +147,22 @@ describe('decideReconcile', () => {
   it('vencimento da assinatura escolhida vai junto', () => {
     const d = decideReconcile({ ...local, planSlug: null }, snap(5n, [sub({ expiresAt: FUTURE })]), NOW, G);
     expect(d).toMatchObject({ kind: 'apply', expiresAt: new Date(FUTURE), subscriptionId: 's1' });
+  });
+  it('acesso só com plano desconhecido: unknown_plan (sem escrita), mesmo com bloqueio do admin', () => {
+    expect(decideReconcile(local, snap(5n, [sub({ planSlug: 'x' })]), NOW, G)).toEqual({ kind: 'unknown_plan' });
+    expect(decideReconcile({ ...local, adminBlocked: true }, snap(5n, [sub({ planSlug: 'x' })]), NOW, G)).toEqual({ kind: 'unknown_plan' });
+  });
+  it('bloqueio do admin sem nada a mudar: admin_suspended', () => {
+    expect(decideReconcile({ ...local, adminBlocked: true }, snap(5n), NOW, G)).toEqual({ kind: 'admin_suspended' });
+  });
+  it('empate de nível: vencimento mais distante define assinatura e vencimento', () => {
+    const subs = [sub({ id: 'a', expiresAt: '2026-12-01T00:00:00Z' }), sub({ id: 'b', expiresAt: '2027-01-01T00:00:00Z' })];
+    expect(decideReconcile(local, snap(5n, subs), NOW, G))
+      .toMatchObject({ kind: 'apply', reasons: ['expiry_changed'], subscriptionId: 'b', expiresAt: new Date('2027-01-01T00:00:00Z') });
+  });
+  it('watermark atrás da central: aplica só watermark_behind e avança', () => {
+    expect(decideReconcile(local, snap(9n), NOW, G)).toEqual({
+      kind: 'apply', reasons: ['watermark_behind'], planSlug: 'COPYSYNC_PRO', subscriptionId: 's1', expiresAt: null, activate: false, advanceTo: 9n,
+    });
   });
 });

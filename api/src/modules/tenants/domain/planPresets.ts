@@ -3,6 +3,13 @@ import { ENTITLEMENT_KEYS } from './entitlementKeys';
 export const PLAN_SLUGS = ['COPYSYNC_LITE', 'COPYSYNC_PRO', 'COPYSYNC_MAX'] as const;
 export type PlanSlug = (typeof PLAN_SLUGS)[number];
 
+/**
+ * Planos do produto Saver. Fora de `PLAN_SLUGS` de propósito: a ordenação de tier da reconciliação
+ * (Afiliados) não muda. A resolução produto/plano fica em `planCatalog.ts`.
+ */
+export const SAVER_PLAN_SLUGS = ['SAVER_LITE', 'SAVER_PRO', 'SAVER_MAX'] as const;
+export type SaverPlanSlug = (typeof SAVER_PLAN_SLUGS)[number];
+
 const TIER_SLUG: Record<string, PlanSlug> = { lite: 'COPYSYNC_LITE', pro: 'COPYSYNC_PRO', max: 'COPYSYNC_MAX' };
 const BILLING_OFFER_SLUG = /^copysync-(lite|pro|max)-(mensal|anual)$/;
 const BILLING_TEST_OFFER_SLUGS = new Set(['afiliado-dev-anual', 'copysync-dev-anual']);
@@ -136,7 +143,50 @@ export const PLAN_PRESETS: Record<PlanSlug, Record<string, PlanPresetValue>> = {
   },
 };
 
-/** Linhas para o seed (`planEntitlementPreset.upsert`). */
-export function planPresetRows(): { planSlug: PlanSlug; key: string; value: PlanPresetValue }[] {
-  return PLAN_SLUGS.flatMap((planSlug) => Object.entries(PLAN_PRESETS[planSlug]).map(([key, value]) => ({ planSlug, key, value })));
+/**
+ * Presets do Saver (`.specs/features/saver/design.md` §2.1). `null` explícito = ilimitado: no Saver a
+ * chave ausente vale 0, então omitir quebraria o MAX. As compartilhadas (`whatsapp_sessions`,
+ * `telegram_sessions`) ficam aqui para o merge entre produtos (`sharedEntitlements.ts`); o sync do plano
+ * Saver as exclui. `telegram_sessions: 0` é obrigatório (ausente = ilimitado nas sessões).
+ */
+export const SAVER_PLAN_PRESETS: Record<SaverPlanSlug, Record<string, PlanPresetValue>> = {
+  SAVER_LITE: {
+    [ENTITLEMENT_KEYS.WHATSAPP_SESSIONS]: 1,
+    [ENTITLEMENT_KEYS.TELEGRAM_SESSIONS]: 0,
+    [ENTITLEMENT_KEYS.SAVER_GROUPS]: 10,
+    [ENTITLEMENT_KEYS.SAVER_CONTACTS]: 10_000,
+    [ENTITLEMENT_KEYS.SAVER_GROUP_SCANS_PER_DAY]: 20,
+    [ENTITLEMENT_KEYS.SAVER_AUTO_REFRESH_ENABLED]: false,
+  },
+  SAVER_PRO: {
+    [ENTITLEMENT_KEYS.WHATSAPP_SESSIONS]: 1,
+    [ENTITLEMENT_KEYS.TELEGRAM_SESSIONS]: 0,
+    [ENTITLEMENT_KEYS.SAVER_GROUPS]: 50,
+    [ENTITLEMENT_KEYS.SAVER_CONTACTS]: 50_000,
+    [ENTITLEMENT_KEYS.SAVER_GROUP_SCANS_PER_DAY]: 100,
+    [ENTITLEMENT_KEYS.SAVER_AUTO_REFRESH_ENABLED]: true,
+  },
+  SAVER_MAX: {
+    [ENTITLEMENT_KEYS.WHATSAPP_SESSIONS]: 2,
+    [ENTITLEMENT_KEYS.TELEGRAM_SESSIONS]: 0,
+    [ENTITLEMENT_KEYS.SAVER_GROUPS]: null,
+    [ENTITLEMENT_KEYS.SAVER_CONTACTS]: null,
+    [ENTITLEMENT_KEYS.SAVER_GROUP_SCANS_PER_DAY]: 500,
+    [ENTITLEMENT_KEYS.SAVER_AUTO_REFRESH_ENABLED]: true,
+  },
+};
+
+/** Preset de qualquer plano interno conhecido (Afiliados ou Saver); desconhecido = `undefined`. */
+export function presetOf(planSlug: string): Readonly<Record<string, PlanPresetValue>> | undefined {
+  if ((PLAN_SLUGS as readonly string[]).includes(planSlug)) return PLAN_PRESETS[planSlug as PlanSlug];
+  if ((SAVER_PLAN_SLUGS as readonly string[]).includes(planSlug)) return SAVER_PLAN_PRESETS[planSlug as SaverPlanSlug];
+  return undefined;
+}
+
+/** Linhas para o seed (`planEntitlementPreset.upsert`): Afiliados e Saver. */
+export function planPresetRows(): { planSlug: PlanSlug | SaverPlanSlug; key: string; value: PlanPresetValue }[] {
+  return [
+    ...PLAN_SLUGS.flatMap((planSlug) => Object.entries(PLAN_PRESETS[planSlug]).map(([key, value]) => ({ planSlug, key, value }))),
+    ...SAVER_PLAN_SLUGS.flatMap((planSlug) => Object.entries(SAVER_PLAN_PRESETS[planSlug]).map(([key, value]) => ({ planSlug, key, value }))),
+  ];
 }

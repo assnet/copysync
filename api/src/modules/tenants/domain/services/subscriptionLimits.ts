@@ -50,8 +50,17 @@ const FEATURES_DEFAULT_ON: ReadonlySet<EntitlementKey> = new Set([
   ENTITLEMENT_KEYS.AI_REWRITE_ENABLED,
 ]);
 
-/** Chaves que não aparecem na tela. Chave nova entra na lista ou aqui, com motivo. Hoje nenhuma. */
-export const SUBSCRIPTION_HIDDEN_KEYS: readonly EntitlementKey[] = [];
+/**
+ * Chaves que não aparecem na tela. Chave nova entra na lista ou aqui, com motivo.
+ * Saver: limites do produto Saver; a tela por produto (`product-access` T17/T22) decide como exibir.
+ * Até lá ficam fora para não mostrar "0" de produto não contratado na assinatura de Afiliados.
+ */
+export const SUBSCRIPTION_HIDDEN_KEYS: readonly EntitlementKey[] = [
+  ENTITLEMENT_KEYS.SAVER_GROUPS,
+  ENTITLEMENT_KEYS.SAVER_GROUP_SCANS_PER_DAY,
+  ENTITLEMENT_KEYS.SAVER_CONTACTS,
+  ENTITLEMENT_KEYS.SAVER_AUTO_REFRESH_ENABLED,
+];
 
 /** Chaves numéricas em que ausente não é "sem limite": o limite passa pela função do recurso. */
 const LIMIT_OF: ReadonlyMap<EntitlementKey, (value: number | null) => number> = new Map([

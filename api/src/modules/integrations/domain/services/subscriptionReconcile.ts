@@ -1,4 +1,6 @@
 import { PLAN_SLUGS, resolveEffectivePlanSlug, type PlanSlug } from '../../../tenants/domain/planPresets';
+import { ALL_PLAN_SLUGS, resolvePlan, type AnyPlanSlug } from '../../../tenants/domain/planCatalog';
+import type { ProductKey } from '../../../tenants/domain/services/resolveProductAccess';
 
 /**
  * Regras puras da reconciliação de assinaturas com a central (sem banco, sem HTTP).
@@ -41,9 +43,31 @@ export interface LocalBillingState {
   /** `Tenant.adminBlockedAt` preenchido: bloqueio do super-admin; a reconciliação nunca muda o status. */
   adminBlocked: boolean;
   subscriptionExpiresAt: Date | null;
+  /**
+   * Linhas de `tenant_products` (chave = produto). Ausente = estado local desconhecido: havendo assinatura
+   * de produto novo, a decisão leva `products_changed` (o repositório grava de forma idempotente).
+   */
+  products?: ReadonlyMap<ProductKey, LocalProductState>;
 }
 
-export type ReconcileReason = 'no_plan' | 'plan_changed' | 'expiry_changed' | 'billing_suspended' | 'billing_cancelled' | 'watermark_behind';
+export interface LocalProductState {
+  active: boolean;
+  planSlug: string | null;
+  expiresAt: Date | null;
+}
+
+/** Estado esperado de um produto pela central (só quando há assinatura de produto novo). */
+export interface ProductReconcileEntry {
+  product: ProductKey;
+  active: boolean;
+  /** null = ativo sem plano conhecido (plano desconhecido conta a favor de Afiliados) ou inativo. */
+  planSlug: AnyPlanSlug | null;
+  subscriptionId: string | null;
+  expiresAt: Date | null;
+}
+
+export type ReconcileReason =
+  | 'no_plan' | 'plan_changed' | 'expiry_changed' | 'billing_suspended' | 'billing_cancelled' | 'watermark_behind' | 'products_changed';
 
 export type ReconcileDecision =
   | {
@@ -56,9 +80,22 @@ export type ReconcileDecision =
       activate: boolean;
       /** Novo watermark (só sobe); null = central sem evento, mantém. */
       advanceTo: bigint | null;
+      /** Só quando há assinatura de produto novo. */
+      products?: ProductReconcileEntry[];
+    }
+  /**
+   * Há assinatura de produto novo e nenhum plano de Afiliados conhecido dá acesso: só linhas de produto,
+   * status (`activate`) e watermark; nunca `Tenant.planSlug` nem entitlements de Afiliados.
+   */
+  | {
+      kind: 'products';
+      reasons: ReconcileReason[];
+      products: ProductReconcileEntry[];
+      activate: boolean;
+      advanceTo: bigint | null;
     }
   /** Central tem assinaturas e nenhuma dá acesso agora; tenant ACTIVE → SUSPENDED (mesmo efeito do `payment_failed`). */
-  | { kind: 'suspend'; advanceTo: bigint | null }
+  | { kind: 'suspend'; advanceTo: bigint | null; products?: ProductReconcileEntry[] }
   | { kind: 'noop' }
   /** Central sem nenhuma assinatura do cliente (cliente desconhecido) e tenant ACTIVE: não suspende. */
   | { kind: 'unknown_customer' }
@@ -97,9 +134,12 @@ export function subscriptionGrantsAccess(sub: HubSubscription, now: Date, graceM
   return Number.isFinite(exp) && exp + graceMs >= now.getTime();
 }
 
-/** Permissões recebidas que não são nível do CopySync (só para log; nunca derrubam o evento). */
+/**
+ * Permissões recebidas que não são nível de nenhum produto conhecido (`ALL_PLAN_SLUGS`: Afiliados e
+ * produtos novos, como `SAVER_*`). Só para log; nunca derrubam o evento.
+ */
 export function unknownPlanPermissions(permissions: readonly string[] | null | undefined): string[] {
-  return (permissions ?? []).filter((p) => !(PLAN_SLUGS as readonly string[]).includes(p.trim()));
+  return (permissions ?? []).filter((p) => !(ALL_PLAN_SLUGS as readonly string[]).includes(p.trim()));
 }
 
 const TIER = new Map<string, number>(PLAN_SLUGS.map((slug, i) => [slug, i]));
@@ -129,6 +169,98 @@ export function pickGrantingSubscription(
   return { grants: granting.length > 0, sub: best?.s ?? null, planSlug: best?.slug ?? null };
 }
 
+export interface ProductGrant {
+  grants: boolean;
+  sub: HubSubscription | null;
+  planSlug: AnyPlanSlug | null;
+}
+
+export interface ProductGrantingPick {
+  /** Produtos com ao menos uma assinatura classificada (com ou sem acesso). */
+  byProduct: Map<ProductKey, ProductGrant>;
+  /** Alguma assinatura de plano desconhecido dá acesso. */
+  unknownGrants: boolean;
+  /** Alguma assinatura dá acesso (inclui plano desconhecido, como hoje). */
+  anyGrants: boolean;
+  /** Afiliados com acesso: plano de Afiliados ou plano desconhecido (é assim que o tenant é mantido hoje). */
+  legacyGrants: boolean;
+  /** Há assinatura de Afiliados ou de plano desconhecido (com ou sem acesso). */
+  hasLegacy: boolean;
+}
+
+const ALL_TIER = new Map<string, number>(ALL_PLAN_SLUGS.map((slug, i) => [slug, i]));
+
+/** Negativo = `a` vem antes: maior plano, vencimento mais distante, menor id. */
+function compareGranting(a: HubSubscription, aPlan: AnyPlanSlug, b: HubSubscription, bPlan: AnyPlanSlug): number {
+  return (ALL_TIER.get(bPlan)! - ALL_TIER.get(aPlan)!)
+    || (expiryRank(b.expiresAt) - expiryRank(a.expiresAt))
+    || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+}
+
+/**
+ * Por produto, a assinatura que define o plano (mesma ordem de `pickGrantingSubscription`: maior plano,
+ * vencimento mais distante, menor id). Classifica por `resolvePlan(planSlug, permissions)`.
+ */
+export function pickGrantingByProduct(subs: readonly HubSubscription[], now: Date, graceMs: number): ProductGrantingPick {
+  const byProduct = new Map<ProductKey, ProductGrant>();
+  let unknownGrants = false;
+  let anyGrants = false;
+  let hasLegacy = false;
+  for (const s of subs) {
+    const grants = subscriptionGrantsAccess(s, now, graceMs);
+    anyGrants ||= grants;
+    const plan = resolvePlan(s.planSlug, s.permissions);
+    if (!plan) {
+      hasLegacy = true;
+      unknownGrants ||= grants;
+      continue;
+    }
+    if (plan.product === 'AFFILIATES') hasLegacy = true;
+    const cur = byProduct.get(plan.product);
+    if (!cur) {
+      byProduct.set(plan.product, grants ? { grants, sub: s, planSlug: plan.planSlug } : { grants, sub: null, planSlug: null });
+      continue;
+    }
+    if (grants && (!cur.grants || compareGranting(s, plan.planSlug, cur.sub!, cur.planSlug!) < 0)) {
+      byProduct.set(plan.product, { grants: true, sub: s, planSlug: plan.planSlug });
+    }
+  }
+  const legacyGrants = (byProduct.get('AFFILIATES')?.grants ?? false) || unknownGrants;
+  return { byProduct, unknownGrants, anyGrants, legacyGrants, hasLegacy };
+}
+
+/** Entradas por produto: Afiliados só se há assinatura dele ou de plano desconhecido; produto novo sempre. */
+function productEntries(pick: ProductGrantingPick): ProductReconcileEntry[] {
+  const entries: ProductReconcileEntry[] = [];
+  const entry = (product: ProductKey, active: boolean, g: ProductGrant | undefined): ProductReconcileEntry => {
+    const sub = active && g?.grants ? g.sub : null;
+    return {
+      product,
+      active,
+      planSlug: sub ? g!.planSlug : null,
+      subscriptionId: sub?.id ?? null,
+      expiresAt: sub?.expiresAt ? new Date(sub.expiresAt) : null,
+    };
+  };
+  if (pick.hasLegacy) entries.push(entry('AFFILIATES', pick.legacyGrants, pick.byProduct.get('AFFILIATES')));
+  for (const [product, g] of pick.byProduct) {
+    if (product !== 'AFFILIATES') entries.push(entry(product, g.grants, g));
+  }
+  return entries;
+}
+
+/** Linha local diferente da esperada. Sem linha de Afiliados = ativo (legado). Estado local ausente = mudou. */
+function productsChanged(local: LocalBillingState, entries: readonly ProductReconcileEntry[]): boolean {
+  if (!local.products) return true;
+  return entries.some((e) => {
+    const row = local.products!.get(e.product);
+    if (!row) return !(e.product === 'AFFILIATES' && e.active && e.planSlug === null);
+    if (row.active !== e.active) return true;
+    if (!e.active) return false;
+    return row.planSlug !== e.planSlug || (row.expiresAt?.getTime() ?? null) !== (e.expiresAt?.getTime() ?? null);
+  });
+}
+
 /**
  * Decide o que fazer com um tenant. Chamada com o estado lido sob trava, para não regredir estado
  * aplicado por evento mais novo do webhook. Suspende só quando a central lista assinaturas do cliente e
@@ -139,12 +271,29 @@ export function decideReconcile(local: LocalBillingState, snapshot: HubSubscript
   const localSeq = local.lastBillingEventSeq;
   if (localSeq !== null && (lastSeq === null || localSeq > lastSeq)) return { kind: 'stale' };
   const pick = pickGrantingSubscription(snapshot.subscriptions, now, graceMs);
+  const byProduct = pickGrantingByProduct(snapshot.subscriptions, now, graceMs);
+  const newProduct = [...byProduct.byProduct.keys()].some((p) => p !== 'AFFILIATES');
+  // Sem assinatura de produto novo: decisão idêntica à de antes (`products` nunca aparece)
+  const products = newProduct ? productEntries(byProduct) : undefined;
   if (!pick.grants) {
     if (local.adminBlocked) return { kind: 'admin_suspended' };
     if (local.status !== 'ACTIVE') return { kind: 'noop' };
-    return snapshot.subscriptions.length === 0 ? { kind: 'unknown_customer' } : { kind: 'suspend', advanceTo: lastSeq };
+    if (snapshot.subscriptions.length === 0) return { kind: 'unknown_customer' };
+    return products ? { kind: 'suspend', advanceTo: lastSeq, products } : { kind: 'suspend', advanceTo: lastSeq };
   }
-  if (!pick.planSlug || !pick.sub) return { kind: 'unknown_plan' };
+  if (!pick.planSlug || !pick.sub) {
+    if (!products) return { kind: 'unknown_plan' };
+    // Produto novo decide sozinho: Afiliados só por plano desconhecido (ativo, sem plano) ou cortado
+    const newGrants = [...byProduct.byProduct].some(([p, g]) => p !== 'AFFILIATES' && g.grants);
+    const reasons: ReconcileReason[] = [];
+    if (productsChanged(local, products)) reasons.push('products_changed');
+    // Plano desconhecido nunca reativou (`unknown_plan`); só produto novo com acesso reativa
+    const activate = newGrants && local.status !== 'ACTIVE' && !local.adminBlocked;
+    if (activate) reasons.push(local.status === 'SUSPENDED' ? 'billing_suspended' : 'billing_cancelled');
+    if (lastSeq !== null && (localSeq === null || localSeq < lastSeq)) reasons.push('watermark_behind');
+    if (reasons.length === 0) return local.adminBlocked ? { kind: 'admin_suspended' } : newGrants ? { kind: 'noop' } : { kind: 'unknown_plan' };
+    return { kind: 'products', reasons, products, activate, advanceTo: lastSeq };
+  }
 
   const reasons: ReconcileReason[] = [];
   if (local.planSlug === null) reasons.push('no_plan');
@@ -155,6 +304,7 @@ export function decideReconcile(local: LocalBillingState, snapshot: HubSubscript
   const activate = local.status !== 'ACTIVE' && !local.adminBlocked;
   if (activate) reasons.push(local.status === 'SUSPENDED' ? 'billing_suspended' : 'billing_cancelled');
   if (lastSeq !== null && (localSeq === null || localSeq < lastSeq)) reasons.push('watermark_behind');
+  if (products && productsChanged(local, products)) reasons.push('products_changed');
   if (reasons.length === 0) return local.adminBlocked ? { kind: 'admin_suspended' } : { kind: 'noop' };
 
   return {
@@ -165,5 +315,6 @@ export function decideReconcile(local: LocalBillingState, snapshot: HubSubscript
     expiresAt: expected,
     activate,
     advanceTo: lastSeq,
+    ...(products ? { products } : {}),
   };
 }
