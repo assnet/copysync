@@ -21,6 +21,7 @@ export interface PlatformContactsPage {
 /** Uma extração do contato: em qual conta, em qual grupo e quando. */
 export interface PlatformContactLink {
   tenantId: string;
+  tenantName: string;
   groupId: string;
   groupName: string;
   name: string | null;
@@ -28,6 +29,18 @@ export interface PlatformContactLink {
   firstExtractedAt: string;
   lastExtractedAt: string;
   leftAt: string | null;
+}
+
+/** Conta com vínculo na base (`GET /admin/saver/tenants`), para o seletor do filtro. */
+export interface PlatformTenantOption {
+  id: string;
+  name: string;
+}
+
+export interface PlatformTenantsPage {
+  items: PlatformTenantOption[];
+  /** Cursor assinado (opaco) da próxima página; null = fim. */
+  nextCursor: string | null;
 }
 
 export interface PlatformContactDetail {

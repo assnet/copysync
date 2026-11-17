@@ -1,11 +1,10 @@
-import { useMemo } from 'react';
 import { Eraser, Search } from 'lucide-react';
 import { Box, Button, InputAdornment, MenuItem, TextField, Tooltip } from '@mui/material';
 import { AppIcon } from '@/components';
-import { useTenant } from '@/contexts/TenantContext';
 import { Blurred, useBlur } from '@/features/privacy';
 import { saverAdminStrings as s } from './strings';
 import { EMPTY_PLATFORM_FILTERS, type PlatformContactFilters } from './types';
+import { usePlatformTenants } from './usePlatformTenants';
 
 interface Props {
   value: PlatformContactFilters;
@@ -13,14 +12,25 @@ interface Props {
   periodInvalid: boolean;
 }
 
-/** Busca, conta e período. As contas do seletor são as que o usuário enxerga (`GET /tenants`). */
+/** Valores de ação no menu do seletor (não são contas). */
+const MORE = '__more__';
+const RETRY = '__retry__';
+
+/**
+ * Busca, conta e período. As contas do seletor vêm da API (só as com vínculo na base, página do servidor
+ * por cursor, ordem por nome); conta escolhida fora das páginas carregadas aparece pelo id curto.
+ */
 export function PlatformContactsFilters({ value, onChange, periodInvalid }: Props) {
-  const { tenants } = useTenant();
+  const { tenants: options, hasMore, loading, failed, loadMore, reload } = usePlatformTenants();
   const blurTenant = useBlur('saverAdmin.tenantNames');
-  const options = useMemo(() => [...tenants].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')), [tenants]);
   const set = (patch: Partial<PlatformContactFilters>) => onChange({ ...value, ...patch });
   const dirty = JSON.stringify(value) !== JSON.stringify(EMPTY_PLATFORM_FILTERS);
-  const tenantLabel = (id: string) => options.find((t) => t.id === id)?.name ?? id;
+  const tenantLabel = (id: string) => options.find((t) => t.id === id)?.name ?? s.detail.unknownTenant(id);
+  const pickTenant = (v: string) => {
+    if (v === MORE) return loadMore();
+    if (v === RETRY) return reload();
+    set({ tenantId: v });
+  };
 
   return (
     <Box
@@ -42,7 +52,7 @@ export function PlatformContactsFilters({ value, onChange, periodInvalid }: Prop
           size="small"
           label={s.filters.tenant}
           value={value.tenantId}
-          onChange={(e) => set({ tenantId: e.target.value })}
+          onChange={(e) => pickTenant(e.target.value)}
           SelectProps={{
             displayEmpty: true,
             renderValue: (v) => (v ? <Blurred when={blurTenant} inline>{tenantLabel(String(v))}</Blurred> : s.filters.allTenants),
@@ -53,6 +63,9 @@ export function PlatformContactsFilters({ value, onChange, periodInvalid }: Prop
           {options.map((t) => (
             <MenuItem key={t.id} value={t.id}><Blurred when={blurTenant} inline>{t.name}</Blurred></MenuItem>
           ))}
+          {loading && <MenuItem disabled value="__loading__">{s.filters.tenantsLoading}</MenuItem>}
+          {!loading && failed && <MenuItem value={RETRY} sx={{ color: 'error.main' }}>{s.filters.tenantsError}</MenuItem>}
+          {!loading && !failed && hasMore && <MenuItem value={MORE} sx={{ color: 'primary.main' }}>{s.filters.tenantsMore}</MenuItem>}
         </TextField>
       </Tooltip>
       <TextField

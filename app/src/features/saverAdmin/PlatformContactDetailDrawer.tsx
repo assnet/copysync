@@ -1,10 +1,8 @@
-import { useMemo } from 'react';
 import { ShieldCheck, Users, X } from 'lucide-react';
 import {
   Alert, Box, Button, Chip, Divider, Drawer, IconButton, List, ListItem, Skeleton, Stack, Tooltip, Typography,
 } from '@mui/material';
 import { AppIcon } from '@/components';
-import { useTenant } from '@/contexts/TenantContext';
 import { Blurred, useBlur } from '@/features/privacy';
 import { useSaverResource } from '@/features/saver/hooks/useSaverResource';
 import { saverAdminService } from '@/services/saverAdmin.service';
@@ -22,8 +20,6 @@ interface Props {
 
 /** Extrações do contato: conta, grupo, data e hora. Recarregado pelo id (nunca salvo). */
 export function PlatformContactDetailDrawer({ contactId, contact, onClose }: Props) {
-  const { tenants } = useTenant();
-  const tenantNames = useMemo(() => new Map(tenants.map((t) => [t.id, t.name])), [tenants]);
   const blurName = useBlur('saverAdmin.contactNames');
   const blurPhone = useBlur('saverAdmin.contactPhones');
   const blurTenant = useBlur('saverAdmin.tenantNames');
@@ -79,7 +75,7 @@ export function PlatformContactDetailDrawer({ contactId, contact, onClose }: Pro
                     <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1}>
                       <Blurred when={blurTenant} inline>
                         <Typography component="span" variant="subtitle2">
-                          {tenantNames.get(l.tenantId) ?? s.detail.unknownTenant(l.tenantId)}
+                          {l.tenantName || s.detail.unknownTenant(l.tenantId)}
                         </Typography>
                       </Blurred>
                       {l.isAdmin && (
