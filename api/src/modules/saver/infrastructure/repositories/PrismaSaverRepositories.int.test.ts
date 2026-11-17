@@ -160,6 +160,31 @@ describe('fila', () => {
   });
 });
 
+describe('pedido de super admin (SAVER-47)', () => {
+  it('tenant sem produto: cancela só os pendentes de pedido comum; o do super admin segue', async () => {
+    const t = await makeTenant('sa');
+    const s = await makeSession(t);
+    const root = await prisma.user.create({ data: { email: `int-sv-${stamp}-root@x.dev`, name: 'Root', isSuperAdmin: true } });
+    const op = await prisma.user.create({ data: { email: `int-sv-${stamp}-op@x.dev`, name: 'Op' } });
+    const g1 = await makeGroup(t, s, `sa1-${stamp}@g.us`);
+    const g2 = await makeGroup(t, s, `sa2-${stamp}@g.us`);
+    const g3 = await makeGroup(t, s, `sa3-${stamp}@g.us`);
+    const base = { tenantId: t, sessionId: s, trigger: SaverExtractionTrigger.MANUAL, now };
+    const byRoot = await queue.enqueue({ ...base, requestedByUserId: root.id, groupIds: [g1] });
+    const byOp = await queue.enqueue({ ...base, requestedByUserId: op.id, groupIds: [g2] });
+    const byNobody = await queue.enqueue({ ...base, requestedByUserId: null, groupIds: [g3] });
+
+    expect(await queue.requestedBySuperAdmin(byRoot.id)).toBe(true);
+    expect(await queue.requestedBySuperAdmin(byOp.id)).toBe(false);
+    expect(await queue.requestedBySuperAdmin(byNobody.id)).toBe(false);
+
+    expect(await queue.cancelPendingByTenant(t, now)).toBe(2);
+    expect(await queue.findExtraction(t, byRoot.id)).toMatchObject({ status: 'QUEUED' });
+    expect(await queue.findExtraction(t, byOp.id)).toMatchObject({ status: 'CANCELLED' });
+    expect(await queue.findExtraction(t, byNobody.id)).toMatchObject({ status: 'CANCELLED' });
+  });
+});
+
 describe('cancelamento durante a leitura', () => {
   it('grupo removido no meio da leitura: nada gravado, item segue CANCELLED e o grupo não volta', async () => {
     const t = await makeTenant('cancel-read');

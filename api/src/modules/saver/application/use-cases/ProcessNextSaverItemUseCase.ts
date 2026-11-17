@@ -125,13 +125,17 @@ export class ProcessNextSaverItemUseCase {
     const { queue } = this.deps;
     let active: boolean;
     try {
-      active = await this.deps.products.has(item.tenantId, 'SAVER');
+      // SAVER-47: super admin pilota no próprio tenant sem plano; o pedido dele processa sem o produto.
+      active =
+        (await this.deps.products.has(item.tenantId, 'SAVER')) ||
+        (await queue.requestedBySuperAdmin(item.extractionId));
     } catch {
       // Leitura do acesso falhou: não decide nada, devolve sem contar tentativa.
       await this.requeue(item, now, SAVER_DISCONNECTED_RETRY_MS, item.attempts, null);
       return 'RETRY';
     }
     if (!active) {
+      // Cancela os pendentes do tenant, menos pedidos de super admin (esses seguem pela regra acima).
       await queue.cancelPendingByTenant(item.tenantId, now);
       return 'PRODUCT_INACTIVE';
     }

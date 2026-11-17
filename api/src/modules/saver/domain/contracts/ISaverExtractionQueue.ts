@@ -47,7 +47,13 @@ export interface ISaverExtractionQueue {
   /** Cancela itens QUEUED da extração; devolve quantos. */
   cancelQueued(tenantId: string, extractionId: string, now: Date): Promise<number>;
   cancelPendingByGroup(tenantId: string, groupId: string, now: Date): Promise<number>;
+  /**
+   * Tenant sem produto SAVER: cancela os pendentes, menos os de extração pedida por super admin (piloto no
+   * próprio tenant sem plano, SAVER-47).
+   */
   cancelPendingByTenant(tenantId: string, now: Date): Promise<number>;
+  /** A extração foi pedida por usuário hoje super admin (`users.isSuperAdmin`, lido a cada chamada). */
+  requestedBySuperAdmin(extractionId: string): Promise<boolean>;
   /** Leituras em 24 h corridas (limite `saver_group_scans_per_day`). */
   countScansSince(tenantId: string, since: Date): Promise<number>;
   /** Cancela itens QUEUED/RUNNING de sessão com `deletedAt` (exclusão lógica); devolve quantos. */

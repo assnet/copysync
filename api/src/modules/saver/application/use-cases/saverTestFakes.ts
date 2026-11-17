@@ -18,12 +18,17 @@ export class FakeSaverQueue implements ISaverExtractionQueue {
   releases: ReleaseSaverItemInput[] = [];
   /** Sessões com `deletedAt` (exclusão lógica). */
   deletedSessions = new Set<string>();
+  /** Usuários super admin (para `requestedBySuperAdmin`). */
+  superAdmins = new Set<string>();
 
-  addItem(partial: Partial<SaverExtractionItem> & Pick<SaverExtractionItem, 'id' | 'sessionId' | 'tenantId' | 'groupId'>): SaverExtractionItem {
+  addItem(
+    partial: Partial<SaverExtractionItem> & Pick<SaverExtractionItem, 'id' | 'sessionId' | 'tenantId' | 'groupId'>,
+    requestedByUserId: string | null = null,
+  ): SaverExtractionItem {
     const extractionId = partial.extractionId ?? 'ext-1';
     if (!this.extractions.some((e) => e.id === extractionId)) {
       this.extractions.push({
-        id: extractionId, tenantId: partial.tenantId, sessionId: partial.sessionId, requestedByUserId: null,
+        id: extractionId, tenantId: partial.tenantId, sessionId: partial.sessionId, requestedByUserId,
         trigger: SaverExtractionTrigger.MANUAL, status: SaverExtractionStatus.QUEUED, totalGroups: 0, doneGroups: 0,
         failedGroups: 0, membersFound: 0, newContacts: 0, createdAt: new Date(0), finishedAt: null,
       });
@@ -91,7 +96,16 @@ export class FakeSaverQueue implements ISaverExtractionQueue {
   }
 
   async cancelPendingByTenant(tenantId: string, now: Date): Promise<number> {
-    return this.cancelWhere((i) => i.tenantId === tenantId, now);
+    return this.cancelWhere((i) => i.tenantId === tenantId && !this.bySuperAdmin(i.extractionId), now);
+  }
+
+  async requestedBySuperAdmin(extractionId: string): Promise<boolean> {
+    return this.bySuperAdmin(extractionId);
+  }
+
+  private bySuperAdmin(extractionId: string): boolean {
+    const by = this.extractions.find((e) => e.id === extractionId)?.requestedByUserId;
+    return !!by && this.superAdmins.has(by);
   }
 
   async countScansSince(): Promise<number> {

@@ -135,7 +135,24 @@ export class PrismaSaverExtractionQueue implements ISaverExtractionQueue {
   }
 
   cancelPendingByTenant(tenantId: string, now: Date): Promise<number> {
-    return this.cancelPending({ tenantId }, now);
+    return this.prisma.$transaction(async (tx) => {
+      const count = await tx.$executeRaw`
+        UPDATE "saver_extraction_items" i SET "status" = 'CANCELLED', "finishedAt" = ${now}, "lockedUntil" = NULL
+        FROM "saver_extractions" e
+        LEFT JOIN "users" u ON u."id" = e."requestedByUserId"
+        WHERE e."id" = i."extractionId" AND i."tenantId" = ${tenantId}
+          AND i."status" IN ('QUEUED', 'RUNNING') AND COALESCE(u."isSuperAdmin", false) = false`;
+      if (count > 0) await closeExtractions(tx, now, undefined, tenantId);
+      return count;
+    });
+  }
+
+  async requestedBySuperAdmin(extractionId: string): Promise<boolean> {
+    const rows = await this.prisma.$queryRaw<{ ok: boolean }[]>`
+      SELECT EXISTS (
+        SELECT 1 FROM "saver_extractions" e JOIN "users" u ON u."id" = e."requestedByUserId"
+        WHERE e."id" = ${extractionId} AND u."isSuperAdmin" = true) AS ok`;
+    return rows[0]?.ok === true;
   }
 
   cancelPendingForDeletedSessions(now: Date): Promise<number> {

@@ -183,6 +183,34 @@ describe('ProcessNextSaverItemUseCase', () => {
     expect(extraction(h).status).toBe(E.CANCELLED);
   });
 
+  it('SAVER-47: pedido de super admin processa no tenant sem produto; pedido comum do mesmo tenant não', async () => {
+    const h = makeSaverStepHarness();
+    h.entitlements.set(T, { saver_contacts: null });
+    h.groups.add('g1', T);
+    h.groups.add('g2', T);
+    h.queue.superAdmins.add('root');
+    h.queue.addItem({ id: 'i1', sessionId: S, tenantId: T, groupId: 'g1', extractionId: 'ext-comum' }, 'user-1');
+    h.queue.addItem({ id: 'i2', sessionId: S, tenantId: T, groupId: 'g2', extractionId: 'ext-root' }, 'root');
+    h.reads.set('g2@g.us', [member('5511999990001')]);
+
+    expect((await run(h)).outcomes[0]!.outcome).toBe('PRODUCT_INACTIVE');
+    expect(item(h, 'i1').status).toBe(I.CANCELLED);
+    expect(item(h, 'i2').status).toBe(I.QUEUED);
+
+    expect((await run(h, at(10_000))).outcomes[0]!.outcome).toBe('DONE');
+    expect(item(h, 'i2').status).toBe(I.DONE);
+    expect(h.engineCalls).toEqual([{ sessionId: S, groupJid: 'g2@g.us' }]);
+  });
+
+  it('SAVER-47: tenant comum sem produto e sem super admin continua sem extrair', async () => {
+    const h = setup();
+    h.activeTenants.clear();
+    h.queue.extractions[0]!.requestedByUserId = 'user-1';
+    await run(h);
+    expect(item(h).status).toBe(I.CANCELLED);
+    expect(h.engineCalls).toHaveLength(0);
+  });
+
   it('falha ao ler o acesso devolve o item sem decidir nem contar tentativa', async () => {
     const h = setup();
     h.productError = new Error('db down');
