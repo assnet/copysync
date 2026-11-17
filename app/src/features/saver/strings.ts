@@ -172,6 +172,22 @@ export const saverStrings = {
         COMMUNITY_ANNOUNCE: 'Grupo de avisos da comunidade: reúne todos os membros dela.',
       } as Record<string, string>,
       unselectable: { COMMUNITY_PARENT: 'Não dá para ler a comunidade em si. Use o grupo de avisos dela.' } as Record<string, string>,
+      filtersAria: 'Filtrar grupos',
+      filters: { all: 'Todos', unread: 'Não lidos', saved: 'Já salvos', communities: 'Comunidades' } as Record<string, string>,
+      filterHints: {
+        all: 'Todos os grupos desta sessão.',
+        unread: 'Grupos que você ainda não leu.',
+        saved: 'Grupos com contatos já salvos. Ler de novo atualiza a lista.',
+        communities: 'Comunidades e grupos de avisos.',
+      } as Record<string, string>,
+      sortLabel: 'Ordenar por',
+      sort: { name: 'Nome', members: 'Mais membros' } as Record<string, string>,
+      noMatchFilter: 'Nenhum grupo neste filtro.',
+      resetFilters: 'Ver todos os grupos',
+      showing: (shown: number, total: number) =>
+        `Mostrando ${shown.toLocaleString('pt-BR')} de ${total.toLocaleString('pt-BR')} ${total === 1 ? 'grupo' : 'grupos'}`,
+      showMore: (n: number) => (n === 1 ? 'Mostrar mais 1 grupo' : `Mostrar mais ${n.toLocaleString('pt-BR')} grupos`),
+      selectionBar: 'Grupos marcados',
     },
     copyName: {
       action: 'Copiar nome do grupo',

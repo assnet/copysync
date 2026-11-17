@@ -345,6 +345,88 @@ describe('SaverGroupsPage', () => {
     expect(screen.getByText(s.exportDialog.scopeSelected(1))).toBeInTheDocument();
   });
 
+  const many = (n: number) => Array.from({ length: n }, (_, i) =>
+    live(`g${i}@g.us`, `Grupo ${String(i).padStart(3, '0')}`, { memberCount: i, saved: i % 10 === 0, lastScannedAt: i % 10 === 0 ? '2026-11-16T10:00:00.000Z' : null }));
+  const scrollers = () => Array.from(document.body.querySelectorAll<HTMLElement>('*'))
+    .filter((el) => ['auto', 'scroll'].includes(getComputedStyle(el).overflowY) || ['auto', 'scroll'].includes(el.style.overflowY));
+
+  it.each(['light', 'dark'] as const)('lista grande: uma só rolagem, 50 por vez e "Mostrar mais" (%s)', async (mode) => {
+    svc.listSessionGroups.mockResolvedValue(many(120));
+    svc.listGroups.mockResolvedValue([savedGroup('x')]);
+    const user = userEvent.setup();
+    page(mode);
+    await pickSession(user, 'Atendimento');
+    expect(await screen.findByText(g.table.showing(50, 120))).toBeInTheDocument();
+    expect(screen.getByText('Grupo 049')).toBeInTheDocument();
+    expect(screen.queryByText('Grupo 050')).toBeNull();
+    expect(scrollers()).toEqual([]);
+    await user.click(screen.getByRole('button', { name: g.table.showMore(50) }));
+    expect(screen.getByText(g.table.showing(100, 120))).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: g.table.showMore(20) }));
+    expect(screen.getByText('Grupo 119')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Mostrar mais/ })).toBeNull();
+    expect(window.sessionStorage.getItem('ui.saver.groups.t1.shown')).toContain('"d":150');
+  });
+
+  it('filtros rápidos, ordenação por membros e busca persistem; filtro vazio volta para todos', async () => {
+    svc.listSessionGroups.mockResolvedValue([
+      ...many(3),
+      live('c@g.us', 'Bairro', { kind: 'COMMUNITY', selectable: false, unselectableReason: 'COMMUNITY_PARENT' }),
+    ]);
+    const user = userEvent.setup();
+    const first = page();
+    await pickSession(user, 'Atendimento');
+    await screen.findByText('Bairro');
+    await user.click(screen.getByRole('button', { name: `${g.table.filters.saved} 1` }));
+    expect(screen.getByText('Grupo 000')).toBeInTheDocument();
+    expect(screen.queryByText('Grupo 001')).toBeNull();
+    await user.click(screen.getByRole('button', { name: `${g.table.filters.communities} 1` }));
+    expect(screen.getByText('Bairro')).toBeInTheDocument();
+    expect(screen.queryByText('Grupo 000')).toBeNull();
+    await user.click(screen.getByRole('button', { name: `${g.table.filters.all} 4` }));
+    await user.click(screen.getByRole('button', { name: g.table.sort.members }));
+    const names = () => screen.getAllByText(/^(Grupo \d+|Bairro)$/).map((el) => el.textContent);
+    expect(names()).toEqual(['Grupo 002', 'Grupo 001', 'Grupo 000', 'Bairro']);
+    first.unmount();
+
+    page();
+    expect(await screen.findByRole('button', { name: g.table.sort.members })).toHaveAttribute('aria-pressed', 'true');
+    await user.click(screen.getByRole('button', { name: `${g.table.filters.unread} 3` }));
+    await user.type(screen.getByRole('textbox', { name: g.table.searchAria }), 'zzz');
+    expect(screen.getByText(g.table.noMatch)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: g.table.resetFilters }));
+    expect(screen.getByText(g.table.showing(4, 4))).toBeInTheDocument();
+  });
+
+  it('barra de ações fica presa ao rodapé só com grupo marcado', async () => {
+    svc.listSessionGroups.mockResolvedValue([live('a@g.us', 'Vendas', { memberCount: 12 })]);
+    const user = userEvent.setup();
+    page('dark');
+    await pickSession(user, 'Atendimento');
+    const bar = await screen.findByRole('region', { name: g.table.selectionBar });
+    expect(bar).toHaveAttribute('data-sticky', 'false');
+    expect(getComputedStyle(bar).position).not.toBe('sticky');
+    await user.click(screen.getByText('Vendas'));
+    expect(bar).toHaveAttribute('data-sticky', 'true');
+    expect(getComputedStyle(bar).position).toBe('sticky');
+    expect(screen.getByText(g.table.selectedMembers(12, false))).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: g.table.clear }));
+    expect(bar).toHaveAttribute('data-sticky', 'false');
+    expect(scrollers()).toEqual([]);
+  });
+
+  it('grupo salvo mostra o selo de tipo quando a sessão aberta informa', async () => {
+    svc.listSessionGroups.mockResolvedValue([live('x@g.us', 'Avisos', { kind: 'COMMUNITY_ANNOUNCE' })]);
+    svc.listGroups.mockResolvedValue([savedGroup('x')]);
+    const user = userEvent.setup();
+    page();
+    await screen.findByText('Salvo x');
+    expect(screen.queryByText(g.table.kind.COMMUNITY_ANNOUNCE!)).toBeNull();
+    await pickSession(user, 'Atendimento');
+    await screen.findByText('Avisos');
+    expect(screen.getAllByText(g.table.kind.COMMUNITY_ANNOUNCE!)).toHaveLength(2);
+  });
+
   it('marcação de grupo que não existe mais não vira "exportar todos"', async () => {
     writePersisted('saver.groups.t1.exportSelection', ['sumiu', 'x']);
     svc.listGroups.mockResolvedValue([savedGroup('x'), savedGroup('y')]);

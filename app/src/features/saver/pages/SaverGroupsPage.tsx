@@ -1,7 +1,7 @@
 import { useTenant } from '@/contexts/TenantContext';
-import { useEffect, useRef, useState } from 'react';
-import { Alert, AlertTitle, Box, Button, CircularProgress, Stack, Tooltip, Typography } from '@mui/material';
-import { Download, EyeOff, MessageCircleOff, Plus, RefreshCw, Save, UsersRound, WifiOff } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, AlertTitle, Box, Button, CircularProgress, Stack, Typography } from '@mui/material';
+import { Download, EyeOff, MessageCircleOff, Plus, RefreshCw, UsersRound, WifiOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { AppIcon, ConfirmDialog, EmptyState, PageHeader, SectionCard } from '@/components';
 import { channelOf } from '@/features/sessions/utils';
@@ -12,6 +12,8 @@ import { useSaverExtraction, useSaverGroups, useSaverOverview, useSaverSessionGr
 import { saverStrings as s } from '../strings';
 import type { SaverExtraction, SaverGroup } from '../types';
 import { sumSelectedMembers } from '../groupMembers';
+import { GROUP_PAGE_SIZE, type GroupFilter, type GroupSort } from '../groupList';
+import { SelectionActionBar } from '../components/groups/SelectionActionBar';
 import { ExtractionProgress } from '../components/groups/ExtractionProgress';
 import { GroupSelectionTable } from '../components/groups/GroupSelectionTable';
 import { SavedGroupsTable } from '../components/groups/SavedGroupsTable';
@@ -41,6 +43,9 @@ export function SaverGroupsPage() {
   const [sessionId, setSessionId] = usePersistedState<string | null>(`${KEY}.session`, null);
   const [selection, setSelection, clearSelection] = usePersistedState<string[]>(`${KEY}.selection`, []);
   const [search, setSearch, clearSearch] = usePersistedState(`${KEY}.search`, '');
+  const [filter, setFilter] = usePersistedState<GroupFilter>(`${KEY}.filter`, 'all');
+  const [sort, setSort] = usePersistedState<GroupSort>(`${KEY}.sort`, 'name');
+  const [shown, setShown, clearShown] = usePersistedState(`${KEY}.shown`, GROUP_PAGE_SIZE);
   const [extractionId, setExtractionId, clearExtractionId] = usePersistedState<string | null>(`${KEY}.extraction`, null);
   const [seed, setSeed] = useState<SaverExtraction | null>(null);
   const [requesting, setRequesting] = useState(false);
@@ -90,6 +95,7 @@ export function SaverGroupsPage() {
     setSessionId(id);
     clearSelection();
     clearSearch();
+    clearShown();
     setRequestError(null);
   };
 
@@ -103,6 +109,7 @@ export function SaverGroupsPage() {
       setExtractionId(created.id);
       clearSelection();
       clearSearch();
+      clearShown();
       void reloadOverview();
     } catch (err) {
       setRequestError(describeSaverError(err));
@@ -139,6 +146,7 @@ export function SaverGroupsPage() {
 
   const submitDisabled = !canExtract || scansExcluded || requesting || selection.length === 0 || tooMany || overScans;
   const submitHint = !canExtract ? g.table.noExtractPermission : tooMany ? g.table.tooMany(SAVER_MAX_GROUPS_PER_REQUEST) : '';
+  const kinds = useMemo(() => new Map((live.data ?? []).map((x) => [x.groupJid, x.kind])), [live.data]);
   const hiddenTotal = (saved.data ?? []).reduce((n, x) => n + x.lidOnlyCount, 0);
   const canExport = ov?.permissions.export ?? false;
   const savedList = saved.data ?? [];
@@ -203,34 +211,28 @@ export function SaverGroupsPage() {
               onSelectedChange={(jids) => { setSelection(jids); setRequestError(null); }}
               search={search}
               onSearchChange={setSearch}
+              filter={filter}
+              onFilterChange={setFilter}
+              sort={sort}
+              onSortChange={setSort}
+              shown={shown}
+              onShownChange={setShown}
               disabled={!canExtract || requesting}
             />
             {requestError && requestError.kind !== 'limitReached' && <Alert severity="error">{requestError.message}</Alert>}
             {overScans && scansLeft !== null && <Alert severity="warning">{g.table.overScans(scansLeft)}</Alert>}
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.5 }}>
-              <Box sx={{ mr: 'auto' }}>
-                <Typography variant="body2" color={tooMany ? 'error.main' : 'text.secondary'}>{g.table.selected(selection.length, SAVER_MAX_GROUPS_PER_REQUEST)}</Typography>
-                {selectedMembers && (
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                    {g.table.selectedMembers(selectedMembers.total, selectedMembers.partial)}
-                  </Typography>
-                )}
-                {scansLeft !== null && <Typography variant="caption" color="text.secondary">{g.table.scansLeft(scansLeft)}</Typography>}
-              </Box>
-              {selection.length > 0 && <Button onClick={clearSelection} disabled={requesting}>{g.table.clear}</Button>}
-              <Tooltip title={submitHint}>
-                <span>
-                  <Button
-                    variant="contained"
-                    startIcon={requesting ? <CircularProgress size={16} color="inherit" /> : <AppIcon icon={Save} size="sm" />}
-                    disabled={submitDisabled}
-                    onClick={() => void submit()}
-                  >
-                    {g.table.submit(selection.length)}
-                  </Button>
-                </span>
-              </Tooltip>
-            </Box>
+            <SelectionActionBar
+              count={selection.length}
+              max={SAVER_MAX_GROUPS_PER_REQUEST}
+              tooMany={tooMany}
+              members={selectedMembers}
+              scansLeft={scansLeft}
+              requesting={requesting}
+              submitDisabled={submitDisabled}
+              submitHint={submitHint}
+              onClear={clearSelection}
+              onSubmit={() => void submit()}
+            />
           </>
         )}
       </Stack>
@@ -252,7 +254,8 @@ export function SaverGroupsPage() {
         )}
         {progress.error && <Alert severity="error">{progress.error.message}</Alert>}
 
-        <SectionCard title={g.session.title}>{sessionBody()}</SectionCard>
+        {/* Sem `overflow: hidden` do Card: a barra de ações sticky precisa da rolagem da página. */}
+        <SectionCard title={g.session.title} sx={{ overflow: 'visible' }}>{sessionBody()}</SectionCard>
 
         <SectionCard title={g.saved.title} subtitle={g.saved.subtitle} action={exportButton || undefined}>
           {exported && <Alert severity="success" onClose={() => setExported(null)} sx={{ mb: 1.5 }}>{s.exportDialog.done(exported)}</Alert>}
@@ -264,13 +267,19 @@ export function SaverGroupsPage() {
           )}
           {saved.data && saved.data.length > 0 && (
             <Stack spacing={1.5}>
-              {hiddenTotal > 0 && <Alert severity="info" icon={<AppIcon icon={EyeOff} size="md" />}>{g.saved.hiddenNotice(hiddenTotal)}</Alert>}
+              {hiddenTotal > 0 && (
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, color: 'text.secondary' }}>
+                  <Box component="span" sx={{ display: 'inline-flex', color: 'info.main', mt: '2px' }}><AppIcon icon={EyeOff} size="sm" /></Box>
+                  <Typography variant="caption">{g.saved.hiddenNotice(hiddenTotal)}</Typography>
+                </Box>
+              )}
               <SavedGroupsTable
                 groups={saved.data}
                 selected={exportIds}
                 onSelectedChange={setExportIds}
                 selectable={canExport}
                 onRemove={canConfigure ? setRemoving : undefined}
+                kinds={kinds}
               />
             </Stack>
           )}

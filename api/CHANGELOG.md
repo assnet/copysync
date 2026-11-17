@@ -17,6 +17,20 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.100.4] — 2026-11-17 — Saver: tela Grupos sem rolagem dupla (só app 0.123.4)
+
+### Changed
+
+#### Painel (app/) — saver
+
+- **`GroupSelectionTable.tsx`** — a lista "Ler grupos de uma sessão" tinha rolagem própria (`maxHeight` + `overflowY`) dentro da página que também rola: duas barras. Agora cresce na página (única rolagem), com "Mostrar mais" de 50 em 50, filtros rápidos em chips com contagem (Todos · Não lidos · Já salvos · Comunidades), ordenação (Nome · Mais membros), linha com avatar de iniciais (`GroupAvatar`), nome com `OverflowTooltipText`, selos que descem no celular e comunidade "pai" desabilitada com motivo discreto. Filtro, ordenação e quantidade exibida em `usePersistedState`.
+- **`SelectionActionBar.tsx`** (novo), **`saverStyle.ts`** (novo) — contagem, membros, "Limpar seleção" e "Salvar contatos" presos ao rodapé (`sticky`) enquanto houver grupo marcado; `SectionCard` com `overflow: visible` para o sticky funcionar.
+- **`SavedGroupsTable.tsx`** — tabela com avatar, nome sem corte mudo (tooltip só quando cortado e sem borrão), selo de tipo quando a sessão aberta informa e cartões abaixo de `md`; aviso de números ocultos compacto (`SaverGroupsPage.tsx`).
+- **`groupList.ts`** (novo) — busca, filtros, contagens e ordenação puros, com teste.
+- **`supportChat/routes.ts`** — `/saver` em `SUPPORT_CHAT_RAISED_PATHS`: o botão de suporte sobe e não cobre a barra.
+
+---
+
 ## [0.100.3] — 2026-11-17 — Saver: membros e comunidades nos grupos da sessão (app 0.123.3)
 
 ### Added

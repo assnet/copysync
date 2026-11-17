@@ -24,8 +24,10 @@ export const SUPPORT_CHAT_HIDDEN_PATHS: readonly string[] = [
  * - `/monitoring`: barra "alterações não salvas" (`MonitoringSettingsForm`, sticky a 16 px do
  *   rodapé; quebra em duas linhas no celular).
  * - `/offer-story`: "Continuar" fica preso ao rodapé no celular (`TemplateStep`, sticky).
+ * - `/saver`: barra "Salvar contatos de N grupos" presa ao rodapé com grupo marcado (`SelectionActionBar`);
+ *   as sub-rotas (`/saver/plans`, `/saver/settings`) sobem junto pela regra de prefixo, sem prejuízo.
  */
-export const SUPPORT_CHAT_RAISED_PATHS: readonly string[] = ['/monitoring', '/offer-story'];
+export const SUPPORT_CHAT_RAISED_PATHS: readonly string[] = ['/monitoring', '/offer-story', '/saver'];
 
 const matches = (pathname: string, prefixes: readonly string[]) => {
   const path = pathname.toLowerCase().replace(/\/+$/, '') || '/';
