@@ -54,6 +54,17 @@ describe('SubscriptionLimitsTable', () => {
     expect(within(r).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
   });
 
+  it('sem contador de uso (used null): sem barra nem "0 de N", só o limite', () => {
+    renderWithTheme(
+      <SubscriptionLimitsTable limits={[L('saver_groups', null, 'count', null, 50)]} channel="whatsapp" onChannelChange={vi.fn()} />,
+    );
+    const r = row('saver_groups');
+    expect(within(r).queryByRole('progressbar')).toBeNull();
+    expect(within(r).queryByText(t.limits.usage(0, 50))).toBeNull();
+    expect(within(r).getByText(t.limits.usageUnavailable)).toBeInTheDocument();
+    expect(within(r).getByText('50')).toBeInTheDocument();
+  });
+
   it('ilimitado sem barra, com uso e "Ilimitado"', () => {
     setup();
     expect(bar('broadcast_groups')).toBeNull();

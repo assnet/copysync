@@ -185,6 +185,8 @@ export const subscriptionStrings = {
     /** Uso sem limite: "3 em uso" / "3 hoje". */
     usageUnlimited: (used: number) => `${count(used)} em uso`,
     usageUnlimitedToday: (used: number) => `${count(used)} hoje`,
+    /** Item sem contador de uso na API: só o limite vale. */
+    usageUnavailable: '—',
     /** Barra de uso (leitor de tela). */
     usageAria: (label: string, used: number, limit: number) => `${label}: ${count(used)} de ${count(limit)}`,
     /** "A partir do PRO" — nome vindo do `PLAN_CATALOG`. */

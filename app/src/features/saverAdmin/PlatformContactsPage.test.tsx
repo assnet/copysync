@@ -53,6 +53,13 @@ describe('PlatformContactsPage', () => {
     expect(svc.listContacts).toHaveBeenCalledWith(EMPTY_PLATFORM_FILTERS, null);
   });
 
+  it('rótulo oculto da coluna de abrir mede 1 px (sx `1` = 100% e alargava a página)', async () => {
+    svc.listContacts.mockResolvedValue({ items: [contact('1')], nextCursor: null });
+    page();
+    await waitFor(() => expect(rows()).toHaveLength(1));
+    expect(screen.getByText(s.table.open)).toHaveStyle({ width: '1px', height: '1px' });
+  });
+
   it('"carregar mais" manda só o nextCursor com os mesmos filtros', async () => {
     svc.listContacts
       .mockResolvedValueOnce({ items: [contact('1')], nextCursor: 'c-1' })

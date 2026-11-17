@@ -31,6 +31,8 @@ function UsageCell({ item, label }: { item: SubscriptionLimitItem & { key: Subsc
       : <Chip size="small" variant="outlined" label={lockedLabel(item.key)} />;
   }
   if (item.limit === 0) return <Chip size="small" variant="outlined" label={lockedLabel(item.key)} />;
+  // Sem contador na API (`used` null: Saver, grupos por link, achados do caçador): nunca "0 de N".
+  if (item.used == null) return <Typography variant="body2" color="text.secondary">{t.limits.usageUnavailable}</Typography>;
   if (item.limit == null) {
     return <Typography variant="body2">{daily ? t.limits.usageUnlimitedToday(used) : t.limits.usageUnlimited(used)}</Typography>;
   }
