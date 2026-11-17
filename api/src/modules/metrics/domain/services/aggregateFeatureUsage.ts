@@ -275,7 +275,9 @@ export function aggregateFeatureUsage(input: AggregateFeatureUsageInput): Featur
     const first = firstDataDay[feature.key] ?? null;
     const dataFrom = dataFromOf(first, feature.retentionDays, now);
     const hasBase = dataFrom !== null && period.previousFrom >= dataFrom;
-    if (!hasBase) everyHasBase = false;
+    // Recurso que nunca teve dado não tira a base do total (ex.: Telegram sem nenhuma conta); só tira quem começou a
+    // ter dado dentro do período anterior ou foi cortado pela retenção.
+    if (!hasBase && first !== null) everyHasBase = false;
     const reasons = coverageReasonsFor(feature, period, today);
 
     featureSeries[feature.key] = bucketKeys.map((k) => ({

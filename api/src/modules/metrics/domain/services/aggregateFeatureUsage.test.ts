@@ -152,8 +152,8 @@ describe('primeiro dado, limite efetivo e tendência', () => {
     expect(out.totals.activeTenantsPrevious).toBeNull();
   });
 
-  it('total anterior nulo com recurso sem dado ou com corte de retenção no recorte', () => {
-    expect(run([]).totals.activeTenantsPrevious).toBeNull(); // telegram_session sem dado
+  it('recurso que nunca teve dado não anula o total anterior; corte de retenção anula', () => {
+    expect(run([]).totals.activeTenantsPrevious).toBe(0); // telegram_session sem nenhum dado é ignorado
     expect(run([], { firstDataDay: ALL_BASE, filters: { kinds: ['ACCESS'] } }).totals.activeTenantsPrevious).toBeNull();
   });
 
