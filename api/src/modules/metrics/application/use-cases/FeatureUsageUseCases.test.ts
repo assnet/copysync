@@ -128,14 +128,28 @@ describe('GetFeatureUsageDetailUseCase', () => {
     expect(out.feature.key).toBe('offer_generator');
   });
 
+  it('chave fora do catálogo: USAGE_METRICS_FEATURE_NOT_FOUND sem abrir o gate', async () => {
+    const { gate, detail } = setup();
+    await expect(detail.execute({ ...INPUT, featureKey: 'nao_existe' })).rejects.toBeInstanceOf(UsageMetricsFeatureNotFoundError);
+    expect(gate.opened).toBe(0);
+  });
+
+  it('dentro do recorte: inScope true', async () => {
+    expect((await setup().detail.execute({ ...INPUT, featureKey: 'offer_generator' })).inScope).toBe(true);
+  });
+
   it.each([
-    ['chave fora do catálogo', { featureKey: 'nao_existe' }],
     ['tipo que não cruza', { featureKey: 'panel_login' }],
     ['plano de outra família', { featureKey: 'offer_generator', plan: 'SAVER_MAX' }],
-  ])('%s: USAGE_METRICS_FEATURE_NOT_FOUND sem abrir o gate', async (_label, over) => {
+  ])('%s: recurso zerado com inScope false, sem abrir o gate', async (_label, over) => {
     const { gate, detail } = setup();
-    await expect(detail.execute({ ...INPUT, ...over })).rejects.toBeInstanceOf(UsageMetricsFeatureNotFoundError);
+    const out = await detail.execute({ ...INPUT, ...over });
     expect(gate.opened).toBe(0);
+    expect(out.inScope).toBe(false);
+    expect(out.feature).toMatchObject({ key: over.featureKey, uses: 0, activeTenants: 0, usesPrevious: null, reach: 0, byKind: [], byPlan: [] });
+    expect(out.series).toEqual([]);
+    expect(out.population).toEqual({ tenants: 0, internalExcluded: 0, byPlan: [] });
+    expect(out.range).toMatchObject({ from: '2026-10-19', to: '2026-11-17', maxDays: 90 });
   });
 });
 

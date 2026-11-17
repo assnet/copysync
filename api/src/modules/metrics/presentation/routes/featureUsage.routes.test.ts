@@ -170,8 +170,20 @@ describe('GET /features/:featureKey', () => {
     expect(res.statusCode).toBe(200);
     const data = res.json().data;
     expect(data.feature).toMatchObject({ key: 'offer_generator', uses: 4 });
+    expect(data.inScope).toBe(true);
     expect(data.series).toHaveLength(17);
     expect(res.body).not.toMatch(/tenantName/);
+  });
+
+  it('tipo que exclui o recurso: 200 zerado com inScope false, sem ler', async () => {
+    const { read } = mockReads();
+    const res = await app.inject({ method: 'GET', url: `${URL}/features/panel_login` });
+    expect(res.statusCode).toBe(200);
+    const data = res.json().data;
+    expect(data.inScope).toBe(false);
+    expect(data.feature).toMatchObject({ key: 'panel_login', uses: 0, activeTenants: 0 });
+    expect(data.series).toEqual([]);
+    expect(read).not.toHaveBeenCalled();
   });
 
   it('chave fora do catálogo: 404 USAGE_METRICS_FEATURE_NOT_FOUND', async () => {
@@ -204,6 +216,34 @@ describe('GET /features/:featureKey/tenants', () => {
       nextCursor: null,
     });
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ userId: 'admin-1', action: 'USAGE_METRICS_VIEWED' }));
+  });
+
+  it('plano de outra família: 200 com lista vazia, sem ler nem auditar', async () => {
+    const { read, audit } = mockReads();
+    const res = await app.inject({ method: 'GET', url: `${URL}/features/offer_generator/tenants?plan=SAVER_MAX` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toEqual({ items: [], nextCursor: null });
+    expect(read).not.toHaveBeenCalled();
+    expect(audit).not.toHaveBeenCalled();
+  });
+
+  it('cursor amarrado às datas resolvidas: sem datas e com as mesmas datas explícitas valem o mesmo cursor', async () => {
+    mockReads();
+    const ids = Array.from({ length: 30 }, (_, i) => `t${String(i).padStart(2, '0')}`);
+    vi.spyOn(PrismaUsageTenantDirectory.prototype, 'list').mockResolvedValue(ids.map((id) => tenant(id)));
+    vi.spyOn(PrismaLiveFeatureUsageReader.prototype, 'read').mockResolvedValue({
+      rows: ids.map((id) => ({ ...ROW, tenantId: id })),
+      firstDataDay: { offer_generator: '2026-01-01' },
+    });
+    const p1 = await app.inject({ method: 'GET', url: `${URL}/features/offer_generator/tenants` });
+    const cursor = p1.json().data.nextCursor as string;
+    expect(cursor).toBeTruthy();
+    const explicit = `${URL}/features/offer_generator/tenants?from=2026-10-19&to=2026-11-17&cursor=${encodeURIComponent(cursor)}`;
+    const p2 = await app.inject({ method: 'GET', url: explicit });
+    expect(p2.statusCode).toBe(200);
+    expect(p2.json().data.items).toHaveLength(5);
+    const shifted = await app.inject({ method: 'GET', url: explicit.replace('from=2026-10-19', 'from=2026-10-20') });
+    expect(shifted.json().error.code).toBe('USAGE_METRICS_CURSOR_INVALID');
   });
 
   it('cursor inválido: 400 USAGE_METRICS_CURSOR_INVALID', async () => {

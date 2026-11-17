@@ -46,6 +46,7 @@
       }
     ]
   },
+  "inScope": true,
   "feature": {
     "key": "offer_hunter",
     "product": "AFFILIATES",

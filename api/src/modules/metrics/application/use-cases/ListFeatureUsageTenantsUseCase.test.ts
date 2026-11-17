@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CreateAuditLogInput, IAuditLogRepository } from '../../../../shared/audit/IAuditLogRepository';
-import { UsageMetricsCursorInvalidError, UsageMetricsReadUnavailableError } from '../../../../shared/errors/internal/UsageMetricsErrors';
+import { UsageMetricsCursorInvalidError, UsageMetricsFeatureNotFoundError, UsageMetricsReadUnavailableError } from '../../../../shared/errors/internal/UsageMetricsErrors';
 import type { FeatureUsageQueryInput } from './GetFeatureUsageSummaryUseCase';
 import { FEATURE_USAGE_TENANTS_PAGE_SIZE, ListFeatureUsageTenantsUseCase } from './ListFeatureUsageTenantsUseCase';
 import { createFeatureUsageTenantCursor } from './featureUsageTenantCursor';
@@ -129,6 +129,20 @@ describe('ListFeatureUsageTenantsUseCase', () => {
       await expect(useCase.execute({ ...BASE, cursor: scopeless })).rejects.toBeInstanceOf(UsageMetricsCursorInvalidError);
       expect(gate.opened).toBe(0);
     });
+  });
+
+  it.each([
+    ['tipo que não cruza', { featureKey: 'panel_login' }],
+    ['plano de outra família', { plan: 'SAVER_MAX' }],
+  ] as const)('recurso fora do recorte (%s): lista vazia, sem gate nem auditoria', async (_label, over) => {
+    const { useCase, gate, audit } = setup();
+    await expect(useCase.execute({ ...BASE, ...over })).resolves.toEqual({ items: [], nextCursor: null });
+    expect(gate.opened).toBe(0);
+    expect(audit.entries).toHaveLength(0);
+  });
+
+  it('chave fora do catálogo: USAGE_METRICS_FEATURE_NOT_FOUND', async () => {
+    await expect(setup().useCase.execute({ ...BASE, featureKey: 'nao_existe' })).rejects.toBeInstanceOf(UsageMetricsFeatureNotFoundError);
   });
 
   it('auditoria só na primeira página, sem nome nem id de conta listada', async () => {

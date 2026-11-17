@@ -1,6 +1,7 @@
 import { UsageMetricsFeatureNotFoundError } from '../../../../shared/errors/internal/UsageMetricsErrors';
 import { type FeatureUsageAggregate, type FeatureUsageItem, aggregateFeatureUsage } from '../../domain/services/aggregateFeatureUsage';
 import { FEATURE_USAGE_CATALOG, type FeatureUsageDefinition, findFeature } from '../../domain/services/featureUsageCatalog';
+import { resolveUsagePeriod } from '../../domain/services/featureUsagePeriod';
 import {
   type FeatureUsageDeps,
   type FeatureUsageQueryInput,
@@ -21,32 +22,71 @@ export interface FeatureUsageDetailOutput {
   source: 'live';
   freshAt: Date;
   population: FeatureUsageAggregate['population'];
+  /** `false` quando tipo ou plano excluem o recurso: resposta zerada, sem ir ao banco. */
+  inScope: boolean;
   feature: FeatureUsageItem;
   series: { bucket: string; uses: number; activeTenants: number }[];
 }
 
 /**
- * Recurso do catálogo dentro do recorte. O filtro de produto não se aplica (a chave já diz o produto); tipo ou
- * plano de outra família que excluem o recurso = 404, como chave fora do catálogo (sem ir ao banco).
+ * Recurso do catálogo e se cabe no recorte. O filtro de produto não se aplica (a chave já diz o produto); tipo ou
+ * plano de outra família excluem o recurso (`inScope: false`). Só chave fora do catálogo = 404.
  */
-export function featureInScope(
+export function resolveUsageFeature(
   catalog: readonly FeatureUsageDefinition[],
   input: FeatureUsageQueryInput & { featureKey: string },
-): FeatureUsageDefinition {
+): { feature: FeatureUsageDefinition; inScope: boolean } {
   const feature = findFeature(input.featureKey, catalog);
   if (!feature) throw new UsageMetricsFeatureNotFoundError();
-  const inScope = scopedFeatures([feature], { kinds: input.kinds, plan: input.plan }).length > 0;
-  if (!inScope) throw new UsageMetricsFeatureNotFoundError();
-  return feature;
+  return { feature, inScope: scopedFeatures([feature], { kinds: input.kinds, plan: input.plan }).length > 0 };
 }
 
-/** Detalhe de um recurso: medidas, quebra por plano e tipo, e a série do recurso. Sem nome de conta. */
+/** Item zerado do recurso fora do recorte (mesmo formato, sem dado lido). */
+function emptyFeatureItem(feature: FeatureUsageDefinition): FeatureUsageItem {
+  return {
+    key: feature.key,
+    product: feature.product,
+    planFamily: feature.planFamily,
+    kinds: [...feature.kinds],
+    coverage: 'FULL',
+    coverageReasons: [],
+    retentionDays: feature.retentionDays ?? null,
+    firstDataDay: null,
+    dataFrom: null,
+    uses: 0,
+    usesPrevious: null,
+    activeTenants: 0,
+    activeTenantsPrevious: null,
+    reach: 0,
+    lastUsedDay: null,
+    byKind: [],
+    byPlan: [],
+  };
+}
+
+/**
+ * Detalhe de um recurso: medidas, quebra por plano e tipo, e a série do recurso. Sem nome de conta. Fora do
+ * recorte (tipo/plano) responde zerado com `inScope: false`, sem ocupar a vaga de leitura.
+ */
 export class GetFeatureUsageDetailUseCase {
   constructor(private readonly deps: FeatureUsageDeps) {}
 
   async execute(input: GetFeatureUsageDetailInput): Promise<FeatureUsageDetailOutput> {
     const catalog = this.deps.catalog ?? FEATURE_USAGE_CATALOG;
-    const feature = featureInScope(catalog, input);
+    const { feature, inScope } = resolveUsageFeature(catalog, input);
+    if (!inScope) {
+      const now = (this.deps.now ?? (() => new Date()))();
+      const period = resolveUsagePeriod({ from: input.from, to: input.to, granularity: input.granularity, now, maxDays: USAGE_LIVE_MAX_DAYS });
+      return {
+        range: rangeOf(period, USAGE_LIVE_MAX_DAYS),
+        source: 'live',
+        freshAt: now,
+        population: { tenants: 0, internalExcluded: 0, byPlan: [] },
+        inScope: false,
+        feature: emptyFeatureItem(feature),
+        series: [],
+      };
+    }
     const filters = { ...toUsageFilters(input), product: undefined };
     const read = await readFeatureUsage(this.deps, input, [feature]);
     const agg = aggregateFeatureUsage({
@@ -65,6 +105,7 @@ export class GetFeatureUsageDetailUseCase {
       source: 'live',
       freshAt: read.now,
       population: agg.population,
+      inScope: true,
       feature: item,
       series: agg.featureSeries[feature.key] ?? [],
     };

@@ -9,8 +9,8 @@ import {
   rankFeatureTenants,
 } from '../../domain/services/aggregateFeatureUsage';
 import { FEATURE_USAGE_CATALOG, type FeatureUsagePlanFamily } from '../../domain/services/featureUsageCatalog';
-import { resolveUsagePeriod } from '../../domain/services/featureUsagePeriod';
-import { featureInScope } from './GetFeatureUsageDetailUseCase';
+import { type UsagePeriod, resolveUsagePeriod } from '../../domain/services/featureUsagePeriod';
+import { resolveUsageFeature } from './GetFeatureUsageDetailUseCase';
 import { type FeatureUsageDeps, type FeatureUsageQueryInput, USAGE_LIVE_MAX_DAYS, toUsageFilters } from './GetFeatureUsageSummaryUseCase';
 import { createFeatureUsageTenantCursor, featureUsageTenantScope, readFeatureUsageTenantCursor } from './featureUsageTenantCursor';
 
@@ -66,11 +66,14 @@ function scopedTenants(tenants: readonly UsageTenantDirectoryEntry[], filters: F
   );
 }
 
-/** Recorte que amarra o cursor e vai para a auditoria: sem nome e sem id de conta (só se há filtro de conta). */
-function scopeFilters(input: ListFeatureUsageTenantsInput) {
+/**
+ * Recorte que amarra o cursor e vai para a auditoria: sem nome e sem id de conta (só se há filtro de conta).
+ * Datas resolvidas (`from`/`to` efetivos): o mesmo período com ou sem datas explícitas dá o mesmo escopo.
+ */
+function scopeFilters(input: ListFeatureUsageTenantsInput, period: Pick<UsagePeriod, 'from' | 'to'>) {
   return {
-    from: input.from,
-    to: input.to,
+    from: period.from,
+    to: period.to,
     kinds: [...input.kinds].sort(),
     plan: input.plan ?? null,
     tenantStatus: input.tenantStatus,
@@ -89,16 +92,17 @@ export class ListFeatureUsageTenantsUseCase {
 
   async execute(input: ListFeatureUsageTenantsInput): Promise<ListFeatureUsageTenantsOutput> {
     const catalog = this.deps.catalog ?? FEATURE_USAGE_CATALOG;
-    const feature = featureInScope(catalog, input);
+    const { feature, inScope } = resolveUsageFeature(catalog, input);
     const filters = toUsageFilters(input);
-    const auditFilters = scopeFilters(input);
+    const now = (this.deps.now ?? (() => new Date()))();
+    const period = resolveUsagePeriod({ from: input.from, to: input.to, granularity: input.granularity, now, maxDays: USAGE_LIVE_MAX_DAYS });
+    const auditFilters = scopeFilters(input, period);
     // O id da conta filtrada entra no escopo só pelo hash (cursor de outra conta não vale).
     const scope = featureUsageTenantScope(feature.key, { ...auditFilters, tenantId: input.tenantId ?? null });
     const after = input.cursor ? readFeatureUsageTenantCursor(input.cursor, scope) : undefined;
     if (after === null) throw new UsageMetricsCursorInvalidError();
-
-    const now = (this.deps.now ?? (() => new Date()))();
-    const period = resolveUsagePeriod({ from: input.from, to: input.to, granularity: input.granularity, now, maxDays: USAGE_LIVE_MAX_DAYS });
+    // Recurso fora do recorte (tipo/plano): lista vazia, sem banco e sem auditoria (nenhum nome lido).
+    if (!inScope) return { items: [], nextCursor: null };
 
     const out = await this.deps.gate.runExclusive(async (budget) => {
       const read = await this.deps.reader.read({

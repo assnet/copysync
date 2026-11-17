@@ -179,6 +179,7 @@ export const usageSummaryResponse = envelope(
 export const usageFeatureDetailResponse = envelope(
   obj({
     ...head,
+    inScope: bool,
     feature: featureItem,
     series: arr(obj({ bucket: str, uses: int, activeTenants: int })),
   }),

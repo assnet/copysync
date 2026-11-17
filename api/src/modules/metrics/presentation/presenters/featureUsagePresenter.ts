@@ -72,6 +72,7 @@ export function presentFeatureUsageSummary(out: FeatureUsageSummaryOutput) {
 export function presentFeatureUsageDetail(out: FeatureUsageDetailOutput) {
   return {
     ...presentHead(out),
+    inScope: out.inScope,
     feature: presentFeature(out.feature),
     series: out.series.map((s) => ({ bucket: s.bucket, uses: s.uses, activeTenants: s.activeTenants })),
   };
