@@ -49,6 +49,7 @@ export interface IPlatformSaverContactRepository {
    * Aplica o resultado de `mergeGroupRead` numa transação (lotes de 500, ordenados por chave; fusão sob
    * advisory lock). Insert que bate na unicidade (outro tenant gravou antes) vira update. Devolve os ids
    * finais dos inserts, na ordem de `contactInserts`, e quantos foram realmente criados.
+   * Corrida perdida com outra gravação (unicidade, fusão, deadlock) lança `ConcurrentWriteConflictError` (retentável).
    */
   applyGroupRead(
     tenantId: string,
