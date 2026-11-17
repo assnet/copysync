@@ -15,18 +15,24 @@ export const SUBSCRIPTION_PATH = '/settings/subscription';
 /** Vitrine de planos de Afiliados (rota antiga `/plans` redireciona). */
 export const AFFILIATE_PLANS_PATH = '/affiliates/plans';
 
+/** Início e vitrine do Saver (rotas em `routes/AppRoutes.tsx`). */
+export const SAVER_HOME_PATH = '/saver';
+export const SAVER_PLANS_PATH = '/saver/plans';
+
 /**
  * Tela inicial de cada produto. Só entra produto cuja rota já existe: registrar uma home sem
- * rota faria o fallback `*` cair em laço. `SAVER` é registrado pela própria feature.
+ * rota faria o fallback `*` cair em laço.
  */
 export const PRODUCT_HOME: Readonly<Partial<Record<ProductKey, string>>> = {
   AFFILIATES: '/dashboard',
+  SAVER: SAVER_HOME_PATH,
 };
 
 /** Vitrine de planos por produto. `CHAT` não tem plano próprio: acompanha Afiliados. */
 export const PRODUCT_PLANS_PATH = {
   AFFILIATES: AFFILIATE_PLANS_PATH,
   CHAT: AFFILIATE_PLANS_PATH,
+  SAVER: SAVER_PLANS_PATH,
 } as const satisfies Partial<Record<ProductKey, string>>;
 
 export function isProductKey(value: unknown): value is ProductKey {

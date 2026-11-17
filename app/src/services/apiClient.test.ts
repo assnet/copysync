@@ -77,9 +77,15 @@ describe('apiClient — produto fora do plano (403 PRODUCT_UNAVAILABLE)', () => 
     expect(localStorage.getItem('accessToken')).toBe('tok');
   });
 
-  it('produto sem vitrine (ou desconhecido) vai para a assinatura', async () => {
+  it('Saver vai para a vitrine dele', async () => {
     const api = await load(rejectWith(403, 'PRODUCT_UNAVAILABLE', { product: 'SAVER' }));
-    await expect(api.get('/saver')).rejects.toBeTruthy();
+    await expect(api.get('/saver/overview')).rejects.toBeTruthy();
+    expect(location.href).toBe('/saver/plans');
+  });
+
+  it('produto desconhecido vai para a assinatura', async () => {
+    const api = await load(rejectWith(403, 'PRODUCT_UNAVAILABLE', { product: 'FUTURO' }));
+    await expect(api.get('/x')).rejects.toBeTruthy();
     expect(location.href).toBe('/settings/subscription');
   });
 

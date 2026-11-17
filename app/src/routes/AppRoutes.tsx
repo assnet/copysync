@@ -34,7 +34,12 @@ import { EXTENSION_REMOVED_PATH } from '@/features/extension/config';
 import { REDIRECT_PUBLIC_PATH } from '@/features/redirectLinks/strings';
 import { SuperAdminRoute } from '@/features/ai/components/SuperAdminRoute';
 import { OfferGeneratorPage } from '@/pages/offers/OfferGeneratorPage';
-import { MembersPage, MirroringPage } from '@/pages/modules';
+import { MirroringPage } from '@/pages/modules';
+import { SaverRoute } from '@/features/saver/components/SaverRoute';
+import { SaverGroupsPage } from '@/features/saver/pages/SaverGroupsPage';
+import { SaverSettingsPage } from '@/features/saver/pages/SaverSettingsPage';
+import { SaverPlansPage } from '@/features/saver/pages/SaverPlansPage';
+import { PlatformContactsPage } from '@/features/saverAdmin/PlatformContactsPage';
 import { StorefrontPage } from '@/features/storefront/StorefrontPage';
 import { OfferStoryPage } from '@/features/offerStory/OfferStoryPage';
 import { TutorialsPage } from '@/features/tutorials/TutorialsPage';
@@ -45,8 +50,8 @@ import { MonitoringPage } from '@/pages/monitoring/MonitoringPage';
 import { LinkRotationPage } from '@/pages/link-rotation/LinkRotationPage';
 import { BroadcastGroupsPage } from '@/pages/broadcast-groups/BroadcastGroupsPage';
 import { PlansPage } from '@/pages/plans/PlansPage';
-import { AFFILIATE_CREDENTIALS_PATH, AFFILIATE_TUTORIALS_PATH } from '@/features/navigation';
-import { PRODUCT_PLANS_PATH, ProductHomeRedirect, ProductRoute } from '@/features/products';
+import { AFFILIATE_CREDENTIALS_PATH, AFFILIATE_TUTORIALS_PATH, SAVER_ADMIN_PATH } from '@/features/navigation';
+import { PRODUCT_PLANS_PATH, ProductHomeRedirect, ProductRoute, SAVER_HOME_PATH, SAVER_PLANS_PATH } from '@/features/products';
 
 function LegacyAffiliateCredentialsRedirect() {
   const { search } = useLocation();
@@ -91,7 +96,16 @@ export function AppRoutes() {
           {/* Caminho antigo: sessões agora ficam em Configurações; mantém query (?create=1&returnTo=…) */}
           <Route path="/sessions" element={<LegacySessionsRedirect />} />
           <Route path="/mirroring" element={<MirroringPage />} />
-          <Route path="/members" element={<MembersPage />} />
+          {/* Antigo "Gestor de membros": virou o Saver */}
+          <Route path="/members" element={<Navigate to={SAVER_HOME_PATH} replace />} />
+          {/* Saver: audiência pela API (`/saver/access`); vitrine fora do guard de produto (senão laço) */}
+          <Route element={<SaverRoute />}>
+            <Route element={<ProductRoute product="SAVER" />}>
+              <Route path={SAVER_HOME_PATH} element={<SaverGroupsPage />} />
+              <Route path={`${SAVER_HOME_PATH}/settings`} element={<SaverSettingsPage />} />
+            </Route>
+            <Route path={SAVER_PLANS_PATH} element={<SaverPlansPage />} />
+          </Route>
           {/* Afiliados: sem o produto → vitrine dele. A vitrine fica fora do guard (senão laço). */}
           <Route element={<ProductRoute product="AFFILIATES" />}>
             <Route path="/offers" element={<OfferGeneratorPage />} />
@@ -141,6 +155,7 @@ export function AppRoutes() {
             <Route path="/admin/costs/history" element={<AdminCostsPage />} />
             <Route path="/admin/redirect-links" element={<AdminRedirectLinksPage />} />
             <Route path="/admin/plan-entitlements" element={<AdminPlanEntitlementsPage />} />
+            <Route path={SAVER_ADMIN_PATH} element={<PlatformContactsPage />} />
           </Route>
         </Route>
       </Route>

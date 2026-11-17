@@ -159,7 +159,7 @@ describe('SubscriptionPage', () => {
       expect(rowKeys()).toEqual(['whatsapp_sessions', 'storefront_enabled']);
     });
 
-    it.each(['light', 'dark'] as const)('Afiliados + Saver (%s): dois cartões, sessões só no primeiro, CTA de Afiliados', async (mode) => {
+    it.each(['light', 'dark'] as const)('Afiliados + Saver (%s): dois cartões, sessões só no primeiro, CTA de cada produto', async (mode) => {
       svc.getSubscription.mockResolvedValue(withProducts([
         { product: 'AFFILIATES', planSlug: 'COPYSYNC_PRO', tier: 'pro', expiresAt: null, source: null },
         saverItem,
@@ -172,8 +172,9 @@ describe('SubscriptionPage', () => {
       expect(Array.from(saver.querySelectorAll('tr[data-key]')).map((r) => r.getAttribute('data-key'))).toEqual(['saver_groups', 'saver_auto_refresh_enabled']);
       expect(saver.querySelector('[role="tablist"]')).toBeNull();
       expect(screen.getByText(t.limits.availableFrom('PRO'))).toBeInTheDocument();
-      // Saver ainda sem vitrine registrada: só o botão de Afiliados
-      expect(screen.getAllByRole('link', { name: new RegExp(t.cta.label) })).toHaveLength(1);
+      // Cada produto leva à própria vitrine
+      const links = screen.getAllByRole('link', { name: new RegExp(t.cta.label) });
+      expect(links.map((a) => a.getAttribute('href'))).toEqual(['/affiliates/plans', '/saver/plans']);
     });
 
     it('só-Saver: cartão do Saver com as sessões da conta', async () => {

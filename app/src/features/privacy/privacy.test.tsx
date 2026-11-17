@@ -55,6 +55,13 @@ describe('PrivacyProvider', () => {
     ]);
   });
 
+  it('Saver: grupos e equipe no tenant; base da plataforma com nome, telefone/LID e conta', () => {
+    expect(PRIVACY_SCREENS.find((s) => s.id === 'saver')!.flags.map((f) => f.id)).toEqual(['saver.groupNames', 'saver.teamNames']);
+    expect(PRIVACY_SCREENS.find((s) => s.id === 'saverAdmin')!.flags.map((f) => f.id)).toEqual([
+      'saverAdmin.contactNames', 'saverAdmin.contactPhones', 'saverAdmin.tenantNames',
+    ]);
+  });
+
   it('Grupos de disparo tem uma flag por tipo de dado, todas registradas', () => {
     const screen = PRIVACY_SCREENS.find((s) => s.id === 'broadcastGroups')!;
     const ids = ['broadcastGroups.groupNames', 'broadcastGroups.groupAvatars', 'broadcastGroups.sessionName'];

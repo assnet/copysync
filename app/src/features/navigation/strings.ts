@@ -21,7 +21,7 @@ export const navigationStrings = {
     affiliates: { label: 'Afiliados', tagline: 'Ofertas, monitoramento e links' },
     crmAutomation: { label: 'CRM & Automação', tagline: 'Atendimento e fluxos automáticos' },
     groupManager: { label: 'Gestor de Grupos', tagline: 'Membros e regras dos seus grupos' },
-    saver: { label: 'Saver', tagline: 'Guarde o que passa nos grupos' },
+    saver: { label: 'Saver', tagline: 'Exporte os contatos dos seus grupos' },
     chipWarmer: { label: 'Aquecedor de Chip', tagline: 'Prepare números novos com segurança' },
     groupFiller: { label: 'Lotar Grupos', tagline: 'Encha seus grupos com novos membros' },
   },
