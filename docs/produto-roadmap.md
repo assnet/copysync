@@ -160,7 +160,7 @@ Chave `saver_*` ausente = **zero/desligado** (nunca ilimitado); ilimitado = JSON
 | Limite | 🟢 SAVER_LITE | 🔵 SAVER_PRO | 🟣 SAVER_MAX |
 |---|---|---|---|
 | Preço mensal (por mês) | R$ 29,90 | R$ 39,90 | R$ 49,90 |
-| Preço anual (por mês · cobrado no ano) | R$ 23,90 · R$ 286,80 | R$ 32,90 · R$ 394,80 | R$ 39,90 · R$ 478,80 |
+| Preço anual na Cakto (12x no cartão · à vista) | 12× R$ 23,90 (R$ 286,80) · R$ 231,38 | 12× R$ 32,90 (R$ 394,80) · R$ 318,45 | 12× R$ 39,90 (R$ 478,80) · R$ 386,30 |
 | Grupos salvos (`saver_groups`) | 10 | 50 | ilimitado |
 | Contatos distintos (`saver_contacts`) | 10.000 | 50.000 | ilimitado |
 | Leituras de grupo em 24 h (`saver_group_scans_per_day`) | 20 | 100 | 500 (proteção do número) |

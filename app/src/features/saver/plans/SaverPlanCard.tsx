@@ -3,7 +3,7 @@ import { alpha } from '@mui/material/styles';
 import { Check, CreditCard, Info } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { formatPrice } from '@/features/plans/strings';
-import { saverAnnualTotal, saverCheckoutPath, saverPriceFor, type SaverBillingPeriod, type SaverPlanCatalogItem } from './catalog';
+import { saverCheckoutPath, saverPriceFor, type SaverBillingPeriod, type SaverPlanCatalogItem } from './catalog';
 import { saverPlansStrings as t } from './strings';
 
 interface Props {
@@ -61,7 +61,7 @@ export function SaverPlanCard({ plan, period, current, canSubscribe }: Props) {
         <Typography variant="body2" color="text.secondary">{t.card.perMonth}</Typography>
       </Stack>
       <Typography variant="caption" color="text.secondary">
-        {period === 'annual' ? t.card.annualBilled(saverAnnualTotal(plan)) : t.card.monthlyBilled}
+        {period === 'annual' ? t.card.annualBilled(plan.priceAnnualMonthly, plan.priceAnnualCash) : t.card.monthlyBilled}
       </Typography>
 
       <Divider sx={{ my: 2 }} />

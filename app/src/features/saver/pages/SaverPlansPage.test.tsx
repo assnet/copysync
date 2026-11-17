@@ -37,7 +37,7 @@ describe('SaverPlansPage', () => {
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(['LITE', 'PRO', 'MAX']);
     const text = norm(document.body.textContent ?? '');
     for (const v of [23.9, 32.9, 39.9]) expect(text).toContain(norm(formatPrice(v)));
-    expect(text).toContain(norm(t.card.annualBilled(286.8)));
+    expect(text).toContain(norm(t.card.annualBilled(23.9, 231.38)));
     expect(text).toContain(t.limits.groups(null));
     expect(text).toContain(t.limits.sessions(2));
     expect(screen.getByText(t.hiddenNumber.title)).toBeInTheDocument();

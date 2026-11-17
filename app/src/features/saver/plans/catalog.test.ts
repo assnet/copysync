@@ -12,6 +12,8 @@ describe('catálogo do Saver (vitrine)', () => {
     expect(SAVER_PLAN_CATALOG.map((p) => saverPriceFor(p, 'monthly'))).toEqual([29.9, 39.9, 49.9]);
     expect(SAVER_PLAN_CATALOG.map((p) => saverPriceFor(p, 'annual'))).toEqual([23.9, 32.9, 39.9]);
     expect(SAVER_PLAN_CATALOG.map(saverAnnualTotal)).toEqual([286.8, 394.8, 478.8]);
+    // à vista no checkout da Cakto (tarifa do parcelamento repassada)
+    expect(SAVER_PLAN_CATALOG.map((p) => p.priceAnnualCash)).toEqual([231.38, 318.45, 386.3]);
   });
 
   it('limites iguais a SAVER_PLAN_PRESETS em api/src/modules/tenants/domain/planPresets.ts', () => {

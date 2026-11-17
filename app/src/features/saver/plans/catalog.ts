@@ -17,8 +17,10 @@ export interface SaverPlanCatalogItem {
   tagline: string;
   /** R$/mês no mensal. */
   price: number;
-  /** R$/mês no anual (cobrado de uma vez por ano). */
+  /** Parcela do anual no cartão em 12x (R$), igual ao checkout da Cakto. */
   priceAnnualMonthly: number;
+  /** Anual à vista (1x) no checkout da Cakto (R$); a Cakto repassa a tarifa do parcelamento. */
+  priceAnnualCash: number;
   recommended?: boolean;
   limits: {
     /** `null` = ilimitado. */
@@ -41,6 +43,7 @@ export const SAVER_PLAN_CATALOG: readonly SaverPlanCatalogItem[] = [
     tagline: 'Para salvar os contatos dos seus primeiros grupos',
     price: 29.9,
     priceAnnualMonthly: 23.9,
+    priceAnnualCash: 231.38,
     limits: { groups: 10, contacts: 10_000, groupScansPerDay: 20, whatsappSessions: 1, autoRefresh: false },
     fit: 'quem tem poucos grupos e quer a lista em mãos.',
   },
@@ -51,6 +54,7 @@ export const SAVER_PLAN_CATALOG: readonly SaverPlanCatalogItem[] = [
     tagline: 'Para quem cuida de vários grupos todo dia',
     price: 39.9,
     priceAnnualMonthly: 32.9,
+    priceAnnualCash: 318.45,
     recommended: true,
     limits: { groups: 50, contacts: 50_000, groupScansPerDay: 100, whatsappSessions: 1, autoRefresh: true },
     fit: 'quem precisa da lista sempre atualizada.',
@@ -62,6 +66,7 @@ export const SAVER_PLAN_CATALOG: readonly SaverPlanCatalogItem[] = [
     tagline: 'Para operações com muitos grupos e dois números',
     price: 49.9,
     priceAnnualMonthly: 39.9,
+    priceAnnualCash: 386.3,
     limits: { groups: null, contacts: null, groupScansPerDay: 500, whatsappSessions: 2, autoRefresh: true },
     fit: 'quem não quer pensar em limite de grupos ou de contatos.',
   },
@@ -81,7 +86,7 @@ export function saverPriceFor(plan: SaverPlanCatalogItem, period: SaverBillingPe
   return period === 'annual' ? plan.priceAnnualMonthly : plan.price;
 }
 
-/** Total cobrado no anual (R$), sem erro de ponto flutuante. */
+/** Total do anual em 12x no cartão (R$), sem erro de ponto flutuante. À vista: `priceAnnualCash`. */
 export function saverAnnualTotal(plan: SaverPlanCatalogItem): number {
   return Math.round(plan.priceAnnualMonthly * 12 * 100) / 100;
 }
