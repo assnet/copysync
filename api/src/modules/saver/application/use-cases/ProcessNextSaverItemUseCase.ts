@@ -5,13 +5,7 @@ import type { ISaverMembershipRepository } from '../../domain/contracts/ISaverMe
 import type { IPlatformSaverContactRepository } from '../../domain/contracts/IPlatformSaverContactRepository';
 import type { SaverExtractionItem } from '../../domain/entities/SaverEntities';
 import { SaverExtractionItemStatus } from '../../domain/enums/SaverEnums';
-import {
-  mergeGroupRead,
-  normalizeLid,
-  normalizePhone,
-  type MergeGroupReadResult,
-  type SaverReadMember,
-} from '../../domain/services/mergeGroupRead';
+import { mergeGroupRead, normalizeLid, normalizePhone, type SaverReadMember } from '../../domain/services/mergeGroupRead';
 import { fitsSaverLimit, readSaverLimit, SAVER_LIMIT_KEYS } from '../../domain/services/saverLimits';
 import type { IProductAccessReader } from '../../../tenants/domain/contracts/IProductAccessReader';
 import type { IEntitlementSnapshotReader } from '../../../tenants/domain/contracts/IEntitlementSnapshotReader';
@@ -168,20 +162,24 @@ export class ProcessNextSaverItemUseCase {
       memberships.listGroupMemberships(item.tenantId, groupId),
     ]);
     const merged = mergeGroupRead({ contacts, memberships: current, members, now, extractionId: item.extractionId });
+    const limit = readSaverLimit(await this.deps.entitlements.readAll(item.tenantId), SAVER_LIMIT_KEYS.CONTACTS);
 
-    if (!(await this.fitsContactLimit(item.tenantId, merged))) {
+    // Teto recontado sob a trava do tenant dentro da gravação (duas sessões do tenant não passam juntas).
+    // Claim perdido durante a leitura (grupo removido, extração cancelada, trava retomada): nada é gravado,
+    // nem vínculo, nem varredura, nem desfecho; o status de quem cancelou prevalece.
+    const applied = await platformContacts.applyGroupRead(
+      item.tenantId,
+      groupId,
+      merged,
+      { itemId: item.id, lockedUntil: item.lockedUntil },
+      ({ used, adding }) => limit === null || fitsSaverLimit(limit, used, adding),
+    );
+    if (applied.status === 'CLAIM_LOST') return 'CANCELLED';
+    if (applied.status === 'LIMIT_REACHED') {
       await groups.recordScan(item.tenantId, groupId, { sessionId: item.sessionId, status: SaverExtractionItemStatus.FAILED, at: now });
       await this.finish(item, now, SaverExtractionItemStatus.FAILED, SAVER_ITEM_ERRORS.PLAN_LIMIT);
       return 'FAILED';
     }
-
-    // Claim perdido durante a leitura (grupo removido, extração cancelada, trava retomada): nada é gravado,
-    // nem vínculo, nem varredura, nem desfecho; o status de quem cancelou prevalece.
-    const applied = await platformContacts.applyGroupRead(item.tenantId, groupId, merged, {
-      itemId: item.id,
-      lockedUntil: item.lockedUntil,
-    });
-    if (!applied) return 'CANCELLED';
     const counts = countMembers(members);
     await groups.recordScan(item.tenantId, groupId, {
       sessionId: item.sessionId,
@@ -201,23 +199,6 @@ export class ProcessNextSaverItemUseCase {
       newContacts: applied.created,
     });
     return 'DONE';
-  }
-
-  /**
-   * Teto = contatos DISTINTOS vinculados ao tenant. Já vinculado não consome; contato que já está na base
-   * (por outro tenant) consome ao ganhar o primeiro vínculo deste tenant; insert novo sempre consome.
-   */
-  private async fitsContactLimit(tenantId: string, merged: MergeGroupReadResult): Promise<boolean> {
-    const limit = readSaverLimit(await this.deps.entitlements.readAll(tenantId), SAVER_LIMIT_KEYS.CONTACTS);
-    if (limit === null) return true;
-    const existingIds = uniq(
-      merged.membershipUpserts.map((m) => ('existingId' in m.contact ? m.contact.existingId : null)),
-    );
-    const [used, firstLinks] = await Promise.all([
-      this.deps.memberships.countDistinctContacts(tenantId),
-      this.deps.memberships.countContactsWithoutTenantLink(tenantId, existingIds),
-    ]);
-    return fitsSaverLimit(limit, used, firstLinks + merged.contactInserts.length);
   }
 
   private async handleError(item: SaverExtractionItem, now: Date, err: unknown): Promise<SaverItemOutcome> {

@@ -2,7 +2,11 @@ import type { ISaverExtractionQueue, ReleaseSaverItemInput, SaverItemClaim } fro
 import type { ISaverSessionStateStore } from '../../domain/contracts/ISaverSessionStateStore';
 import type { ISaverGroupRepository, SaverGroupScanInput } from '../../domain/contracts/ISaverGroupRepository';
 import type { ISaverMembershipRepository } from '../../domain/contracts/ISaverMembershipRepository';
-import type { IPlatformSaverContactRepository } from '../../domain/contracts/IPlatformSaverContactRepository';
+import type {
+  ApplyGroupReadOutcome,
+  IPlatformSaverContactRepository,
+  SaverContactUsage,
+} from '../../domain/contracts/IPlatformSaverContactRepository';
 import type { PlatformSaverContact, SaverExtraction, SaverExtractionItem, SaverGroup } from '../../domain/entities/SaverEntities';
 import { SaverExtractionItemStatus, SaverExtractionStatus, SaverExtractionTrigger } from '../../domain/enums/SaverEnums';
 import type { MergeGroupReadResult, SaverReadMember } from '../../domain/services/mergeGroupRead';
@@ -243,14 +247,24 @@ export class FakeSaverStore {
       this.contacts.filter((c) => (c.phone && phones.includes(c.phone)) || (c.lid && lids.includes(c.lid))),
     list: async () => [],
     findLinks: async () => [],
-    applyGroupRead: async (tenantId: string, groupId: string, result: MergeGroupReadResult, claim: SaverItemClaim) => {
+    applyGroupRead: async (
+      tenantId: string,
+      groupId: string,
+      result: MergeGroupReadResult,
+      claim: SaverItemClaim,
+      fitsContacts: (usage: SaverContactUsage) => boolean,
+    ): Promise<ApplyGroupReadOutcome> => {
       if (this.applyError) {
         const err = this.applyError;
         this.applyError = null;
         throw err;
       }
       const group = this.groups.groups.find((g) => g.tenantId === tenantId && g.id === groupId);
-      if (!this.queue.owns(claim.itemId, claim.lockedUntil) || group?.removedAt) return null;
+      if (!this.queue.owns(claim.itemId, claim.lockedUntil) || group?.removedAt) return { status: 'CLAIM_LOST' };
+      const existingIds = [...new Set(result.membershipUpserts.flatMap((m) => ('existingId' in m.contact ? [m.contact.existingId] : [])))];
+      const used = await this.memberships.countDistinctContacts(tenantId);
+      const firstLinks = await this.memberships.countContactsWithoutTenantLink(tenantId, existingIds);
+      if (!fitsContacts({ used, adding: firstLinks + result.contactInserts.length })) return { status: 'LIMIT_REACHED' };
       this.applied += 1;
       const insertedIds = result.contactInserts.map((c) => {
         const id = `c${++this.seq}`;
@@ -263,7 +277,7 @@ export class FakeSaverStore {
         if (link) link.leftAt = null;
         else this.links.push({ tenantId, groupId, contactId, leftAt: null });
       }
-      return { insertedIds, created: insertedIds.length };
+      return { status: 'APPLIED', insertedIds, created: insertedIds.length };
     },
   };
 

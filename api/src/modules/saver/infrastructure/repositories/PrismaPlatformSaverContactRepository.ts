@@ -2,7 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type { PlatformSaverContact } from '../../domain/entities/SaverEntities';
 import type {
+  ApplyGroupReadOutcome,
   IPlatformSaverContactRepository,
+  SaverContactUsage,
   PlatformSaverContactFilter,
   PlatformSaverContactKey,
   PlatformSaverContactLink,
@@ -11,6 +13,7 @@ import type {
 import type { ContactMerge, ContactUpdate, MergeGroupReadResult } from '../../domain/services/mergeGroupRead';
 import { ConcurrentWriteConflictError, NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
 import type { SaverItemClaim } from '../../domain/contracts/ISaverExtractionQueue';
+import { lockSaverTenant } from './saverTenantLock';
 import { PrismaSaverMapper } from '../mappers/PrismaSaverMapper';
 
 type Tx = Prisma.TransactionClient;
@@ -101,8 +104,9 @@ export class PrismaPlatformSaverContactRepository implements IPlatformSaverConta
     groupId: string,
     result: MergeGroupReadResult,
     claim: SaverItemClaim,
-  ): Promise<{ insertedIds: string[]; created: number } | null> {
-    return this.applyInTransaction(tenantId, groupId, result, claim).catch((err: unknown) => {
+    fitsContacts: (usage: SaverContactUsage) => boolean,
+  ): Promise<ApplyGroupReadOutcome> {
+    return this.applyInTransaction(tenantId, groupId, result, claim, fitsContacts).catch((err: unknown) => {
       throw isWriteRace(err) ? new ConcurrentWriteConflictError('SaverContact') : err;
     });
   }
@@ -112,21 +116,25 @@ export class PrismaPlatformSaverContactRepository implements IPlatformSaverConta
     groupId: string,
     result: MergeGroupReadResult,
     claim: SaverItemClaim,
-  ): Promise<{ insertedIds: string[]; created: number } | null> {
+    fitsContacts: (usage: SaverContactUsage) => boolean,
+  ): Promise<ApplyGroupReadOutcome> {
     return this.prisma.$transaction(
-      async (tx) => {
-        // Item antes do grupo (mesma ordem de remover: cancela itens, depois marca o grupo). A trava do item
-        // segura cancelamento/remoção até o fim; claim perdido ou grupo removido = nada gravado.
+      async (tx): Promise<ApplyGroupReadOutcome> => {
+        // Trava do tenant primeiro (mesma ordem do pedido de extração). Depois item antes do grupo (mesma
+        // ordem de remover: cancela itens, depois marca o grupo). A trava do item segura cancelamento/remoção
+        // até o fim; claim perdido ou grupo removido = nada gravado.
+        await lockSaverTenant(tx, tenantId);
         const owned = await tx.$queryRaw<{ id: string }[]>`
           SELECT "id" FROM "saver_extraction_items"
           WHERE "id" = ${claim.itemId} AND "tenantId" = ${tenantId} AND "groupId" = ${groupId}
             AND "status" = 'RUNNING' AND "lockedUntil" IS NOT DISTINCT FROM ${claim.lockedUntil}::timestamp(3)
           FOR UPDATE`;
-        if (owned.length === 0) return null;
+        if (owned.length === 0) return { status: 'CLAIM_LOST' };
         const group = await tx.$queryRaw<{ id: string; removedAt: Date | null }[]>`
           SELECT "id", "removedAt" FROM "saver_groups" WHERE "id" = ${groupId} AND "tenantId" = ${tenantId} FOR UPDATE`;
         if (group.length === 0) throw new NotFoundError('SaverGroup', groupId);
-        if (group[0]!.removedAt) return null;
+        if (group[0]!.removedAt) return { status: 'CLAIM_LOST' };
+        if (!fitsContacts(await contactUsage(tx, tenantId, result))) return { status: 'LIMIT_REACHED' };
 
         for (const merge of result.contactMerges) await applyMerge(tx, merge);
         const { insertedIds, created, conflictUpdates } = await applyInserts(tx, result);
@@ -143,11 +151,26 @@ export class PrismaPlatformSaverContactRepository implements IPlatformSaverConta
             data: { leftAt: result.markLeft[0]!.leftAt },
           });
         }
-        return { insertedIds, created };
+        return { status: 'APPLIED', insertedIds, created };
       },
       { timeout: APPLY_TIMEOUT_MS, maxWait: APPLY_TIMEOUT_MS },
     );
   }
+}
+
+/** Uso do teto `saver_contacts` lido sob a trava do tenant (mesma regra de `ISaverMembershipRepository`). */
+async function contactUsage(tx: Prisma.TransactionClient, tenantId: string, result: MergeGroupReadResult): Promise<SaverContactUsage> {
+  const existingIds = [
+    ...new Set(result.membershipUpserts.flatMap((m) => ('existingId' in m.contact ? [m.contact.existingId] : []))),
+  ];
+  const [row] = await tx.$queryRaw<{ used: bigint; linked: bigint }[]>`
+    SELECT COUNT(DISTINCT m."contactId") AS used,
+      COUNT(DISTINCT m."contactId") FILTER (WHERE m."contactId" = ANY(${existingIds}::text[])) AS linked
+    FROM "saver_group_memberships" m
+    JOIN "saver_groups" g ON g."id" = m."groupId" AND g."tenantId" = ${tenantId} AND g."removedAt" IS NULL
+    WHERE m."tenantId" = ${tenantId}`;
+  const firstLinks = existingIds.length - Number(row?.linked ?? 0);
+  return { used: Number(row?.used ?? 0), adding: firstLinks + result.contactInserts.length };
 }
 
 /** Prisma: unicidade (P2002), conflito/deadlock (P2034); SQL cru (P2010) com SQLSTATE de unicidade, deadlock ou serialização. */

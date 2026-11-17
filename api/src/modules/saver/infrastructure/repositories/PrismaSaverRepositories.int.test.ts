@@ -70,9 +70,9 @@ async function readGroup(tenantId: string, groupId: string, members: SaverReadMe
     now,
     extractionId,
   });
-  const applied = await platform.applyGroupRead(tenantId, groupId, result, { itemId: item.id, lockedUntil });
+  const applied = await platform.applyGroupRead(tenantId, groupId, result, { itemId: item.id, lockedUntil }, () => true);
   await prisma.saverExtractionItem.update({ where: { id: item.id }, data: { status: 'DONE', lockedUntil: null } });
-  if (!applied) throw new Error('claim perdido');
+  if (applied.status !== 'APPLIED') throw new Error(applied.status);
   return applied;
 }
 
@@ -251,7 +251,7 @@ describe('cancelamento durante a leitura', () => {
     await groups.markRemoved(t, g, now);
 
     const claim = { itemId: item!.id, lockedUntil: item!.lockedUntil };
-    expect(await platform.applyGroupRead(t, g, result, claim)).toBeNull();
+    expect(await platform.applyGroupRead(t, g, result, claim, () => true)).toEqual({ status: 'CLAIM_LOST' });
     await groups.recordScan(t, g, { sessionId: s, status: SaverExtractionItemStatus.DONE, at: now, memberCount: 1 });
     const released = await queue.release({
       itemId: item!.id, claimedLockUntil: item!.lockedUntil, status: SaverExtractionItemStatus.DONE, attempts: 0,
@@ -277,7 +277,7 @@ describe('cancelamento durante a leitura', () => {
     const result = mergeGroupRead({ contacts: [], memberships: [], members, now, extractionId: ext.id });
     const claim = { itemId: item!.id, lockedUntil: item!.lockedUntil };
     const [applied, cancelled] = await Promise.all([
-      platform.applyGroupRead(t, g, result, claim),
+      platform.applyGroupRead(t, g, result, claim, () => true),
       (async () => {
         await new Promise((r) => setTimeout(r, 5));
         return queue.cancelPendingByGroup(t, g, now);
@@ -297,7 +297,30 @@ describe('cancelamento durante a leitura', () => {
       expect(final.status).toBe('DONE');
     }
     const links = await prisma.saverGroupMembership.count({ where: { groupId: g } });
-    expect(links).toBe(applied ? 300 : 0);
+    expect(links).toBe(applied.status === 'APPLIED' ? 300 : 0);
+  });
+});
+
+describe('teto saver_contacts sob a trava do tenant', () => {
+  it('duas sessões do tenant gravando ao mesmo tempo não passam do teto; a barrada não grava nada', async () => {
+    const t = await makeTenant('cap');
+    const fits = ({ used, adding }: { used: number; adding: number }) => used + adding <= 3;
+    const reads = await Promise.all(
+      ['a', 'b'].map(async (tag) => {
+        const s = await makeSession(t);
+        const g = await makeGroup(t, s, `cap-${tag}-${stamp}@g.us`);
+        const lockedUntil = new Date(now.getTime() + 60_000);
+        const item = await claimedItem(t, g, lockedUntil);
+        const members = Array.from({ length: 3 }, (_, i) => ({ phone: null, lid: `lid${stamp}-cap${tag}${i}`, name: null, isAdmin: false }));
+        const result = mergeGroupRead({ contacts: [], memberships: [], members, now, extractionId: 'ext' });
+        return { g, claim: { itemId: item.id, lockedUntil }, result };
+      }),
+    );
+    const outcomes = await Promise.all(reads.map((r) => platform.applyGroupRead(t, r.g, r.result, r.claim, fits)));
+    expect(outcomes.map((o) => o.status).sort()).toEqual(['APPLIED', 'LIMIT_REACHED']);
+    expect(await memberships.countDistinctContacts(t)).toBe(3);
+    const barred = reads[outcomes.findIndex((o) => o.status === 'LIMIT_REACHED')]!;
+    expect(await prisma.saverGroupMembership.count({ where: { groupId: barred.g } })).toBe(0);
   });
 });
 
