@@ -1,10 +1,11 @@
 import type { LucideIcon } from 'lucide-react';
 import {
-  BadgePercent, Bookmark, Send, Bot, Crown, EyeOff, Flame, Globe, LayoutDashboard, Link2,
+  BadgePercent, Bookmark, ChartColumn, Send, Bot, Crown, EyeOff, Flame, Globe, LayoutDashboard, Link2,
   Contact, GraduationCap, KeyRound, MessagesSquare, Receipt, SlidersHorizontal, Server, Settings, Settings2, Signpost, Tag, UserRoundPlus,
   Users, UsersRound, Workflow,
 } from 'lucide-react';
 import { MODULE_ICONS } from './icons';
+import { USAGE_PATH } from '@/features/featureUsage/paths';
 import { plansStrings } from '@/features/plans/strings';
 import { privacyStrings } from '@/features/privacy/strings';
 import { linkRotationStrings } from '@/features/linkRotation/strings';
@@ -12,6 +13,7 @@ import { aiStrings } from '@/features/ai/strings';
 import { linkDomainsAdminStrings } from '@/features/linkDomainsAdmin/strings';
 import { workersAdminStrings } from '@/features/workersAdmin/strings';
 import { infraCostsStrings } from '@/features/infraCosts/strings';
+import { featureUsageStrings } from '@/features/featureUsage/strings';
 import { redirectLinksStrings } from '@/features/redirectLinks/strings';
 import { tutorialsStrings } from '@/features/tutorials/strings';
 import { saverStrings } from '@/features/saver/strings';
@@ -189,6 +191,7 @@ export function buildNavigation({ isSuperAdmin, offerHunterVisible, saverVisible
           { key: 'admin-link-domains', label: linkDomainsAdminStrings.navLabel, path: '/admin/link-domains', icon: Globe },
           { key: 'admin-workers', label: workersAdminStrings.navLabel, path: '/admin/workers', icon: Server, matchPrefix: '/admin/workers' },
           { key: 'admin-costs', label: infraCostsStrings.navLabel, path: '/admin/costs', icon: Receipt, matchPrefix: '/admin/costs' },
+          { key: 'admin-usage', label: featureUsageStrings.navLabel, path: USAGE_PATH, icon: ChartColumn, matchPrefix: USAGE_PATH },
           { key: 'admin-redirect-links', label: redirectLinksStrings.navLabel, path: '/admin/redirect-links', icon: Signpost },
           { key: 'admin-saver', label: saverStrings.menu.platformContacts, path: SAVER_ADMIN_PATH, icon: Contact },
           { key: 'admin-plan-entitlements', label: s.links.planEntitlements, path: '/admin/plan-entitlements', icon: SlidersHorizontal },

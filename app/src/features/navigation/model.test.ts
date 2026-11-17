@@ -38,7 +38,17 @@ describe('buildNavigation', () => {
     const crm = model.products.find((p) => p.key === 'crm-automation')!;
     expect(crm.status).toBe('available');
     expect(crm.children.map((c) => c.path)).toEqual(['/chat']);
-    expect(model.platform.map((l) => l.path)).toEqual(['/admin/ai', '/admin/link-domains', '/admin/workers', '/admin/costs', '/admin/redirect-links', '/admin/saver', '/admin/plan-entitlements']);
+    expect(model.platform.map((l) => l.path)).toEqual(['/admin/ai', '/admin/link-domains', '/admin/workers', '/admin/costs', '/admin/usage', '/admin/redirect-links', '/admin/saver', '/admin/plan-entitlements']);
+  });
+
+  it('uso dos recursos: só super admin, logo depois de custos, sem produto novo', () => {
+    const common = buildNavigation({ isSuperAdmin: false, offerHunterVisible: true, saverVisible: true, products: LEGACY });
+    const allKeys = [...common.top, ...common.platform, ...common.products.flatMap((p) => p.children)].map((l) => l.key);
+    expect(allKeys).not.toContain('admin-usage');
+    const admin = buildNavigation({ isSuperAdmin: true, offerHunterVisible: false, saverVisible: false, products: LEGACY });
+    const keys = admin.platform.map((l) => l.key);
+    expect(keys.indexOf('admin-usage')).toBe(keys.indexOf('admin-costs') + 1);
+    expect(admin.platform.find((l) => l.key === 'admin-usage')?.label).toBe('Uso dos recursos');
   });
 
   it('nenhum rótulo leva nome de marca', () => {
@@ -118,6 +128,8 @@ describe('findActiveEntry', () => {
   it('Custos: abas por sub-rota ativam o mesmo item', () => {
     expect(findActiveEntry(model, '/admin/costs')?.link.key).toBe('admin-costs');
     expect(findActiveEntry(model, '/admin/costs/prices')?.link.key).toBe('admin-costs');
+    expect(findActiveEntry(model, '/admin/usage/plans')?.link.key).toBe('admin-usage');
+    expect(findActiveEntry(model, '/admin/usage/features/offer_generator')?.link.key).toBe('admin-usage');
   });
 
   it('rota global e rota desconhecida', () => {

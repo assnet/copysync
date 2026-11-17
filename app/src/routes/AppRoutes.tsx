@@ -24,6 +24,8 @@ import { AdminAiPage } from '@/pages/admin/AdminAiPage';
 import { AdminLinkDomainsPage } from '@/pages/admin/AdminLinkDomainsPage';
 import { AdminWorkersPage } from '@/pages/admin/AdminWorkersPage';
 import { AdminCostsPage } from '@/pages/admin/AdminCostsPage';
+import { AdminUsagePage } from '@/pages/admin/AdminUsagePage';
+import { USAGE_FEATURE_ROUTE, USAGE_PATH, USAGE_PLANS_PATH } from '@/features/featureUsage/paths';
 import { AdminRedirectLinksPage } from '@/pages/admin/AdminRedirectLinksPage';
 import { AdminPlanEntitlementsPage } from '@/pages/admin/AdminPlanEntitlementsPage';
 import { RedirectPage } from '@/pages/RedirectPage';
@@ -153,6 +155,9 @@ export function AppRoutes() {
             <Route path="/admin/costs/prices" element={<AdminCostsPage />} />
             <Route path="/admin/costs/tenants" element={<AdminCostsPage />} />
             <Route path="/admin/costs/history" element={<AdminCostsPage />} />
+            <Route path={USAGE_PATH} element={<AdminUsagePage />} />
+            <Route path={USAGE_PLANS_PATH} element={<AdminUsagePage />} />
+            <Route path={USAGE_FEATURE_ROUTE} element={<AdminUsagePage />} />
             <Route path="/admin/redirect-links" element={<AdminRedirectLinksPage />} />
             <Route path="/admin/plan-entitlements" element={<AdminPlanEntitlementsPage />} />
             <Route path={SAVER_ADMIN_PATH} element={<PlatformContactsPage />} />
