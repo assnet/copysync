@@ -35,7 +35,7 @@ pelo do cliente, reescreve o texto com IA e reposta nos grupos dele, no horário
 | 15 | 🌐 Domínio personalizado | Site de ofertas e Gestor de Links servidos no domínio do cliente (CNAME + TLS automático) | `storefront/custom-domain` | ⏳ |
 | 16 | 🎧 Níveis de suporte | Suporte 24/7, prioritário ou exclusivo conforme o plano; só muda fila/SLA, nada no código além do entitlement | `tenants` (entitlement `support_tier`) | ⏳ |
 | 17 | 🎯 Caçador de Ofertas | Procura sozinho, no catálogo de comissão da Shein, as ofertas com melhor retorno (comissão × chance de venda), refina com ou sem IA e envia só as melhores para 1 grupo, de tempos em tempos | `campaigns/hunter` ([`cacador-de-ofertas.md`](cacador-de-ofertas.md)) | ✅ prévia só super admin (job desligado até o smoke); MAX |
-| 18 | 📇 Saver | Lê os membros dos grupos de WhatsApp do cliente, guarda cada contato uma vez na base da plataforma (vínculo com o grupo, data e hora da extração) e exporta CSV/vCard; tenant só vê contagens | `saver` ([doc](saver.md)) | 🟡 API pronta (extração, exportação, base da plataforma); painel pendente |
+| 18 | 📇 Saver | Lê os membros dos grupos de WhatsApp do cliente, guarda cada contato uma vez na base da plataforma (vínculo com o grupo, data e hora da extração) e exporta CSV/vCard; tenant só vê contagens | `saver` ([doc](saver.md)) | 🟡 api 0.100.0 · app 0.123.0: API e painel prontos, visível só ao super admin (`SAVER_AUDIENCE`); falta smoke com sessão real e planos na central |
 
 ## Produtos (menu)
 
@@ -47,7 +47,7 @@ Produto novo nasce aqui antes de entrar no menu. Números referem-se à tabela a
 | Afiliados | disponível | 3, 4, 8, 9, 11, 12, 17 |
 | CRM & Automação | em breve | chat/atendimento, fluxos por blocos, assistentes de IA (`/chat` já existe, só super admin; ingestão por entitlement `chat_enabled`, ver `chat-ingestao-por-entitlement.md`) |
 | Gestor de Grupos | em breve | 5, 10, 14 |
-| Saver | em breve | 18 — planos próprios `SAVER_LITE`/`SAVER_PRO`/`SAVER_MAX` (seção "Planos do Saver"); tagline "Exporte os contatos dos seus grupos" |
+| Saver | disponível só para super admin (audiência) | 18 — planos próprios `SAVER_LITE`/`SAVER_PRO`/`SAVER_MAX` (seção "Planos do Saver"); tagline "Exporte os contatos dos seus grupos" |
 | Aquecedor de Chip | em breve | a definir |
 | Lotar Grupos | em breve | a definir (entrada de novos membros nos grupos do cliente) |
 

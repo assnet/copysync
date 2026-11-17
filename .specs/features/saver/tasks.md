@@ -1,6 +1,6 @@
 # Saver — Tarefas
 
-**Design**: `design.md` · **Status**: Em execução (2026-11-17): ✅ T1–T19 (API); ⏳ T20–T26 (painel); ✅ T27 docs (`docs/saver.md`; versões e CHANGELOG ficam com o orquestrador); ⏳ T28; P2 T29–T32 não iniciadas (pré-requisito `product-access` aprovado em 2026-11-11) · Branch: `feature/saver` a partir de `feature/rebranding-app`, **depois** do
+**Design**: `design.md` · **Status**: Em execução (2026-11-17): ✅ T1–T19 (API); ✅ T20–T26 (painel); ✅ T27 docs + api 0.100.0/app 0.123.0; 🟡 T28 QA visual feito, smoke com sessão real pendente (dono); P2 T29–T32 não iniciadas (pré-requisito `product-access` aprovado em 2026-11-11) · Branch: `feature/saver` a partir de `feature/rebranding-app`, **depois** do
 merge de `feature/product-access`. Cada tarefa = 1 subagente + 1 commit `type(saver): …`.
 Gate: `.specs/codebase/TESTING.md` (`quick` ao fim da task, `full` antes do commit). Migration nunca roda contra
 `api/.env` (produção): só Postgres descartável. `git add` só com caminhos explícitos. `[P]` = paralela dentro da fase.

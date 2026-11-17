@@ -29,7 +29,7 @@ Conta, IA e Extensão. Assinatura é do tenant (um `planSlug`), por isso fica aq
 | | | Planos | `/affiliates/plans` | |
 | CRM & Automação | `soon` | Chat (só super admin) | `/chat` | |
 | Gestor de Grupos | `soon` | — | — | |
-| Saver | `soon` (API pronta; telas pendentes) | — | — | |
+| Saver | `available` só com audiência (`/saver/access`); sem o produto = cadeado | Grupos, Configurações, Planos; Base de contatos (admin, super admin) | `/saver`, `/saver/settings`, `/saver/plans`, `/admin/saver` | |
 | Aquecedor de Chip | `soon` | — | — | |
 | Lotar Grupos | `soon` | — | — | |
 

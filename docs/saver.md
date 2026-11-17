@@ -5,8 +5,9 @@ plataforma, vinculado ao grupo e à data e hora da extração. Depois exporta CS
 recebe o arquivo; ele nunca navega nos contatos. Produto `SAVER` do [acesso por produto](acesso-por-produto.md),
 roadmap item 18. Plano e decisões: `.specs/features/saver/` (`context.md` resume as decisões do dono).
 
-Estado: **API pronta** (módulo `api/src/modules/saver/`). Painel (`/saver`, `/admin/saver`, vitrine) ainda não existe
-(tasks T20–T26). Smoke com sessão real ainda não foi feito: a taxa real de membros com nome e com número fica para o T28.
+Estado (api 0.100.0 · app 0.123.0): **API e painel prontos** (`api/src/modules/saver/`; painel `/saver` Grupos, `/saver/settings`,
+`/saver/plans` e `/admin/saver` Base de contatos). QA visual feito em banco descartável. Smoke com sessão real ainda não foi
+feito: a taxa real de membros com nome e com número fica para o T28 (ação do dono).
 
 ## Planos e limites
 
