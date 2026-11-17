@@ -17,6 +17,24 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.100.3] — 2026-11-17 — Saver: membros e comunidades nos grupos da sessão (app 0.123.3)
+
+### Added
+
+#### api — messaging / saver
+
+- **`IMessagingEngine.ts`** — `ParticipatingGroupInfo` ganha `memberCount?` e `kind?` (`GROUP` | `COMMUNITY` | `COMMUNITY_ANNOUNCE`). Baileys preenche na mesma `groupFetchAllParticipating` (`size ?? participants.length`, `isCommunity`/`isCommunityAnnounce`); Telegram só `participantsCount` do diálogo. Remoto: ida e volta coberta em `engineCallCodec.test.ts`. Demais consumidores sem mudança.
+- **`saverGroupKind.ts`** (novo) — comunidade "pai" não tem membros próprios: `selectable: false`, `unselectableReason: COMMUNITY_PARENT`.
+- **`ListSaverSessionGroupsUseCase.ts`**, **`SaverPresenter.ts`**, **`saver.schema.ts`** — `GET /saver/sessions/:id/groups` devolve `memberCount`, `kind`, `selectable`, `unselectableReason`.
+- **`RequestSaverExtractionUseCase.ts`** — pedido com comunidade "pai" → 400 `VALIDATION_ERROR` antes de gravar; o grupo de avisos segue liberado.
+
+#### app — saver
+
+- **`GroupSelectionTable.tsx`** — "N membros" (pt-BR, `—` com Tooltip quando desconhecido), selo Comunidade/Avisos da comunidade com Tooltip, comunidade "pai" desabilitada com o motivo; "marcar todos" ignora ela.
+- **`SaverGroupsPage.tsx`**, **`groupMembers.ts`** — total de membros dos marcados ao lado do limite por pedido ("Pelo menos" quando algum total falta).
+- **`CopyGroupNameButton.tsx`** (novo) — copiar nome do grupo (Clipboard API com fallback `execCommand`, aviso de copiado/erro) na lista da sessão e em "Grupos salvos"; não alterna a seleção; com `saver.groupNames` borrado copia o nome real, mas Tooltip e `aria-label` não o mostram.
+- Doc: `docs/saver.md` (seção "Grupos da sessão: membros e comunidades").
+
 ## [0.100.2] — 2026-11-17 — Piloto do Saver com limites do MAX (app 0.123.2)
 
 ### Fixed
