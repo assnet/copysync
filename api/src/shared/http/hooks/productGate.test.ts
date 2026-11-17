@@ -54,7 +54,7 @@ describe('createProductGate', () => {
   });
 
   it.each([
-    ['AFFILIATES', 'enforce', 'SERVICE_TEMPORARILY_UNAVAILABLE'],
+    ['AFFILIATES', 'enforce', 'pass'],
     ['AFFILIATES', 'log', 'pass'],
     ['AFFILIATES', 'off', 'pass'],
     ['SAVER', 'off', 'SERVICE_TEMPORARILY_UNAVAILABLE'],
@@ -67,7 +67,7 @@ describe('createProductGate', () => {
   it('403 leva o produto em meta e 503 é genérico', async () => {
     const err403 = await createProductGate('SAVER', reader(false), 'off')(req(tenant), reply).catch((e) => e);
     expect(err403).toMatchObject({ statusCode: 403, meta: { product: 'SAVER' } });
-    const err503 = await createProductGate('AFFILIATES', reader(new Error('secret db detail')), 'enforce')(req(tenant), reply).catch((e) => e);
+    const err503 = await createProductGate('SAVER', reader(new Error('secret db detail')), 'enforce')(req(tenant), reply).catch((e) => e);
     expect(err503.statusCode).toBe(503);
     expect(err503.message).not.toContain('secret');
   });

@@ -15,7 +15,8 @@ export type ProductGate = (request: FastifyRequest, reply: FastifyReply) => Prom
  * - Sem `tenantContext` (rota pública do plugin) ou super admin: passa.
  * - Produto legado: `off` não consulta; `log` consulta e só registra `would_block`; `enforce` → 403.
  * - Produto novo: sempre exigido, em qualquer modo.
- * - Leitura falhou: `enforce` ou produto novo → 503 genérico; legado em `log` → segue.
+ * - Leitura falhou: produto novo → 503 genérico (nunca libera); legado segue em qualquer modo, com log `error`
+ *   (legado sem linha é ativo por regra: pico de banco não pode derrubar Afiliados/Chat de todo tenant).
  */
 export function createProductGate(product: ProductKey, reader: IProductAccessReader, mode: ProductGateMode): ProductGate {
   const legacy = isLegacyProduct(product);
@@ -29,8 +30,8 @@ export function createProductGate(product: ProductKey, reader: IProductAccessRea
     try {
       allowed = await reader.has(ctx.tenantId, product);
     } catch (err) {
-      logger.warn({ err: (err as Error)?.message, tenantId: ctx.tenantId, product }, 'product access read failed');
-      if (required) throw new ProductAccessCheckUnavailableError();
+      logger.error({ err: (err as Error)?.message, tenantId: ctx.tenantId, product }, 'product access read failed');
+      if (!legacy) throw new ProductAccessCheckUnavailableError();
       return;
     }
     if (allowed) return;

@@ -62,6 +62,7 @@ import { BaileysSessionRegistry } from './BaileysSessionRegistry';
 import {
   translateDisconnect,
   translateEngineError,
+  translateGroupReadError,
   translateGroupInviteError,
   translatePairingError,
   translateSendError,
@@ -894,9 +895,11 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
     const remoteJid = groupJid.endsWith('@g.us') ? groupJid : `${groupJid}@g.us`;
     try {
       const metadata = await (entry.socket as BaileysSocketWithGroupHelpers).groupMetadata?.(remoteJid);
-      return normalizeGroupMembers(metadata?.participants);
+      // Sem metadados não é "grupo vazio": devolver [] faria o Saver marcar saída de todo membro.
+      if (!metadata || !Array.isArray(metadata.participants)) throw new EngineTemporarilyUnavailableError();
+      return normalizeGroupMembers(metadata.participants);
     } catch (err) {
-      throw translateEngineError(err);
+      throw translateGroupReadError(err);
     }
   }
 

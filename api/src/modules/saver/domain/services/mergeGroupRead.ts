@@ -332,7 +332,8 @@ export function mergeGroupRead(input: MergeGroupReadInput): MergeGroupReadResult
 
   const markLeft: MarkLeft[] = [];
   const absorbedIds = new Set(absorbedInto.keys());
-  for (const ms of input.memberships) {
+  // Leitura sem membro identificável não prova saída de ninguém (grupo nunca fica vazio de fato).
+  for (const ms of members.length === 0 ? [] : input.memberships) {
     if (ms.leftAt || absorbedIds.has(ms.contactId)) continue;
     if (linkedIds.has(ms.contactId)) continue;
     markLeft.push({ contactId: ms.contactId, leftAt: now });

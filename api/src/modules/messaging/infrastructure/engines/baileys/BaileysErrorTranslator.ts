@@ -161,10 +161,17 @@ function isRateOverlimit(err: unknown): boolean {
   return data === 429 || message === 'rate-overlimit';
 }
 
+/**
+ * Leitura de grupo para a base de contatos (Saver): limite de taxa vira `ENGINE_RATE_LIMITED` (429) para o job
+ * pausar. Fora daqui (envio, pareamento) o limite segue como antes: `ENGINE_TEMPORARILY_UNAVAILABLE` (503).
+ */
+export function translateGroupReadError(err: unknown): AppError {
+  if (!(err instanceof AppError) && isRateOverlimit(err)) return new EngineRateLimitedError();
+  return translateEngineError(err);
+}
+
 export function translateEngineError(err: unknown): AppError {
   if (err instanceof AppError) return err;
-
-  if (isRateOverlimit(err)) return new EngineRateLimitedError();
 
   if (isBoomLike(err)) {
     const reason = err.output?.statusCode as DisconnectReason | undefined;
