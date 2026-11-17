@@ -203,6 +203,63 @@ describe('usageReadGate', () => {
     await expect(gate.runExclusive(async () => 'x')).resolves.toBe('x');
   });
 
+  it('órfã que nunca resolve perde a vaga 30 s após o fim do orçamento, com warn e sem dupla liberação', async () => {
+    vi.useFakeTimers();
+    try {
+      const warn = vi.fn();
+      const gate = new ProcessUsageReadGate(() => createReadBudget(2000), 4, 30_000, { warn });
+      let finish!: () => void;
+      const { prisma } = fakePrisma(() => new Promise<unknown[]>((res) => (finish = () => res([]))));
+      const first = gate.runExclusive((b) => runWithinBudget(b, prisma, Q)).catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(await first).toBeInstanceOf(UsageMetricsReadUnavailableError);
+      expect(vi.getTimerCount()).toBe(1);
+      const blocked = gate.runExclusive(async () => 'x').catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(await blocked).toBeInstanceOf(UsageMetricsReadUnavailableError);
+      await vi.advanceTimersByTimeAsync(27_999);
+      expect(warn).not.toHaveBeenCalled();
+      const a = gate.runExclusive(async () => 'a');
+      const b = gate.runExclusive(async () => 'b');
+      expect(gate.waiting).toBe(2);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]![1]).toBe('usage read orphan exceeded hold limit');
+      await expect(a).resolves.toBe('a');
+      await expect(b).resolves.toBe('b');
+      // Ocupa a vaga de novo; a resolução tardia da órfã não pode liberá-la.
+      const c = hold();
+      const busy = gate.runExclusive(() => c.p);
+      finish();
+      await vi.advanceTimersByTimeAsync(0);
+      const after = gate.runExclusive(async () => 'depois');
+      expect(gate.waiting).toBe(1);
+      c.release();
+      await busy;
+      await expect(after).resolves.toBe('depois');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('pedido que assenta no prazo limpa o temporizador de retenção', async () => {
+    vi.useFakeTimers();
+    try {
+      const warn = vi.fn();
+      const gate = new ProcessUsageReadGate(() => createReadBudget(2000), 4, 30_000, { warn });
+      await expect(gate.runExclusive(async () => 1)).resolves.toBe(1);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(vi.getTimerCount()).toBe(0);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('erro no meio da leitura devolve a vaga', async () => {
     const gate = new ProcessUsageReadGate();
     await expect(

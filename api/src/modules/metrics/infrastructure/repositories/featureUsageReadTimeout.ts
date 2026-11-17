@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { UsageMetricsReadUnavailableError } from '../../../../shared/errors/internal/UsageMetricsErrors';
+import { logger } from '../../../../shared/logger/logger';
 import type { IUsageReadGate, UsageReadBudget } from '../../domain/contracts/IUsageReadGate';
 import { isStatementTimeout } from './infraCostReadTimeout';
 
@@ -65,14 +66,20 @@ export async function runWithinBudget<T>(budget: UsageReadBudget, prisma: UsageR
 /** Pedidos que podem esperar a vaga ao mesmo tempo; além disso, 503 na hora. */
 export const USAGE_READ_QUEUE_MAX = 4;
 
+/** Quanto a órfã pode segurar a vaga depois do fim do orçamento (socket morto nunca resolve). */
+export const USAGE_READ_ORPHAN_HOLD_MS = 30_000;
+
+type GateLogger = { warn: (obj: object, msg: string) => void };
+
 type Waiter = { grant: () => void };
 
 /**
  * Semáforo de 1 vaga por processo: limitador de concorrência local, sem dado de negócio (design §9).
  * Ocupada = o pedido entra numa fila FIFO (no máximo `USAGE_READ_QUEUE_MAX`) e espera a vaga dentro do
  * próprio orçamento, que começa na chegada ao portão. Fila cheia ou orçamento vencido na espera = 503 e o
- * pedido sai da fila. A vaga volta só quando todas as instruções do pedido terminam (inclusive a órfã) e
- * passa direto ao primeiro da fila.
+ * pedido sai da fila. A vaga volta quando todas as instruções do pedido terminam (inclusive a órfã) e
+ * passa direto ao primeiro da fila. Órfã que não termina até `USAGE_READ_ORPHAN_HOLD_MS` depois do fim do
+ * orçamento perde a vaga (log `warn`); a resolução tardia dela não devolve a vaga de novo.
  */
 export class ProcessUsageReadGate implements IUsageReadGate {
   private busy = false;
@@ -81,6 +88,8 @@ export class ProcessUsageReadGate implements IUsageReadGate {
   constructor(
     private readonly newBudget: () => UsageReadBudget = () => createReadBudget(),
     private readonly maxWaiting = USAGE_READ_QUEUE_MAX,
+    private readonly holdLimitMs = USAGE_READ_ORPHAN_HOLD_MS,
+    private readonly log: GateLogger = logger,
   ) {}
 
   /** Pedidos esperando a vaga agora (para teste e diagnóstico). */
@@ -95,8 +104,27 @@ export class ProcessUsageReadGate implements IUsageReadGate {
     try {
       return await read(budget);
     } finally {
-      void budget.settled().then(() => this.release());
+      this.releaseWhenSettled(budget);
     }
+  }
+
+  /** Devolve a vaga uma única vez: quando o pedido assenta ou quando vence o prazo de retenção da órfã. */
+  private releaseWhenSettled(budget: UsageReadBudget): void {
+    let released = false;
+    const releaseOnce = () => {
+      if (released) return;
+      released = true;
+      clearTimeout(timer);
+      this.release();
+    };
+    const holdMs = Math.max(0, Math.ceil(budget.remainingMs()) + this.holdLimitMs);
+    const timer = setTimeout(() => {
+      if (released) return;
+      this.log.warn({ holdLimitMs: this.holdLimitMs }, 'usage read orphan exceeded hold limit');
+      releaseOnce();
+    }, holdMs);
+    timer.unref?.();
+    void budget.settled().then(releaseOnce);
   }
 
   private waitTurn(budget: UsageReadBudget): Promise<void> {
