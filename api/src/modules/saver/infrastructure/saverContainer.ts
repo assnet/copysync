@@ -16,6 +16,8 @@ import type { ISaverTeamReader } from '../domain/contracts/ISaverTeamReader';
 import type { ISaverExtractionQueue } from '../domain/contracts/ISaverExtractionQueue';
 import type { ISaverSessionStateStore } from '../domain/contracts/ISaverSessionStateStore';
 import type { ISaverConfigRepository } from '../domain/contracts/ISaverConfigRepository';
+import type { ISaverKnownContactReader } from '../domain/contracts/ISaverKnownContactReader';
+import { PrismaSaverKnownContactReader } from './repositories/PrismaSaverKnownContactReader';
 import { env } from '../../../shared/config/env';
 import { featureAudienceReader } from '../../tenants/infrastructure/featureAudience';
 import type { IFeatureAudienceReader } from '../../tenants/domain/contracts/IFeatureAudienceRepository';
@@ -65,6 +67,7 @@ const team             = lazy(() => new PrismaSaverTeamReader(prisma));
 const queue            = lazy(() => new PrismaSaverExtractionQueue(prisma, currentWorkerId()));
 const sessionStates    = lazy(() => new PrismaSaverSessionStateStore(prisma, currentWorkerId()));
 const configs          = lazy(() => new PrismaSaverConfigRepository(prisma));
+const knownContacts    = lazy(() => new PrismaSaverKnownContactReader(prisma));
 
 export const saverContainer = {
   get groups(): ISaverGroupRepository { return groups(); },
@@ -75,6 +78,7 @@ export const saverContainer = {
   get queue(): ISaverExtractionQueue { return queue(); },
   get sessionStates(): ISaverSessionStateStore { return sessionStates(); },
   get configs(): ISaverConfigRepository { return configs(); },
+  get knownContacts(): ISaverKnownContactReader { return knownContacts(); },
 
   get getOverview(): GetSaverOverviewUseCase { return getOverview(); },
   get listSessionGroups(): ListSaverSessionGroupsUseCase { return listSessionGroups(); },

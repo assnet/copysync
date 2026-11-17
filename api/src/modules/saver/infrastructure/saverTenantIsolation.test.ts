@@ -29,7 +29,7 @@ describe('isolamento do tenant nos repositórios do Saver', () => {
 
   it('métodos de repositório de tenant recebem tenantId', () => {
     const tenantRepos = ['PrismaSaverGroupRepository.ts', 'PrismaSaverMembershipRepository.ts', 'PrismaSaverConfigRepository.ts',
-      'PrismaSaverExportGrantRepository.ts', 'PrismaSaverTeamReader.ts'];
+      'PrismaSaverExportGrantRepository.ts', 'PrismaSaverTeamReader.ts', 'PrismaSaverKnownContactReader.ts'];
     for (const s of sources.filter((x) => tenantRepos.includes(x.file))) {
       const methods = [...s.text.matchAll(/^ {2}(?:async \*?|async )?([a-zA-Z]+)\(([^)]*)\)/gm)]
         .filter(([, name]) => name !== 'constructor' && !['from', 'pagePerContact', 'pagePerGroup'].includes(name!));

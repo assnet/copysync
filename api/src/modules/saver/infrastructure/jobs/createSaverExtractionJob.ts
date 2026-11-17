@@ -31,6 +31,7 @@ export function createSaverExtractionJob(): SaverExtractionJob {
         engine: { getGroupMembers: (sessionId, groupJid) => engine.getGroupMembers(sessionId, groupJid) },
         products,
         entitlements,
+        knownContacts: c.knownContacts,
       });
     },
     maintenance: new CloseOrphanSaverExtractionsUseCase({ queue: c.queue }),

@@ -12,6 +12,7 @@
  * - Telefone conhecido com LID diferente: casa pelo telefone e mantém o LID guardado.
  * - `lid` casa um contato e `phone` outro, sem conflito entre eles → fusão: fica o de `firstSeenAt` mais
  *   antigo, recebe o campo que faltava, nome não vazio mais recente; vínculos migram (repositório).
+ * - `tenantName` (nome que o tenant já conhece) só completa o nome do VÍNCULO; nunca o do contato da base.
  * - Vínculo: nome lido (vazio não apaga o anterior), admin, `lastExtractedAt = now`, `lastExtractionId`,
  *   `leftAt` limpo; `firstExtractedAt` preservado. Quem não veio nesta leitura recebe `leftAt`.
  *
@@ -25,6 +26,11 @@ export interface SaverReadMember {
   lid: string | null;
   name: string | null;
   isAdmin: boolean;
+  /**
+   * Nome que o PRÓPRIO tenant já tem para o contato (agenda dele). Só entra no vínculo do tenant quando a
+   * leitura veio sem nome; nunca no contato da base da plataforma (SAVER-46).
+   */
+  tenantName?: string | null;
 }
 
 /** Contato da base que casa com a leitura (só `phone`/`lid` presentes nela). */
@@ -146,6 +152,7 @@ function dedupeMembers(members: readonly SaverReadMember[]): SaverReadMember[] {
     const lid = normalizeLid(raw.lid);
     if (!phone && !lid) continue;
     const name = normalizeName(raw.name);
+    const tenantName = normalizeName(raw.tenantName);
     const prev = (lid && byLid.get(lid)) || (phone && byPhone.get(phone)) || null;
     if (prev) {
       if (!prev.phone && phone && !byPhone.has(phone)) {
@@ -157,10 +164,11 @@ function dedupeMembers(members: readonly SaverReadMember[]): SaverReadMember[] {
         byLid.set(lid, prev);
       }
       if (!prev.name && name) prev.name = name;
+      if (!prev.tenantName && tenantName) prev.tenantName = tenantName;
       prev.isAdmin = prev.isAdmin || raw.isAdmin;
       continue;
     }
-    const member: SaverReadMember = { phone, lid, name, isAdmin: raw.isAdmin };
+    const member: SaverReadMember = { phone, lid, name, isAdmin: raw.isAdmin, tenantName };
     out.push(member);
     if (phone) byPhone.set(phone, member);
     if (lid) byLid.set(lid, member);
@@ -294,11 +302,13 @@ export function mergeGroupRead(input: MergeGroupReadInput): MergeGroupReadResult
 
     const key = refKey(target.ref);
     const prev = links.get(key);
+    // Nome do vínculo: o lido; sem ele, o que o tenant já conhece (não vai ao contato da plataforma).
+    const linkName = m.name ?? m.tenantName ?? null;
     if (prev) {
       prev.isAdmin = prev.isAdmin || m.isAdmin;
-      if (!prev.name && m.name) prev.name = m.name;
+      if (!prev.name && linkName) prev.name = linkName;
     } else {
-      links.set(key, { contact: target, name: m.name, isAdmin: m.isAdmin });
+      links.set(key, { contact: target, name: linkName, isAdmin: m.isAdmin });
     }
   }
 

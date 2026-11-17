@@ -48,6 +48,69 @@ describe('ProcessNextSaverItemUseCase', () => {
     expect(h.groups.scans[0]!.scan).toMatchObject({ status: I.DONE, memberCount: 3, phoneCount: 2, lidOnlyCount: 1 });
   });
 
+  describe('contatos conhecidos do tenant (número oculto)', () => {
+    const known = (rows: Record<string, { phone: string; lid: string | null; name: string | null }[]>) => ({
+      findByKeys: vi.fn(async (tenantId: string) => rows[tenantId] ?? []),
+    });
+    const upserts = (h: SaverStepHarness) => {
+      const spy = vi.spyOn(h.deps.platformContacts, 'applyGroupRead');
+      return () => spy.mock.calls[0]![2];
+    };
+
+    it('membro só-LID ganha telefone e nome do próprio tenant; nome não vai para a base da plataforma', async () => {
+      const h = setup();
+      h.deps.knownContacts = known({ [T]: [{ phone: '5511988887777', lid: '777', name: 'Bia Cliente' }] });
+      h.reads.set('g1@g.us', [member(null, '777'), member(null, '888')]);
+      const merged = upserts(h);
+      await run(h);
+      expect(h.deps.knownContacts.findByKeys).toHaveBeenCalledWith(T, { lids: ['777', '888'], phones: [] });
+      expect(h.store.contacts.map((c) => [c.phone, c.lid, c.name])).toEqual([
+        ['5511988887777', '777', null],
+        [null, '888', null],
+      ]);
+      expect(merged().membershipUpserts.map((m) => m.name)).toEqual(['Bia Cliente', null]);
+      expect(h.groups.scans[0]!.scan).toMatchObject({ memberCount: 2, phoneCount: 1, lidOnlyCount: 1 });
+    });
+
+    it('membro com telefone e sem nome ganha só o nome do vínculo; nome lido prevalece', async () => {
+      const h = setup();
+      h.deps.knownContacts = known({ [T]: [
+        { phone: '5511999990001', lid: null, name: 'Apelido' },
+        { phone: '5511999990002', lid: null, name: 'Caio' },
+        { phone: '5511999990003', lid: null, name: '5511999990003' },
+      ] });
+      h.reads.set('g1@g.us', [member('5511999990001', null, 'Ana'), member('5511999990002'), member('5511999990003')]);
+      const merged = upserts(h);
+      await run(h);
+      expect(merged().membershipUpserts.map((m) => m.name)).toEqual(['Ana', 'Caio', null]);
+      expect(h.store.contacts.map((c) => c.name)).toEqual(['Ana', null, null]);
+    });
+
+    it('isolamento: só consulta o tenant do item; contato conhecido de outro tenant não completa nada', async () => {
+      const h = setup();
+      const reader = known({ 'tenant-b': [{ phone: '5511988887777', lid: '777', name: 'Bia' }] });
+      h.deps.knownContacts = reader;
+      h.reads.set('g1@g.us', [member(null, '777')]);
+      const merged = upserts(h);
+      await run(h);
+      expect(reader.findByKeys.mock.calls.map((c) => c[0])).toEqual([T]);
+      expect(h.store.contacts.map((c) => [c.phone, c.lid])).toEqual([[null, '777']]);
+      expect(merged().membershipUpserts[0]!.name).toBeNull();
+    });
+
+    it('falha na consulta não derruba a leitura', async () => {
+      const h = setup();
+      const warn = vi.fn();
+      h.deps.log = { warn } as never;
+      h.deps.knownContacts = { findByKeys: vi.fn(async () => { throw new Error('db down'); }) };
+      h.reads.set('g1@g.us', [member(null, '777')]);
+      const r = await run(h);
+      expect(r.outcomes[0]!.outcome).toBe('DONE');
+      expect(h.store.contacts).toHaveLength(1);
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('ritmo: próxima leitura da sessão entre 3 e 5 s (sorteio fixo)', async () => {
     const low = setup(() => 0);
     await run(low);

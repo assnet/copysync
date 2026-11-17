@@ -5,6 +5,8 @@ import type { ISaverMembershipRepository } from '../../domain/contracts/ISaverMe
 import type { IPlatformSaverContactRepository } from '../../domain/contracts/IPlatformSaverContactRepository';
 import type { SaverExtractionItem } from '../../domain/entities/SaverEntities';
 import { SaverExtractionItemStatus } from '../../domain/enums/SaverEnums';
+import type { ISaverKnownContactReader } from '../../domain/contracts/ISaverKnownContactReader';
+import { enrichWithKnownContacts } from '../../domain/services/enrichWithKnownContacts';
 import { mergeGroupRead, normalizeLid, normalizePhone, type SaverReadMember } from '../../domain/services/mergeGroupRead';
 import { effectiveSaverLimits, fitsSaverLimit } from '../../domain/services/saverLimits';
 import type { IProductAccessReader } from '../../../tenants/domain/contracts/IProductAccessReader';
@@ -59,6 +61,8 @@ export interface ProcessNextSaverItemDeps {
   engine: SaverGroupMembersReader;
   products: Pick<IProductAccessReader, 'has'>;
   entitlements: IEntitlementSnapshotReader;
+  /** Contatos que o próprio tenant já conhece (completa número oculto e nome). Ausente = sem complemento. */
+  knownContacts?: ISaverKnownContactReader;
   /** [0, 1); injetado nos testes. */
   random?: () => number;
   /** Padrão: logger do processo. */
@@ -151,10 +155,26 @@ export class ProcessNextSaverItemUseCase {
     }
 
     try {
-      const members = await this.deps.engine.getGroupMembers(item.sessionId, group.groupJid);
+      const read = await this.deps.engine.getGroupMembers(item.sessionId, group.groupJid);
+      const members = await this.withKnownContacts(item.tenantId, read);
       return await this.store(item, group.id, members, now, pilot);
     } catch (err) {
       return this.handleError(item, now, err);
+    }
+  }
+
+  /** Complemento local com dados do MESMO tenant; falha aqui nunca derruba a leitura. */
+  private async withKnownContacts(tenantId: string, members: SaverReadMember[]): Promise<SaverReadMember[]> {
+    const reader = this.deps.knownContacts;
+    if (!reader || members.length === 0) return members;
+    const lids = uniq(members.filter((m) => !normalizePhone(m.phone)).map((m) => normalizeLid(m.lid)));
+    const phones = uniq(members.filter((m) => !m.name?.trim()).map((m) => normalizePhone(m.phone)));
+    if (lids.length === 0 && phones.length === 0) return members;
+    try {
+      return enrichWithKnownContacts(members, await reader.findByKeys(tenantId, { lids, phones }));
+    } catch {
+      (this.deps.log ?? logger).warn({ tenantId }, 'saver known contacts lookup failed; read kept as is');
+      return members;
     }
   }
 
