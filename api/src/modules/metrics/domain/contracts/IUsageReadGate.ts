@@ -13,8 +13,10 @@ export interface UsageReadBudget {
 }
 
 /**
- * Uma leitura de uso por processo. Ocupada lança `UsageMetricsReadUnavailableError` na hora, sem ir ao
- * banco. A vaga só volta quando a última instrução do pedido resolve ou falha.
+ * Uma leitura de uso por processo. Ocupada: o pedido espera a vaga em fila FIFO curta, dentro do próprio
+ * orçamento (que começa na chegada); fila cheia ou orçamento vencido na espera lança
+ * `UsageMetricsReadUnavailableError` sem ir ao banco. A vaga só volta quando a última instrução do pedido
+ * resolve ou falha.
  */
 export interface IUsageReadGate {
   runExclusive<T>(read: (budget: UsageReadBudget) => Promise<T>): Promise<T>;

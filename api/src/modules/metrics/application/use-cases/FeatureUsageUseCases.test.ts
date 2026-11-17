@@ -55,17 +55,18 @@ describe('GetFeatureUsageSummaryUseCase', () => {
     expect(directory.listBudgets).toEqual([1500]);
   });
 
-  it('dois pedidos simultâneos: o segundo recebe 503 e a vaga volta depois', async () => {
+  it('dois pedidos simultâneos: o segundo espera a vaga e conclui', async () => {
     const { reader, gate, summary } = setup();
     let release!: () => void;
     reader.hold = new Promise((r) => (release = r));
     const first = summary.execute(INPUT);
-    await expect(summary.execute(INPUT)).rejects.toBeInstanceOf(UsageMetricsReadUnavailableError);
+    const second = summary.execute(INPUT);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(gate.opened).toBe(1);
     release();
-    await first;
+    await expect(Promise.all([first, second])).resolves.toHaveLength(2);
+    expect(gate.opened).toBe(2);
     expect(gate.busy).toBe(false);
-    reader.hold = null;
-    await expect(summary.execute(INPUT)).resolves.toBeDefined();
   });
 
   it('erro na leitura devolve a vaga', async () => {

@@ -29,7 +29,8 @@ const tags = ['Feature usage (admin)'];
 /**
  * Super admin: uso dos recursos (`.specs/features/usage-metrics`). Registrado em `/api/admin/usage`.
  * Só contagens por conta e recurso; nome de conta só na lista de contas de um recurso. Uma leitura de uso por
- * processo: a segunda simultânea responde 503 `USAGE_METRICS_READ_UNAVAILABLE`.
+ * processo: a simultânea espera a vaga em fila curta (4) dentro do orçamento de 2 s; fila cheia ou prazo vencido
+ * responde 503 `USAGE_METRICS_READ_UNAVAILABLE`.
  */
 export async function featureUsageRoutes(app: FastifyInstance): Promise<void> {
   app.get<{ Querystring: UsageQuerystring }>('/summary', {

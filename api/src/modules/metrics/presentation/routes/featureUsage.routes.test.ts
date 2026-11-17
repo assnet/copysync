@@ -146,7 +146,7 @@ describe('GET /summary', () => {
     expect(read).not.toHaveBeenCalled();
   });
 
-  it('dois pedidos simultâneos: um 200 e o outro 503 USAGE_METRICS_READ_UNAVAILABLE', async () => {
+  it('dois pedidos simultâneos: o segundo espera a vaga e os dois respondem 200', async () => {
     mockReads();
     let release!: () => void;
     const hold = new Promise<void>((r) => (release = r));
@@ -156,11 +156,10 @@ describe('GET /summary', () => {
     });
     const first = app.inject({ method: 'GET', url: `${URL}/summary` });
     await vi.waitFor(() => expect(PrismaLiveFeatureUsageReader.prototype.read).toHaveBeenCalled());
-    const second = await app.inject({ method: 'GET', url: `${URL}/summary` });
+    const second = app.inject({ method: 'GET', url: `${URL}/summary` });
     release();
-    const res = await first;
-    expect([res.statusCode, second.statusCode]).toEqual([200, 503]);
-    expect(second.json().error.code).toBe('USAGE_METRICS_READ_UNAVAILABLE');
+    const res = await Promise.all([first, second]);
+    expect(res.map((r) => r.statusCode)).toEqual([200, 200]);
   });
 });
 

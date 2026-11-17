@@ -25,11 +25,17 @@ export class FakeUsageReadGate implements IUsageReadGate {
     private readonly totalMs = 2000,
   ) {}
 
+  /** Fila FIFO como a real (sem teto nem prazo de espera): cada pedido espera o anterior terminar. */
+  private tail: Promise<void> = Promise.resolve();
+
   async runExclusive<T>(read: (budget: UsageReadBudget) => Promise<T>): Promise<T> {
-    if (this.busy) throw new UsageMetricsReadUnavailableError();
+    const deadline = this.clock.ms + this.totalMs;
+    const previous = this.tail;
+    let done!: () => void;
+    this.tail = new Promise<void>((r) => (done = r));
+    await previous;
     this.busy = true;
     this.opened += 1;
-    const deadline = this.clock.ms + this.totalMs;
     const budget: UsageReadBudget = {
       remainingMs: () => deadline - this.clock.ms,
       track: () => undefined,
@@ -40,6 +46,7 @@ export class FakeUsageReadGate implements IUsageReadGate {
       return await read(budget);
     } finally {
       this.busy = false;
+      done();
     }
   }
 }

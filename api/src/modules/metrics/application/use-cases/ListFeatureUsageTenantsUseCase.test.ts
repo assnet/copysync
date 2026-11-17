@@ -157,16 +157,18 @@ describe('ListFeatureUsageTenantsUseCase', () => {
     expect(warn).toHaveBeenCalledWith(expect.objectContaining({ featureKey: 'offer_generator' }), 'usage metrics audit failed');
   });
 
-  it('roda numa vaga do gate: pedido simultâneo recebe 503', async () => {
+  it('roda numa vaga do gate: pedido simultâneo espera a vaga', async () => {
     const { useCase, reader, gate } = setup();
     let release!: () => void;
     reader.hold = new Promise((r) => (release = r));
     const first = useCase.execute(BASE);
-    await expect(useCase.execute(BASE)).rejects.toBeInstanceOf(UsageMetricsReadUnavailableError);
-    release();
-    await first;
-    expect(gate.busy).toBe(false);
+    const second = useCase.execute(BASE);
+    await new Promise((r) => setTimeout(r, 0));
     expect(gate.opened).toBe(1);
+    release();
+    await Promise.all([first, second]);
+    expect(gate.busy).toBe(false);
+    expect(gate.opened).toBe(2);
   });
 
   it('lê só o período atual do recurso, com o mesmo orçamento no leitor e no diretório', async () => {

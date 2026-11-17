@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { UsageMetricsReadUnavailableError } from '../../../../shared/errors/internal/UsageMetricsErrors';
 import { FEATURE_USAGE_CATALOG } from '../../domain/services/featureUsageCatalog';
 import { FEATURE_USAGE_SOURCES, FIRST_DATA_DAYS_SQL, PrismaLiveFeatureUsageReader } from './PrismaLiveFeatureUsageReader';
@@ -80,19 +80,103 @@ describe('runWithinBudget', () => {
 });
 
 describe('usageReadGate', () => {
-  it('segunda leitura com a primeira em andamento recebe 503 sem tocar o prisma', async () => {
-    const gate = new ProcessUsageReadGate();
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  const hold = () => {
     let release!: () => void;
-    const first = gate.runExclusive(() => new Promise<void>((r) => (release = r)));
+    const p = new Promise<void>((r) => (release = r));
+    return { p, release: () => release() };
+  };
+
+  it('segunda leitura espera a vaga e conclui (FIFO)', async () => {
+    const gate = new ProcessUsageReadGate();
+    const a = hold();
+    const order: string[] = [];
+    const first = gate.runExclusive(() => a.p.then(() => order.push('1')));
+    const second = gate.runExclusive(async () => order.push('2'));
+    const third = gate.runExclusive(async () => order.push('3'));
+    await tick();
+    expect(gate.waiting).toBe(2);
+    expect(order).toEqual([]);
+    a.release();
+    await Promise.all([first, second, third]);
+    expect(order).toEqual(['1', '2', '3']);
+    await tick();
+    expect(gate.waiting).toBe(0);
+    await expect(gate.runExclusive(async () => 'ok')).resolves.toBe('ok');
+  });
+
+  it('quinta na fila recebe 503 na hora sem tocar o prisma', async () => {
+    const gate = new ProcessUsageReadGate();
+    const a = hold();
+    const first = gate.runExclusive(() => a.p);
+    const queued = [1, 2, 3, 4].map((n) => gate.runExclusive(async () => n));
+    expect(gate.waiting).toBe(4);
     const { prisma, calls } = fakePrisma();
     await expect(gate.runExclusive((b) => runWithinBudget(b, prisma, Q))).rejects.toBeInstanceOf(
       UsageMetricsReadUnavailableError,
     );
     expect(calls).toHaveLength(0);
-    release();
+    expect(gate.waiting).toBe(4);
+    a.release();
     await first;
-    await new Promise((r) => setTimeout(r, 0));
-    await expect(gate.runExclusive(async () => 'ok')).resolves.toBe('ok');
+    await expect(Promise.all(queued)).resolves.toEqual([1, 2, 3, 4]);
+  });
+
+  it('espera que estoura o orçamento recebe 503, sai da fila e não deixa temporizador', async () => {
+    vi.useFakeTimers();
+    try {
+      const gate = new ProcessUsageReadGate(() => createReadBudget(2000));
+      const a = hold();
+      const first = gate.runExclusive(() => a.p);
+      const late = gate.runExclusive(async () => 'nunca');
+      const caught = late.catch((e: unknown) => e);
+      expect(gate.waiting).toBe(1);
+      expect(vi.getTimerCount()).toBe(1);
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(await caught).toBeInstanceOf(UsageMetricsReadUnavailableError);
+      expect(gate.waiting).toBe(0);
+      expect(vi.getTimerCount()).toBe(0);
+      a.release();
+      await first;
+      await vi.advanceTimersByTimeAsync(0);
+      await expect(gate.runExclusive(async () => 'livre')).resolves.toBe('livre');
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('vaga entregue à fila limpa o temporizador da espera', async () => {
+    vi.useFakeTimers();
+    try {
+      const gate = new ProcessUsageReadGate(() => createReadBudget(2000));
+      const a = hold();
+      const first = gate.runExclusive(() => a.p);
+      const second = gate.runExclusive(async () => 'b');
+      expect(vi.getTimerCount()).toBe(1);
+      a.release();
+      await first;
+      await vi.advanceTimersByTimeAsync(0);
+      await expect(second).resolves.toBe('b');
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('orçamento gasto na fila é o mesmo da leitura (começa na chegada)', async () => {
+    const { c, clock } = clockAt(0);
+    const gate = new ProcessUsageReadGate(() => createReadBudget(2000, clock));
+    const a = hold();
+    const first = gate.runExclusive(() => a.p);
+    let seen = -1;
+    const second = gate.runExclusive(async (b) => {
+      seen = b.remainingMs();
+    });
+    c.now = 1500;
+    a.release();
+    await Promise.all([first, second]);
+    expect(seen).toBe(500);
   });
 
   it.each([
@@ -111,7 +195,9 @@ describe('usageReadGate', () => {
     await expect(gate.runExclusive((b) => runWithinBudget(b, prisma, Q))).rejects.toBeInstanceOf(
       UsageMetricsReadUnavailableError,
     );
-    await expect(gate.runExclusive(async () => 'x')).rejects.toBeInstanceOf(UsageMetricsReadUnavailableError);
+    const waiting = gate.runExclusive(async () => 'x').catch((e: unknown) => e);
+    await new Promise((r) => setTimeout(r, 40));
+    expect(await waiting).toBeInstanceOf(UsageMetricsReadUnavailableError);
     finish(ctl);
     await new Promise((r) => setTimeout(r, 0));
     await expect(gate.runExclusive(async () => 'x')).resolves.toBe('x');
