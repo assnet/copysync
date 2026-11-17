@@ -4,6 +4,7 @@ import { ADMIN_EDITABLE_ENTITLEMENT_KEYS } from '../../domain/adminEditableEntit
 import type { IPlanEntitlementPresetRepository } from '../../domain/contracts/IPlanEntitlementPresetRepository';
 
 const SAVER_NULL = { SAVER_LITE: null, SAVER_PRO: null, SAVER_MAX: null };
+const AFFILIATES_OWNED = { product: 'AFFILIATES', editablePlans: ['COPYSYNC_LITE', 'COPYSYNC_PRO', 'COPYSYNC_MAX'] };
 
 function fakeRepo(rows: Awaited<ReturnType<IPlanEntitlementPresetRepository['listByKeys']>>) {
   return { listByKeys: vi.fn(async () => rows), setForPlan: vi.fn() } satisfies IPlanEntitlementPresetRepository;
@@ -24,6 +25,7 @@ describe('ListAdminPlanEntitlementsUseCase', () => {
       key: 'marketplace_shein_enabled',
       type: { kind: 'boolean' },
       plans: { COPYSYNC_LITE: false, COPYSYNC_PRO: null, COPYSYNC_MAX: true, ...SAVER_NULL },
+      ...AFFILIATES_OWNED,
       superAdminOnly: null,
     });
     expect(out.map((r) => r.key)).toEqual(['marketplace_shein_enabled', 'offer_hunter_enabled', 'offer_hunter_finds_per_day']);
@@ -36,6 +38,7 @@ describe('ListAdminPlanEntitlementsUseCase', () => {
       key: 'offer_hunter_finds_per_day',
       type: { kind: 'integer', min: 0, max: 100 },
       plans: { COPYSYNC_LITE: null, COPYSYNC_PRO: null, COPYSYNC_MAX: 10, ...SAVER_NULL },
+      ...AFFILIATES_OWNED,
       superAdminOnly: null,
     });
   });
@@ -44,6 +47,8 @@ describe('ListAdminPlanEntitlementsUseCase', () => {
     const out = await new ListAdminPlanEntitlementsUseCase(fakeRepo([]), audience).execute();
     expect(out).toHaveLength(ADMIN_EDITABLE_ENTITLEMENT_KEYS.length);
     expect(out[0].plans).toEqual({ COPYSYNC_LITE: null, COPYSYNC_PRO: null, COPYSYNC_MAX: null, ...SAVER_NULL });
+    // Shein e Caçador são de Afiliados: nenhum plano Saver editável
+    for (const row of out) expect(row).toMatchObject(AFFILIATES_OWNED);
   });
 
   it('superAdminOnly só na chave com audiência (flag efetiva); demais null', async () => {

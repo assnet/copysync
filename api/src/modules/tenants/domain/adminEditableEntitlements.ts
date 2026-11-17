@@ -1,4 +1,5 @@
 import { ENTITLEMENT_KEYS, type EntitlementKey } from './entitlementKeys';
+import type { ProductKey } from './services/resolveProductAccess';
 
 /**
  * Tipo do valor de uma chave editável. `integer` = inteiro em [min, max] (inclusive); `null` nunca
@@ -26,6 +27,20 @@ export const ADMIN_EDITABLE_ENTITLEMENT_KEYS = Object.keys(ADMIN_EDITABLE_ENTITL
 
 export function isAdminEditableEntitlementKey(key: string): key is AdminEditableEntitlementKey & EntitlementKey {
   return Object.prototype.hasOwnProperty.call(ADMIN_EDITABLE_ENTITLEMENTS, key);
+}
+
+/**
+ * Produto dono de cada chave editável: a chave só é editável nos planos desse produto (Shein e Caçador
+ * são recursos de Afiliados). Plano de outro produto = 400 na rota admin e célula sem controle na tela.
+ */
+export const ADMIN_ENTITLEMENT_PRODUCT: Readonly<Record<AdminEditableEntitlementKey, ProductKey>> = {
+  [ENTITLEMENT_KEYS.MARKETPLACE_SHEIN_ENABLED]: 'AFFILIATES',
+  [ENTITLEMENT_KEYS.OFFER_HUNTER_ENABLED]: 'AFFILIATES',
+  [ENTITLEMENT_KEYS.OFFER_HUNTER_FINDS_PER_DAY]: 'AFFILIATES',
+};
+
+export function adminEntitlementProductOf(key: AdminEditableEntitlementKey): ProductKey {
+  return ADMIN_ENTITLEMENT_PRODUCT[key];
 }
 
 export function adminEntitlementTypeOf(key: AdminEditableEntitlementKey): AdminEntitlementValueType {

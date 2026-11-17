@@ -30,6 +30,13 @@ export const planEntitlementsAdminStrings = {
     },
   } as Record<string, { label: string; description: string }>,
 
+  /** Célula de plano de outro produto: a chave não se aplica (sem controle). */
+  otherProduct: {
+    text: '—',
+    aria: (feature: string, plan: string) => `${feature} não se aplica ao plano ${plan}`,
+    tooltip: 'Recurso de outro produto: não se aplica a este plano.',
+  },
+
   notPresetHint: 'Sem valor gravado neste plano: conta como desligado.',
   notPresetHintNumber: 'Sem valor gravado neste plano: conta como 0.',
   switchAria: (feature: string, plan: string) => `${feature} no plano ${plan}`,
