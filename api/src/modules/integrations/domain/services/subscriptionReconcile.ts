@@ -1,4 +1,4 @@
-import { PLAN_SLUGS, resolvePlanSlug, type PlanSlug } from '../../../tenants/domain/planPresets';
+import { PLAN_SLUGS, resolveEffectivePlanSlug, type PlanSlug } from '../../../tenants/domain/planPresets';
 
 /**
  * Regras puras da reconciliação de assinaturas com a central (sem banco, sem HTTP).
@@ -9,6 +9,11 @@ import { PLAN_SLUGS, resolvePlanSlug, type PlanSlug } from '../../../tenants/dom
 export interface HubSubscription {
   id: string;
   planSlug: string | null;
+  /**
+   * Permissões efetivas da assinatura (`snapshotPermissions` na central). A `COPYSYNC_*` mais alta
+   * define o nível; ausente (central antiga) ou sem nenhuma reconhecida = nível pelo `planSlug`.
+   */
+  permissions?: string[];
   billingStatus: string | null;
   /** ISO; null = sem vencimento. */
   expiresAt: string | null;
@@ -92,11 +97,17 @@ export function subscriptionGrantsAccess(sub: HubSubscription, now: Date, graceM
   return Number.isFinite(exp) && exp + graceMs >= now.getTime();
 }
 
+/** Permissões recebidas que não são nível do CopySync (só para log; nunca derrubam o evento). */
+export function unknownPlanPermissions(permissions: readonly string[] | null | undefined): string[] {
+  return (permissions ?? []).filter((p) => !(PLAN_SLUGS as readonly string[]).includes(p.trim()));
+}
+
 const TIER = new Map<string, number>(PLAN_SLUGS.map((slug, i) => [slug, i]));
 const expiryRank = (iso: string | null) => (iso === null ? Number.POSITIVE_INFINITY : Date.parse(iso));
 
 /**
- * Assinatura que define o plano esperado: entre as que dão acesso e têm plano conhecido, o maior
+ * Assinatura que define o plano esperado: entre as que dão acesso e têm nível conhecido (permissão
+ * `COPYSYNC_*` mais alta ou, sem ela, o `planSlug`), o maior
  * plano; empate = vencimento mais distante (sem vencimento primeiro), depois o menor id (estável).
  * `grants=false` = nenhuma dá acesso; `planSlug=null` = dão acesso, mas sem plano conhecido.
  */
@@ -107,7 +118,8 @@ export function pickGrantingSubscription(
 ): { grants: boolean; sub: HubSubscription | null; planSlug: PlanSlug | null } {
   const granting = subs.filter((s) => subscriptionGrantsAccess(s, now, graceMs));
   const known = granting
-    .map((s) => ({ s, slug: resolvePlanSlug(s.planSlug) }))
+    // Mesma regra do evento (`resolveEffectivePlanSlug`): evento e reconciliação chegam ao mesmo nível
+    .map((s) => ({ s, slug: resolveEffectivePlanSlug(s.planSlug, s.permissions) }))
     .filter((x): x is { s: HubSubscription; slug: PlanSlug } => x.slug !== null)
     .sort((a, b) =>
       (TIER.get(b.slug)! - TIER.get(a.slug)!)

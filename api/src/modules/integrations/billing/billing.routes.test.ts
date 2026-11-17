@@ -68,8 +68,22 @@ describe('POST /integrations/billing/webhook', () => {
     expect(res.json()).toEqual({ ok: true, outcome: 'APPLIED' });
     expect(execute).toHaveBeenCalledWith({
       eventId: 'ev-1', billingCustomerId: 'user-central-1', eventType: 'subscription.activated', seq: 7n,
-      payload: { email: 'ana@exemplo.com', name: 'Ana', planSlug: 'COPYSYNC_PRO', expiresAt: null },
+      payload: { email: 'ana@exemplo.com', name: 'Ana', planSlug: 'COPYSYNC_PRO', permissions: [], expiresAt: null },
     });
+  });
+
+  it('permissions do corpo chega ao use case; ausente ou malformado vira lista vazia', async () => {
+    execute.mockResolvedValue({ outcome: 'APPLIED', tenantId: 't1' });
+    const permsOf = () => execute.mock.calls.at(-1)![0].payload.permissions;
+    await app.inject(signed({ ...BODY, permissions: ['COPYSYNC_MAX', 'OUTRA'] }));
+    expect(permsOf()).toEqual(['COPYSYNC_MAX', 'OUTRA']);
+    const { permissions: _omit, ...withoutPerms } = BODY;
+    await app.inject(signed(withoutPerms));
+    expect(permsOf()).toEqual([]);
+    await app.inject(signed({ ...BODY, permissions: 'COPYSYNC_MAX' }));
+    expect(permsOf()).toEqual([]);
+    await app.inject(signed({ ...BODY, permissions: ['COPYSYNC_PRO', 7, null] }));
+    expect(permsOf()).toEqual(['COPYSYNC_PRO']);
   });
 
   it('expiresAt ISO válido chega normalizado; null limpa; ausente não vai', async () => {

@@ -109,6 +109,10 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
           email: str(body.email),
           name: str(body.name),
           planSlug: str(body.planSlug) ?? null,
+          // Central antiga (sem o campo) ou valor não lista = []; item que não é texto é descartado
+          permissions: Array.isArray(body.permissions)
+            ? body.permissions.filter((p): p is string => typeof p === 'string')
+            : [],
           ...expiresAt,
         },
       };

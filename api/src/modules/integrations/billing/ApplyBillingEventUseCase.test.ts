@@ -96,6 +96,12 @@ const sideEffects = vi.hoisted(() => vi.fn(async () => ({})));
 vi.mock('../../../shared/database/prisma.client', () => ({ prisma: db.prisma }));
 vi.mock('../../../shared/events/InternalEventBus', () => ({ internalEventBus: { emit } }));
 vi.mock('./applyPlanSideEffects', () => ({ applyPlanSideEffects: sideEffects }));
+const logWarn = vi.hoisted(() => vi.fn());
+vi.mock('../../../shared/logger/logger', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../../../shared/logger/logger')>();
+  const child = mod.logger.child({ module: 'ApplyBillingEventUseCase' });
+  return { ...mod, logger: { ...mod.logger, child: () => new Proxy(child, { get: (t, k) => (k === 'warn' ? logWarn : Reflect.get(t, k)) }) } };
+});
 
 import { ApplyBillingEventUseCase, classifyHubLookupFailure, hubLookupFailureCounts, type ApplyBillingEventInput } from './ApplyBillingEventUseCase';
 import { SlugTakenError } from '../../../shared/errors/internal/TeamErrors';
@@ -273,6 +279,50 @@ describe('ApplyBillingEventUseCase', () => {
     expect(db.state.entitlements.get('offer_generations_per_day')).toBe(Prisma.JsonNull);
   });
 
+  describe('nível pelas permissões do evento', () => {
+    const unknownPermsLog = () => logWarn.mock.calls.filter(([, msg]) => msg === 'Billing event with unknown permissions; ignored');
+
+    it('subscription.updated com permissão de nível maior aplica os presets desse nível', async () => {
+      makeTenant({ planSlug: 'COPYSYNC_LITE' });
+      const out = await run(ev('subscription.updated', { payload: { planSlug: 'copysync-lite-mensal', permissions: ['COPYSYNC_LITE', 'COPYSYNC_MAX'] } }));
+      expect(out.outcome).toBe('APPLIED');
+      expect(db.state.tenant!.planSlug).toBe('COPYSYNC_MAX');
+      expect(db.state.entitlements.get('whatsapp_sessions')).toBe('2');
+      expect(db.state.entitlements.get('offer_generations_per_day')).toBe(Prisma.JsonNull);
+    });
+
+    it('sem permissions (central antiga) ou lista vazia: nível pelo planSlug, como hoje', async () => {
+      makeTenant({ planSlug: 'COPYSYNC_LITE' });
+      await run(ev('subscription.updated', { eventId: 'ev-a', payload: { planSlug: 'copysync-pro-mensal' } }));
+      expect(db.state.tenant!.planSlug).toBe('COPYSYNC_PRO');
+      await run(ev('subscription.updated', { eventId: 'ev-b', seq: 12n, payload: { planSlug: 'copysync-max-anual', permissions: [] } }));
+      expect(db.state.tenant!.planSlug).toBe('COPYSYNC_MAX');
+      expect(unknownPermsLog()).toHaveLength(0);
+    });
+
+    it('permissão desconhecida gera log com as chaves, é ignorada e o evento aplica', async () => {
+      makeTenant({ planSlug: 'COPYSYNC_LITE' });
+      logWarn.mockClear();
+      const out = await run(ev('subscription.updated', { payload: { planSlug: 'copysync-pro-mensal', permissions: ['PULSO_X', 'COPYSYNC_PRO'] } }));
+      expect(out.outcome).toBe('APPLIED');
+      expect(db.state.tenant!.planSlug).toBe('COPYSYNC_PRO');
+      expect(unknownPermsLog()).toEqual([[{ eventId: 'ev-subscription.updated', permissions: ['PULSO_X'] }, 'Billing event with unknown permissions; ignored']]);
+    });
+
+    it('planSlug desconhecido com permissão reconhecida aplica o nível da permissão', async () => {
+      makeTenant({ planSlug: 'COPYSYNC_LITE' });
+      await run(ev('subscription.renewed', { payload: { planSlug: 'gold', permissions: ['COPYSYNC_PRO'] } }));
+      expect(db.state.tenant!.planSlug).toBe('COPYSYNC_PRO');
+    });
+
+    it('corte mantido pela união usa o nível da permissão (igual à reconciliação)', async () => {
+      makeTenant({ planSlug: 'COPYSYNC_PRO' });
+      hub.fetchByCustomer.mockResolvedValue(hubOk([hubSub({ billingStatus: 'REFUNDED' }), hubSub({ id: 's-new', permissions: ['COPYSYNC_MAX'], expiresAt: iso(30) })]));
+      expect((await run(ev('subscription.refunded', { payload: {} }))).outcome).toBe('KEPT_ACTIVE');
+      expect(db.state.tenant!.planSlug).toBe('COPYSYNC_MAX');
+    });
+  });
+
   it('plano desconhecido em renovação: reativa mas não grava plano nem entitlements', async () => {
     makeTenant({ status: 'SUSPENDED', suspendedAt: new Date() });
     await run(ev('subscription.renewed', { payload: { planSlug: 'gold' } }));
@@ -419,6 +469,75 @@ describe('ApplyBillingEventUseCase', () => {
       makeTenant();
       await run(ev('subscription.renewed'));
       expect(hub.fetchByCustomer).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * Suspender/ativar pelo admin da central (T61, USR-05): a central não tem estado "suspenso" na
+   * assinatura; suspender grava `canceledAt` e emite `subscription.canceled`, ativar emite
+   * `subscription.activated`. A resposta da central vem da fixture `hub`; sem ela o corte não aplica.
+   * O banco em memória não tem `delete`/`deleteMany` nem modelos de sessão/grupo/oferta/credencial:
+   * qualquer limpeza no corte lançaria e derrubaria o caso.
+   */
+  describe('suspensão e reativação pelo admin da central', () => {
+    const suspendedByHub = () => hubOk([hubSub({ id: 's-pro', canceledAt: iso(-0.01), expiresAt: iso(20) })]);
+
+    it('canceled sem outra assinatura válida: CANCELLED, acesso bloqueado, nada apagado', async () => {
+      makeTenant({ planSlug: 'COPYSYNC_PRO', subscriptionExpiresAt: new Date(iso(20)) });
+      db.state.entitlements.set('whatsapp_sessions', '1');
+      db.state.entitlements.set('offer_generations_per_day', 20);
+      hub.fetchByCustomer.mockResolvedValue(suspendedByHub());
+      expect(await run(ev('subscription.canceled', { payload: {} }))).toEqual({ outcome: 'APPLIED', tenantId: 'tenant-1' });
+      expect(hub.fetchByCustomer).toHaveBeenCalledWith('user-central-1');
+      expect(db.state.tenant).toMatchObject({ status: 'CANCELLED', planSlug: 'COPYSYNC_PRO', subscriptionExpiresAt: new Date(iso(20)) });
+      expect(db.state.tenant!.suspendedAt).toBeInstanceOf(Date);
+      expect(db.state.tenant!.status).not.toBe('ACTIVE'); // resolveMembership: não ACTIVE → 403 TENANT_SUSPENDED
+      expect(emit).toHaveBeenCalledWith('TENANT_SUSPENDED', { type: 'TENANT_SUSPENDED', tenantId: 'tenant-1' });
+      expect(Object.fromEntries(db.state.entitlements)).toEqual({ whatsapp_sessions: '1', offer_generations_per_day: 20 });
+      expect(sideEffects).not.toHaveBeenCalled();
+    });
+
+    it('activated em seguida: volta a ACTIVE, suspendedAt nulo e plano sincronizado, sem consultar a central', async () => {
+      makeTenant({ planSlug: 'COPYSYNC_PRO' });
+      hub.fetchByCustomer.mockResolvedValue(suspendedByHub());
+      await run(ev('subscription.canceled', { payload: {} }));
+      expect(db.state.tenant!.status).toBe('CANCELLED');
+      hub.fetchByCustomer.mockClear();
+      const out = await run(ev('subscription.activated', { seq: 12n, payload: { planSlug: 'copysync-max-mensal', expiresAt: iso(30) } }));
+      expect(out).toEqual({ outcome: 'APPLIED', tenantId: 'tenant-1' });
+      expect(provisioner.execute).not.toHaveBeenCalled();
+      expect(hub.fetchByCustomer).not.toHaveBeenCalled();
+      expect(db.state.tenant).toMatchObject({ status: 'ACTIVE', suspendedAt: null, planSlug: 'COPYSYNC_MAX', lastBillingEventSeq: 12n });
+      expect(db.state.entitlements.get('whatsapp_sessions')).toBe('2');
+    });
+
+    it('tenant com adminBlockedAt: canceled não mexe no status e activated não reativa', async () => {
+      const blockedAt = new Date('2026-10-01');
+      makeTenant({ status: 'SUSPENDED', suspendedAt: blockedAt, adminBlockedAt: blockedAt });
+      hub.fetchByCustomer.mockResolvedValue(suspendedByHub());
+      await run(ev('subscription.canceled', { payload: {} }));
+      expect(db.state.tenant).toMatchObject({ status: 'SUSPENDED', suspendedAt: blockedAt });
+      await run(ev('subscription.activated', { seq: 12n, payload: { planSlug: 'COPYSYNC_PRO' } }));
+      expect(db.state.tenant).toMatchObject({ status: 'SUSPENDED', suspendedAt: blockedAt, planSlug: 'COPYSYNC_PRO', lastBillingEventSeq: 12n });
+      expect(emit).not.toHaveBeenCalled();
+    });
+
+    it('canceled com outra assinatura ainda concedendo acesso: segue ACTIVE (KEPT_ACTIVE)', async () => {
+      makeTenant({ planSlug: 'COPYSYNC_PRO' });
+      hub.fetchByCustomer.mockResolvedValue(hubOk([
+        hubSub({ id: 's-pro', canceledAt: iso(-0.01), expiresAt: iso(20) }),
+        hubSub({ id: 's-max', planSlug: 'copysync-max-mensal', expiresAt: iso(25) }),
+      ]));
+      expect(await run(ev('subscription.canceled', { payload: {} }))).toEqual({ outcome: 'KEPT_ACTIVE', tenantId: 'tenant-1' });
+      expect(db.state.tenant).toMatchObject({ status: 'ACTIVE', suspendedAt: null, subscriptionExpiresAt: new Date(iso(25)) });
+      expect(emit).not.toHaveBeenCalled();
+    });
+
+    it('central indisponível: o corte não aplica sem a leitura da união', async () => {
+      makeTenant();
+      hub.fetchByCustomer.mockResolvedValue({ ok: false, reason: 'timeout' });
+      expect((await run(ev('subscription.canceled', { payload: {} }))).outcome).toBe('HUB_UNAVAILABLE');
+      expect(db.state.tenant).toMatchObject({ status: 'ACTIVE', suspendedAt: null, lastBillingEventSeq: 10n });
     });
   });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decideReconcile, graceMsFromHours, pickGrantingSubscription, subscriptionGrantsAccess, type HubSubscription } from './subscriptionReconcile';
+import { decideReconcile, graceMsFromHours, pickGrantingSubscription, subscriptionGrantsAccess, unknownPlanPermissions, type HubSubscription } from './subscriptionReconcile';
 
 const NOW = new Date('2026-11-07T12:00:00Z');
 const G = graceMsFromHours(24);
@@ -56,6 +56,27 @@ describe('pickGrantingSubscription', () => {
     expect(pickGrantingSubscription([sub({ id: 'z' }), sub({ id: 'y' })], NOW, G).sub?.id).toBe('y');
   });
 
+  it('permissão de nível maior vence o slug; desconhecida é ignorada; sem reconhecida = slug', () => {
+    expect(pickGrantingSubscription([sub({ permissions: ['COPYSYNC_MAX'] })], NOW, G).planSlug).toBe('COPYSYNC_MAX');
+    expect(pickGrantingSubscription([sub({ permissions: ['OUTRA', 'COPYSYNC_PRO'] })], NOW, G).planSlug).toBe('COPYSYNC_PRO');
+    expect(pickGrantingSubscription([sub({ permissions: ['OUTRA'] })], NOW, G).planSlug).toBe('COPYSYNC_PRO');
+    expect(pickGrantingSubscription([sub({ permissions: [] })], NOW, G).planSlug).toBe('COPYSYNC_PRO');
+    // Slug desconhecido com permissão reconhecida ainda dá nível
+    expect(pickGrantingSubscription([sub({ planSlug: 'x', permissions: ['COPYSYNC_LITE'] })], NOW, G).planSlug).toBe('COPYSYNC_LITE');
+  });
+
+  it('entre assinaturas, o nível efetivo (permissão) decide a ordem', () => {
+    const subs = [sub({ id: 'a', planSlug: 'copysync-max-mensal' }), sub({ id: 'b', planSlug: 'copysync-lite-mensal', permissions: ['COPYSYNC_MAX'], expiresAt: null })];
+    expect(pickGrantingSubscription(subs, NOW, G)).toMatchObject({ planSlug: 'COPYSYNC_MAX', sub: { id: 'a' } });
+    const up = [sub({ id: 'a', planSlug: 'copysync-pro-mensal' }), sub({ id: 'b', planSlug: 'copysync-lite-mensal', permissions: ['COPYSYNC_MAX'] })];
+    expect(pickGrantingSubscription(up, NOW, G)).toMatchObject({ planSlug: 'COPYSYNC_MAX', sub: { id: 'b' } });
+  });
+
+  it('unknownPlanPermissions lista só o que não é nível do CopySync', () => {
+    expect(unknownPlanPermissions(['COPYSYNC_PRO', 'OUTRA', ' COPYSYNC_MAX '])).toEqual(['OUTRA']);
+    expect(unknownPlanPermissions(undefined)).toEqual([]);
+  });
+
   it('acesso só com plano desconhecido → planSlug null', () => {
     expect(pickGrantingSubscription([sub({ planSlug: 'x' })], NOW, G)).toEqual({ grants: true, sub: null, planSlug: null });
     expect(pickGrantingSubscription([], NOW, G)).toEqual({ grants: false, sub: null, planSlug: null });
@@ -105,6 +126,11 @@ describe('decideReconcile', () => {
     expect(decideReconcile({ ...local, status: 'SUSPENDED', adminBlocked: true }, snap(5n, [sub({ billingStatus: 'REFUNDED' })]), NOW, G)).toEqual({ kind: 'admin_suspended' });
     expect(decideReconcile({ ...local, status: 'CANCELLED', adminBlocked: true, planSlug: null }, snap(5n), NOW, G))
       .toMatchObject({ kind: 'apply', reasons: ['no_plan'], activate: false });
+  });
+  it('permissão maior que o slug: reconciliação aplica o nível da permissão', () => {
+    expect(decideReconcile(local, snap(5n, [sub({ permissions: ['COPYSYNC_MAX'] })]), NOW, G))
+      .toMatchObject({ kind: 'apply', reasons: ['plan_changed'], planSlug: 'COPYSYNC_MAX' });
+    expect(decideReconcile({ ...local, planSlug: 'COPYSYNC_MAX' }, snap(5n, [sub({ permissions: ['COPYSYNC_MAX'] })]), NOW, G)).toEqual({ kind: 'noop' });
   });
   it('vencimento da assinatura escolhida vai junto', () => {
     const d = decideReconcile({ ...local, planSlug: null }, snap(5n, [sub({ expiresAt: FUTURE })]), NOW, G);

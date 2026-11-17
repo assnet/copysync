@@ -3,7 +3,7 @@ import { prisma } from '../../../shared/database/prisma.client';
 import { logger } from '../../../shared/logger/logger';
 import { internalEventBus } from '../../../shared/events/InternalEventBus';
 import { SlugTakenError } from '../../../shared/errors/internal/TeamErrors';
-import { resolvePlanSlug, type PlanSlug } from '../../tenants/domain/planPresets';
+import { resolveEffectivePlanSlug, type PlanSlug } from '../../tenants/domain/planPresets';
 import type { ProvisionTenantInput, ProvisionTenantOutput } from '../../tenants/application/use-cases/ProvisionTenantUseCase';
 import { ProvisionTenantUseCase } from '../../tenants/application/use-cases/ProvisionTenantUseCase';
 import { normalizeEmail } from '../../../shared/utils/normalizeEmail';
@@ -11,7 +11,7 @@ import { PrismaAuditLogRepository } from '../../../shared/audit/PrismaAuditLogRe
 import { createEmailSenderFromEnv } from '../infrastructure/email/EmailSenderFactory';
 import { syncPlanEntitlements } from './syncPlanEntitlements';
 import type { HubSubscriptionsFailure, IHubSubscriptionsClient } from '../application/ports/IHubSubscriptionsClient';
-import { graceMsFromHours, pickGrantingSubscription, type HubSubscriptionSnapshot } from '../domain/services/subscriptionReconcile';
+import { graceMsFromHours, pickGrantingSubscription, unknownPlanPermissions, type HubSubscriptionSnapshot } from '../domain/services/subscriptionReconcile';
 import { env } from '../../../shared/config/env';
 import { createHubSubscriptionsClientFromEnv } from '../infrastructure/billing/createReconcileSubscriptionsUseCase';
 import { buildTenantSlug, tenantNameFrom } from './buildTenantSlug';
@@ -46,6 +46,11 @@ export interface BillingEventPayload {
   email?: string;
   name?: string;
   planSlug?: string | null;
+  /**
+   * Permissões efetivas da assinatura (central). A `COPYSYNC_*` mais alta define o nível; ausente
+   * ou vazia (central antiga) = nível pelo `planSlug`. Desconhecida só gera log.
+   */
+  permissions?: string[];
   /** Vencimento ISO do hub; `null` = sem vencimento; ausente = mantém o gravado. */
   expiresAt?: string | null;
 }
@@ -211,13 +216,17 @@ export class ApplyBillingEventUseCase {
     return tenant.lastBillingEventSeq === null || input.seq > tenant.lastBillingEventSeq;
   }
 
-  /** planSlug válido ou null; inválido não grava plano nem entitlements. */
+  /**
+   * Nível pela permissão `COPYSYNC_*` mais alta ou, sem ela, pelo planSlug (mesma regra da
+   * reconciliação). Nenhum dos dois válido = null: não grava plano nem entitlements.
+   */
   private resolvePlanSlug(input: ApplyBillingEventInput): PlanSlug | null {
-    const raw = input.payload.planSlug;
-    if (raw == null || raw === '') return null;
-    const slug = resolvePlanSlug(raw);
+    const { planSlug: raw, permissions } = input.payload;
+    const unknown = unknownPlanPermissions(permissions);
+    if (unknown.length > 0) log.warn({ eventId: input.eventId, permissions: unknown }, 'Billing event with unknown permissions; ignored');
+    const slug = resolveEffectivePlanSlug(raw, permissions);
     if (slug) return slug;
-    log.warn({ eventId: input.eventId, planSlug: raw }, 'Billing event with unknown planSlug; plan not applied');
+    if (raw != null && raw !== '') log.warn({ eventId: input.eventId, planSlug: raw }, 'Billing event with unknown planSlug; plan not applied');
     return null;
   }
 

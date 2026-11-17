@@ -25,6 +25,31 @@ export function resolvePlanSlug(raw: string | null | undefined): PlanSlug | null
 }
 
 /**
+ * Permissão do snapshot da assinatura → nível. As chaves são as mesmas dos slugs internos;
+ * a ordem de `PLAN_SLUGS` (LITE < PRO < MAX) define qual vence.
+ */
+const PERMISSION_LEVEL: Record<string, PlanSlug> = Object.fromEntries(PLAN_SLUGS.map((slug) => [slug, slug]));
+
+/**
+ * Nível efetivo do tenant a partir do evento da central. O snapshot de cada plano já traz a
+ * permissão do próprio nível (`seed-application-copysync.ts:176` na central), então a permissão
+ * é o caminho normal e o slug é o fallback: vence a permissão reconhecida mais alta; nenhuma
+ * reconhecida → `resolvePlanSlug(planSlug)`. Permissão desconhecida é ignorada (o log fica com
+ * quem chama).
+ */
+export function resolveEffectivePlanSlug(
+  planSlug: string | null | undefined,
+  permissions: readonly string[] | null | undefined,
+): PlanSlug | null {
+  let best = -1;
+  for (const raw of permissions ?? []) {
+    const level = typeof raw === 'string' ? PERMISSION_LEVEL[raw.trim()] : undefined;
+    if (level) best = Math.max(best, PLAN_SLUGS.indexOf(level));
+  }
+  return best >= 0 ? PLAN_SLUGS[best] : resolvePlanSlug(planSlug);
+}
+
+/**
  * Entitlements por plano (`PlanEntitlementPreset`, seed). Espelha a tabela de `docs/produto-roadmap.md`
  * e os `limits` da vitrine (`app/src/features/plans/catalog.ts`); o teste ao lado trava os dois.
  * `null` = ilimitado (só chave numérica): grava JSON null explícito, senão o upgrade herdaria o limite
