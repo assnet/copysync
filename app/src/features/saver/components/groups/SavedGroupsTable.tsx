@@ -69,7 +69,7 @@ export function SavedGroupsTable({ groups, selected, onSelectedChange, selectabl
               <TableRow key={g.id} hover selected={chosen.has(g.id)}>
                 {selectable && (
                   <TableCell padding="checkbox">
-                    <Checkbox checked={chosen.has(g.id)} onChange={() => toggle(g.id)} slotProps={{ input: { 'aria-label': `${t.selectGroup}: ${g.name}` } }} />
+                    <Checkbox checked={chosen.has(g.id)} onChange={() => toggle(g.id)} slotProps={{ input: { 'aria-label': blur ? t.selectGroup : `${t.selectGroup}: ${g.name}` } }} />
                   </TableCell>
                 )}
                 <TableCell sx={{ maxWidth: 320 }}>
@@ -98,7 +98,7 @@ export function SavedGroupsTable({ groups, selected, onSelectedChange, selectabl
                 {onRemove && (
                   <TableCell align="right">
                     <Tooltip title={t.remove}>
-                      <IconButton size="small" aria-label={`${t.remove}: ${g.name}`} onClick={() => onRemove(g)}>
+                      <IconButton size="small" aria-label={blur ? t.remove : `${t.remove}: ${g.name}`} onClick={() => onRemove(g)}>
                         <AppIcon icon={Trash2} size="sm" />
                       </IconButton>
                     </Tooltip>
