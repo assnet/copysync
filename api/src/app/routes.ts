@@ -38,6 +38,8 @@ import { storefrontRoutes } from '../modules/storefront/presentation/routes/stor
 import { redirectLinkAdminRoutes } from '../modules/redirect-links/presentation/routes/redirectLinkAdmin.routes';
 import { publicRedirectRoutes } from '../modules/redirect-links/presentation/routes/publicRedirect.routes';
 import { offerStoryRoutes } from '../modules/offer-story/presentation/routes/offerStory.routes';
+import { saverRoutes } from '../modules/saver/presentation/routes/saver.routes';
+import { saverAdminRoutes } from '../modules/saver/presentation/routes/saverAdmin.routes';
 import { mediaContainer } from '../modules/media/infrastructure/mediaContainer';
 import { authHook } from '../shared/http/hooks/authHook';
 import { tenantHook } from '../shared/http/hooks/tenantHook';
@@ -159,6 +161,10 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
 
   // ── Story de Oferta (arte 1080×1920 para Instagram, só Business) ────────────
   await app.register(withProduct('AFFILIATES', offerStoryRoutes), { prefix: `${env.API_PREFIX}/offer-story` });
+
+  // ── Saver: painel do tenant (gate SAVER + audiência) e base da plataforma (super admin, fora do gate) ──
+  await app.register(withProduct('SAVER', saverRoutes), { prefix: `${env.API_PREFIX}/saver` });
+  await app.register(saverAdminRoutes, { prefix: `${env.API_PREFIX}/admin/saver` });
 
   // ── Billing webhook (HMAC-authenticated, no authHook) ──────────────────────
   const billingBlock = billingWebhookBlockReason(env);

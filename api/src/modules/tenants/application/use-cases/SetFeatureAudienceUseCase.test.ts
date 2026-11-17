@@ -42,16 +42,21 @@ describe('FeatureAudienceReader', () => {
   it('gravado vence; ausente = valor inicial (env) lido a cada uso', async () => {
     let saved = {};
     let initial = true;
-    const reader = new FeatureAudienceReader({ get: async () => saved }, () => ({ offer_hunter_enabled: initial }));
+    const reader = new FeatureAudienceReader({ get: async () => saved }, () => ({ offer_hunter_enabled: initial, saver: true }));
     expect(await reader.superAdminOnly('offer_hunter_enabled')).toBe(true);
     initial = false;
     expect(await reader.superAdminOnly('offer_hunter_enabled')).toBe(false);
     saved = { offer_hunter_enabled: true };
     expect(await reader.superAdminOnly('offer_hunter_enabled')).toBe(true);
+    // Chaves independentes: a do Saver segue o próprio valor inicial.
+    expect(await reader.superAdminOnly('saver')).toBe(true);
+    saved = { offer_hunter_enabled: true, saver: false };
+    expect(await reader.superAdminOnly('saver')).toBe(false);
   });
 
   it('parse: só chave conhecida com boolean; lixo = ausente', () => {
     expect(parseFeatureAudience({ offer_hunter_enabled: false, other: true })).toEqual({ offer_hunter_enabled: false });
+    expect(parseFeatureAudience({ saver: false })).toEqual({ saver: false });
     expect(parseFeatureAudience({ offer_hunter_enabled: 'false' })).toEqual({});
     expect(parseFeatureAudience([true])).toEqual({});
     expect(parseFeatureAudience(null)).toEqual({});

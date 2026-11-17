@@ -17,6 +17,8 @@ import type { ISaverExtractionQueue } from '../domain/contracts/ISaverExtraction
 import type { ISaverSessionStateStore } from '../domain/contracts/ISaverSessionStateStore';
 import type { ISaverConfigRepository } from '../domain/contracts/ISaverConfigRepository';
 import { env } from '../../../shared/config/env';
+import { featureAudienceReader } from '../../tenants/infrastructure/featureAudience';
+import type { IFeatureAudienceReader } from '../../tenants/domain/contracts/IFeatureAudienceRepository';
 import { PrismaEntitlementReader } from '../../tenants/infrastructure/repositories/PrismaEntitlementReader';
 import { GetSaverOverviewUseCase } from '../application/use-cases/GetSaverOverviewUseCase';
 import { ListSaverSessionGroupsUseCase } from '../application/use-cases/ListSaverSessionGroupsUseCase';
@@ -150,4 +152,9 @@ export const saverTenantUseCases = {
   get updateConfig(): UpdateSaverConfigUseCase { return updateConfig(); },
   get listExportGrants(): ListSaverExportGrantsUseCase { return listExportGrants(); },
   get setExportGrant(): SetSaverExportGrantUseCase { return setExportGrant(); },
+};
+
+// ── Audiência do produto (SAVER-47): flag "Só super admin" de `/admin/plan-entitlements`, lida a cada pedido ──
+export const saverAudience = {
+  reader: (): IFeatureAudienceReader => featureAudienceReader(),
 };
