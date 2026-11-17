@@ -1,4 +1,4 @@
-import type { ISaverExtractionQueue } from '../../domain/contracts/ISaverExtractionQueue';
+import type { ISaverExtractionQueue, ReleaseSaverItemInput } from '../../domain/contracts/ISaverExtractionQueue';
 import type { ISaverSessionStateStore } from '../../domain/contracts/ISaverSessionStateStore';
 import type { ISaverGroupRepository } from '../../domain/contracts/ISaverGroupRepository';
 import type { ISaverMembershipRepository } from '../../domain/contracts/ISaverMembershipRepository';
@@ -171,7 +171,13 @@ export class ProcessNextSaverItemUseCase {
       return 'FAILED';
     }
 
-    const { created } = await platformContacts.applyGroupRead(item.tenantId, groupId, merged);
+    // Claim perdido durante a leitura (grupo removido, extração cancelada, trava retomada): nada é gravado,
+    // nem vínculo, nem varredura, nem desfecho; o status de quem cancelou prevalece.
+    const applied = await platformContacts.applyGroupRead(item.tenantId, groupId, merged, {
+      itemId: item.id,
+      lockedUntil: item.lockedUntil,
+    });
+    if (!applied) return 'CANCELLED';
     const counts = countMembers(members);
     await groups.recordScan(item.tenantId, groupId, {
       sessionId: item.sessionId,
@@ -181,13 +187,14 @@ export class ProcessNextSaverItemUseCase {
     });
     await this.deps.queue.release({
       itemId: item.id,
+      claimedLockUntil: item.lockedUntil,
       status: SaverExtractionItemStatus.DONE,
       attempts: item.attempts,
       nextAttemptAt: now,
       errorCode: null,
       finishedAt: now,
       membersFound: merged.membersRead,
-      newContacts: created,
+      newContacts: applied.created,
     });
     return 'DONE';
   }
@@ -255,18 +262,25 @@ export class ProcessNextSaverItemUseCase {
     errorCode: string | null,
     attempts = item.attempts,
   ): Promise<void> {
-    return this.deps.queue.release({ itemId: item.id, status, attempts, nextAttemptAt: now, errorCode, finishedAt: now });
+    return this.release(item, { status, attempts, nextAttemptAt: now, errorCode, finishedAt: now });
   }
 
   private requeue(item: SaverExtractionItem, now: Date, delayMs: number, attempts: number, errorCode: string | null): Promise<void> {
-    return this.deps.queue.release({
-      itemId: item.id,
+    return this.release(item, {
       status: SaverExtractionItemStatus.QUEUED,
       attempts,
       nextAttemptAt: new Date(now.getTime() + delayMs),
       errorCode,
       finishedAt: null,
     });
+  }
+
+  /** Desfecho só do dono do claim; cancelado no meio do caminho fica cancelado. */
+  private async release(
+    item: SaverExtractionItem,
+    outcome: Omit<ReleaseSaverItemInput, 'itemId' | 'claimedLockUntil'>,
+  ): Promise<void> {
+    await this.deps.queue.release({ itemId: item.id, claimedLockUntil: item.lockedUntil, ...outcome });
   }
 }
 

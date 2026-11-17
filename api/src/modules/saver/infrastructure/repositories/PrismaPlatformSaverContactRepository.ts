@@ -10,6 +10,7 @@ import type {
 } from '../../domain/contracts/IPlatformSaverContactRepository';
 import type { ContactMerge, ContactUpdate, MergeGroupReadResult } from '../../domain/services/mergeGroupRead';
 import { ConcurrentWriteConflictError, NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
+import type { SaverItemClaim } from '../../domain/contracts/ISaverExtractionQueue';
 import { PrismaSaverMapper } from '../mappers/PrismaSaverMapper';
 
 type Tx = Prisma.TransactionClient;
@@ -99,8 +100,9 @@ export class PrismaPlatformSaverContactRepository implements IPlatformSaverConta
     tenantId: string,
     groupId: string,
     result: MergeGroupReadResult,
-  ): Promise<{ insertedIds: string[]; created: number }> {
-    return this.applyInTransaction(tenantId, groupId, result).catch((err: unknown) => {
+    claim: SaverItemClaim,
+  ): Promise<{ insertedIds: string[]; created: number } | null> {
+    return this.applyInTransaction(tenantId, groupId, result, claim).catch((err: unknown) => {
       throw isWriteRace(err) ? new ConcurrentWriteConflictError('SaverContact') : err;
     });
   }
@@ -109,11 +111,22 @@ export class PrismaPlatformSaverContactRepository implements IPlatformSaverConta
     tenantId: string,
     groupId: string,
     result: MergeGroupReadResult,
-  ): Promise<{ insertedIds: string[]; created: number }> {
+    claim: SaverItemClaim,
+  ): Promise<{ insertedIds: string[]; created: number } | null> {
     return this.prisma.$transaction(
       async (tx) => {
-        const group = await tx.saverGroup.findFirst({ where: { id: groupId, tenantId }, select: { id: true } });
-        if (!group) throw new NotFoundError('SaverGroup', groupId);
+        // Item antes do grupo (mesma ordem de remover: cancela itens, depois marca o grupo). A trava do item
+        // segura cancelamento/remoção até o fim; claim perdido ou grupo removido = nada gravado.
+        const owned = await tx.$queryRaw<{ id: string }[]>`
+          SELECT "id" FROM "saver_extraction_items"
+          WHERE "id" = ${claim.itemId} AND "tenantId" = ${tenantId} AND "groupId" = ${groupId}
+            AND "status" = 'RUNNING' AND "lockedUntil" IS NOT DISTINCT FROM ${claim.lockedUntil}::timestamp(3)
+          FOR UPDATE`;
+        if (owned.length === 0) return null;
+        const group = await tx.$queryRaw<{ id: string; removedAt: Date | null }[]>`
+          SELECT "id", "removedAt" FROM "saver_groups" WHERE "id" = ${groupId} AND "tenantId" = ${tenantId} FOR UPDATE`;
+        if (group.length === 0) throw new NotFoundError('SaverGroup', groupId);
+        if (group[0]!.removedAt) return null;
 
         for (const merge of result.contactMerges) await applyMerge(tx, merge);
         const { insertedIds, created, conflictUpdates } = await applyInserts(tx, result);

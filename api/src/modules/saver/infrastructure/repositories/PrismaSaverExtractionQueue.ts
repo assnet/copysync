@@ -81,10 +81,11 @@ export class PrismaSaverExtractionQueue implements ISaverExtractionQueue {
     return PrismaSaverMapper.item(row);
   }
 
-  async release(input: ReleaseSaverItemInput): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
-      const item = await tx.saverExtractionItem.update({
-        where: { id: input.itemId },
+  async release(input: ReleaseSaverItemInput): Promise<boolean> {
+    return this.prisma.$transaction(async (tx) => {
+      // Só o dono do claim grava: item cancelado ou retomado por outro claim fica como está.
+      const { count } = await tx.saverExtractionItem.updateMany({
+        where: { id: input.itemId, status: SaverExtractionItemStatus.RUNNING, lockedUntil: input.claimedLockUntil },
         data: {
           status: input.status,
           attempts: input.attempts,
@@ -93,6 +94,10 @@ export class PrismaSaverExtractionQueue implements ISaverExtractionQueue {
           finishedAt: input.finishedAt,
           lockedUntil: null,
         },
+      });
+      if (count === 0) return false;
+      const item = await tx.saverExtractionItem.findUniqueOrThrow({
+        where: { id: input.itemId },
         select: { extractionId: true },
       });
       await tx.saverExtraction.update({
@@ -105,6 +110,7 @@ export class PrismaSaverExtractionQueue implements ISaverExtractionQueue {
         },
       });
       await closeExtractions(tx, input.finishedAt ?? input.nextAttemptAt, item.extractionId);
+      return true;
     });
   }
 

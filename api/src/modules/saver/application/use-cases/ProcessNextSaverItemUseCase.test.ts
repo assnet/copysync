@@ -199,6 +199,32 @@ describe('ProcessNextSaverItemUseCase', () => {
     expect(h.engineCalls).toHaveLength(0);
   });
 
+  it('grupo removido durante a leitura: nada gravado, item segue CANCELLED e o grupo não volta', async () => {
+    const h = setup();
+    h.reads.set('g1@g.us', [member('5511999990001')]);
+    h.duringRead = async () => {
+      await h.queue.cancelPendingByGroup(T, 'g1', NOW);
+      await h.groups.markRemoved(T, 'g1', NOW);
+    };
+    const r = await run(h);
+    expect(r.outcomes[0]!.outcome).toBe('CANCELLED');
+    expect(item(h).status).toBe(I.CANCELLED);
+    expect(h.store.links).toHaveLength(0);
+    expect(h.groups.scans).toHaveLength(0);
+    expect(extraction(h)).toMatchObject({ status: E.CANCELLED, doneGroups: 0, membersFound: 0 });
+    expect(h.groups.groups[0]!.removedAt).not.toBeNull();
+  });
+
+  it('erro depois de cancelado: o reagendamento não ressuscita o item', async () => {
+    const h = setup();
+    h.reads.set('g1@g.us', new SessionNotConnectedError(S));
+    h.duringRead = async () => {
+      await h.queue.cancelPendingByGroup(T, 'g1', NOW);
+    };
+    await run(h);
+    expect(item(h).status).toBe(I.CANCELLED);
+  });
+
   it('fechamento: um DONE e um FAILED → PARTIAL', async () => {
     const h = setup();
     h.groups.add('g2', T);

@@ -1,4 +1,4 @@
-import type { ISaverExtractionQueue, ReleaseSaverItemInput } from '../../domain/contracts/ISaverExtractionQueue';
+import type { ISaverExtractionQueue, ReleaseSaverItemInput, SaverItemClaim } from '../../domain/contracts/ISaverExtractionQueue';
 import type { ISaverSessionStateStore } from '../../domain/contracts/ISaverSessionStateStore';
 import type { ISaverGroupRepository, SaverGroupScanInput } from '../../domain/contracts/ISaverGroupRepository';
 import type { ISaverMembershipRepository } from '../../domain/contracts/ISaverMembershipRepository';
@@ -55,8 +55,15 @@ export class FakeSaverQueue implements ISaverExtractionQueue {
     return { ...item };
   }
 
-  async release(input: ReleaseSaverItemInput): Promise<void> {
+  /** Mesma posse do SQL: item `RUNNING` com o `lockedUntil` do claim. */
+  owns(itemId: string, lockedUntil: Date | null): boolean {
+    const item = this.items.find((i) => i.id === itemId);
+    return !!item && item.status === SaverExtractionItemStatus.RUNNING && item.lockedUntil?.getTime() === lockedUntil?.getTime();
+  }
+
+  async release(input: ReleaseSaverItemInput): Promise<boolean> {
     this.releases.push(input);
+    if (!this.owns(input.itemId, input.claimedLockUntil)) return false;
     const item = this.items.find((i) => i.id === input.itemId)!;
     Object.assign(item, {
       status: input.status, attempts: input.attempts, nextAttemptAt: input.nextAttemptAt,
@@ -68,6 +75,7 @@ export class FakeSaverQueue implements ISaverExtractionQueue {
     if (input.status === SaverExtractionItemStatus.DONE) ext.doneGroups += 1;
     if (input.status === SaverExtractionItemStatus.FAILED) ext.failedGroups += 1;
     this.close(input.finishedAt ?? input.nextAttemptAt);
+    return true;
   }
 
   async findExtraction(tenantId: string, id: string): Promise<SaverExtraction | null> {
@@ -181,13 +189,17 @@ export class FakeSaverGroups implements ISaverGroupRepository {
   async upsertMany(): Promise<SaverGroup[]> {
     return [];
   }
-  async recordScan(_tenantId: string, groupId: string, scan: SaverGroupScanInput): Promise<void> {
+  async recordScan(tenantId: string, groupId: string, scan: SaverGroupScanInput): Promise<void> {
+    if (this.groups.find((g) => g.tenantId === tenantId && g.id === groupId)?.removedAt) return;
     this.scans.push({ groupId, scan });
   }
   async countActive(tenantId: string): Promise<number> {
     return (await this.listActive(tenantId)).length;
   }
-  async markRemoved(): Promise<void> {}
+  async markRemoved(tenantId: string, groupId: string, at: Date): Promise<void> {
+    const g = this.groups.find((x) => x.tenantId === tenantId && x.id === groupId && !x.removedAt);
+    if (g) g.removedAt = at;
+  }
 }
 
 /**
@@ -203,19 +215,24 @@ export class FakeSaverStore {
   applyError: Error | null = null;
   private seq = 0;
 
-  constructor(private readonly groups: FakeSaverGroups) {}
+  constructor(
+    private readonly groups: FakeSaverGroups,
+    private readonly queue: FakeSaverQueue,
+  ) {}
 
   readonly platformContacts: IPlatformSaverContactRepository = {
     findByKeys: async (phones, lids) =>
       this.contacts.filter((c) => (c.phone && phones.includes(c.phone)) || (c.lid && lids.includes(c.lid))),
     list: async () => [],
     findLinks: async () => [],
-    applyGroupRead: async (tenantId: string, groupId: string, result: MergeGroupReadResult) => {
+    applyGroupRead: async (tenantId: string, groupId: string, result: MergeGroupReadResult, claim: SaverItemClaim) => {
       if (this.applyError) {
         const err = this.applyError;
         this.applyError = null;
         throw err;
       }
+      const group = this.groups.groups.find((g) => g.tenantId === tenantId && g.id === groupId);
+      if (!this.queue.owns(claim.itemId, claim.lockedUntil) || group?.removedAt) return null;
       this.applied += 1;
       const insertedIds = result.contactInserts.map((c) => {
         const id = `c${++this.seq}`;
@@ -261,6 +278,8 @@ export interface SaverStepHarness {
   /** Membros devolvidos por `groupJid`; `Error` = engine lança. */
   reads: Map<string, SaverReadMember[] | Error>;
   engineCalls: { sessionId: string; groupJid: string }[];
+  /** Roda durante a leitura do engine (simula remoção/cancelamento concorrente). */
+  duringRead: (() => Promise<void>) | null;
   /** Tenants com produto SAVER ativo; `Error` = leitura do acesso falha. */
   activeTenants: Set<string>;
   productError: Error | null;
@@ -271,11 +290,12 @@ export function makeSaverStepHarness(random: () => number = () => 0): SaverStepH
   const queue = new FakeSaverQueue();
   const states = new FakeSaverSessionStates();
   const groups = new FakeSaverGroups();
-  const store = new FakeSaverStore(groups);
+  const store = new FakeSaverStore(groups, queue);
   const h: SaverStepHarness = {
     queue, states, groups, store,
     reads: new Map(),
     engineCalls: [],
+    duringRead: null,
     activeTenants: new Set(),
     productError: null,
     entitlements: new Map(),
@@ -288,6 +308,7 @@ export function makeSaverStepHarness(random: () => number = () => 0): SaverStepH
     engine: {
       getGroupMembers: async (sessionId, groupJid) => {
         h.engineCalls.push({ sessionId, groupJid });
+        if (h.duringRead) await h.duringRead();
         const read = h.reads.get(groupJid) ?? [];
         if (read instanceof Error) throw read;
         return read;

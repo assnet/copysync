@@ -46,8 +46,21 @@ async function makeGroup(tenantId: string, sessionId: string, jid: string, name 
   return g!.id;
 }
 
-/** Lê o grupo e grava como o passo da extração fará (T9). */
+/** Item RUNNING já pego (claim) para o grupo, como o passo da extração o recebe. */
+async function claimedItem(tenantId: string, groupId: string, lockedUntil: Date) {
+  const group = await prisma.saverGroup.findUniqueOrThrow({ where: { id: groupId } });
+  const ext = await prisma.saverExtraction.create({
+    data: { tenantId, sessionId: group.sessionId, trigger: 'MANUAL', status: 'RUNNING', totalGroups: 1 },
+  });
+  return prisma.saverExtractionItem.create({
+    data: { extractionId: ext.id, tenantId, sessionId: group.sessionId!, groupId, status: 'RUNNING', lockedUntil },
+  });
+}
+
+/** Lê o grupo e grava como o passo da extração fará (T9): item pego, gravação, item DONE. */
 async function readGroup(tenantId: string, groupId: string, members: SaverReadMember[], now: Date, extractionId = 'ext') {
+  const lockedUntil = new Date(now.getTime() + 60_000);
+  const item = await claimedItem(tenantId, groupId, lockedUntil);
   const phones = members.flatMap((m) => (m.phone ? [m.phone] : []));
   const lids = members.flatMap((m) => (m.lid ? [m.lid] : []));
   const result = mergeGroupRead({
@@ -57,7 +70,10 @@ async function readGroup(tenantId: string, groupId: string, members: SaverReadMe
     now,
     extractionId,
   });
-  return platform.applyGroupRead(tenantId, groupId, result);
+  const applied = await platform.applyGroupRead(tenantId, groupId, result, { itemId: item.id, lockedUntil });
+  await prisma.saverExtractionItem.update({ where: { id: item.id }, data: { status: 'DONE', lockedUntil: null } });
+  if (!applied) throw new Error('claim perdido');
+  return applied;
 }
 
 const now = new Date('2026-11-17T12:00:00.000Z');
@@ -96,8 +112,13 @@ describe('fila', () => {
     expect(retaken?.id).toBe(winners[0]!.id);
     expect((await queue.findExtraction(t, ext.id))?.status).toBe('RUNNING');
 
+    const stale = await queue.release({
+      itemId: retaken!.id, claimedLockUntil: lock, status: SaverExtractionItemStatus.DONE, attempts: 0, nextAttemptAt: later,
+      errorCode: null, finishedAt: later, membersFound: 99, newContacts: 99,
+    });
+    expect(stale).toBe(false);
     await queue.release({
-      itemId: retaken!.id, status: SaverExtractionItemStatus.DONE, attempts: 0, nextAttemptAt: later,
+      itemId: retaken!.id, claimedLockUntil: retaken!.lockedUntil, status: SaverExtractionItemStatus.DONE, attempts: 0, nextAttemptAt: later,
       errorCode: null, finishedAt: later, membersFound: 7, newContacts: 3,
     });
     expect(await queue.findExtraction(t, ext.id)).toMatchObject({ status: 'DONE', doneGroups: 1, membersFound: 7, newContacts: 3 });
@@ -136,6 +157,72 @@ describe('fila', () => {
     await groups.markRemoved(t, g, now);
     expect(await groups.countActive(t)).toBe(2);
     expect(await queue.cancelPendingByGroup(t, g, now)).toBe(1);
+  });
+});
+
+describe('cancelamento durante a leitura', () => {
+  it('grupo removido no meio da leitura: nada gravado, item segue CANCELLED e o grupo não volta', async () => {
+    const t = await makeTenant('cancel-read');
+    const s = await makeSession(t);
+    const g = await makeGroup(t, s, `cancel-read-${stamp}@g.us`);
+    const ext = await queue.enqueue({ tenantId: t, sessionId: s, requestedByUserId: null, trigger: SaverExtractionTrigger.MANUAL, groupIds: [g], now });
+    const item = await queue.claimNext(s, now, new Date(now.getTime() + 60_000));
+    expect(item?.groupId).toBe(g);
+    const members = [{ phone: null, lid: `lid${stamp}-x`, name: 'X', isAdmin: false }];
+    const result = mergeGroupRead({ contacts: [], memberships: [], members, now, extractionId: ext.id });
+
+    // Remoção concorrente (RemoveSaverGroupUseCase): cancela pendentes e marca o grupo.
+    await queue.cancelPendingByGroup(t, g, now);
+    await groups.markRemoved(t, g, now);
+
+    const claim = { itemId: item!.id, lockedUntil: item!.lockedUntil };
+    expect(await platform.applyGroupRead(t, g, result, claim)).toBeNull();
+    await groups.recordScan(t, g, { sessionId: s, status: SaverExtractionItemStatus.DONE, at: now, memberCount: 1 });
+    const released = await queue.release({
+      itemId: item!.id, claimedLockUntil: item!.lockedUntil, status: SaverExtractionItemStatus.DONE, attempts: 0,
+      nextAttemptAt: now, errorCode: null, finishedAt: now, membersFound: 1, newContacts: 1,
+    });
+    expect(released).toBe(false);
+
+    expect(await prisma.saverGroupMembership.count({ where: { groupId: g } })).toBe(0);
+    expect(await prisma.saverExtractionItem.findUnique({ where: { id: item!.id } })).toMatchObject({ status: 'CANCELLED' });
+    expect(await queue.findExtraction(t, ext.id)).toMatchObject({ status: 'CANCELLED', doneGroups: 0, membersFound: 0 });
+    expect(await prisma.saverGroup.findUnique({ where: { id: g } })).toMatchObject({ memberCount: 0, lastScannedAt: null });
+    expect((await groups.findById(t, g))?.removedAt).not.toBeNull();
+    expect(await groups.countActive(t)).toBe(0);
+  });
+
+  it('gravação segura a trava do item: cancelamento concorrente espera e o desfecho não é sobrescrito', async () => {
+    const t = await makeTenant('cancel-race');
+    const s = await makeSession(t);
+    const g = await makeGroup(t, s, `cancel-race-${stamp}@g.us`);
+    const ext = await queue.enqueue({ tenantId: t, sessionId: s, requestedByUserId: null, trigger: SaverExtractionTrigger.MANUAL, groupIds: [g], now });
+    const item = await queue.claimNext(s, now, new Date(now.getTime() + 60_000));
+    const members = Array.from({ length: 300 }, (_, i) => ({ phone: null, lid: `lid${stamp}-r${i}`, name: null, isAdmin: false }));
+    const result = mergeGroupRead({ contacts: [], memberships: [], members, now, extractionId: ext.id });
+    const claim = { itemId: item!.id, lockedUntil: item!.lockedUntil };
+    const [applied, cancelled] = await Promise.all([
+      platform.applyGroupRead(t, g, result, claim),
+      (async () => {
+        await new Promise((r) => setTimeout(r, 5));
+        return queue.cancelPendingByGroup(t, g, now);
+      })(),
+    ]);
+    const released = await queue.release({
+      itemId: item!.id, claimedLockUntil: item!.lockedUntil, status: SaverExtractionItemStatus.DONE, attempts: 0,
+      nextAttemptAt: now, errorCode: null, finishedAt: now,
+    });
+    const final = await prisma.saverExtractionItem.findUniqueOrThrow({ where: { id: item!.id } });
+    // Quem chegou primeiro vence; nunca os dois.
+    if (cancelled === 1) {
+      expect(released).toBe(false);
+      expect(final.status).toBe('CANCELLED');
+    } else {
+      expect(released).toBe(true);
+      expect(final.status).toBe('DONE');
+    }
+    const links = await prisma.saverGroupMembership.count({ where: { groupId: g } });
+    expect(links).toBe(applied ? 300 : 0);
   });
 });
 
