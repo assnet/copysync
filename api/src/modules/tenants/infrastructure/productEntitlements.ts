@@ -66,7 +66,7 @@ async function sharedPresetOf(db: PresetDb, planSlug: string): Promise<Record<st
  * Único ponto que grava as chaves compartilhadas (`whatsapp_sessions`, `telegram_sessions`): união
  * (`mergeSharedEntitlements`: maior vence, `null` vence) dos presets dos produtos com acesso. Usado pelo
  * admin, pela propagação de preset, pelo webhook e pela reconciliação.
- * - Plano de Afiliados: `tenant_products.planSlug` (concessão do admin) ou, sem ele, `Tenant.planSlug`.
+ * - Plano de Afiliados: sempre `Tenant.planSlug` (fonte única do plano de Afiliados; a linha só guarda status).
  *   Afiliados ativo sem plano (legado ilimitado) = não grava nada.
  * - Produto novo ativo sem plano = fora da união. Nenhum produto com acesso = não grava.
  */
@@ -82,7 +82,7 @@ export async function writeMergedSharedEntitlements(db: Db, tenantId: string): P
     if (accessSourceOf(product) !== product) continue; // CHAT acompanha AFFILIATES: sem plano próprio
     const row = byProduct.get(product);
     if (!resolveProductAccess(product, row ? { status: row.status as TenantProductStatus } : null)) continue;
-    const slug = row?.planSlug ?? (product === 'AFFILIATES' ? tenant.planSlug : null);
+    const slug = product === 'AFFILIATES' ? tenant.planSlug : (row?.planSlug ?? null);
     if (slug === null && product !== 'AFFILIATES') continue;
     plans.push(slug);
   }
