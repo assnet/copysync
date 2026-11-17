@@ -45,6 +45,7 @@ import type {
   GroupMemberInfo,
   GroupParticipantInfo,
   ParticipatingGroupInfo,
+  ParticipatingGroupKind,
   UpdateChatStateInput,
 } from '../../../domain/contracts/IMessagingEngine';
 import type { ISessionSocketControl } from '../../../domain/contracts/ISessionSocketControl';
@@ -831,6 +832,8 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
         groupJid: g.id.split('@')[0]!,
         name: g.subject?.trim() || null,
         ...baileysGroupPermissions(g, self),
+        memberCount: g.size ?? g.participants?.length ?? null,
+        kind: baileysGroupKind(g),
       }));
       this.participatingGroupsCache.set(sessionId, { groups, at: Date.now() });
       return groups;
@@ -2295,6 +2298,13 @@ interface GroupMetadataSnapshot {
  * Permissões da sessão no grupo, só com o que `groupFetchAllParticipating` já traz: posta se o
  * grupo não é só-admins (`announce`) ou se ela é admin; convida só sendo admin.
  */
+/** Comunidade "pai" (`<parent>`), grupo de avisos dela (`<default_sub_group>`) ou grupo comum. */
+export function baileysGroupKind(group: { isCommunity?: boolean; isCommunityAnnounce?: boolean }): ParticipatingGroupKind {
+  if (group.isCommunity) return 'COMMUNITY';
+  if (group.isCommunityAnnounce) return 'COMMUNITY_ANNOUNCE';
+  return 'GROUP';
+}
+
 export function baileysGroupPermissions(
   group: { announce?: boolean | null; participants?: readonly BaileysGroupParticipant[] | null },
   self: { id?: string; lid?: string } | undefined,

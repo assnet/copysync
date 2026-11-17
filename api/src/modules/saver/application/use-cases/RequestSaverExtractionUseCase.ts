@@ -3,6 +3,7 @@ import type { IProductAccessReader } from '../../../tenants/domain/contracts/IPr
 import type { ISaverExtractionQueue } from '../../domain/contracts/ISaverExtractionQueue';
 import type { ISaverSessionReader } from '../../domain/contracts/ISaverSessionReader';
 import { fitsSaverLimit, SAVER_LIMIT_KEYS } from '../../domain/services/saverLimits';
+import { saverGroupUnselectableReason } from '../../domain/services/saverGroupKind';
 import { PlanLimitReachedError } from '../../../../shared/errors/internal/PlanErrors';
 import { ValidationError } from '../../../../shared/errors/internal/ResourceErrors';
 import { SAVER_SCAN_WINDOW_MS } from './GetSaverOverviewUseCase';
@@ -47,10 +48,23 @@ export class RequestSaverExtractionUseCase {
     const session = await requireSaverSession(this.deps.sessions, tenantId, input.sessionId);
 
     const live = new Map<string, string | null>();
-    for (const g of await this.deps.engine().listParticipatingGroups(session.id)) live.set(bareGroupJid(g.groupJid), g.name);
+    const unselectable = new Set<string>();
+    for (const g of await this.deps.engine().listParticipatingGroups(session.id)) {
+      const jid = bareGroupJid(g.groupJid);
+      live.set(jid, g.name);
+      if (saverGroupUnselectableReason(g.kind)) unselectable.add(jid);
+    }
     const missing = jids.filter((j) => !live.has(j));
     if (missing.length > 0) {
       throw new ValidationError('Some groups are not available in this session', { field: 'groupJids', missing: missing.length });
+    }
+    const blocked = jids.filter((j) => unselectable.has(j));
+    if (blocked.length > 0) {
+      throw new ValidationError('Community parent groups cannot be read; pick the announcements group', {
+        field: 'groupJids',
+        reason: 'COMMUNITY_PARENT',
+        blocked: blocked.length,
+      });
     }
 
     const now = this.deps.now?.() ?? new Date();

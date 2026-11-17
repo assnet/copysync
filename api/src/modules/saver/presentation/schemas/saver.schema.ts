@@ -139,6 +139,10 @@ export const sessionGroupsResponse = envelope({
     savedGroupId: nullableString,
     lastScannedAt: nullableDate,
     lastScanStatus: itemStatus,
+    memberCount: { type: ['integer', 'null'] },
+    kind: { type: 'string', enum: ['GROUP', 'COMMUNITY', 'COMMUNITY_ANNOUNCE'] },
+    selectable: { type: 'boolean' },
+    unselectableReason: { type: ['string', 'null'], enum: ['COMMUNITY_PARENT', null] },
   }),
 });
 

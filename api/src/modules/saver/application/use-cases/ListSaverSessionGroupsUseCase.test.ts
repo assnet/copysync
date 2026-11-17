@@ -9,9 +9,9 @@ const SCANNED = new Date('2026-11-16T10:00:00Z');
 function make(session: SaverSessionRef | null = sessionRef()) {
   const engine = {
     listParticipatingGroups: vi.fn(async () => [
-      { groupJid: '111@g.us', name: 'Um' },
-      { groupJid: '222', name: null },
-      { groupJid: '333', name: 'Três' },
+      { groupJid: '111@g.us', name: 'Um', memberCount: 12 },
+      { groupJid: '222', name: null, memberCount: null, kind: 'COMMUNITY' as const },
+      { groupJid: '333', name: 'Três', kind: 'COMMUNITY_ANNOUNCE' as const, memberCount: 900 },
     ]),
   };
   const deps = {
@@ -34,9 +34,12 @@ describe('ListSaverSessionGroupsUseCase', () => {
     const r = await uc.execute(actorOf('OPERATOR'), { sessionId: 's1' });
     expect(deps.groups.findByJids).toHaveBeenCalledWith('t1', ['111', '222', '333']);
     expect(r).toEqual([
-      { groupJid: '111', name: 'Um', saved: true, savedGroupId: 'g1', lastScannedAt: SCANNED, lastScanStatus: 'DONE' },
-      { groupJid: '222', name: 'Dois salvo', saved: true, savedGroupId: 'g2', lastScannedAt: null, lastScanStatus: null },
-      { groupJid: '333', name: 'Três', saved: false, savedGroupId: null, lastScannedAt: null, lastScanStatus: null },
+      { groupJid: '111', name: 'Um', saved: true, savedGroupId: 'g1', lastScannedAt: SCANNED, lastScanStatus: 'DONE',
+        memberCount: 12, kind: 'GROUP', selectable: true, unselectableReason: null },
+      { groupJid: '222', name: 'Dois salvo', saved: true, savedGroupId: 'g2', lastScannedAt: null, lastScanStatus: null,
+        memberCount: null, kind: 'COMMUNITY', selectable: false, unselectableReason: 'COMMUNITY_PARENT' },
+      { groupJid: '333', name: 'Três', saved: false, savedGroupId: null, lastScannedAt: null, lastScanStatus: null,
+        memberCount: 900, kind: 'COMMUNITY_ANNOUNCE', selectable: true, unselectableReason: null },
     ]);
   });
 

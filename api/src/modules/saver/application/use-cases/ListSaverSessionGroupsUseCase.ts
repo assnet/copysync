@@ -2,6 +2,11 @@ import type { IMessagingEngine } from '../../../messaging/domain/contracts/IMess
 import type { ISaverGroupRepository } from '../../domain/contracts/ISaverGroupRepository';
 import type { ISaverSessionReader } from '../../domain/contracts/ISaverSessionReader';
 import type { SaverExtractionItemStatus } from '../../domain/enums/SaverEnums';
+import {
+  saverGroupUnselectableReason,
+  type SaverGroupKind,
+  type SaverGroupUnselectableReason,
+} from '../../domain/services/saverGroupKind';
 import { assertCanSaver, type SaverActor } from './saverActor';
 import { bareGroupJid, requireSaverSession } from './saverSessionAccess';
 
@@ -16,6 +21,12 @@ export interface SaverSessionGroupDTO {
   savedGroupId: string | null;
   lastScannedAt: Date | null;
   lastScanStatus: SaverExtractionItemStatus | null;
+  /** Total de membros vindo da listagem; null = desconhecido. */
+  memberCount: number | null;
+  kind: SaverGroupKind;
+  /** false = não pode ser pedido para leitura (motivo em `unselectableReason`). */
+  selectable: boolean;
+  unselectableReason: SaverGroupUnselectableReason | null;
 }
 
 export interface ListSaverSessionGroupsDeps {
@@ -46,6 +57,8 @@ export class ListSaverSessionGroupsUseCase {
       if (seen.has(jid)) continue;
       seen.add(jid);
       const s = saved.get(jid);
+      const kind = g.kind ?? 'GROUP';
+      const unselectableReason = saverGroupUnselectableReason(kind);
       out.push({
         groupJid: jid,
         name: g.name ?? s?.name ?? null,
@@ -53,6 +66,10 @@ export class ListSaverSessionGroupsUseCase {
         savedGroupId: s?.id ?? null,
         lastScannedAt: s?.lastScannedAt ?? null,
         lastScanStatus: s?.lastScanStatus ?? null,
+        memberCount: typeof g.memberCount === 'number' ? g.memberCount : null,
+        kind,
+        selectable: unselectableReason === null,
+        unselectableReason,
       });
     }
     return out;

@@ -48,4 +48,18 @@ describe('BaileysMessagingEngineAdapter.listParticipatingGroups', () => {
     await adapter.listParticipatingGroups(S);
     expect(groupFetchAllParticipating).toHaveBeenCalledTimes(1);
   });
+
+  it('anota total de membros (size, senão participantes) e tipo de comunidade', async () => {
+    BaileysSessionRegistry.get().set(S, { socket: { user, groupFetchAllParticipating: async () => ({
+      '1@g.us': { id: '1@g.us', subject: 'Comum', participants: [{ id: 'a' }, { id: 'b' }] },
+      '2@g.us': { id: '2@g.us', subject: 'Comunidade', isCommunity: true, size: 3, participants: [{ id: 'a' }] },
+      '3@g.us': { id: '3@g.us', subject: 'Avisos', isCommunityAnnounce: true, size: 1200, participants: [] },
+      '4@g.us': { id: '4@g.us', subject: 'Sem lista' },
+    }) }, tenantId: 't1' } as never);
+    const adapter = new BaileysMessagingEngineAdapter({} as never, {} as never, {} as never, {} as never, {} as never);
+    const out = await adapter.listParticipatingGroups(S);
+    expect(out.map((g) => [g.groupJid, g.memberCount, g.kind])).toEqual([
+      ['1', 2, 'GROUP'], ['2', 3, 'COMMUNITY'], ['3', 1200, 'COMMUNITY_ANNOUNCE'], ['4', null, 'GROUP'],
+    ]);
+  });
 });

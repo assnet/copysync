@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { SendMediaMessageInput, SendTextMessageInput } from '../../domain/contracts/IMessagingEngine';
+import type { ParticipatingGroupInfo, SendMediaMessageInput, SendTextMessageInput } from '../../domain/contracts/IMessagingEngine';
 import { decodeEngineCall, decodeEngineValue, encodeEngineCall, encodeEngineValue } from './engineCallCodec';
 import { engineCall } from './engineCallPlan';
 
@@ -61,5 +61,12 @@ describe('engineCallCodec', () => {
     expect(() => encodeEngineValue({ n: 1n })).toThrow(TypeError);
     expect(() => encodeEngineValue(new Date(NaN))).toThrow(TypeError);
     expect(() => decodeEngineValue(JSON.stringify({ $wire: 'x' }))).toThrow(TypeError);
+  });
+  it('listParticipatingGroups: memberCount e kind atravessam a resposta', () => {
+    const groups: ParticipatingGroupInfo[] = [
+      { groupJid: '1', name: 'A', memberCount: 1200, kind: 'COMMUNITY_ANNOUNCE' },
+      { groupJid: '2', name: null, memberCount: null, kind: 'COMMUNITY' },
+    ];
+    expect(decodeEngineValue<ParticipatingGroupInfo[]>(encodeEngineValue(groups))).toEqual(groups);
   });
 });

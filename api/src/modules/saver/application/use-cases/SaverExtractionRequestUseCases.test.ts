@@ -77,6 +77,8 @@ function world(snapshot: Record<string, unknown>, opts: { scansUsed?: number; ha
       { groupJid: '111@g.us', name: 'Um' },
       { groupJid: '222', name: 'Dois' },
       { groupJid: '333', name: null },
+      { groupJid: '444', name: 'Comunidade', kind: 'COMMUNITY' as const },
+      { groupJid: '555', name: 'Avisos', kind: 'COMMUNITY_ANNOUNCE' as const },
     ]),
   };
   const request = new RequestSaverExtractionUseCase({
@@ -118,6 +120,15 @@ describe('RequestSaverExtractionUseCase — SAVER-47 (piloto do super admin)', (
 });
 
 describe('RequestSaverExtractionUseCase', () => {
+  it('comunidade "pai" → VALIDATION_ERROR antes de gravar; avisos da comunidade passa', async () => {
+    const w = world({ saver_groups: 5, saver_group_scans_per_day: 10 });
+    await expect(w.request.execute(OPERATOR, { sessionId: 's1', groupJids: ['111', '444'] }))
+      .rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(w.queue.requestGroups).not.toHaveBeenCalled();
+    await w.request.execute(OPERATOR, { sessionId: 's1', groupJids: ['555'] });
+    expect(w.queue.requestGroups).toHaveBeenCalledTimes(1);
+  });
+
   it('salva grupos (JID sem @g.us, nome do engine) e enfileira MANUAL', async () => {
     const w = world({ saver_groups: 5, saver_group_scans_per_day: 10 });
     const r = await w.request.execute(OPERATOR, { sessionId: 's1', groupJids: ['111@g.us', '333', '111'] });

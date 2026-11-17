@@ -919,6 +919,8 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
         name: d.title ?? null,
         avatarUrl: null,
         ...telegramGroupPermissions(ent),
+        // Só o que já veio no diálogo (canal grande pode não trazer): sem chamada extra por grupo.
+        memberCount: ent?.participantsCount ?? null,
       });
       avatarOf.set(out.length - 1, this.groupAvatar(sessionId, entry, d.id.toString(), ent));
     }

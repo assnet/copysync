@@ -64,6 +64,21 @@ config, `queueRunning`), `GET /sessions/:sessionId/groups`, `POST /extractions` 
 `GET /extractions/:id`, `POST /extractions/:id/cancel`, `GET /groups`, `DELETE /groups/:id` (remoção lógica),
 `GET|PUT /permissions…`, `POST /exports`, `GET|PUT /config`. Nenhuma rota de tenant devolve nome, telefone ou LID em JSON.
 
+## Grupos da sessão: membros e comunidades
+
+`GET /sessions/:sessionId/groups` devolve por grupo `memberCount` (null = desconhecido), `kind` e `selectable` +
+`unselectableReason`. Vem de `ParticipatingGroupInfo` (contrato do engine), na mesma chamada `groupFetchAllParticipating`
+já em cache: `memberCount = size ?? participants.length`; `kind` por `isCommunity` (`COMMUNITY`, comunidade "pai") e
+`isCommunityAnnounce` (`COMMUNITY_ANNOUNCE`, grupo de avisos), senão `GROUP`. Tipos do Baileys só no adapter.
+
+- Comunidade "pai" não tem conversa nem membros próprios (o WhatsApp devolve só a administração dela): `selectable:
+  false`, `unselectableReason: COMMUNITY_PARENT` (regra em `domain/services/saverGroupKind.ts`). `POST /extractions`
+  com ela → 400 `VALIDATION_ERROR` antes de gravar. Para ler os membros da comunidade, use o grupo de avisos: ele
+  reúne todos os membros.
+- Painel: "N membros" (pt-BR, `—` se desconhecido), selo com Tooltip para comunidade/avisos, total de membros dos
+  marcados ao lado do limite por pedido, botão de copiar nome (copia o nome real mesmo com `saver.groupNames`
+  borrado; Tooltip e `aria-label` não mostram o nome nesse caso).
+
 ## Base de contatos da plataforma
 
 - `saver_contacts` **não tem `tenantId`**: um contato por pessoa, `phone` e `lid` únicos no banco. O tenant chega aos
@@ -143,6 +158,7 @@ exclusão a pedido do titular e regra de retenção.
 - Expor a base a quem não é `SUPER_ADMIN`; consultar a base sem `AuditLog`.
 - Registrar nome, número ou LID em log ou auditoria (só ids, filtros e contagens).
 - Apagar ou sobrescrever telefone guardado; fundir contato por nome ou heurística; duplicar contato.
+- Liberar comunidade "pai" para leitura ou buscar `groupMetadata` por grupo só para contar membros na listagem.
 - Buscar foto de perfil; alterar `getGroupParticipants`, `groupMetadataCache` ou eventos do adapter.
 - Importar `chat`, `campaigns`, `automation`, `link-rotation` ou `storefront` em `modules/saver`.
 - Extrair em rota HTTP ou em job singleton de cluster; guardar ritmo em memória.

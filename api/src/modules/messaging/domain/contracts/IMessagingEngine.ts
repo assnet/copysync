@@ -383,7 +383,13 @@ export interface ParticipatingGroupInfo {
   canInvite?: boolean;
   /** Motivo de `canInvite === false`; null/ausente quando pode convidar. */
   inviteBlockedReason?: GroupInviteBlockedReason | null;
+  /** Total de membros na listagem, quando a engine o tem sem chamada extra; null = desconhecido. */
+  memberCount?: number | null;
+  /** Ausente = GROUP. WhatsApp: COMMUNITY = comunidade "pai"; COMMUNITY_ANNOUNCE = grupo de avisos dela. */
+  kind?: ParticipatingGroupKind;
 }
+
+export type ParticipatingGroupKind = 'GROUP' | 'COMMUNITY' | 'COMMUNITY_ANNOUNCE';
 
 /** ADMINS_ONLY = só admins postam e a sessão não é admin; CHANNEL_READONLY = canal de transmissão sem permissão. */
 export type GroupPostBlockedReason = 'ADMINS_ONLY' | 'CHANNEL_READONLY';

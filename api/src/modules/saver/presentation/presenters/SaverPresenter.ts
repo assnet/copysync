@@ -35,6 +35,10 @@ export const SaverPresenter = {
       savedGroupId: g.savedGroupId,
       lastScannedAt: iso(g.lastScannedAt),
       lastScanStatus: g.lastScanStatus,
+      memberCount: g.memberCount,
+      kind: g.kind,
+      selectable: g.selectable,
+      unselectableReason: g.unselectableReason,
     };
   },
 
