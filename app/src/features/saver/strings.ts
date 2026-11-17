@@ -188,6 +188,8 @@ export const saverStrings = {
         `Mostrando ${shown.toLocaleString('pt-BR')} de ${total.toLocaleString('pt-BR')} ${total === 1 ? 'grupo' : 'grupos'}`,
       showMore: (n: number) => (n === 1 ? 'Mostrar mais 1 grupo' : `Mostrar mais ${n.toLocaleString('pt-BR')} grupos`),
       selectionBar: 'Grupos marcados',
+      outsideView: (n: number) =>
+        n === 1 ? '1 grupo marcado está fora do filtro atual e também será salvo.' : `${n.toLocaleString('pt-BR')} grupos marcados estão fora do filtro atual e também serão salvos.`,
     },
     copyName: {
       action: 'Copiar nome do grupo',

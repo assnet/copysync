@@ -6,12 +6,12 @@ import {
 import { Info, Trash2, TriangleAlert } from 'lucide-react';
 import { AppIcon, OverflowTooltipText } from '@/components';
 import { Blurred, useBlur } from '@/features/privacy';
-import { GroupAvatar } from '@/features/offers/components/GroupChip';
 import { saverStrings } from '../../strings';
 import type { SaverGroup, SaverSessionGroupKind } from '../../types';
 import { selectedRowSx } from '../../saverStyle';
 import { CopyGroupNameButton } from './CopyGroupNameButton';
 import { KindBadge } from './GroupSelectionTable';
+import { SaverGroupAvatar } from './SaverGroupAvatar';
 
 const t = saverStrings.groups.saved;
 const num = (n: number) => n.toLocaleString('pt-BR');
@@ -86,7 +86,7 @@ export function SavedGroupsTable({ groups, selected, onSelectedChange, selectabl
   );
   const name = (g: SaverGroup, extra?: ReactNode) => (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
-      <GroupAvatar title={g.name} avatarUrl={null} size={32} blurFlag="saver.groupNames" />
+      <SaverGroupAvatar name={g.name} size={32} />
       <Box sx={{ minWidth: 0, flex: 1 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, minWidth: 0 }}>
           <OverflowTooltipText text={g.name} disabled={blur} typographyProps={{ variant: 'body2', sx: { fontWeight: 600 } }}>

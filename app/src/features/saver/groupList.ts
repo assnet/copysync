@@ -41,3 +41,31 @@ export function sortGroups(groups: readonly SaverSessionGroup[], sort: GroupSort
     return collator.compare(name(a), name(b));
   });
 }
+
+/** O que aparece na tela: busca → filtro → ordenação → página ("Mostrar mais"). */
+export function visibleGroups(
+  groups: readonly SaverSessionGroup[], search: string, filter: GroupFilter, sort: GroupSort, shown: number, untitled: string,
+) {
+  const filtered = sortGroups(searchGroups(groups, search, untitled).filter((g) => groupMatchesFilter(g, filter)), sort, untitled);
+  return { filtered, page: filtered.slice(0, Math.max(GROUP_PAGE_SIZE, shown)) };
+}
+
+/** Seleção só com grupos que ainda estão na sessão e podem ser lidos. Mesma referência se nada muda. */
+export function pruneSelection(selection: readonly string[], groups: readonly SaverSessionGroup[]): readonly string[] {
+  const ok = new Set(groups.filter((g) => g.selectable).map((g) => g.groupJid));
+  return selection.every((j) => ok.has(j)) ? selection : selection.filter((j) => ok.has(j));
+}
+
+/**
+ * Iniciais do avatar: 1ª letra das duas primeiras palavras com letra. Nome terminado em número usa a
+ * 1ª letra + os 2 últimos dígitos ("Achadinhos 10" → "A10", "Achadinhos 11" → "A11"), para diferenciar.
+ */
+export function groupAvatarInitials(name: string): string {
+  const words = name.trim().split(/\s+/);
+  const lettered = words.filter((w) => /^\p{L}/u.test(w));
+  const trailing = /^\d+$/.test(words[words.length - 1] ?? '') ? words[words.length - 1]! : '';
+  const first = lettered[0] ? Array.from(lettered[0])[0]!.toUpperCase() : '';
+  if (!first) return '';
+  if (trailing) return `${first}${trailing.slice(-2)}`;
+  return lettered.slice(0, 2).map((w) => Array.from(w)[0]!.toUpperCase()).join('');
+}

@@ -6,14 +6,14 @@ import {
 import { ChevronDown, CircleCheck, Info, Megaphone, Search, UsersRound } from 'lucide-react';
 import { AppIcon, OverflowTooltipText } from '@/components';
 import { Blurred, useBlur } from '@/features/privacy';
-import { GroupAvatar } from '@/features/offers/components/GroupChip';
 import { saverStrings } from '../../strings';
 import type { SaverSessionGroup } from '../../types';
 import {
-  GROUP_FILTERS, GROUP_PAGE_SIZE, GROUP_SORTS, countByFilter, groupMatchesFilter, searchGroups, sortGroups,
+  GROUP_FILTERS, GROUP_PAGE_SIZE, GROUP_SORTS, countByFilter, searchGroups, visibleGroups,
   type GroupFilter, type GroupSort,
 } from '../../groupList';
 import { CopyGroupNameButton } from './CopyGroupNameButton';
+import { SaverGroupAvatar } from './SaverGroupAvatar';
 import { selectedRowSx } from '../../saverStyle';
 
 const t = saverStrings.groups.table;
@@ -76,9 +76,9 @@ export function GroupSelectionTable({
   const chosen = useMemo(() => new Set(selected), [selected]);
   const searched = useMemo(() => searchGroups(groups, search, t.untitledGroup), [groups, search]);
   const counts = useMemo(() => countByFilter(searched), [searched]);
-  const filtered = useMemo(
-    () => sortGroups(searched.filter((g) => groupMatchesFilter(g, filter)), sort, t.untitledGroup),
-    [searched, filter, sort],
+  const { filtered, page } = useMemo(
+    () => visibleGroups(groups, search, filter, sort, shown, t.untitledGroup),
+    [groups, search, filter, sort, shown],
   );
 
   if (groups.length === 0) {
@@ -86,7 +86,6 @@ export function GroupSelectionTable({
   }
 
   const limit = Math.max(GROUP_PAGE_SIZE, shown);
-  const page = filtered.slice(0, limit);
   const rest = filtered.length - page.length;
   const pickable = page.filter((g) => g.selectable);
   const allVisible = pickable.length > 0 && pickable.every((g) => chosen.has(g.groupJid));
@@ -210,10 +209,10 @@ export function GroupSelectionTable({
                       checked={isOn}
                       disabled={!g.selectable}
                       sx={{ ml: 0, p: 0.75 }}
-                      slotProps={{ input: { 'aria-labelledby': labelId } }}
+                      slotProps={{ input: { 'aria-label': blur ? t.selectGroup : `${t.selectGroup}: ${nameOf(g)}` } }}
                     />
                     <Box sx={{ opacity: g.selectable ? 1 : 0.55, display: 'flex' }}>
-                      <GroupAvatar title={nameOf(g)} avatarUrl={null} size={40} blurFlag="saver.groupNames" />
+                      <SaverGroupAvatar name={nameOf(g)} size={40} />
                     </Box>
                     <Box
                       sx={{

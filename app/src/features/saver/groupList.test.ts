@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { countByFilter, groupMatchesFilter, searchGroups, sortGroups } from './groupList';
+import { countByFilter, groupAvatarInitials, groupMatchesFilter, pruneSelection, searchGroups, sortGroups } from './groupList';
 import type { SaverSessionGroup } from './types';
 
 const g = (name: string | null, over: Partial<SaverSessionGroup> = {}): SaverSessionGroup => ({
@@ -14,6 +14,20 @@ describe('groupList', () => {
     g('Bairro', { kind: 'COMMUNITY', selectable: false }),
     g(null, { kind: 'COMMUNITY_ANNOUNCE', memberCount: 300 }),
   ];
+
+  it('poda a seleção: some da sessão ou virou comunidade principal sai; nada a podar mantém a referência', () => {
+    const sel = ['Vendas@g.us', 'Bairro@g.us', 'sumiu@g.us'];
+    expect(pruneSelection(sel, list)).toEqual(['Vendas@g.us']);
+    const ok = ['Vendas@g.us'];
+    expect(pruneSelection(ok, list)).toBe(ok);
+  });
+
+  it('iniciais diferenciam nomes com número no fim', () => {
+    expect(groupAvatarInitials('Achadinhos 10')).toBe('A10');
+    expect(groupAvatarInitials('Achadinhos 11')).not.toBe(groupAvatarInitials('Achadinhos 12'));
+    expect(groupAvatarInitials('Beleza em Conta')).toBe('BE');
+    expect(groupAvatarInitials('123')).toBe('');
+  });
 
   it('filtros rápidos', () => {
     expect(countByFilter(list)).toEqual({ all: 4, unread: 3, saved: 1, communities: 2 });

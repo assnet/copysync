@@ -12,6 +12,8 @@ interface Props {
   tooMany: boolean;
   members: { total: number; partial: boolean } | null;
   scansLeft: number | null;
+  /** Marcados que não aparecem na tela (filtro, busca ou página). */
+  outside: number;
   requesting: boolean;
   submitDisabled: boolean;
   submitHint: string;
@@ -24,7 +26,7 @@ interface Props {
  * ao rodapé da área visível (sticky), sem rolagem própria.
  */
 export function SelectionActionBar({
-  count, max, tooMany, members, scansLeft, requesting, submitDisabled, submitHint, onClear, onSubmit,
+  count, max, tooMany, members, scansLeft, outside, requesting, submitDisabled, submitHint, onClear, onSubmit,
 }: Props) {
   const sticky = count > 0;
   // Celular: "Limpar" vira ícone para a barra caber em duas linhas sem cobrir a lista.
@@ -46,6 +48,11 @@ export function SelectionActionBar({
         {members && (
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
             {t.selectedMembers(members.total, members.partial)}
+          </Typography>
+        )}
+        {outside > 0 && (
+          <Typography variant="caption" color="warning.main" sx={{ display: 'block' }}>
+            {t.outsideView(outside)}
           </Typography>
         )}
         {scansLeft !== null && (

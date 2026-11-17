@@ -12,7 +12,7 @@ import { useSaverExtraction, useSaverGroups, useSaverOverview, useSaverSessionGr
 import { saverStrings as s } from '../strings';
 import type { SaverExtraction, SaverGroup } from '../types';
 import { sumSelectedMembers } from '../groupMembers';
-import { GROUP_PAGE_SIZE, type GroupFilter, type GroupSort } from '../groupList';
+import { GROUP_PAGE_SIZE, pruneSelection, visibleGroups, type GroupFilter, type GroupSort } from '../groupList';
 import { SelectionActionBar } from '../components/groups/SelectionActionBar';
 import { ExtractionProgress } from '../components/groups/ExtractionProgress';
 import { GroupSelectionTable } from '../components/groups/GroupSelectionTable';
@@ -100,11 +100,12 @@ export function SaverGroupsPage() {
   };
 
   const submit = async () => {
-    if (!session || selection.length === 0) return;
+    const groupJids = [...pruneSelection(selection, live.data ?? [])];
+    if (!session || groupJids.length === 0) return;
     setRequesting(true);
     setRequestError(null);
     try {
-      const created = await saverService.requestExtraction({ sessionId: session.id, groupJids: selection });
+      const created = await saverService.requestExtraction({ sessionId: session.id, groupJids });
       setSeed(created);
       setExtractionId(created.id);
       clearSelection();
@@ -146,6 +147,17 @@ export function SaverGroupsPage() {
 
   const submitDisabled = !canExtract || scansExcluded || requesting || selection.length === 0 || tooMany || overScans;
   const submitHint = !canExtract ? g.table.noExtractPermission : tooMany ? g.table.tooMany(SAVER_MAX_GROUPS_PER_REQUEST) : '';
+  // Seleção salva só vale para grupos que ainda estão na sessão e podem ser lidos.
+  useEffect(() => {
+    if (!live.data) return;
+    const pruned = pruneSelection(selection, live.data);
+    if (pruned !== selection) setSelection([...pruned]);
+  }, [live.data, selection, setSelection]);
+  const outside = useMemo(() => {
+    if (!live.data || selection.length === 0) return 0;
+    const onScreen = new Set(visibleGroups(live.data, search, filter, sort, shown, g.table.untitledGroup).page.map((x) => x.groupJid));
+    return selection.filter((j) => !onScreen.has(j)).length;
+  }, [live.data, selection, search, filter, sort, shown]);
   const kinds = useMemo(() => new Map((live.data ?? []).map((x) => [x.groupJid, x.kind])), [live.data]);
   const hiddenTotal = (saved.data ?? []).reduce((n, x) => n + x.lidOnlyCount, 0);
   const canExport = ov?.permissions.export ?? false;
@@ -227,6 +239,7 @@ export function SaverGroupsPage() {
               tooMany={tooMany}
               members={selectedMembers}
               scansLeft={scansLeft}
+              outside={outside}
               requesting={requesting}
               submitDisabled={submitDisabled}
               submitHint={submitHint}

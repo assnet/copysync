@@ -415,6 +415,47 @@ describe('SaverGroupsPage', () => {
     expect(scrollers()).toEqual([]);
   });
 
+  it('com borrão: checkbox e avatar não levam o nome nem as iniciais', async () => {
+    window.localStorage.setItem('privacy.blur', JSON.stringify(['saver.groupNames']));
+    svc.listSessionGroups.mockResolvedValue([live('a@g.us', 'Vendas Norte')]);
+    svc.listGroups.mockResolvedValue([savedGroup('x', { name: 'Zeta Club' })]);
+    const user = userEvent.setup();
+    page();
+    await pickSession(user, 'Atendimento');
+    await screen.findByText('Vendas Norte');
+    expect(screen.getByRole('checkbox', { name: g.table.selectGroup })).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /Vendas Norte/ })).toBeNull();
+    expect(screen.queryByText('VN')).toBeNull();
+    expect(screen.queryByText('ZC')).toBeNull();
+  });
+
+  it('sem borrão: checkbox nomeado pelo grupo e avatar com iniciais', async () => {
+    svc.listSessionGroups.mockResolvedValue([live('a@g.us', 'Vendas Norte')]);
+    const user = userEvent.setup();
+    page();
+    await pickSession(user, 'Atendimento');
+    expect(await screen.findByRole('checkbox', { name: `${g.table.selectGroup}: Vendas Norte` })).toBeInTheDocument();
+    expect(screen.getByText('VN')).toBeInTheDocument();
+  });
+
+  it('seleção salva é podada e marcados fora do filtro aparecem na barra e vão no pedido', async () => {
+    writePersisted('saver.groups.t1.session', 's1');
+    writePersisted('saver.groups.t1.selection', ['a@g.us', 'b@g.us', 'c@g.us', 'sumiu@g.us']);
+    svc.listSessionGroups.mockResolvedValue([
+      live('a@g.us', 'Vendas', { saved: true, lastScannedAt: '2026-11-16T10:00:00.000Z' }),
+      live('b@g.us', 'Suporte'),
+      live('c@g.us', 'Bairro', { kind: 'COMMUNITY', selectable: false, unselectableReason: 'COMMUNITY_PARENT' }),
+    ]);
+    svc.requestExtraction.mockResolvedValue(extraction('QUEUED'));
+    const user = userEvent.setup();
+    page();
+    expect(await screen.findByText(g.table.selected(2, 50))).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: `${g.table.filters.saved} 1` }));
+    expect(screen.getByText(g.table.outsideView(1))).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: g.table.submit(2) }));
+    expect(svc.requestExtraction).toHaveBeenCalledWith({ sessionId: 's1', groupJids: ['a@g.us', 'b@g.us'] });
+  });
+
   it('grupo salvo mostra o selo de tipo quando a sessão aberta informa', async () => {
     svc.listSessionGroups.mockResolvedValue([live('x@g.us', 'Avisos', { kind: 'COMMUNITY_ANNOUNCE' })]);
     svc.listGroups.mockResolvedValue([savedGroup('x')]);
