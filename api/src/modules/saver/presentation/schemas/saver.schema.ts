@@ -228,6 +228,8 @@ export const platformSummaryResponse = envelope(obj({
   lidOnly: count,
   topDdi: { type: 'array', items: obj({ ddi: { type: 'string' }, count }) },
   topDdd: { type: 'array', items: obj({ ddd: { type: 'string' }, count }) },
+  ddiBase: count,
+  dddBase: count,
 }));
 
 export const platformContactResponse = envelope(obj({

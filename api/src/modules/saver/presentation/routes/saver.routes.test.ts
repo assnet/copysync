@@ -93,7 +93,7 @@ const fake = vi.hoisted(() => {
         links: [{ tenantId: 'tenant-a', tenantName: 'Loja A', groupId: 'sg1', groupName: 'Grupo', name: 'Ana', isAdmin: false, firstExtractedAt: NOW, lastExtractedAt: NOW, leftAt: null }],
       })),
       listTenants: uc(() => ({ items: [{ id: 'tenant-a', name: 'Loja A' }], nextCursor: 'next' })),
-      contactsSummary: uc(() => ({ total: 90, filtered: 12, withPhone: 10, lidOnly: 2, topDdi: [{ ddi: '55', count: 10 }], topDdd: [{ ddd: '11', count: 7 }] })),
+      contactsSummary: uc(() => ({ total: 90, filtered: 12, withPhone: 10, lidOnly: 2, topDdi: [{ ddi: '55', count: 10 }], topDdd: [{ ddd: '11', count: 7 }], ddiBase: 10, dddBase: 10 })),
       exportContacts: uc(() => ({ fileName: 'base-de-contatos-2026-11-17.csv', contentType: 'text/csv; charset=utf-8', lines: lines(['h\r\n', 'l\r\n']) })),
     },
   };
@@ -321,7 +321,7 @@ describe('/admin/saver/* (base da plataforma)', () => {
     st.isSuperAdmin = true;
     const res = await call('GET', '/api/admin/saver/contacts/summary?ddi=55&ddd=11&search=ana&cursor=abc&limit=9');
     expect(res.statusCode).toBe(200);
-    expect(res.json().data).toEqual({ total: 90, filtered: 12, withPhone: 10, lidOnly: 2, topDdi: [{ ddi: '55', count: 10 }], topDdd: [{ ddd: '11', count: 7 }] });
+    expect(res.json().data).toEqual({ total: 90, filtered: 12, withPhone: 10, lidOnly: 2, topDdi: [{ ddi: '55', count: 10 }], topDdd: [{ ddd: '11', count: 7 }], ddiBase: 10, dddBase: 10 });
     expect(fake.platform.contactsSummary.execute).toHaveBeenLastCalledWith({
       actor: { userId: 'user-a', isSuperAdmin: true }, search: 'ana', tenantId: null, from: null, to: null, ddi: '55', ddd: '11',
     });

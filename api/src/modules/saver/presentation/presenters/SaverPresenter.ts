@@ -123,6 +123,8 @@ export const SaverPresenter = {
       lidOnly: s.lidOnly,
       topDdi: s.topDdi.map((d) => ({ ddi: d.ddi, count: d.count })),
       topDdd: s.topDdd.map((d) => ({ ddd: d.ddd, count: d.count })),
+      ddiBase: s.ddiBase,
+      dddBase: s.dddBase,
     };
   },
 

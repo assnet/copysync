@@ -11,7 +11,7 @@ import type {
   PlatformSaverTenant,
   PlatformSaverTenantKey,
 } from '../../domain/contracts/IPlatformSaverContactRepository';
-import { BRAZIL_DDI, isCountryCode, summarizePhonePrefixes, type PhoneRegionSummary } from '../../domain/services/phoneRegions';
+import { BRAZIL_DDI, PHONE_PREFIX_LENGTH, isCountryCode, summarizePhonePrefixes, type PhoneRegionSummary } from '../../domain/services/phoneRegions';
 import { platformCsvHeader, toPlatformCsvLine } from '../../domain/services/exportFormatters';
 import {
   createPlatformSaverContactCursor,
@@ -132,7 +132,8 @@ export interface PlatformSaverContactsSummary extends PhoneRegionSummary {
 
 /**
  * Indicadores da tela: total da base, quantos casam com os filtros (com telefone × só LID), DDIs mais
- * comuns e, com `ddi = 55`, DDDs mais comuns. Mesmos filtros da lista, sem cursor.
+ * comuns e, com `ddi = 55`, DDDs mais comuns. Mesmos filtros da lista, sem cursor. Os rankings ignoram o
+ * próprio filtro de DDI/DDD (quadro inteiro); os totais não.
  * Sem auditoria de propósito: só contagem agregada, nenhum contato é lido, e a lista (auditada) roda com
  * os mesmos filtros na mesma tela.
  */
@@ -142,10 +143,10 @@ export class GetPlatformSaverContactsSummaryUseCase {
   async execute(input: PlatformSaverContactQuery & { actor: PlatformSaverActor }): Promise<PlatformSaverContactsSummary> {
     assertSuperAdmin(input.actor);
     const filter = toFilter(input);
-    const withDdd = filter.ddi === BRAZIL_DDI;
-    // 4 dígitos alcançam o DDD do Brasil; 3 bastam para o DDI (1 a 3 dígitos).
-    const { total, prefixes } = await this.contacts.countByPhonePrefix(filter, withDdd ? 4 : 3);
-    return { total, ...summarizePhonePrefixes(prefixes, { withDdd }) };
+    // Conta sem o filtro de DDI/DDD e aplica-o na dobra: os rankings seguem inteiros (a tela destaca o
+    // item filtrado) e os totais valem para o DDI/DDD pedidos. Os demais filtros vão para o banco.
+    const { total, prefixes } = await this.contacts.countByPhonePrefix({ ...filter, ddi: null, ddd: null }, PHONE_PREFIX_LENGTH);
+    return { total, ...summarizePhonePrefixes(prefixes, { ddi: filter.ddi, ddd: filter.ddd }) };
   }
 }
 

@@ -56,6 +56,10 @@ export interface PhoneRegionSummary {
   lidOnly: number;
   topDdi: { ddi: string; count: number }[];
   topDdd: { ddd: string; count: number }[];
+  /** Universo do ranking de países: contatos com telefone, sem o filtro de DDI/DDD (base das porcentagens). */
+  ddiBase: number;
+  /** Universo do ranking de DDD: telefones do Brasil, sem o filtro de DDD; 0 fora do `ddi = 55`. */
+  dddBase: number;
 }
 
 export const TOP_DDI_LIMIT = 5;
@@ -64,25 +68,38 @@ export const TOP_DDD_LIMIT = 8;
 const top = (totals: Map<string, number>, limit: number): [string, number][] =>
   [...totals.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, limit);
 
+/** Prefixo pedido ao banco: 4 dígitos alcançam o DDD do Brasil e bastam para qualquer DDI (1 a 3). */
+export const PHONE_PREFIX_LENGTH = 4;
+
 /**
- * Dobra a contagem por prefixo (vinda do banco) em totais, DDIs mais comuns e, com `withDdd`, DDDs do
- * Brasil mais comuns. Prefixo sem DDI reconhecível entra no total, fora do ranking.
+ * Dobra a contagem por prefixo (vinda do banco SEM o filtro de DDI/DDD) em totais e rankings.
+ * Os totais valem para o `ddi`/`ddd` pedidos; os rankings mostram o quadro inteiro, para a tela destacar o
+ * item filtrado sem as outras barras sumirem: DDIs de todos os países e, com `ddi = 55`, DDDs do Brasil.
+ * Prefixo sem DDI reconhecível entra no total sem filtro, fora do ranking. Com DDI, contato só com LID não casa.
  */
-export function summarizePhonePrefixes(rows: readonly PhonePrefixCount[], opts: { withDdd: boolean }): PhoneRegionSummary {
+export function summarizePhonePrefixes(
+  rows: readonly PhonePrefixCount[],
+  filter: { ddi: string | null; ddd: string | null },
+): PhoneRegionSummary {
   let withPhone = 0;
   let lidOnly = 0;
   const byDdi = new Map<string, number>();
   const byDdd = new Map<string, number>();
+  let ddiBase = 0;
+  let dddBase = 0;
+  const wanted = filter.ddi ? `${filter.ddi}${filter.ddd ?? ''}` : null;
   for (const { prefix, count } of rows) {
     if (prefix === null) {
-      lidOnly += count;
+      if (!wanted) lidOnly += count;
       continue;
     }
-    withPhone += count;
+    ddiBase += count;
     const ddi = ddiOf(prefix);
+    if (filter.ddi === BRAZIL_DDI && ddi === BRAZIL_DDI) dddBase += count;
     if (ddi) byDdi.set(ddi, (byDdi.get(ddi) ?? 0) + count);
-    const ddd = opts.withDdd ? brazilDddOf(prefix) : null;
+    const ddd = filter.ddi === BRAZIL_DDI ? brazilDddOf(prefix) : null;
     if (ddd) byDdd.set(ddd, (byDdd.get(ddd) ?? 0) + count);
+    if (!wanted || (ddi === filter.ddi && prefix.startsWith(wanted))) withPhone += count;
   }
   return {
     filtered: withPhone + lidOnly,
@@ -90,5 +107,7 @@ export function summarizePhonePrefixes(rows: readonly PhonePrefixCount[], opts: 
     lidOnly,
     topDdi: top(byDdi, TOP_DDI_LIMIT).map(([ddi, count]) => ({ ddi, count })),
     topDdd: top(byDdd, TOP_DDD_LIMIT).map(([ddd, count]) => ({ ddd, count })),
+    ddiBase,
+    dddBase,
   };
 }

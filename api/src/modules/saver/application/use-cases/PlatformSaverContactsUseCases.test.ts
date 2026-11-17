@@ -162,20 +162,23 @@ describe('GetPlatformSaverContactsSummaryUseCase', () => {
     expect(r.countByPhonePrefix).not.toHaveBeenCalled();
   });
 
-  it('sem DDI: prefixo de 3 dígitos, ranking de DDI e nenhum DDD', async () => {
+  it('sem DDI: ranking de países e nenhum DDD; busca vai para o banco', async () => {
     const { r } = repo([]);
-    vi.mocked(r.countByPhonePrefix).mockResolvedValue({ total: 40, prefixes: [{ prefix: '551', count: 9 }, { prefix: '351', count: 4 }, { prefix: null, count: 2 }] });
+    vi.mocked(r.countByPhonePrefix).mockResolvedValue({ total: 40, prefixes: [{ prefix: '5511', count: 9 }, { prefix: '3519', count: 4 }, { prefix: null, count: 2 }] });
     const out = await new GetPlatformSaverContactsSummaryUseCase(r).execute({ actor: SUPER, search: ' ana ' });
-    expect(r.countByPhonePrefix).toHaveBeenCalledWith(expect.objectContaining({ search: 'ana', ddi: null, ddd: null }), 3);
-    expect(out).toEqual({ total: 40, filtered: 15, withPhone: 13, lidOnly: 2, topDdi: [{ ddi: '55', count: 9 }, { ddi: '351', count: 4 }], topDdd: [] });
+    expect(r.countByPhonePrefix).toHaveBeenCalledWith(expect.objectContaining({ search: 'ana', ddi: null, ddd: null }), 4);
+    expect(out).toEqual({ total: 40, filtered: 15, withPhone: 13, lidOnly: 2, topDdi: [{ ddi: '55', count: 9 }, { ddi: '351', count: 4 }], topDdd: [], ddiBase: 13, dddBase: 0 });
   });
 
-  it('DDI 55: prefixo de 4 dígitos e ranking de DDD', async () => {
+  it('DDI 55 + DDD: banco conta sem DDI/DDD; totais do DDD e ranking de DDD inteiro', async () => {
     const { r } = repo([]);
-    vi.mocked(r.countByPhonePrefix).mockResolvedValue({ total: 40, prefixes });
-    const out = await new GetPlatformSaverContactsSummaryUseCase(r).execute({ actor: SUPER, ddi: '55' });
-    expect(r.countByPhonePrefix).toHaveBeenCalledWith(expect.objectContaining({ ddi: '55' }), 4);
-    expect(out).toMatchObject({ total: 40, filtered: 11, withPhone: 9, lidOnly: 2, topDdd: [{ ddd: '11', count: 6 }, { ddd: '21', count: 3 }] });
+    vi.mocked(r.countByPhonePrefix).mockResolvedValue({ total: 40, prefixes: [...prefixes, { prefix: '3519', count: 5 }] });
+    const out = await new GetPlatformSaverContactsSummaryUseCase(r).execute({ actor: SUPER, ddi: '55', ddd: '21', tenantId: 't1' });
+    expect(r.countByPhonePrefix).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't1', ddi: null, ddd: null }), 4);
+    expect(out).toMatchObject({
+      total: 40, filtered: 3, withPhone: 3, lidOnly: 0,
+      topDdi: [{ ddi: '55', count: 9 }, { ddi: '351', count: 5 }], topDdd: [{ ddd: '11', count: 6 }, { ddd: '21', count: 3 }], ddiBase: 14, dddBase: 9,
+    });
   });
 
   it('mesma validação da lista: filtro inválido → 400', async () => {

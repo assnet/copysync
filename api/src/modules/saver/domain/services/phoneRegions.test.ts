@@ -42,18 +42,35 @@ describe('summarizePhonePrefixes', () => {
     { prefix: '3519', count: 7 }, { prefix: '1415', count: 3 }, { prefix: '1212', count: 2 },
     { prefix: null, count: 9 },
   ];
+  const none = { ddi: null, ddd: null };
 
-  it('totais, partição e ranking por DDI (prefixos do mesmo país somados)', () => {
-    const out = summarizePhonePrefixes(rows, { withDdd: false });
-    expect(out).toMatchObject({ filtered: 87, withPhone: 78, lidOnly: 9, topDdd: [] });
+  it('sem DDI: totais, partição e ranking por país (prefixos do mesmo país somados)', () => {
+    const out = summarizePhonePrefixes(rows, none);
+    expect(out).toMatchObject({ filtered: 87, withPhone: 78, lidOnly: 9, topDdd: [], ddiBase: 78, dddBase: 0 });
     expect(out.topDdi).toEqual([{ ddi: '55', count: 66 }, { ddi: '351', count: 7 }, { ddi: '1', count: 5 }]);
   });
 
-  it('com DDD: ranking só de DDD em uso; limites de 5 e 8', () => {
-    expect(summarizePhonePrefixes(rows, { withDdd: true }).topDdd).toEqual([{ ddd: '11', count: 40 }, { ddd: '21', count: 25 }]);
+  it('com DDI: totais só do país, só LID fora; ranking de países segue inteiro', () => {
+    const pt = summarizePhonePrefixes(rows, { ddi: '351', ddd: null });
+    expect(pt).toMatchObject({ filtered: 7, withPhone: 7, lidOnly: 0, topDdd: [], ddiBase: 78, dddBase: 0 });
+    expect(pt.topDdi).toHaveLength(3);
+    expect(summarizePhonePrefixes(rows, { ddi: '1', ddd: null })).toMatchObject({ filtered: 5 });
+    expect(summarizePhonePrefixes([{ prefix: '5511', count: 4 }, { prefix: '5519', count: 2 }], { ddi: '551', ddd: null }).filtered).toBe(0);
+  });
+
+  it('Brasil: ranking de DDD em uso segue inteiro com DDD filtrado; totais só do DDD', () => {
+    const br = summarizePhonePrefixes(rows, { ddi: '55', ddd: null });
+    expect(br).toMatchObject({ filtered: 66, withPhone: 66, lidOnly: 0 });
+    expect(br.topDdd).toEqual([{ ddd: '11', count: 40 }, { ddd: '21', count: 25 }]);
+    const rj = summarizePhonePrefixes(rows, { ddi: '55', ddd: '21' });
+    expect(rj).toMatchObject({ filtered: 25, withPhone: 25, lidOnly: 0, ddiBase: 78, dddBase: 66 });
+    expect(rj.topDdd).toEqual(br.topDdd);
+  });
+
+  it('limites de 5 países e 8 DDDs', () => {
     const many = BRAZIL_DDDS.slice(0, 12).map((d, i) => ({ prefix: `55${d}`, count: 100 - i }));
-    expect(summarizePhonePrefixes(many, { withDdd: true }).topDdd).toHaveLength(8);
-    const countries = ['20', '27', '30', '31', '32', '33', '34'].map((d, i) => ({ prefix: `${d}9`, count: 10 - i }));
-    expect(summarizePhonePrefixes(countries, { withDdd: false }).topDdi.map((d) => d.ddi)).toEqual(['20', '27', '30', '31', '32']);
+    expect(summarizePhonePrefixes(many, { ddi: '55', ddd: null }).topDdd).toHaveLength(8);
+    const countries = ['20', '27', '30', '31', '32', '33', '34'].map((d, i) => ({ prefix: `${d}90`, count: 10 - i }));
+    expect(summarizePhonePrefixes(countries, none).topDdi.map((d) => d.ddi)).toEqual(['20', '27', '30', '31', '32']);
   });
 });
