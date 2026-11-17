@@ -15,14 +15,14 @@ import {
   toVCardEntry,
   type SaverExportOptions,
 } from '../../domain/services/exportFormatters';
-import { assertSaverPermission, type SaverTenantActor } from '../saverTenantActor';
+import { assertSaverPermission, type SaverActor } from './saverActor';
 
 export const SAVER_EXPORT_BATCH = 1000;
 /** Tamanho máximo do prefixo de nome (exportação e configuração). */
 export const SAVER_PREFIX_MAX = 40;
 
 export interface ExportSavedContactsInput {
-  actor: SaverTenantActor;
+  actor: SaverActor;
   format: SaverExportFormat;
   /** Grupos salvos do tenant (um, vários) ou todos os não removidos. */
   groupIds: readonly string[] | 'all';

@@ -5,7 +5,7 @@ import type { ISaverExportGrantRepository } from '../../domain/contracts/ISaverE
 import type { ISaverTeamReader, SaverTeamMember } from '../../domain/contracts/ISaverTeamReader';
 import type { SaverConfig } from '../../domain/entities/SaverEntities';
 import { SaverExportFormat } from '../../domain/enums/SaverEnums';
-import type { SaverTenantActor } from '../saverTenantActor';
+import type { SaverActor } from './saverActor';
 import {
   GetSaverConfigUseCase,
   ListSaverExportGrantsUseCase,
@@ -13,8 +13,8 @@ import {
   UpdateSaverConfigUseCase,
 } from './SaverConfigUseCases';
 
-const ADMIN: SaverTenantActor = { tenantId: 't1', userId: 'a1', role: 'ADMIN' };
-const OPERATOR: SaverTenantActor = { tenantId: 't1', userId: 'o1', role: 'OPERATOR' };
+const ADMIN: SaverActor = { tenantId: 't1', userId: 'a1', role: 'ADMIN' };
+const OPERATOR: SaverActor = { tenantId: 't1', userId: 'o1', role: 'OPERATOR' };
 const at = new Date('2026-11-17T12:00:00Z');
 
 function configRepo(initial: SaverConfig | null = null) {

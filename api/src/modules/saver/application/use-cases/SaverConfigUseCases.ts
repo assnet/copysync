@@ -7,7 +7,7 @@ import type { ISaverExportGrantRepository } from '../../domain/contracts/ISaverE
 import type { ISaverTeamReader } from '../../domain/contracts/ISaverTeamReader';
 import { SaverExportFormat } from '../../domain/enums/SaverEnums';
 import { readSaverFlag, SAVER_LIMIT_KEYS } from '../../domain/services/saverLimits';
-import { assertSaverPermission, type SaverTenantActor } from '../saverTenantActor';
+import { assertSaverPermission, type SaverActor } from './saverActor';
 import { SAVER_PREFIX_MAX } from './ExportSavedContactsUseCase';
 
 /*
@@ -40,7 +40,7 @@ export class GetSaverConfigUseCase {
     private readonly entitlements: IEntitlementSnapshotReader,
   ) {}
 
-  async execute(actor: SaverTenantActor): Promise<SaverConfigDTO> {
+  async execute(actor: SaverActor): Promise<SaverConfigDTO> {
     await assertSaverPermission(actor, 'configure');
     const [config, snapshot] = await Promise.all([
       this.configs.findByTenant(actor.tenantId),
@@ -61,7 +61,7 @@ export class GetSaverConfigUseCase {
 }
 
 export interface UpdateSaverConfigInput {
-  actor: SaverTenantActor;
+  actor: SaverActor;
   namePrefix?: string | null;
   excludeAdminsByDefault?: boolean;
   defaultFormat?: SaverExportFormat;
@@ -126,7 +126,7 @@ export class ListSaverExportGrantsUseCase {
     private readonly grants: ISaverExportGrantRepository,
   ) {}
 
-  async execute(actor: SaverTenantActor): Promise<SaverExportGrantDTO[]> {
+  async execute(actor: SaverActor): Promise<SaverExportGrantDTO[]> {
     await assertSaverPermission(actor, 'configure');
     const [members, granted] = await Promise.all([
       this.team.listMembers(actor.tenantId),
@@ -140,7 +140,7 @@ export class ListSaverExportGrantsUseCase {
 }
 
 export interface SetSaverExportGrantInput {
-  actor: SaverTenantActor;
+  actor: SaverActor;
   targetUserId: string;
   canExport: boolean;
 }
