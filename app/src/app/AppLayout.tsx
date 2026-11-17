@@ -5,6 +5,7 @@ import {
   Divider, Chip, Menu, MenuItem, Tooltip, alpha, useTheme,
   Snackbar,
   Alert,
+  CircularProgress,
 } from '@mui/material';
 import {
   ArrowLeftRight, ChevronLeft, ChevronRight, LogOut, Menu as MenuIcon,
@@ -57,11 +58,13 @@ interface DrawerContentProps {
   /** Drawer que renderiza: ids de `aria-controls` ficam únicos entre desktop e mobile. */
   idPrefix: 'desktop' | 'mobile';
   collapsed?: boolean;
+  /** `false` enquanto `GET /tenants` não respondeu: produtos mostram carregamento, sem cadeado presumido. */
+  productsLoaded: boolean;
   onToggleCollapse?: () => void;
   onClose?: () => void;
 }
 
-function DrawerContent({ model, nav, idPrefix, collapsed = false, onToggleCollapse, onClose }: DrawerContentProps) {
+function DrawerContent({ model, nav, idPrefix, collapsed = false, productsLoaded, onToggleCollapse, onClose }: DrawerContentProps) {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const theme = useTheme();
@@ -178,7 +181,12 @@ function DrawerContent({ model, nav, idPrefix, collapsed = false, onToggleCollap
 
         {sectionTitle(navigationStrings.sections.products)}
         <List disablePadding sx={{ px: 1 }}>
-          {model.products.map((product) => {
+          {!productsLoaded && (
+            <Box role="status" aria-label={navigationStrings.productsLoading} sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+              <CircularProgress size={20} />
+            </Box>
+          )}
+          {productsLoaded && model.products.map((product) => {
             const childKey = product.key === activeProductKey ? activeLinkKey : undefined;
             return collapsed ? (
               <CollapsedProductNavItem
@@ -411,7 +419,7 @@ export function AppLayout() {
         }}
         open
       >
-        <DrawerContent model={navModel} nav={nav} idPrefix="desktop" collapsed={sidebarCollapsed} onToggleCollapse={handleToggleSidebar} />
+        <DrawerContent model={navModel} nav={nav} idPrefix="desktop" collapsed={sidebarCollapsed} productsLoaded={productAccess.loaded} onToggleCollapse={handleToggleSidebar} />
       </Drawer>
 
       {/* Drawer mobile */}
@@ -423,7 +431,7 @@ export function AppLayout() {
         ModalProps={{ keepMounted: true }}
         sx={{ display: { xs: 'block', sm: 'none' }, '& .MuiDrawer-paper': { width: DRAWER_WIDTH_MOBILE } }}
       >
-        <DrawerContent model={navModel} nav={nav} idPrefix="mobile" onClose={() => setMobileOpen(false)} />
+        <DrawerContent model={navModel} nav={nav} idPrefix="mobile" productsLoaded={productAccess.loaded} onClose={() => setMobileOpen(false)} />
       </Drawer>
 
       {/* Conteúdo principal */}
