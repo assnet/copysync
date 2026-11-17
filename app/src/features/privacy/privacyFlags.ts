@@ -124,6 +124,23 @@ export const PRIVACY_SCREENS = [
     ],
   },
   {
+    id: 'saver',
+    label: 'Saver',
+    flags: [
+      { id: 'saver.groupNames', label: 'Nomes dos grupos' },
+      { id: 'saver.teamNames', label: 'Nome e e-mail da equipe' },
+    ],
+  },
+  {
+    id: 'saverAdmin',
+    label: 'Base de contatos (super admin)',
+    flags: [
+      { id: 'saverAdmin.contactNames', label: 'Nome dos contatos' },
+      { id: 'saverAdmin.contactPhones', label: 'Telefone e LID dos contatos' },
+      { id: 'saverAdmin.tenantNames', label: 'Nome das contas' },
+    ],
+  },
+  {
     id: 'costs',
     label: 'Custos da infraestrutura',
     flags: [
