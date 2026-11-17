@@ -1,3 +1,5 @@
+import type { GroupMembershipState } from '../services/mergeGroupRead';
+
 /**
  * Vínculos do TENANT (caminho do tenant até os dados). Todo método filtra `tenantId`; nunca lê
  * `saver_contacts.name` (SAVER-46). Não existe método que devolva linha de contato em JSON de rota.
@@ -33,6 +35,8 @@ export interface SaverMembershipExportCount {
 }
 
 export interface ISaverMembershipRepository {
+  /** Vínculos atuais do grupo do tenant (entrada de `mergeGroupRead`). */
+  listGroupMemberships(tenantId: string, groupId: string): Promise<GroupMembershipState[]>;
   /** `COUNT(DISTINCT contactId)` em grupos não removidos (limite `saver_contacts`). */
   countDistinctContacts(tenantId: string): Promise<number>;
   /** Quantos destes contatos ainda NÃO têm vínculo com o tenant (consomem o limite ao entrar). */
