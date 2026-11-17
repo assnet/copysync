@@ -39,7 +39,15 @@ sempre). Tenant só de afiliados pagava essa carga no processo dono do socket se
 `MESSAGE_RECEIVED.authorLid` (dígitos) e `chat_contacts.lid` (nullable, índice `tenantId+lid`,
 sem backfill). Gravado só no 1:1. Menções e autor de citação consultam o par no banco antes da engine,
 com prazo de 500 ms (`withTimeout`): prazo ou erro = miss, segue o caminho de sempre (vale com a flag `false`).
-Par LID de participante de grupo fica para o módulo Saver.
+Par LID de participante de grupo mora no Saver ([`saver.md`](saver.md)): ele guarda telefone e LID de cada membro lido
+na base de contatos da plataforma, sem tocar `chat_contacts`.
+
+## Gate de produto `CHAT`
+
+Com `PRODUCT_ACCESS_GATE_MODE=enforce`, `chatIngestComposition` usa `ProductAwareChatEntitlementGate`, **com ou sem**
+`CHAT_INGEST_ENTITLEMENT_GATE_ENABLED`: tenant com `CHAT` inativo (acompanha a linha `AFFILIATES`) = chat desligado
+(mesma regra acima). Com a flag ligada, o gate de produto embrulha o de `chat_enabled`. Fora de `enforce` nada muda.
+Rotas `/chat` e WebSocket do chat passam pelo gate HTTP `CHAT` ([`acesso-por-produto.md`](acesso-por-produto.md)).
 
 ## Ativação
 

@@ -62,7 +62,8 @@ Não são produto nem item de plano: só o super-admin usa, fora do menu dos ten
 | Custos da infraestrutura | Custo mensal por serviço da Render, workspace, sessão e plano, com margem bruta de infraestrutura contra a vitrine (`/admin/costs`); preços editáveis em USD, valores em USD e BRL (`/admin/costs/prices`) | `metrics` ([doc](custos-infraestrutura.md)) | 🟡 P3 api 0.90.0 · app 0.110.0 (P2: custo proporcional ao tempo, projeção, sessão-hora, cotação PTAX; P3: custo por cliente, IA da plataforma, fechamento mensal e histórico) |
 
 Sessão (número conectado, item 1) é do tenant: a mesma sessão serve mais de um produto; limite segue
-por plano, não por produto. Plano, permissões e configurações por produto: etapa futura.
+por plano (união entre os produtos ativos). Cada produto tem plano próprio e acesso próprio por tenant
+([`acesso-por-produto.md`](acesso-por-produto.md)): `AFFILIATES`, `CHAT` (acompanha Afiliados) e `SAVER`.
 
 ## Planos (rascunho 2026-10-13)
 
