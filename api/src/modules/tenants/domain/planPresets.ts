@@ -3,6 +3,13 @@ import { ENTITLEMENT_KEYS } from './entitlementKeys';
 export const PLAN_SLUGS = ['COPYSYNC_LITE', 'COPYSYNC_PRO', 'COPYSYNC_MAX'] as const;
 export type PlanSlug = (typeof PLAN_SLUGS)[number];
 
+/**
+ * Planos do produto Saver. Fora de `PLAN_SLUGS` de propósito: a ordenação de tier da reconciliação
+ * (Afiliados) não muda. A resolução produto/plano fica em `planCatalog.ts`.
+ */
+export const SAVER_PLAN_SLUGS = ['SAVER_LITE', 'SAVER_PRO', 'SAVER_MAX'] as const;
+export type SaverPlanSlug = (typeof SAVER_PLAN_SLUGS)[number];
+
 const TIER_SLUG: Record<string, PlanSlug> = { lite: 'COPYSYNC_LITE', pro: 'COPYSYNC_PRO', max: 'COPYSYNC_MAX' };
 const BILLING_OFFER_SLUG = /^copysync-(lite|pro|max)-(mensal|anual)$/;
 const BILLING_TEST_OFFER_SLUGS = new Set(['afiliado-dev-anual', 'copysync-dev-anual']);
