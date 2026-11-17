@@ -7,7 +7,7 @@ import { PrivacyProvider } from '@/features/privacy';
 import { LEGACY_PRODUCTS } from '@/features/products/productAccess';
 import { buildNavigation, SAVER_ADMIN_PATH } from '@/features/navigation/model';
 
-const svc = vi.hoisted(() => ({ listContacts: vi.fn(), getContact: vi.fn(), exportContacts: vi.fn(), listTenants: vi.fn() }));
+const svc = vi.hoisted(() => ({ listContacts: vi.fn(), getContact: vi.fn(), exportContacts: vi.fn(), listTenants: vi.fn(), getSummary: vi.fn() }));
 const auth = vi.hoisted(() => ({ user: { isSuperAdmin: true } as { isSuperAdmin: boolean } | null }));
 vi.mock('@/services/saverAdmin.service', () => ({ saverAdminService: svc }));
 const useTenant = vi.hoisted(() => vi.fn(() => ({ tenants: [] })));
@@ -21,7 +21,7 @@ import { formatDateTime } from './format';
 import { EMPTY_PLATFORM_FILTERS } from './types';
 
 const contact = (id: string, over: Record<string, unknown> = {}) => ({
-  id, name: `Contato ${id}`, phone: `55119000${id}`, lid: `lid-${id}`, tenantCount: 2, groupCount: 3,
+  id, name: `Contato ${id}`, phone: `551198765000${id}`, lid: `lid-${id}`, tenantCount: 2, groupCount: 3,
   firstSeenAt: '2026-11-01T10:00:00.000Z', lastSeenAt: '2026-11-10T12:30:00.000Z',
   firstExtractedAt: '2026-11-01T10:00:00.000Z', lastExtractedAt: '2026-11-10T12:30:00.000Z', ...over,
 });
@@ -35,6 +35,7 @@ beforeEach(() => {
   window.localStorage.clear();
   auth.user = { isSuperAdmin: true };
   svc.listTenants.mockResolvedValue({ items: [{ id: 't1', name: 'Loja Azul' }, { id: 't2', name: 'Loja Verde' }], nextCursor: null });
+  svc.getSummary.mockResolvedValue({ total: 1200, filtered: 12, withPhone: 9, lidOnly: 3, topDdi: [{ ddi: '55', count: 8 }, { ddi: '351', count: 1 }], topDdd: [], ddiBase: 9, dddBase: 0 });
 });
 
 describe('PlatformContactsPage', () => {
@@ -43,12 +44,14 @@ describe('PlatformContactsPage', () => {
     page(mode);
     await waitFor(() => expect(rows()).toHaveLength(2));
     const first = within(rows()[0]!);
-    expect(first.getByText('551190001')).toBeInTheDocument();
+    expect(first.getByText('+55')).toBeInTheDocument();
+    expect(first.getByText('11')).toBeInTheDocument();
+    expect(first.getByText('98765-0001')).toBeInTheDocument();
     expect(first.getByText('lid-1')).toBeInTheDocument();
     expect(first.getAllByText(formatDateTime('2026-11-10T12:30:00.000Z')!)).toHaveLength(1);
     expect(first.getByText('2')).toBeInTheDocument();
     expect(first.getByText('3')).toBeInTheDocument();
-    expect(within(rows()[1]!).getByText(s.table.hiddenPhone)).toBeInTheDocument();
+    expect(within(rows()[1]!).getByText(s.table.lidOnly)).toBeInTheDocument();
     expect(within(rows()[1]!).getByText(s.table.noName)).toBeInTheDocument();
     expect(svc.listContacts).toHaveBeenCalledWith(EMPTY_PLATFORM_FILTERS, null);
   });
@@ -111,8 +114,8 @@ describe('PlatformContactsPage', () => {
     svc.getContact.mockResolvedValue({ contactId: '1', links: [] });
     page('dark');
     await waitFor(() => expect(rows()).toHaveLength(1));
-    for (const text of ['Contato 1', '551190001', 'lid-1']) {
-      expect(screen.getByText(text).closest('[data-blurred="true"]')).not.toBeNull();
+    for (const text of ['Contato 1', '98765-0001', '+55', '11', 'lid-1']) {
+      expect(within(rows()[0]!).getByText(text).closest('[data-blurred="true"]')).not.toBeNull();
     }
   });
 

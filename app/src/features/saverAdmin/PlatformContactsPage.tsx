@@ -9,20 +9,24 @@ import { platformErrorMessage } from './errors';
 import { downloadBlob } from './format';
 import { PlatformContactDetailDrawer } from './PlatformContactDetailDrawer';
 import { PlatformContactsFilters } from './PlatformContactsFilters';
+import { PlatformContactsFooter } from './PlatformContactsFooter';
+import { PlatformContactsSummary } from './PlatformContactsSummary';
 import { PlatformContactsTable } from './PlatformContactsTable';
 import { saverAdminStrings as s } from './strings';
 import { EMPTY_PLATFORM_FILTERS, type PlatformContactFilters } from './types';
 import { usePlatformContacts } from './usePlatformContacts';
+import { usePlatformContactsSummary } from './usePlatformContactsSummary';
 
 /** Espera da busca antes de consultar (cada consulta vai para a auditoria). */
 export const SEARCH_DEBOUNCE_MS = 400;
 
 /**
  * Super admin: base de contatos da plataforma (SAVER-45). Filtros e contato aberto sobrevivem ao reload
- * (`usePersistedState`); a lista é do servidor, por cursor assinado, e nunca é salva.
+ * (`usePersistedState`); a lista e os indicadores são do servidor e nunca são salvos. Os indicadores
+ * carregam à parte: se falharem, a lista segue.
  */
 export function PlatformContactsPage() {
-  const [filters, setFilters] = usePersistedState<PlatformContactFilters>('saverAdmin.filters', EMPTY_PLATFORM_FILTERS);
+  const [filters, setFilters] = usePersistedState<PlatformContactFilters>('saverAdmin.filters', EMPTY_PLATFORM_FILTERS, { version: 1 });
   const [openId, setOpenId] = usePersistedState<string | null>('saverAdmin.openContact', null);
   const [search, setSearch] = useState(filters.search);
   const [exporting, setExporting] = useState(false);
@@ -41,6 +45,7 @@ export function PlatformContactsPage() {
     [filters, search, periodInvalid],
   );
   const list = usePlatformContacts(applied);
+  const summary = usePlatformContactsSummary(applied);
   const filtered = JSON.stringify(applied) !== JSON.stringify(EMPTY_PLATFORM_FILTERS);
   const openContact = list.items.find((c) => c.id === openId) ?? null;
 
@@ -77,6 +82,14 @@ export function PlatformContactsPage() {
       <PageHeader title={saverStrings.pages.platformContacts.title} subtitle={saverStrings.pages.platformContacts.subtitle} action={exportButton} />
 
       <Stack gap={3}>
+        <PlatformContactsSummary
+          state={summary}
+          filters={applied}
+          filtered={filtered}
+          onPickDdi={(ddi) => setFilters({ ...filters, ddi, ddd: '' })}
+          onPickDdd={(ddd) => setFilters({ ...filters, ddd })}
+        />
+
         <PlatformContactsFilters value={filters} onChange={setFilters} periodInvalid={periodInvalid} />
 
         {list.restarted && <Alert severity="info">{s.error.cursorRestarted}</Alert>}
@@ -113,21 +126,13 @@ export function PlatformContactsPage() {
                 {list.error}
               </Alert>
             )}
-            <Stack direction={{ xs: 'column', sm: 'row' }} alignItems="center" justifyContent="space-between" gap={1}>
-              <Typography variant="body2" color="text.secondary" aria-live="polite">
-                {s.table.shown(list.items.length)}{list.nextCursor ? '' : ` · ${s.table.end}`}
-              </Typography>
-              {list.nextCursor && (
-                <Button
-                  variant="outlined"
-                  onClick={list.loadMore}
-                  disabled={list.loadingMore}
-                  startIcon={list.loadingMore ? <CircularProgress size={16} color="inherit" /> : undefined}
-                >
-                  {list.loadingMore ? s.table.loadingMore : s.table.loadMore}
-                </Button>
-              )}
-            </Stack>
+            <PlatformContactsFooter
+              shown={list.items.length}
+              total={summary.loading ? null : summary.data?.filtered ?? null}
+              hasMore={Boolean(list.nextCursor)}
+              loadingMore={list.loadingMore}
+              onLoadMore={list.loadMore}
+            />
           </>
         )}
       </Stack>

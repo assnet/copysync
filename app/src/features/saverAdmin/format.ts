@@ -23,3 +23,16 @@ export function downloadBlob(blob: Blob, filename: string): void {
     setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 }
+
+const INTEGER = new Intl.NumberFormat('pt-BR');
+const PERCENT = new Intl.NumberFormat('pt-BR', { style: 'percent', maximumFractionDigits: 1 });
+
+/** Inteiro com separador de milhar (pt-BR). */
+export const formatCount = (n: number): string => INTEGER.format(n);
+
+/** Parte de um total em porcentagem (pt-BR, até 1 casa). Total zero = null; parte pequena nunca vira "0%". */
+export function formatShare(part: number, total: number): string | null {
+  if (total <= 0) return null;
+  const ratio = Math.min(part / total, 1);
+  return ratio > 0 && ratio < 0.0005 ? `<${PERCENT.format(0.001)}` : PERCENT.format(ratio);
+}

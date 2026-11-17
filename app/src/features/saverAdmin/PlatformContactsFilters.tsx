@@ -4,6 +4,7 @@ import { AppIcon } from '@/components';
 import { Blurred, useBlur } from '@/features/privacy';
 import { saverAdminStrings as s } from './strings';
 import { EMPTY_PLATFORM_FILTERS, type PlatformContactFilters } from './types';
+import { PlatformPhoneFilters } from './PlatformPhoneFilters';
 import { usePlatformTenants } from './usePlatformTenants';
 
 interface Props {
@@ -17,7 +18,7 @@ const MORE = '__more__';
 const RETRY = '__retry__';
 
 /**
- * Busca, conta e período. As contas do seletor vêm da API (só as com vínculo na base, página do servidor
+ * Busca, conta, país (DDI), DDD e período. As contas do seletor vêm da API (só as com vínculo na base, página do servidor
  * por cursor, ordem por nome); conta escolhida fora das páginas carregadas aparece pelo id curto.
  */
 export function PlatformContactsFilters({ value, onChange, periodInvalid }: Props) {
@@ -36,7 +37,7 @@ export function PlatformContactsFilters({ value, onChange, periodInvalid }: Prop
     <Box
       role="search"
       aria-label={s.filters.label}
-      sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: '2fr 1.4fr 1fr 1fr auto' }, alignItems: 'start' }}
+      sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, alignItems: 'start' }}
     >
       <TextField
         size="small"
@@ -45,6 +46,7 @@ export function PlatformContactsFilters({ value, onChange, periodInvalid }: Prop
         value={value.search}
         onChange={(e) => set({ search: e.target.value.slice(0, 100) })}
         InputProps={{ startAdornment: <InputAdornment position="start"><AppIcon icon={Search} size="sm" /></InputAdornment> }}
+        sx={{ gridColumn: { sm: '1 / -1', lg: 'span 2' } }}
       />
       <Tooltip title={s.filters.tenantHint} arrow placement="top">
         <TextField
@@ -68,6 +70,7 @@ export function PlatformContactsFilters({ value, onChange, periodInvalid }: Prop
           {!loading && !failed && hasMore && <MenuItem value={MORE} sx={{ color: 'primary.main' }}>{s.filters.tenantsMore}</MenuItem>}
         </TextField>
       </Tooltip>
+      <PlatformPhoneFilters ddi={value.ddi} ddd={value.ddd} onChange={(phone) => set(phone)} />
       <TextField
         size="small"
         type="date"
@@ -95,7 +98,7 @@ export function PlatformContactsFilters({ value, onChange, periodInvalid }: Prop
         disabled={!dirty}
         onClick={() => onChange(EMPTY_PLATFORM_FILTERS)}
         startIcon={<AppIcon icon={Eraser} size="inline" />}
-        sx={{ minHeight: 40, whiteSpace: 'nowrap' }}
+        sx={{ minHeight: 40, whiteSpace: 'nowrap', justifySelf: { xs: 'stretch', sm: 'start' }, gridColumn: { sm: '1 / -1', lg: 'auto' } }}
       >
         {s.filters.clear}
       </Button>

@@ -19,6 +19,13 @@ describe('saverAdminService', () => {
     expect(Object.keys(params)).not.toContain('offset');
   });
 
+  it('indicadores: mesmos filtros da lista, sem cursor', async () => {
+    const summary = { total: 9, filtered: 4, withPhone: 3, lidOnly: 1, topDdi: [], topDdd: [], ddiBase: 9, dddBase: 0 };
+    api.get.mockResolvedValue({ data: { data: summary } });
+    await expect(saverAdminService.getSummary({ ...EMPTY_PLATFORM_FILTERS, ddi: '55', ddd: '11' })).resolves.toEqual(summary);
+    expect(api.get).toHaveBeenCalledWith('/admin/saver/contacts/summary', { params: { ddi: '55', ddd: '11' } });
+  });
+
   it('período local vira ISO cobrindo o dia todo', () => {
     const p = toPlatformFilterParams({ ...EMPTY_PLATFORM_FILTERS, from: '2026-11-01', to: '2026-11-02' });
     expect(new Date(p.from!).getTime()).toBe(new Date('2026-11-01T00:00:00').getTime());

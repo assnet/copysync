@@ -54,9 +54,30 @@ export interface PlatformContactFilters {
   tenantId: string;
   from: string;
   to: string;
+  /** Código do país (só dígitos, código inteiro); vazio = todos. */
+  ddi: string;
+  /** Código de área do Brasil (2 dígitos); só com `ddi = 55`. */
+  ddd: string;
 }
 
-export const EMPTY_PLATFORM_FILTERS: PlatformContactFilters = { search: '', tenantId: '', from: '', to: '' };
+export const EMPTY_PLATFORM_FILTERS: PlatformContactFilters = { search: '', tenantId: '', from: '', to: '', ddi: '', ddd: '' };
+
+/** `GET /admin/saver/contacts/summary`: só contagens agregadas (nenhum dado de contato). */
+export interface PlatformContactsSummary {
+  /** Contatos da base inteira, sem filtro. */
+  total: number;
+  /** Os que casam com os filtros atuais. */
+  filtered: number;
+  withPhone: number;
+  lidOnly: number;
+  /** Ranking de países de todos os filtros menos o de DDI/DDD (a barra do país filtrado segue junto das outras). */
+  topDdi: { ddi: string; count: number }[];
+  /** Só vem preenchido com o filtro `ddi = 55`; ignora o filtro de DDD. */
+  topDdd: { ddd: string; count: number }[];
+  /** Total do universo de cada ranking (base das porcentagens das barras). */
+  ddiBase: number;
+  dddBase: number;
+}
 
 export interface PlatformContactsFile {
   blob: Blob;
