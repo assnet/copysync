@@ -11,6 +11,9 @@ import { resolveMembership } from './resolveMembership';
  *
  * This hook mirrors the logic of authHook + tenantHook but reads from
  * query params instead of headers.
+ *
+ * Acesso por produto: em plugin registrado com `withProduct` (app/productRoutes.ts), o gate do produto
+ * entra logo depois deste hook; conexão de tenant sem o produto é negada na abertura.
  */
 export async function sseAuthHook(request: FastifyRequest, _reply: FastifyReply): Promise<void> {
   const qs = request.query as Record<string, string | undefined>;

@@ -1,6 +1,7 @@
 import type { FastifyInstance, RouteOptions } from 'fastify';
 import { env } from '../shared/config/env';
 import { tenantHook } from '../shared/http/hooks/tenantHook';
+import { sseAuthHook } from '../shared/http/hooks/sseAuthHook';
 import { createProductGate, type ProductGate, type ProductGateMode } from '../shared/http/hooks/productGate';
 import type { IProductAccessReader } from '../modules/tenants/domain/contracts/IProductAccessReader';
 import type { ProductKey } from '../modules/tenants/domain/services/resolveProductAccess';
@@ -53,8 +54,11 @@ export const ROUTE_PRODUCT_MAP: Readonly<Record<string, RouteProductClass>> = {
 type Handler = NonNullable<RouteOptions['preHandler']>;
 type HookFn = Exclude<Handler, readonly unknown[]>;
 
-/** preHandlers que resolvem `tenantContext`: o gate entra logo depois do primeiro deles. */
-const TENANT_ANCHORS: ReadonlySet<unknown> = new Set<unknown>([tenantHook]);
+/**
+ * preHandlers que resolvem `tenantContext`: o gate entra logo depois do primeiro deles. `sseAuthHook`
+ * cobre a abertura de conexões persistentes (WebSocket do chat, SSE): negada antes do upgrade.
+ */
+const TENANT_ANCHORS: ReadonlySet<unknown> = new Set<unknown>([tenantHook, sseAuthHook]);
 
 /**
  * Array NOVO com o gate logo após o hook de tenant (antes de portões por rota, como o de audiência do
