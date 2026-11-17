@@ -3,6 +3,7 @@ import {
   Badge, Box, ListItem, ListItemButton, ListItemIcon, ListItemText, MenuItem, MenuList, Popover, Tooltip,
   Typography, useMediaQuery,
 } from '@mui/material';
+import { Lock } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { navigationStrings as s, type NavProduct } from '@/features/navigation';
 import { NavItemBadge } from '../NavItemBadge';
@@ -28,9 +29,19 @@ export function CollapsedProductNavItem({ product, activeChildKey, onNavigate }:
   const hasActiveChild = activeChildKey != null;
 
   const icon = <AppIcon icon={product.icon} size="md" />;
-  const iconWithDot = hasActiveChild ? (
-    <Badge variant="dot" color="primary" overlap="circular">{icon}</Badge>
+  // Produto fora do plano: cadeado no canto do ícone (o Popover só lista a vitrine).
+  const lockedIcon = product.locked ? (
+    <Badge
+      overlap="circular"
+      anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      badgeContent={<Box component="span" data-testid="nav-product-lock" sx={{ display: 'inline-flex', bgcolor: 'background.paper', borderRadius: '50%', color: 'text.secondary', fontSize: 12 }}><AppIcon icon={Lock} size="inline" /></Box>}
+    >
+      {icon}
+    </Badge>
   ) : icon;
+  const iconWithDot = hasActiveChild ? (
+    <Badge variant="dot" color="primary" overlap="circular">{lockedIcon}</Badge>
+  ) : lockedIcon;
 
   if (product.status === 'soon') {
     return (
@@ -61,11 +72,12 @@ export function CollapsedProductNavItem({ product, activeChildKey, onNavigate }:
     }
   };
   const menuId = `nav-product-menu-${product.key}`;
-  const accessibleName = hasActiveChild ? s.aria.productWithActiveChild(product.label) : product.label;
+  const baseName = product.locked ? s.aria.productLocked(product.label) : product.label;
+  const accessibleName = hasActiveChild ? s.aria.productWithActiveChild(baseName) : baseName;
 
   return (
     <ListItem disablePadding sx={{ mb: NAV_ITEM_GAP }}>
-      <Tooltip title={open ? '' : product.label} placement="right">
+      <Tooltip title={open ? '' : product.locked ? s.lockedTooltip(product.label) : product.label} placement="right">
         <ListItemButton
           selected={hasActiveChild}
           onClick={handleClick}

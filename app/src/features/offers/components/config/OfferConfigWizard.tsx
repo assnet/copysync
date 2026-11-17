@@ -1,4 +1,4 @@
-import { AFFILIATE_PLANS_PATH } from '@/features/navigation';
+import { PRODUCT_PLANS_PATH } from '@/features/products/productAccess';
 import { useMemo, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
@@ -197,7 +197,7 @@ export function OfferConfigWizard({
 
       <Box sx={{ minHeight: 160 }}>
         {step === 0 && crossLocked && (
-          <Alert severity="info" sx={{ mb: 2 }} action={<Button color="inherit" size="small" component={RouterLink} to={AFFILIATE_PLANS_PATH}>{t.session.crossLockedLink}</Button>}>
+          <Alert severity="info" sx={{ mb: 2 }} action={<Button color="inherit" size="small" component={RouterLink} to={PRODUCT_PLANS_PATH.AFFILIATES}>{t.session.crossLockedLink}</Button>}>
             {t.session.crossLocked}
           </Alert>
         )}

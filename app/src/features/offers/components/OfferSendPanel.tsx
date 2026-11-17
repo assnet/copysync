@@ -5,7 +5,7 @@ import SendOutlinedIcon from '@mui/icons-material/SendOutlined';
 import AddIcon from '@mui/icons-material/Add';
 import RemoveIcon from '@mui/icons-material/Remove';
 import { CalendarClock, Lock } from 'lucide-react';
-import { AFFILIATE_PLANS_PATH } from '@/features/navigation';
+import { PRODUCT_PLANS_PATH } from '@/features/products/productAccess';
 import { AppIcon, SectionCard, ToggleOption } from '@/components';
 import type { OfferConfigGroup, OfferImageMode, OfferItem } from '@/types/api.types';
 import { offerStrings } from '../strings';
@@ -131,7 +131,7 @@ export function OfferSendPanel(props: Props) {
             </Box>
           </Tooltip>
           {mentionLocked && (
-            <Link component={RouterLink} to={AFFILIATE_PLANS_PATH} variant="caption" underline="hover" sx={{ display: 'inline-block', mt: 0.5, ml: 1.5 }}>
+            <Link component={RouterLink} to={PRODUCT_PLANS_PATH.AFFILIATES} variant="caption" underline="hover" sx={{ display: 'inline-block', mt: 0.5, ml: 1.5 }}>
               {t.mentionAllPlansLink}
             </Link>
           )}

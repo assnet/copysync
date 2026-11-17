@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { AppIcon, HideUnavailableSwitch, OverflowTooltipText, UnavailableReason } from '@/components';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { Blurred, useBlur } from '@/features/privacy';
-import { AFFILIATE_PLANS_PATH } from '@/features/navigation/model';
+import { PRODUCT_PLANS_PATH } from '@/features/products/productAccess';
 import type { AffiliateCredentialItem, SetAffiliateIdentifiersRequest } from '@/types/api.types';
 import { identifiersErrorOf, settingsStrings } from '../strings';
 import {
@@ -15,7 +15,7 @@ import {
 } from '../utils/identifierSelection';
 
 const t = settingsStrings.affiliate.identifiers;
-const PLANS_HREF = `${AFFILIATE_PLANS_PATH}?feature=mercadoLivreTags`;
+const PLANS_HREF = `${PRODUCT_PLANS_PATH.AFFILIATES}?feature=mercadoLivreTags`;
 
 interface Props {
   item: AffiliateCredentialItem;

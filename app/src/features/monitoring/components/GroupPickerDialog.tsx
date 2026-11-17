@@ -1,4 +1,4 @@
-import { AFFILIATE_PLANS_PATH } from '@/features/navigation';
+import { PRODUCT_PLANS_PATH } from '@/features/products/productAccess';
 import { useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Alert, Autocomplete, Box, Button, Chip, CircularProgress, Collapse, Dialog, DialogActions, DialogContent,
@@ -682,7 +682,7 @@ export function GroupPickerDialog({ mode, sessionId, channel = 'whatsapp', initi
         {crossLocked && (
           <InfoLine
             text={t.crossLocked}
-            action={<Button color="inherit" size="small" component={RouterLink} to={AFFILIATE_PLANS_PATH} sx={{ flexShrink: 0 }}>{t.crossLockedLink}</Button>}
+            action={<Button color="inherit" size="small" component={RouterLink} to={PRODUCT_PLANS_PATH.AFFILIATES} sx={{ flexShrink: 0 }}>{t.crossLockedLink}</Button>}
           />
         )}
         {multi && <InfoLine text={crossSession ? t.crossHelp : t.otherChannelHelp} />}

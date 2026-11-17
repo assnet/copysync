@@ -40,6 +40,11 @@ export interface TenantItem {
   slug: string;
   role: string;
   status: string;
+  /**
+   * Produtos com acesso (`AFFILIATES`, `CHAT`, `SAVER`…). Aditivo: ausente = API antiga,
+   * tratado como legado por `productsOfTenant` (`features/products`).
+   */
+  products?: string[];
 }
 
 export interface SwitchTenantResponse {

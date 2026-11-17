@@ -20,11 +20,15 @@ import { ChannelLogo } from '@/features/sessions/components/ChannelLogo';
 import { sessionStrings } from '@/features/sessions/strings';
 import { Blurred, useBlur } from '@/features/privacy';
 import { ExtensionInstallBanner } from '@/features/extension/components/ExtensionInstallBanner';
+import { hasProduct, useProductAccess } from '@/features/products';
 
 export function DashboardPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { activeTenantName } = useTenant();
+  // Aviso da extensão é de Afiliados: some sem o produto e enquanto a lista carrega.
+  const productAccess = useProductAccess();
+  const showExtensionBanner = productAccess.loaded && hasProduct(productAccess.products, 'AFFILIATES');
   const theme = useTheme();
   const blurTenant = useBlur('layout.tenantName');
   const blurName = useBlur('sessions.sessionName');
@@ -76,7 +80,7 @@ export function DashboardPage() {
         </Box>
       </Box>
 
-      <ExtensionInstallBanner />
+      {showExtensionBanner && <ExtensionInstallBanner />}
 
       {/* Stats */}
       <Grid container spacing={2.5} sx={{ mb: 4 }}>

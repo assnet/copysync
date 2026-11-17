@@ -1,7 +1,7 @@
 import {
   Box, Chip, Collapse, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Tooltip, useMediaQuery,
 } from '@mui/material';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Lock } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { navigationStrings as s, type NavProduct } from '@/features/navigation';
 import { NavItemBadge } from '../NavItemBadge';
@@ -23,7 +23,8 @@ export interface ProductNavItemProps {
 
 /**
  * Linha do produto + filhos (drawer expandido e mobile). Produto `soon` é desabilitado com
- * chip "Em breve" e Tooltip com a tagline; `available` expande/recolhe sem navegar.
+ * chip "Em breve" e Tooltip com a tagline; `available` expande/recolhe sem navegar. Produto
+ * `locked` (fora do plano) mantém o mesmo botão focável, com cadeado + Tooltip, e expande só a vitrine.
  */
 export function ProductNavItem({ product, expanded, activeChildKey, idPrefix, onToggle, onNavigate }: ProductNavItemProps) {
   const reducedMotion = useMediaQuery(REDUCED_MOTION_QUERY);
@@ -58,39 +59,50 @@ export function ProductNavItem({ product, expanded, activeChildKey, idPrefix, on
 
   const controlsId = `nav-${idPrefix}-product-${product.key}`;
 
-  return (
-    <ListItem disablePadding sx={{ mb: NAV_ITEM_GAP, display: 'block' }}>
-      <ListItemButton
-        onClick={() => onToggle(product.key)}
-        aria-expanded={expanded}
-        aria-controls={expanded ? controlsId : undefined}
-        aria-label={product.label}
+  const row = (
+    <ListItemButton
+      onClick={() => onToggle(product.key)}
+      aria-expanded={expanded}
+      aria-controls={expanded ? controlsId : undefined}
+      aria-label={product.locked ? s.aria.productLocked(product.label) : product.label}
+      sx={{
+        ...navButtonSx(false),
+        ...(hasActiveChild && !expanded ? { color: 'primary.main' } : {}),
+      }}
+    >
+      <ListItemIcon sx={{ ...navIconSx(false), color: hasActiveChild ? 'primary.main' : undefined }}>
+        <AppIcon icon={product.icon} size="md" />
+      </ListItemIcon>
+      <ListItemText
+        primary={product.label}
+        primaryTypographyProps={{ variant: 'body2', fontWeight: hasActiveChild ? 600 : 500, noWrap: true }}
+      />
+      {product.locked && (
+        <Box component="span" data-testid="nav-product-lock" aria-hidden sx={{ display: 'inline-flex', color: 'text.secondary', mr: 0.5 }}>
+          <AppIcon icon={Lock} size="sm" />
+        </Box>
+      )}
+      <Box
+        component="span"
+        aria-hidden
         sx={{
-          ...navButtonSx(false),
-          ...(hasActiveChild && !expanded ? { color: 'primary.main' } : {}),
+          display: 'inline-flex',
+          color: 'text.secondary',
+          transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
+          transition: (t) => t.transitions.create('transform', { duration: NAV_MOTION_MS }),
+          [`@media ${REDUCED_MOTION_QUERY}`]: { transition: 'none' },
         }}
       >
-        <ListItemIcon sx={{ ...navIconSx(false), color: hasActiveChild ? 'primary.main' : undefined }}>
-          <AppIcon icon={product.icon} size="md" />
-        </ListItemIcon>
-        <ListItemText
-          primary={product.label}
-          primaryTypographyProps={{ variant: 'body2', fontWeight: hasActiveChild ? 600 : 500, noWrap: true }}
-        />
-        <Box
-          component="span"
-          aria-hidden
-          sx={{
-            display: 'inline-flex',
-            color: 'text.secondary',
-            transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
-            transition: (t) => t.transitions.create('transform', { duration: NAV_MOTION_MS }),
-            [`@media ${REDUCED_MOTION_QUERY}`]: { transition: 'none' },
-          }}
-        >
-          <AppIcon icon={ChevronDown} size="sm" />
-        </Box>
-      </ListItemButton>
+        <AppIcon icon={ChevronDown} size="sm" />
+      </Box>
+    </ListItemButton>
+  );
+
+  return (
+    <ListItem disablePadding sx={{ mb: NAV_ITEM_GAP, display: 'block' }}>
+      {product.locked ? (
+        <Tooltip title={s.lockedTooltip(product.label)} placement="right" describeChild>{row}</Tooltip>
+      ) : row}
 
       <Collapse in={expanded} timeout={motionMs} unmountOnExit>
         <List

@@ -2,7 +2,8 @@ import { Alert, AlertTitle, Box, Button, LinearProgress, Paper, Stack, Tooltip, 
 import { useNavigate } from 'react-router-dom';
 import { CircleCheck, CircleDashed, Info, KeyRound, Lock, ShieldAlert, Users, type LucideIcon } from 'lucide-react';
 import { AppIcon } from '@/components';
-import { AFFILIATE_CREDENTIALS_PATH, AFFILIATE_PLANS_PATH } from '@/features/navigation/model';
+import { AFFILIATE_CREDENTIALS_PATH } from '@/features/navigation/model';
+import { PRODUCT_PLANS_PATH } from '@/features/products/productAccess';
 import { gateCopy, offerHunterStrings, sourceStatusText, type HunterRiskProvider } from '../../strings';
 import { HUNT_BLOCKING_GATES } from '../../hooks';
 import type { HuntGateKey, HuntOptions } from '../../types';
@@ -36,7 +37,7 @@ export function HunterGatesPanel({ options, blockedBy, provider = 'SHEIN', onOpe
   const { gates, sourceStatus } = options;
 
   const act = (key: HuntGateKey) => {
-    if (key === 'plan' || key === 'hunterEntitlement') navigate(AFFILIATE_PLANS_PATH);
+    if (key === 'plan' || key === 'hunterEntitlement') navigate(PRODUCT_PLANS_PATH.AFFILIATES);
     else if (key === 'credential') navigate(AFFILIATE_CREDENTIALS_PATH);
     else if (key === 'riskAccepted') onOpenRisk(provider);
     else if (key === 'destination') onFocusDestination();
