@@ -69,6 +69,11 @@ describe('summarizePhonePrefixes', () => {
     expect(rj.topDdd).toEqual(br.topDdd);
   });
 
+  it('telefone sem DDI (começa por 0) conta em withPhone, fora do ranking e da base das porcentagens', () => {
+    const out = summarizePhonePrefixes([{ prefix: '5511', count: 6 }, { prefix: '0119', count: 4 }], none);
+    expect(out).toMatchObject({ filtered: 10, withPhone: 10, ddiBase: 6, topDdi: [{ ddi: '55', count: 6 }] });
+  });
+
   it('limites de 5 países e 8 DDDs', () => {
     const many = BRAZIL_DDDS.slice(0, 12).map((d, i) => ({ prefix: `55${d}`, count: 100 - i }));
     expect(summarizePhonePrefixes(many, { ddi: '55', ddd: null }).topDdd).toHaveLength(8);
