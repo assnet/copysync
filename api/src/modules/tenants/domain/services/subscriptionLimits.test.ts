@@ -11,6 +11,9 @@ const usage: SubscriptionUsage = {
   offerHunterFindsToday: 4,
   aiRequestsToday: null,
   mercadoLivreAffiliateTags: 2,
+  saverGroups: 3,
+  saverContacts: 120,
+  saverGroupScans: 4,
 };
 
 const byKey = (items: ReturnType<typeof buildSubscriptionLimits>) => Object.fromEntries(items.map((i) => [i.key, i]));
@@ -95,5 +98,26 @@ describe('subscriptionLimits', () => {
     expect(r.cross_session_dispatch.enabled).toBe(true);
     expect(r.storefront_enabled.enabled).toBe(true);
     expect(r.offer_story_enabled.enabled).toBe(false);
+  });
+
+  it('produto por chave: sessões compartilhadas (null), Saver próprio, resto Afiliados', () => {
+    const m = Object.fromEntries(SUBSCRIPTION_LIMIT_ITEMS.map((i) => [i.key, i.product]));
+    expect(m.whatsapp_sessions).toBeNull();
+    expect(m.telegram_sessions).toBeNull();
+    expect(m.monitored_groups).toBe('AFFILIATES');
+    expect(m.storefront_enabled).toBe('AFFILIATES');
+    expect(m.saver_groups).toBe('SAVER');
+    expect(m.saver_auto_refresh_enabled).toBe('SAVER');
+  });
+
+  it('itens do Saver só com o produto; ausente = 0/desligado, null = ilimitado', () => {
+    expect(buildSubscriptionLimits({}, usage).some((i) => i.product === 'SAVER')).toBe(false);
+    expect(buildSubscriptionLimits({}, usage, ['AFFILIATES', 'CHAT']).some((i) => i.product === 'SAVER')).toBe(false);
+    const r = byKey(buildSubscriptionLimits({ saver_contacts: null, saver_group_scans_per_day: 20 }, usage, ['SAVER']));
+    expect(r.saver_groups).toMatchObject({ kind: 'count', used: 3, limit: 0, enabled: false });
+    expect(r.saver_contacts).toMatchObject({ used: 120, limit: null, enabled: true });
+    expect(r.saver_group_scans_per_day).toMatchObject({ kind: 'daily', used: 4, limit: 20, enabled: true });
+    expect(r.saver_auto_refresh_enabled).toMatchObject({ used: null });
+    expect(r.saver_auto_refresh_enabled).toMatchObject({ kind: 'feature', enabled: false });
   });
 });

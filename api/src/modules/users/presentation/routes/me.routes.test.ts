@@ -9,7 +9,11 @@ const db = vi.hoisted(() => ({ users: new Map<string, { id: string; email: strin
 vi.mock('../../infrastructure/repositories/PrismaUserRepository', () => ({
   PrismaUserRepository: class {
     findById = async (id: string) => db.users.get(id) ?? null;
+    findTenantsForUser = async () => [{ tenantId: 't1', tenantName: 'Loja', tenantSlug: 'loja', tenantStatus: 'ACTIVE', role: 'ADMIN' }];
   },
+}));
+vi.mock('../../../tenants/infrastructure/productAccessContainer', () => ({
+  productAccessReader: () => ({ list: async () => ['AFFILIATES', 'CHAT'] }),
 }));
 vi.mock('../../../../shared/http/hooks/authHook', () => ({
   authHook: async (request: { headers: Record<string, unknown>; user?: unknown }) => {
@@ -30,6 +34,14 @@ beforeEach(async () => {
     $id: 'ErrorResponse',
     type: 'object',
     properties: { success: { type: 'boolean' }, error: { type: 'object', properties: { code: { type: 'string' }, message: { type: 'string' } } } },
+  });
+  app.addSchema({
+    $id: 'TenantItem',
+    type: 'object',
+    properties: {
+      id: { type: 'string' }, name: { type: 'string' }, slug: { type: 'string' }, role: { type: 'string' },
+      status: { type: 'string' }, products: { type: 'array', items: { type: 'string' } },
+    },
   });
   await app.register(meRoutes, { prefix: '/api/me' });
   await app.ready();
@@ -67,5 +79,16 @@ describe('GET /me/checkout-prefill', () => {
     const res = await get({ authorization: 'Bearer ghost' });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ success: true, data: {} });
+  });
+});
+
+describe('GET /me', () => {
+  it('tenants com products (legado = AFFILIATES e CHAT)', async () => {
+    db.users.set('u1', { id: 'u1', email: 'ana@exemplo.com', name: 'Ana' });
+    const res = await app.inject({ method: 'GET', url: '/api/me', headers: { authorization: 'Bearer u1' } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.tenants).toEqual([
+      { id: 't1', name: 'Loja', slug: 'loja', role: 'ADMIN', status: 'ACTIVE', products: ['AFFILIATES', 'CHAT'] },
+    ]);
   });
 });

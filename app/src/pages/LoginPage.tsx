@@ -82,7 +82,8 @@ export function LoginPage() {
       localStorage.setItem('activeTenantName', tenants[0].name);
     }
     await loadTenants();
-    navigate('/dashboard');
+    // Índice resolve o início pelos produtos do tenant (resolveHomePath).
+    navigate('/');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

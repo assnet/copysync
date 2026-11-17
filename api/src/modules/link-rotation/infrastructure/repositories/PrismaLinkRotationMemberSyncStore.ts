@@ -5,6 +5,7 @@ import type {
   MemberSyncDueGroup,
   MemberSyncDueQuery,
 } from '../../domain/contracts/ILinkRotationMemberSyncStore';
+import { affiliatesActiveTenantWhere } from '../../../tenants/infrastructure/access/affiliatesInactiveFilter';
 import { LinkRotationGroupStatus } from '../../domain/enums/LinkRotationEnums';
 
 /**
@@ -15,6 +16,8 @@ export class PrismaLinkRotationMemberSyncStore implements ILinkRotationMemberSyn
   constructor(
     private readonly prisma: PrismaClient,
     private readonly workerId: string,
+    /** `enforce` do acesso por produto: tenant com Afiliados inativo fica de fora, como o suspenso. */
+    private readonly affiliatesGateEnforced = false,
   ) {}
 
   async listDue(q: MemberSyncDueQuery): Promise<MemberSyncDueGroup[]> {
@@ -30,7 +33,7 @@ export class PrismaLinkRotationMemberSyncStore implements ILinkRotationMemberSyn
           status: 'ACTIVE',
           sessionId: { in: own.map((r) => r.id) },
           session: { status: 'CONNECTED', deletedAt: null },
-          tenant: { status: 'ACTIVE' },
+          tenant: { status: 'ACTIVE', ...affiliatesActiveTenantWhere(this.affiliatesGateEnforced) },
         },
         OR: [
           { memberCountAt: null },

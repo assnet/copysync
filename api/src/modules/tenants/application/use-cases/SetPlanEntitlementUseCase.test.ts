@@ -50,6 +50,18 @@ describe('SetPlanEntitlementUseCase', () => {
     expect(transaction).not.toHaveBeenCalled();
   });
 
+  it('plano de outro produto (chave de Afiliados em plano Saver) → ValidationError 400, sem abrir transação', async () => {
+    const { uc, transaction } = setup();
+    for (const key of ['marketplace_shein_enabled', 'offer_hunter_enabled']) {
+      const err = await uc.execute({ ...ok, key, planSlug: 'SAVER_PRO' }).catch((e) => e);
+      expect(err).toBeInstanceOf(ValidationError);
+      expect(err.statusCode).toBe(400);
+    }
+    const num = await uc.execute({ ...ok, key: 'offer_hunter_finds_per_day', value: 5, planSlug: 'SAVER_MAX' }).catch((e) => e);
+    expect(num).toBeInstanceOf(ValidationError);
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
   it('plano desconhecido → ValidationError 400, sem abrir transação', async () => {
     const { uc, transaction } = setup();
     const err = await uc.execute({ ...ok, planSlug: 'pro' }).catch((e) => e);

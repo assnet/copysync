@@ -89,3 +89,44 @@ describe('ApplyBillingEventUseCase (vínculo pelo e-mail)', () => {
     expect(await prisma.auditLog.count({ where: { tenantId: manualId, action: 'TENANT_UPDATED' } })).toBe(1);
   });
 });
+
+/** Por produto: trava com `tenant_products` (EXISTS no FOR UPDATE), linhas na mesma transação, eventos concorrentes. */
+describe('ApplyBillingEventUseCase (por produto)', () => {
+  const pCustomer = `int-billing-prod-${stamp}`;
+  const iso = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString();
+  const subs = [
+    { id: 'aff', planSlug: 'copysync-pro-mensal', billingStatus: 'REFUNDED', expiresAt: iso(10), deletedAt: null },
+    { id: 'sv', planSlug: 'copysync-saver-pro-mensal', billingStatus: 'ACTIVE', expiresAt: iso(10), deletedAt: null },
+  ];
+  const hub = { fetchByCustomer: async () => ({ ok: true as const, snapshot: { externalUserId: pCustomer, subscriptions: subs, lastSeq: 9n } }) };
+  const uc = new ApplyBillingEventUseCase(undefined, hub);
+  let id = '';
+  const pev = (eventId: string, seq: bigint, eventType: string, planSlug: string): ApplyBillingEventInput => ({
+    eventId: `${eventId}-${stamp}`, billingCustomerId: pCustomer, eventType, seq, payload: { planSlug, expiresAt: iso(30) },
+  });
+  const rows = () => prisma.tenantProduct.findMany({ where: { tenantId: id }, orderBy: { product: 'asc' } });
+
+  beforeAll(async () => {
+    id = (await prisma.tenant.create({ data: { name: 'int-prod', slug: `int-prod-${stamp}`, billingCustomerId: pCustomer, planSlug: 'COPYSYNC_PRO', lastBillingEventSeq: 1n } })).id;
+  });
+  afterAll(async () => {
+    await prisma.billingEventReceipt.deleteMany({ where: { billingCustomerId: pCustomer } });
+    await prisma.tenantEntitlement.deleteMany({ where: { tenantId: id } });
+    await prisma.tenant.deleteMany({ where: { id } });
+  });
+
+  it('Saver concorrente: uma linha só, plano de Afiliados intocado', async () => {
+    const out = await Promise.all([uc.execute(pev('p1', 2n, 'subscription.renewed', 'copysync-saver-pro-mensal')), uc.execute(pev('p2', 3n, 'subscription.renewed', 'copysync-saver-pro-mensal'))]);
+    expect(out.map((o) => o.outcome).sort()).toEqual(expect.arrayContaining(['APPLIED']));
+    expect(await rows()).toEqual([expect.objectContaining({ product: 'SAVER', status: 'ACTIVE', planSlug: 'SAVER_PRO', source: 'BILLING' })]);
+    expect(await prisma.tenant.findUniqueOrThrow({ where: { id } })).toMatchObject({ planSlug: 'COPYSYNC_PRO', status: 'ACTIVE' });
+  });
+
+  it('corte de Afiliados com Saver ativo: KEPT_ACTIVE e Afiliados inativo no mesmo commit', async () => {
+    expect((await uc.execute(pev('p3', 4n, 'subscription.refunded', 'copysync-pro-mensal'))).outcome).toBe('KEPT_ACTIVE');
+    const r = await rows();
+    expect(r.map((x) => [x.product, x.status])).toEqual([['AFFILIATES', 'INACTIVE'], ['SAVER', 'ACTIVE']]);
+    expect(r[0]!.inactiveSince).not.toBeNull();
+    expect(await prisma.billingEventReceipt.count({ where: { billingCustomerId: pCustomer } })).toBe(3);
+  });
+});

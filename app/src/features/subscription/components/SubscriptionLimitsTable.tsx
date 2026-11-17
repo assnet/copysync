@@ -4,11 +4,11 @@ import {
 import { Info } from 'lucide-react';
 import { AppIcon, SectionCard, TelegramIcon, WhatsAppIcon, brandColor } from '@/components';
 import type { SubscriptionLimitItem } from '@/types/api.types';
-import { minPlanFor, subscriptionStrings, SUBSCRIPTION_LIMIT_KEYS, type SubscriptionChannel, type SubscriptionLimitKey } from '../strings';
+import { minPlanFor, SAVER_MIN_TIER, subscriptionStrings, SUBSCRIPTION_LIMIT_KEYS, type SubscriptionChannel, type SubscriptionLimitKey } from '../strings';
 import { usageToneFor } from '../usageTone';
 
 const t = subscriptionStrings;
-const CHANNELS: SubscriptionChannel[] = ['whatsapp', 'telegram'];
+const ALL_CHANNELS: readonly SubscriptionChannel[] = ['whatsapp', 'telegram'];
 const CHANNEL_ICON = { whatsapp: WhatsAppIcon, telegram: TelegramIcon } as const;
 const PROGRESS_COLOR = { default: 'primary', warning: 'warning', error: 'error' } as const;
 
@@ -16,6 +16,8 @@ const isKnownKey = (key: string): key is SubscriptionLimitKey => (SUBSCRIPTION_L
 
 /** "A partir do X" pelo menor plano que libera a chave; nenhum libera → "Não incluso". */
 function lockedLabel(key: SubscriptionLimitKey): string {
+  const saverTier = SAVER_MIN_TIER[key];
+  if (saverTier) return t.limits.availableFrom(saverTier);
   const plan = minPlanFor(key);
   return plan ? t.limits.availableFrom(plan.name) : t.limits.notIncluded;
 }
@@ -29,6 +31,8 @@ function UsageCell({ item, label }: { item: SubscriptionLimitItem & { key: Subsc
       : <Chip size="small" variant="outlined" label={lockedLabel(item.key)} />;
   }
   if (item.limit === 0) return <Chip size="small" variant="outlined" label={lockedLabel(item.key)} />;
+  // Sem contador na API (`used` null: grupos por link, achados do caçador): nunca "0 de N".
+  if (item.used == null) return <Typography variant="body2" color="text.secondary">{t.limits.usageUnavailable}</Typography>;
   if (item.limit == null) {
     return <Typography variant="body2">{daily ? t.limits.usageUnlimitedToday(used) : t.limits.usageUnlimited(used)}</Typography>;
   }
@@ -99,6 +103,10 @@ export interface SubscriptionLimitsTableProps {
   /** Aba de canal (controlada: a página guarda em `usePersistedState`, escopo `tab`). */
   channel: SubscriptionChannel;
   onChannelChange: (channel: SubscriptionChannel) => void;
+  /** Título do cartão (assinatura por produto). Padrão: "Limites do plano". */
+  title?: string;
+  /** Canais exibidos (padrão: todos). Um só canal = sem abas, com o nome do canal no lugar. */
+  channels?: readonly SubscriptionChannel[];
 }
 
 /**
@@ -106,34 +114,50 @@ export interface SubscriptionLimitsTableProps {
  * (`channel: null`). Barra de uso com a mesma cor do chip do gerador (`usageToneFor`, política por chave); ilimitado
  * mostra só o uso; limite 0 ou recurso desligado mostra o menor plano que libera.
  */
-export function SubscriptionLimitsTable({ limits, channel, onChannelChange }: SubscriptionLimitsTableProps) {
+export function SubscriptionLimitsTable({
+  limits, channel: selected, onChannelChange, title = t.limits.title, channels = ALL_CHANNELS,
+}: SubscriptionLimitsTableProps) {
   const mode = useTheme().palette.mode;
-  const known = limits.filter((l): l is SubscriptionLimitItem & { key: SubscriptionLimitKey } => isKnownKey(l.key));
+  const known = limits.filter((l): l is SubscriptionLimitItem & { key: SubscriptionLimitKey } =>
+    isKnownKey(l.key) && (l.channel == null || channels.includes(l.channel)));
+  // Aba salva de um canal que não aparece mais (ex.: Telegram num tenant só-Saver): primeiro canal exibido.
+  const channel = channels.includes(selected) ? selected : channels[0] ?? selected;
   const channelItems = known.filter((l) => l.channel === channel);
   const generalItems = known.filter((l) => l.channel == null);
+  // Produto sem limite por canal (ex.: só recursos gerais): sem abas de canal.
+  const hasChannels = known.some((l) => l.channel != null);
+  const tabs = hasChannels && channels.length > 1;
 
   return (
-    <SectionCard title={t.limits.title}>
+    <SectionCard title={title}>
       <Stack spacing={2}>
-        <Tabs
-          value={channel}
-          onChange={(_, v: SubscriptionChannel) => onChannelChange(v)}
-          aria-label={t.limits.channelTabsLabel}
-          variant="scrollable"
-          allowScrollButtonsMobile
-        >
-          {CHANNELS.map((ch) => (
-            <Tab
-              key={ch}
-              value={ch}
-              label={t.channel[ch]}
-              iconPosition="start"
-              icon={<AppIcon icon={CHANNEL_ICON[ch]} style={{ color: brandColor(ch, mode) }} />}
-              sx={{ minHeight: 48 }}
-            />
-          ))}
-        </Tabs>
-        {channelItems.length > 0 && <LimitsGrid items={channelItems} caption={`${t.limits.title}: ${t.channel[channel]}`} />}
+        {hasChannels && !tabs && (
+          <Typography variant="subtitle2" component="h3" sx={{ px: { xs: 1, sm: 2 }, display: 'inline-flex', alignItems: 'center', gap: 1 }}>
+            <AppIcon icon={CHANNEL_ICON[channel]} style={{ color: brandColor(channel, mode) }} />
+            {t.channel[channel]}
+          </Typography>
+        )}
+        {tabs && (
+          <Tabs
+            value={channel}
+            onChange={(_, v: SubscriptionChannel) => onChannelChange(v)}
+            aria-label={t.limits.channelTabsLabel}
+            variant="scrollable"
+            allowScrollButtonsMobile
+          >
+            {channels.map((ch) => (
+              <Tab
+                key={ch}
+                value={ch}
+                label={t.channel[ch]}
+                iconPosition="start"
+                icon={<AppIcon icon={CHANNEL_ICON[ch]} style={{ color: brandColor(ch, mode) }} />}
+                sx={{ minHeight: 48 }}
+              />
+            ))}
+          </Tabs>
+        )}
+        {channelItems.length > 0 && <LimitsGrid items={channelItems} caption={`${title}: ${t.channel[channel]}`} />}
         {generalItems.length > 0 && (
           <Box>
             <Typography variant="subtitle2" component="h3" sx={{ px: { xs: 1, sm: 2 }, pb: 1 }}>{t.limits.general}</Typography>

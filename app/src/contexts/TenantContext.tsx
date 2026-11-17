@@ -8,6 +8,11 @@ interface TenantState {
   activeTenantId: string | null;
   activeTenantName: string | null;
   tenants: TenantItem[];
+  /**
+   * `GET /tenants` já respondeu (com sucesso ou falha). Antes disso menu de produtos e guards
+   * mostram carregamento: no reload a lista começa vazia e nenhum produto pode ser presumido.
+   */
+  tenantsLoaded: boolean;
 }
 
 interface TenantContextValue extends TenantState {
@@ -22,6 +27,7 @@ function loadInitialState(): TenantState {
     activeTenantId: localStorage.getItem('activeTenantId'),
     activeTenantName: localStorage.getItem('activeTenantName'),
     tenants: [],
+    tenantsLoaded: false,
   };
 }
 
@@ -29,7 +35,14 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<TenantState>(loadInitialState);
 
   const loadTenants = useCallback(async () => {
-    const tenants = await tenantService.listTenants();
+    let tenants: TenantItem[];
+    try {
+      tenants = await tenantService.listTenants();
+    } catch (err) {
+      // Falha também encerra o carregamento: sem isso as rotas de produto ficariam presas no indicador.
+      setState((prev) => ({ ...prev, tenantsLoaded: true }));
+      throw err;
+    }
 
     // Se não há tenant ativo e há tenants disponíveis, ativa o primeiro
     const activeTenantId =
@@ -43,6 +56,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
 
     setState({
       tenants,
+      tenantsLoaded: true,
       activeTenantId: activeTenant?.id ?? null,
       activeTenantName: activeTenant?.name ?? null,
     });

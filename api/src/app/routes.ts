@@ -12,6 +12,7 @@ import { workerAdminRoutes } from '../modules/sessions/presentation/routes/worke
 import { opsMetricsRoutes } from '../modules/metrics/presentation/routes/opsMetrics.routes';
 import { infraCostsRoutes } from '../modules/metrics/presentation/routes/infraCosts.routes';
 import { planEntitlementAdminRoutes } from '../modules/tenants/presentation/routes/planEntitlementAdmin.routes';
+import { tenantProductAdminRoutes } from '../modules/tenants/presentation/routes/tenantProductAdmin.routes';
 import { chatRoutes } from '../modules/chat/presentation/routes/chat.routes';
 import { chatWsRoutes } from '../modules/chat/presentation/routes/chat.ws.routes';
 import {
@@ -37,9 +38,12 @@ import { storefrontRoutes } from '../modules/storefront/presentation/routes/stor
 import { redirectLinkAdminRoutes } from '../modules/redirect-links/presentation/routes/redirectLinkAdmin.routes';
 import { publicRedirectRoutes } from '../modules/redirect-links/presentation/routes/publicRedirect.routes';
 import { offerStoryRoutes } from '../modules/offer-story/presentation/routes/offerStory.routes';
+import { saverRoutes } from '../modules/saver/presentation/routes/saver.routes';
+import { saverAdminRoutes } from '../modules/saver/presentation/routes/saverAdmin.routes';
 import { mediaContainer } from '../modules/media/infrastructure/mediaContainer';
 import { authHook } from '../shared/http/hooks/authHook';
 import { tenantHook } from '../shared/http/hooks/tenantHook';
+import { withProduct } from './productRoutes';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyFastifyInstance = any;
@@ -48,6 +52,8 @@ type AnyFastifyInstance = any;
  * Central route registry.
  * Each module registers its own routes here, scoped under the API prefix.
  * Keep this file thin — no business logic.
+ * Todo plugin está classificado em `ROUTE_PRODUCT_MAP` (`productRoutes.ts`); os de produto entram com
+ * `withProduct` (gate de acesso por produto, docs/acesso-por-produto.md).
  */
 export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
   // ── Health check (no auth) ─────────────────────────────────────────────────
@@ -102,24 +108,26 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
   await app.register(sessionRoutes, { prefix: `${env.API_PREFIX}/sessions` });
 
   // ── Chat routes (auth + tenant scope required) ─────────────────────────────
-  await app.register(chatRoutes, { prefix: `${env.API_PREFIX}/chat` });
+  await app.register(withProduct('CHAT', chatRoutes), { prefix: `${env.API_PREFIX}/chat` });
 
   // ── Chat WebSocket gateway ─────────────────────────────────────────────────
-  await app.register(chatWsRoutes, { prefix: `${env.API_PREFIX}/chat` });
+  await app.register(withProduct('CHAT', chatWsRoutes), { prefix: `${env.API_PREFIX}/chat` });
 
   // ── Integration routes (auth + tenant scope required) ──────────────────────
-  await app.register(affiliateCredentialRoutes, {
+  await app.register(withProduct('AFFILIATES', affiliateCredentialRoutes), {
     prefix: `${env.API_PREFIX}/integrations/affiliate-credentials`,
   });
   await app.register(marketplaceRiskAdminRoutes, { prefix: `${env.API_PREFIX}/admin/tenants` });
+  // Concessão manual de produto (super admin); caminho próprio sob o mesmo prefixo
+  await app.register(tenantProductAdminRoutes, { prefix: `${env.API_PREFIX}/admin/tenants` });
 
   // ── Gerador de ofertas (auth + tenant scope required) ──────────────────────
-  await app.register(offerRoutes, { prefix: `${env.API_PREFIX}/campaigns/offers` });
-  await app.register(offerHuntRoutes, { prefix: `${env.API_PREFIX}/offer-hunts` });
-  await app.register(offerHuntAiSuggestRoutes, { prefix: `${env.API_PREFIX}/offer-hunts` });
-  await app.register(sendQueueRoutes, { prefix: `${env.API_PREFIX}/campaigns/send-queue` });
-  await app.register(broadcastGroupsRoutes, { prefix: `${env.API_PREFIX}/campaigns/broadcast-groups` });
-  await app.register(groupMonitoringRoutes, { prefix: `${env.API_PREFIX}/automation/group-monitoring` });
+  await app.register(withProduct('AFFILIATES', offerRoutes), { prefix: `${env.API_PREFIX}/campaigns/offers` });
+  await app.register(withProduct('AFFILIATES', offerHuntRoutes), { prefix: `${env.API_PREFIX}/offer-hunts` });
+  await app.register(withProduct('AFFILIATES', offerHuntAiSuggestRoutes), { prefix: `${env.API_PREFIX}/offer-hunts` });
+  await app.register(withProduct('AFFILIATES', sendQueueRoutes), { prefix: `${env.API_PREFIX}/campaigns/send-queue` });
+  await app.register(withProduct('AFFILIATES', broadcastGroupsRoutes), { prefix: `${env.API_PREFIX}/campaigns/broadcast-groups` });
+  await app.register(withProduct('AFFILIATES', groupMonitoringRoutes), { prefix: `${env.API_PREFIX}/automation/group-monitoring` });
 
   // ── Provisioning routes (super-admin only) ─────────────────────────────────
   await app.register(provisioningRoutes, {
@@ -128,10 +136,10 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
 
   // ── IA: provedores da plataforma (super admin) e chave própria do tenant ────
   await app.register(aiAdminRoutes, { prefix: `${env.API_PREFIX}/admin/ai` });
-  await app.register(aiTenantRoutes, { prefix: `${env.API_PREFIX}/ai` });
+  await app.register(withProduct('AFFILIATES', aiTenantRoutes), { prefix: `${env.API_PREFIX}/ai` });
 
   // ── Rodízio de links: painel do tenant e domínios (super admin) ─────────────
-  await app.register(linkRotationRoutes, { prefix: `${env.API_PREFIX}/link-rotation` });
+  await app.register(withProduct('AFFILIATES', linkRotationRoutes), { prefix: `${env.API_PREFIX}/link-rotation` });
   await app.register(linkDomainAdminRoutes, { prefix: `${env.API_PREFIX}/admin/link-domains` });
 
   // ── Workers de sessão: ocupação e aguardando capacidade (super admin) ──────
@@ -149,10 +157,14 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
   await app.register(publicRedirectRoutes, { prefix: `${env.API_PREFIX}/public/redirects` });
 
   // ── Página de Ofertas do tenant (a pública sai pelo hook do rodízio, app.ts) ──
-  await app.register(storefrontRoutes, { prefix: `${env.API_PREFIX}/storefront` });
+  await app.register(withProduct('AFFILIATES', storefrontRoutes), { prefix: `${env.API_PREFIX}/storefront` });
 
   // ── Story de Oferta (arte 1080×1920 para Instagram, só Business) ────────────
-  await app.register(offerStoryRoutes, { prefix: `${env.API_PREFIX}/offer-story` });
+  await app.register(withProduct('AFFILIATES', offerStoryRoutes), { prefix: `${env.API_PREFIX}/offer-story` });
+
+  // ── Saver: painel do tenant (gate SAVER + audiência) e base da plataforma (super admin, fora do gate) ──
+  await app.register(withProduct('SAVER', saverRoutes), { prefix: `${env.API_PREFIX}/saver` });
+  await app.register(saverAdminRoutes, { prefix: `${env.API_PREFIX}/admin/saver` });
 
   // ── Billing webhook (HMAC-authenticated, no authHook) ──────────────────────
   const billingBlock = billingWebhookBlockReason(env);
@@ -165,7 +177,7 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
   }
 
   // ── Extension routes (mixed auth: Bearer + cookie) ────────────────────────
-  await app.register(extensionRoutes, {
+  await app.register(withProduct('AFFILIATES', extensionRoutes), {
     prefix: `${env.API_PREFIX}/extension`,
   });
 

@@ -8,11 +8,13 @@ import { PrismaTenantRepository } from '../../infrastructure/repositories/Prisma
 import { PrismaEntitlementReader } from '../../infrastructure/repositories/PrismaEntitlementReader';
 import { PrismaTenantUsageReader } from '../../infrastructure/repositories/PrismaTenantUsageReader';
 import { SubscriptionPresenter } from '../presenters/SubscriptionPresenter';
+import { createTenantProductRepository } from '../../infrastructure/productAccessContainer';
 
 const getSubscription = new GetTenantSubscriptionUseCase(
   new PrismaTenantRepository(),
   new PrismaEntitlementReader(prisma),
   new PrismaTenantUsageReader(prisma),
+  createTenantProductRepository(),
 );
 
 const nullableString = { type: ['string', 'null'] } as const;
@@ -41,6 +43,22 @@ const subscriptionResponse = {
               used: nullableInt,
               limit: nullableInt,
               enabled: { type: 'boolean' },
+              /** Produto dono da chave; `null` = recurso do tenant (sessões). */
+              product: { type: ['string', 'null'] },
+            },
+          },
+        },
+        /** Um item por produto com acesso (docs/acesso-por-produto.md); o topo segue sendo Afiliados. */
+        products: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              product: { type: 'string' },
+              planSlug: nullableString,
+              tier: { type: ['string', 'null'], enum: ['lite', 'pro', 'max', null] },
+              expiresAt: { ...nullableString, format: 'date-time' },
+              source: { type: ['string', 'null'], enum: ['BILLING', 'ADMIN', null] },
             },
           },
         },

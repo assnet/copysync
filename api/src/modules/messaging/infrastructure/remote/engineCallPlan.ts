@@ -36,6 +36,7 @@ export const ENGINE_CALL_PLAN = {
   listParticipatingGroups: 'rpc',
   getGroupInviteLink: 'rpc',
   getGroupSummary: 'rpc',
+  getGroupMembers: 'rpc',
   fetchProfilePicture: 'rpc',
   checkNumberExists: 'rpc',
   updateChatState: 'rpc',

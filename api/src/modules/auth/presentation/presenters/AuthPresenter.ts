@@ -1,5 +1,4 @@
 import type { LoginCodeChallengeDto, LoginResultDto } from '../../application/dtos/LoginResultDto';
-import type { UserTenantMembership } from '../../../users/domain/contracts/IUserRepository';
 
 export class AuthPresenter {
   /**
@@ -34,12 +33,13 @@ export class AuthPresenter {
     return { accessToken };
   }
 
-  private static toTenantItem(t: UserTenantMembership) {
+  private static toTenantItem(t: LoginResultDto['tenants'][number]) {
     return {
       id: t.tenantId,
       name: t.tenantName,
       slug: t.tenantSlug,
       role: t.role,
+      ...(t.products ? { products: t.products } : {}),
     };
   }
 }

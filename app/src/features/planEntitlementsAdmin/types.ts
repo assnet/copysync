@@ -14,8 +14,13 @@ export type EditablePlanEntitlementValue = boolean | number;
 
 export interface AdminPlanEntitlementRow {
   key: string;
-  type: AdminEntitlementValueType;
+  /** Ausente = chave só de audiência (ex.: `saver`): sem valor por plano, colunas de plano mostram "—". */
+  type?: AdminEntitlementValueType;
   plans: Partial<Record<string, PlanEntitlementValue>>;
+  /** Produto dono da chave (ex.: `AFFILIATES`). */
+  product?: string;
+  /** Planos em que a chave é editável (só os do produto dono). Ausente = todos. */
+  editablePlans?: string[];
   /** Audiência do recurso: true = só super admin vê/usa; null/ausente = não se aplica a esta chave. */
   superAdminOnly?: boolean | null;
 }

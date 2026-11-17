@@ -14,6 +14,10 @@ import { generateInviteToken } from '../../../../shared/utils/generateInviteToke
 import { SlugTakenError } from '../../../../shared/errors/internal/TeamErrors';
 import { env } from '../../../../shared/config/env';
 import { logger } from '../../../../shared/logger/logger';
+import { PrismaTenantProductRepository } from '../../infrastructure/repositories/PrismaTenantProductRepository';
+import { isLegacyProduct, type ProductKey } from '../../domain/services/resolveProductAccess';
+
+const log = logger.child({ module: 'ProvisionTenantUseCase' });
 
 export type ProvisionOrigin = 'SUPER_ADMIN' | 'BILLING_WEBHOOK';
 
@@ -24,6 +28,11 @@ export interface ProvisionTenantInput {
   billingCustomerId?: string;
   planSlug?: string;
   origin: ProvisionOrigin;
+  /**
+   * Produtos contratados na criação (docs/acesso-por-produto.md). Com produto novo: `planSlug` do tenant
+   * fica nulo, a linha do produto nasce ativa e `AFFILIATES` inativa (sem linha `CHAT`). Ausente = como antes.
+   */
+  initialProducts?: { product: ProductKey; planSlug: string }[];
 }
 
 export interface ProvisionTenantOutput {
@@ -45,6 +54,10 @@ export class ProvisionTenantUseCase {
     let existingAccount = false;
     let tenantId = '';
     let userId = '';
+    const newProducts = (input.initialProducts ?? []).filter((p) => !isLegacyProduct(p.product));
+    if (newProducts.length > 0 && env.PRODUCT_ACCESS_GATE_MODE !== 'enforce') {
+      log.error({ mode: env.PRODUCT_ACCESS_GATE_MODE, products: newProducts.map((p) => p.product) }, 'Tenant provisioned with a new product while product gate is not enforce; legacy products stay open');
+    }
 
     try {
       const result = await uow.runInTransaction(async (tx: TransactionClient) => {
@@ -62,7 +75,7 @@ export class ProvisionTenantUseCase {
           slug: input.slug,
           status: 'ACTIVE',
           billingCustomerId: input.billingCustomerId ?? null,
-          planSlug: input.planSlug ?? null,
+          planSlug: newProducts.length > 0 ? null : input.planSlug ?? null,
           lastBillingEventSeq: null,
           suspendedAt: null,
           subscriptionExpiresAt: null,
@@ -70,6 +83,15 @@ export class ProvisionTenantUseCase {
           updatedAt: now,
         });
         await tenantRepo.create(tenant);
+
+        // 1b. Produto novo: linha ativa + Afiliados inativo no mesmo commit (cliente novo nunca teve Afiliados)
+        if (newProducts.length > 0) {
+          const productRepo = new PrismaTenantProductRepository(tx);
+          for (const p of newProducts) {
+            await productRepo.upsert({ tenantId, product: p.product, status: 'ACTIVE', planSlug: p.planSlug, expiresAt: null, source: 'BILLING' });
+          }
+          await productRepo.upsert({ tenantId, product: 'AFFILIATES', status: 'INACTIVE', planSlug: null, expiresAt: null, source: 'BILLING' });
+        }
 
         // 2. Find or create User
         let user = await userRepo.findByEmail(email);

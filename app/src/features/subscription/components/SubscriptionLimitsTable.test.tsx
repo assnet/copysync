@@ -54,6 +54,17 @@ describe('SubscriptionLimitsTable', () => {
     expect(within(r).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
   });
 
+  it('sem contador de uso (used null): sem barra nem "0 de N", só o limite', () => {
+    renderWithTheme(
+      <SubscriptionLimitsTable limits={[L('saver_groups', null, 'count', null, 50)]} channel="whatsapp" onChannelChange={vi.fn()} />,
+    );
+    const r = row('saver_groups');
+    expect(within(r).queryByRole('progressbar')).toBeNull();
+    expect(within(r).queryByText(t.limits.usage(0, 50))).toBeNull();
+    expect(within(r).getByText(t.limits.usageUnavailable)).toBeInTheDocument();
+    expect(within(r).getByText('50')).toBeInTheDocument();
+  });
+
   it('ilimitado sem barra, com uso e "Ilimitado"', () => {
     setup();
     expect(bar('broadcast_groups')).toBeNull();
@@ -75,6 +86,22 @@ describe('SubscriptionLimitsTable', () => {
     expect(within(row('storefront_enabled')).getByText(t.limits.included)).toBeInTheDocument();
     expect(within(row('offer_story_enabled')).getByText(t.limits.availableFrom('MAX'))).toBeInTheDocument();
     expect(row('chave_desconhecida')).toBeNull();
+  });
+
+  it('Saver: uso com contador e, sem plano (limite 0), "A partir do LITE" sem "0 de 0" nem barra', () => {
+    renderWithTheme(
+      <SubscriptionLimitsTable
+        channel="whatsapp"
+        onChannelChange={vi.fn()}
+        limits={[L('saver_groups', null, 'count', 3, 10), L('saver_contacts', null, 'count', 0, 0), L('saver_group_scans_per_day', null, 'daily', 0, 0)]}
+      />,
+    );
+    expect(within(row('saver_groups')).getByText(t.limits.usage(3, 10))).toBeInTheDocument();
+    for (const key of ['saver_contacts', 'saver_group_scans_per_day']) {
+      expect(within(row(key)).getByText(t.limits.availableFrom('LITE'))).toBeInTheDocument();
+      expect(within(row(key)).queryByText(/0 de 0/)).toBeNull();
+      expect(bar(key)).toBeNull();
+    }
   });
 
   it('Tooltip com o hint do limite', async () => {

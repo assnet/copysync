@@ -14,6 +14,7 @@ import {
 import { RegisterCapturedMessageUseCase } from '../application/use-cases/RegisterCapturedMessageUseCase';
 import { ProcessPendingCapturedOffersUseCase } from '../application/use-cases/ProcessPendingCapturedOffersUseCase';
 import { ListCapturedOffersUseCase, RetryCapturedOfferUseCase } from '../application/use-cases/CapturedOffersUseCases';
+import { backgroundProductAccessReader } from '../../tenants/infrastructure/productAccessContainer';
 
 /* Composição do monitoramento de grupos. Tudo lazy: importar não toca banco nem rede. */
 function lazy<T>(make: () => T): () => T {
@@ -38,7 +39,9 @@ export const automationContainer = {
   saveBroadcast:    lazy(() => new SaveBroadcastGroupsUseCase(configDeps())),
   listCaptured:     lazy(() => new ListCapturedOffersUseCase({ captured: captured(), monitors: monitors() })),
   retryCaptured:    lazy(() => new RetryCapturedOfferUseCase({ captured: captured(), monitors: monitors() })),
-  registerMessage:  lazy(() => new RegisterCapturedMessageUseCase({ monitors: monitors(), captured: captured(), entitlements: offersContainer.entitlements() })),
+  registerMessage:  lazy(() => new RegisterCapturedMessageUseCase({
+    monitors: monitors(), captured: captured(), entitlements: offersContainer.entitlements(), products: backgroundProductAccessReader(),
+  })),
   processCaptured:  lazy(() => new ProcessPendingCapturedOffersUseCase({
     captured: captured(), monitors: monitors(), links: new CampaignsTenantLinkBuilder(), queue: new CampaignsOfferQueue(),
     entitlements: offersContainer.entitlements(),

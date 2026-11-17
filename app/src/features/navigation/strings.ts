@@ -12,12 +12,16 @@ export const navigationStrings = {
   soon: 'Em breve',
   /** Título do Tooltip de produto ainda não lançado: "Em breve · tagline". */
   soonWithTagline: (tagline: string) => `Em breve · ${tagline}`,
+  /** Tooltip do cadeado: produto fora do plano do tenant (único destino: a vitrine dele). */
+  lockedTooltip: (product: string) => `${product} não está no seu plano. Veja os planos para liberar.`,
+  /** Nome acessível do produto carregando enquanto a lista de tenants não respondeu. */
+  productsLoading: 'Carregando produtos',
 
   products: {
     affiliates: { label: 'Afiliados', tagline: 'Ofertas, monitoramento e links' },
     crmAutomation: { label: 'CRM & Automação', tagline: 'Atendimento e fluxos automáticos' },
     groupManager: { label: 'Gestor de Grupos', tagline: 'Membros e regras dos seus grupos' },
-    saver: { label: 'Saver', tagline: 'Guarde o que passa nos grupos' },
+    saver: { label: 'Saver', tagline: 'Exporte os contatos dos seus grupos' },
     chipWarmer: { label: 'Aquecedor de Chip', tagline: 'Prepare números novos com segurança' },
     groupFiller: { label: 'Lotar Grupos', tagline: 'Encha seus grupos com novos membros' },
   },
@@ -40,6 +44,7 @@ export const navigationStrings = {
     mainNav: 'Navegação principal',
     openSubmenu: (product: string) => `Abrir submenu de ${product}`,
     productSoon: (product: string) => `${product}: em breve`,
+    productLocked: (product: string) => `${product}: fora do seu plano`,
     activeChildHint: 'Contém a tela atual',
     /** Nome acessível do produto recolhido que contém a tela atual. */
     productWithActiveChild: (product: string) => `${product} · Contém a tela atual`,

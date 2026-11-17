@@ -40,6 +40,11 @@ export interface TenantItem {
   slug: string;
   role: string;
   status: string;
+  /**
+   * Produtos com acesso (`AFFILIATES`, `CHAT`, `SAVER`…). Aditivo: ausente = API antiga,
+   * tratado como legado por `productsOfTenant` (`features/products`).
+   */
+  products?: string[];
 }
 
 export interface SwitchTenantResponse {
@@ -863,6 +868,19 @@ export interface SubscriptionLimitItem {
   limit: number | null;
   /** feature: valor; count/daily: `limit !== 0`. */
   enabled: boolean;
+  /** Produto dono da chave; `null` = recurso da conta (sessões). Ausente (API antiga) = pela chave. */
+  product?: string | null;
+}
+
+/** Produto com acesso (`GET /subscription` → `products[]`). Topo da resposta segue sendo Afiliados. */
+export interface SubscriptionProductItem {
+  product: string;
+  /** Plano interno (`COPYSYNC_PRO`, `SAVER_PRO`); null = sem plano conhecido. */
+  planSlug: string | null;
+  tier: SubscriptionPlanSlug | null;
+  /** ISO; null = sem vencimento conhecido. */
+  expiresAt: string | null;
+  source: 'BILLING' | 'ADMIN' | null;
 }
 
 /** Contrato fixo em `.specs/features/subscription-page/spec.md` §Contrato. */
@@ -876,4 +894,6 @@ export interface SubscriptionResponse {
   /** ISO; null = vencimento desconhecido (não mostrar). */
   expiresAt: string | null;
   limits: SubscriptionLimitItem[];
+  /** Ausente (API antiga) = só Afiliados, dos campos do topo. */
+  products?: SubscriptionProductItem[];
 }

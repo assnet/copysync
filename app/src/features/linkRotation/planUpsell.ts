@@ -1,4 +1,4 @@
-import { AFFILIATE_PLANS_PATH } from '@/features/navigation';
+import { PRODUCT_PLANS_PATH } from '@/features/products/productAccess';
 import { PLAN_CATALOG, type PlanCatalogItem } from '@/features/plans/catalog';
 
 /**
@@ -53,7 +53,7 @@ export const listsAllPlans = (kind: PlanLimitKind): boolean => UPSELL_CONFIG[kin
 /** Destino do CTA de planos para o kind (com `?feature=` quando o kind tem aviso próprio na vitrine). */
 export function upgradePathFor(kind: PlanLimitKind): string {
   const feature = UPSELL_CONFIG[kind]?.feature;
-  return feature ? `${AFFILIATE_PLANS_PATH}?feature=${feature}` : AFFILIATE_PLANS_PATH;
+  return feature ? `${PRODUCT_PLANS_PATH.AFFILIATES}?feature=${feature}` : PRODUCT_PLANS_PATH.AFFILIATES;
 }
 
 /**

@@ -35,6 +35,7 @@ pelo do cliente, reescreve o texto com IA e reposta nos grupos dele, no horário
 | 15 | 🌐 Domínio personalizado | Site de ofertas e Gestor de Links servidos no domínio do cliente (CNAME + TLS automático) | `storefront/custom-domain` | ⏳ |
 | 16 | 🎧 Níveis de suporte | Suporte 24/7, prioritário ou exclusivo conforme o plano; só muda fila/SLA, nada no código além do entitlement | `tenants` (entitlement `support_tier`) | ⏳ |
 | 17 | 🎯 Caçador de Ofertas | Procura sozinho, no catálogo de comissão da Shein, as ofertas com melhor retorno (comissão × chance de venda), refina com ou sem IA e envia só as melhores para 1 grupo, de tempos em tempos | `campaigns/hunter` ([`cacador-de-ofertas.md`](cacador-de-ofertas.md)) | ✅ prévia só super admin (job desligado até o smoke); MAX |
+| 18 | 📇 Saver | Lê os membros dos grupos de WhatsApp do cliente, guarda cada contato uma vez na base da plataforma (vínculo com o grupo, data e hora da extração) e exporta CSV/vCard; tenant só vê contagens | `saver` ([doc](saver.md)) | 🟡 api 0.100.0 · app 0.123.0: API e painel prontos, visível só ao super admin (`SAVER_AUDIENCE`); falta smoke com sessão real e planos na central |
 
 ## Produtos (menu)
 
@@ -46,7 +47,7 @@ Produto novo nasce aqui antes de entrar no menu. Números referem-se à tabela a
 | Afiliados | disponível | 3, 4, 8, 9, 11, 12, 17 |
 | CRM & Automação | em breve | chat/atendimento, fluxos por blocos, assistentes de IA (`/chat` já existe, só super admin; ingestão por entitlement `chat_enabled`, ver `chat-ingestao-por-entitlement.md`) |
 | Gestor de Grupos | em breve | 5, 10, 14 |
-| Saver | em breve | a definir |
+| Saver | disponível só para super admin (audiência) | 18 — planos próprios `SAVER_LITE`/`SAVER_PRO`/`SAVER_MAX` (seção "Planos do Saver"); tagline "Exporte os contatos dos seus grupos" |
 | Aquecedor de Chip | em breve | a definir |
 | Lotar Grupos | em breve | a definir (entrada de novos membros nos grupos do cliente) |
 
@@ -61,7 +62,8 @@ Não são produto nem item de plano: só o super-admin usa, fora do menu dos ten
 | Custos da infraestrutura | Custo mensal por serviço da Render, workspace, sessão e plano, com margem bruta de infraestrutura contra a vitrine (`/admin/costs`); preços editáveis em USD, valores em USD e BRL (`/admin/costs/prices`) | `metrics` ([doc](custos-infraestrutura.md)) | 🟡 P3 api 0.90.0 · app 0.110.0 (P2: custo proporcional ao tempo, projeção, sessão-hora, cotação PTAX; P3: custo por cliente, IA da plataforma, fechamento mensal e histórico) |
 
 Sessão (número conectado, item 1) é do tenant: a mesma sessão serve mais de um produto; limite segue
-por plano, não por produto. Plano, permissões e configurações por produto: etapa futura.
+por plano (união entre os produtos ativos). Cada produto tem plano próprio e acesso próprio por tenant
+([`acesso-por-produto.md`](acesso-por-produto.md)): `AFFILIATES`, `CHAT` (acompanha Afiliados) e `SAVER`.
 
 ## Planos (rascunho 2026-10-13)
 
@@ -150,6 +152,27 @@ Chaves de entitlement sugeridas (snake_case, estáveis):
 Billing: via API central, ver [`arquitetura-central-billing.md`](arquitetura-central-billing.md) (reaproveitar
 API central para checkout/assinatura; tenant guarda `billingCustomerId`).
 
+## Planos do Saver (decisões de 2026-11-10, 2026-11-11 e 2026-11-17)
+
+Conjunto próprio do produto Saver (não soma com Afiliados). Slugs na central: `copysync-saver-{lite|pro|max}-{mensal|anual}`.
+Chave `saver_*` ausente = **zero/desligado** (nunca ilimitado); ilimitado = JSON `null` explícito no preset.
+
+| Limite | 🟢 SAVER_LITE | 🔵 SAVER_PRO | 🟣 SAVER_MAX |
+|---|---|---|---|
+| Preço mensal (por mês) | R$ 29,90 | R$ 39,90 | R$ 49,90 |
+| Preço anual (por mês · cobrado no ano) | R$ 23,90 · R$ 286,80 | R$ 32,90 · R$ 394,80 | R$ 39,90 · R$ 478,80 |
+| Grupos salvos (`saver_groups`) | 10 | 50 | ilimitado |
+| Contatos distintos (`saver_contacts`) | 10.000 | 50.000 | ilimitado |
+| Leituras de grupo em 24 h (`saver_group_scans_per_day`) | 20 | 100 | 500 (proteção do número) |
+| Atualização diária (`saver_auto_refresh_enabled`) | — | ✅ | ✅ |
+| Conexões WhatsApp / Telegram | 1 / 0 | 1 / 0 | 2 / 0 |
+
+Preço é só vitrine (`features/saver/plans/catalog.ts`), nunca no banco. A base de contatos é da plataforma: só o super
+admin consulta; o tenant exporta o arquivo dos próprios grupos. Permissões: `ADMIN` tudo; `OPERATOR` vê e extrai, exporta
+só se um `ADMIN` liberar. Adiados: aviso de uso responsável (D4), retenção/expurgo (D5). **Bloqueio de venda em escala**:
+termos de uso avisando o tenant de que a plataforma guarda os contatos e base legal (LGPD), decisão do dono com apoio
+jurídico. Registro completo: `.specs/features/saver/context.md`.
+
 ## Ordem sugerida de entrega
 
 1. **Credenciais de afiliado** + **Gerador de ofertas** — valor imediato, sem depender de monitoramento.
@@ -160,6 +183,7 @@ API central para checkout/assinatura; tenant guarda `billingCustomerId`).
 5b. **Menção a todos** — depende de `cachedGroupMetadata` com TTL (doc de escala, seção 7).
 6. **Telegram** — segundo engine atrás de `MessagingEngine`.
 7. **Planos e limites** — pode entrar cedo como tabela, com enforcement crescendo por feature.
+8. **Saver** — depois do acesso por produto (`product-access`); produto próprio com planos `SAVER_*`.
 
 ## Copy de referência (tela de login e marketing)
 

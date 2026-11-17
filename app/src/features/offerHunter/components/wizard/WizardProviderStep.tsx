@@ -4,7 +4,8 @@ import { alpha, useTheme } from '@mui/material/styles';
 import { useNavigate } from 'react-router-dom';
 import { Check, CircleCheck, KeyRound, Lock, ShieldAlert, type LucideIcon } from 'lucide-react';
 import { AppIcon } from '@/components';
-import { AFFILIATE_CREDENTIALS_PATH, AFFILIATE_PLANS_PATH } from '@/features/navigation/model';
+import { AFFILIATE_CREDENTIALS_PATH } from '@/features/navigation/model';
+import { PRODUCT_PLANS_PATH } from '@/features/products/productAccess';
 import { MarketplaceLogo } from '@/features/settings/components/MarketplaceLogo';
 import type { HuntProvider, HuntProviderState } from '../../types';
 import { huntBrandName, offerHunterStrings as t } from '../../strings';
@@ -83,7 +84,7 @@ export function WizardProviderStep({
   }
 
   const act = (status: HuntProviderStatus, target: HuntProvider) => {
-    if (status === 'NO_PLAN') navigate(AFFILIATE_PLANS_PATH);
+    if (status === 'NO_PLAN') navigate(PRODUCT_PLANS_PATH.AFFILIATES);
     else if (status === 'NO_ACCOUNT' || status === 'ACCOUNT_REJECTED') navigate(AFFILIATE_CREDENTIALS_PATH);
     else if (status === 'NO_RISK') onOpenRisk?.(target);
   };

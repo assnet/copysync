@@ -9,13 +9,16 @@ import { subscriptionService } from '@/services/subscription.service';
 import { SubscriptionPlanCard } from '@/features/subscription/components/SubscriptionPlanCard';
 import { SubscriptionLimitsTable } from '@/features/subscription/components/SubscriptionLimitsTable';
 import { subscriptionStrings, type SubscriptionChannel } from '@/features/subscription/strings';
+import { limitsForProduct, productLabel, subscriptionChannels, subscriptionProductCards } from '@/features/subscription/productLimits';
 import type { SubscriptionResponse } from '@/types/api.types';
 
 const t = subscriptionStrings;
 const isChannel = (v: unknown): v is SubscriptionChannel => v === 'whatsapp' || v === 'telegram';
 
 /**
- * Configurações > Assinatura (SUB-10, D3): plano, situação e uso × limite. Dado do servidor é
+ * Configurações > Assinatura (SUB-10, D3): um cartão de plano + limites por produto com acesso
+ * (docs/acesso-por-produto.md); sessões, recurso da conta, ficam no primeiro. Tenant legado = um só cartão
+ * de Afiliados, igual a antes. Telegram só aparece se algum produto com acesso o usa (`subscriptionChannels`). Dado do servidor é
  * recarregado a cada visita (nunca persistido); só a aba de canal fica em `usePersistedState` (`tab`).
  */
 export function SubscriptionPage() {
@@ -76,8 +79,28 @@ export function SubscriptionPage() {
       ) : (
         <Stack spacing={3}>
           {redirected && <Alert severity="info">{t.pending.redirected}</Alert>}
-          <SubscriptionPlanCard subscription={data} canSubscribe={canSubscribe} />
-          <SubscriptionLimitsTable limits={data.limits} channel={channel} onChannelChange={setChannel} />
+          {subscriptionProductCards(data).map((card, i, all) => {
+            const multi = all.length > 1;
+            const channels = subscriptionChannels(all);
+            return (
+              <Stack spacing={3} key={card.product} data-product={card.product}>
+                <SubscriptionPlanCard
+                  subscription={data}
+                  canSubscribe={canSubscribe}
+                  product={card}
+                  multiProduct={multi}
+                  showPending={i === 0}
+                />
+                <SubscriptionLimitsTable
+                  limits={limitsForProduct(data.limits, card.product, i === 0)}
+                  channel={channel}
+                  onChannelChange={setChannel}
+                  title={multi ? t.limits.productTitle(productLabel(card.product)) : undefined}
+                  channels={channels}
+                />
+              </Stack>
+            );
+          })}
         </Stack>
       )}
     </Box>

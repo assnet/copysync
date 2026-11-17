@@ -40,7 +40,7 @@ describe('engineCallPlan', () => {
     expect(byKind('local')).toEqual(['createSession']);
     expect(byKind('command')).toEqual(['disconnectSession', 'logoutSession', 'sendMediaMessage', 'sendTextMessage']);
     expect(byKind('open')).toEqual(['connectSession', 'reconnectSession', 'requestLoginCode', 'requestPairingCode']);
-    expect(byKind('rpc')).toHaveLength(17);
+    expect(byKind('rpc')).toHaveLength(18);
     for (const m of ['createOutboundMessageId', 'submitLoginCode', 'submitLoginPassword', 'getSessionStatus'] as const) {
       expect(engineCallKind(m)).toBe('rpc');
     }

@@ -3,7 +3,7 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 import { PrismaOfferDispatchRepository } from './PrismaOfferDispatchRepository';
 
 /** SQL do claim sem banco (o comportamento real está no `.int.test.ts`). */
-function captureClaimSql() {
+function captureClaimSql(affiliatesGateEnforced?: boolean) {
   const sqls: string[] = [];
   const tx = {
     $executeRaw: vi.fn(async () => 0),
@@ -14,7 +14,7 @@ function captureClaimSql() {
     }),
   };
   const prisma = { $transaction: async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx) } as unknown as PrismaClient;
-  return { repo: new PrismaOfferDispatchRepository(prisma, 'worker-test'), sqls };
+  return { repo: new PrismaOfferDispatchRepository(prisma, 'worker-test', affiliatesGateEnforced), sqls };
 }
 
 describe('PrismaOfferDispatchRepository.claimDue', () => {
@@ -23,6 +23,16 @@ describe('PrismaOfferDispatchRepository.claimDue', () => {
     expect(await repo.claimDue(new Date('2026-11-02T12:00:00Z'), 10)).toEqual([]);
     const sql = sqls.join('\n');
     expect(sql).toContain(`"sendingPausedAt" IS NULL AND "status" = 'ACTIVE'::"TenantStatus"`);
+  });
+
+  it('acesso por produto: só em enforce exclui tenant com Afiliados inativo (fica na fila)', async () => {
+    const at = new Date('2026-11-02T12:00:00Z');
+    const off = captureClaimSql();
+    await off.repo.claimDue(at, 10);
+    expect(off.sqls.join('\n')).not.toContain('tenant_products');
+    const on = captureClaimSql(true);
+    await on.repo.claimDue(at, 10);
+    expect(on.sqls.join('\n')).toContain(`AND d."tenantId" NOT IN (SELECT tp."tenantId" FROM "tenant_products" tp WHERE tp."product" = 'AFFILIATES' AND tp."status" <> 'ACTIVE')`);
   });
 
   it('monitoramento usa weekdaysMask; gerador sem scheduledAt usa a janela do tenant', async () => {

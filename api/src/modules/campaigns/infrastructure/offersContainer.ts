@@ -51,6 +51,7 @@ import { BuildTenantAffiliateLinkUseCase } from '../application/use-cases/BuildT
 import { EnqueueOfferUseCase } from '../application/use-cases/EnqueueOfferUseCase';
 import { ListBroadcastGroupsUseCase } from '../application/use-cases/ListBroadcastGroupsUseCase';
 import { RemoveBroadcastGroupUseCase } from '../application/use-cases/RemoveBroadcastGroupUseCase';
+import { backgroundProductAccessEnforced } from '../../tenants/infrastructure/productAccessContainer';
 
 /*
  * Composição do gerador de ofertas: rotas e worker usam as MESMAS instâncias. Tudo lazy —
@@ -62,7 +63,7 @@ function lazy<T>(make: () => T): () => T {
 }
 
 const offers       = lazy(() => new PrismaOfferRepository(prisma));
-const dispatches   = lazy(() => new PrismaOfferDispatchRepository(prisma, currentWorkerId()));
+const dispatches   = lazy(() => new PrismaOfferDispatchRepository(prisma, currentWorkerId(), backgroundProductAccessEnforced()));
 const configs      = lazy(() => new PrismaOfferGeneratorConfigRepository(prisma));
 const entitlements = lazy(() => new PrismaEntitlementReader(prisma));
 const groupUsage   = lazy(() => new PrismaBroadcastGroupUsageReader(prisma));

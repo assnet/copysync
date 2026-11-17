@@ -34,7 +34,12 @@ import { EXTENSION_REMOVED_PATH } from '@/features/extension/config';
 import { REDIRECT_PUBLIC_PATH } from '@/features/redirectLinks/strings';
 import { SuperAdminRoute } from '@/features/ai/components/SuperAdminRoute';
 import { OfferGeneratorPage } from '@/pages/offers/OfferGeneratorPage';
-import { MembersPage, MirroringPage } from '@/pages/modules';
+import { MirroringPage } from '@/pages/modules';
+import { SaverRoute } from '@/features/saver/components/SaverRoute';
+import { SaverGroupsPage } from '@/features/saver/pages/SaverGroupsPage';
+import { SaverSettingsPage } from '@/features/saver/pages/SaverSettingsPage';
+import { SaverPlansPage } from '@/features/saver/pages/SaverPlansPage';
+import { PlatformContactsPage } from '@/features/saverAdmin/PlatformContactsPage';
 import { StorefrontPage } from '@/features/storefront/StorefrontPage';
 import { OfferStoryPage } from '@/features/offerStory/OfferStoryPage';
 import { TutorialsPage } from '@/features/tutorials/TutorialsPage';
@@ -45,7 +50,8 @@ import { MonitoringPage } from '@/pages/monitoring/MonitoringPage';
 import { LinkRotationPage } from '@/pages/link-rotation/LinkRotationPage';
 import { BroadcastGroupsPage } from '@/pages/broadcast-groups/BroadcastGroupsPage';
 import { PlansPage } from '@/pages/plans/PlansPage';
-import { AFFILIATE_CREDENTIALS_PATH, AFFILIATE_PLANS_PATH, AFFILIATE_TUTORIALS_PATH } from '@/features/navigation';
+import { AFFILIATE_CREDENTIALS_PATH, AFFILIATE_TUTORIALS_PATH, SAVER_ADMIN_PATH } from '@/features/navigation';
+import { PRODUCT_PLANS_PATH, ProductHomeRedirect, ProductRoute, SAVER_HOME_PATH, SAVER_PLANS_PATH } from '@/features/products';
 
 function LegacyAffiliateCredentialsRedirect() {
   const { search } = useLocation();
@@ -54,7 +60,7 @@ function LegacyAffiliateCredentialsRedirect() {
 
 function LegacyPlansRedirect() {
   const { search } = useLocation();
-  return <Navigate to={`${AFFILIATE_PLANS_PATH}${search}`} replace />;
+  return <Navigate to={`${PRODUCT_PLANS_PATH.AFFILIATES}${search}`} replace />;
 }
 
 function LegacySessionsRedirect() {
@@ -84,26 +90,39 @@ export function AppRoutes() {
       {/* Privadas — dentro do layout autenticado */}
       <Route element={<PrivateRoute />}>
         <Route element={<AppLayout />}>
-          <Route index element={<Navigate to="/dashboard" replace />} />
+          {/* Início por produto (resolveHomePath): com Afiliados = /dashboard; senão Assinatura. */}
+          <Route index element={<ProductHomeRedirect />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           {/* Caminho antigo: sessões agora ficam em Configurações; mantém query (?create=1&returnTo=…) */}
           <Route path="/sessions" element={<LegacySessionsRedirect />} />
-          <Route path="/offers" element={<OfferGeneratorPage />} />
-          <Route path="/monitoring" element={<MonitoringPage />} />
-          <Route path="/link-rotation" element={<LinkRotationPage />} />
-          <Route path="/broadcast-groups" element={<BroadcastGroupsPage />} />
           <Route path="/mirroring" element={<MirroringPage />} />
-          <Route path="/members" element={<MembersPage />} />
-          <Route path="/storefront" element={<StorefrontPage />} />
-          <Route path="/offer-story" element={<OfferStoryPage />} />
-          {/* Caçador de Ofertas: visibilidade pela API (`/offer-hunts/access`), não por papel fixo */}
-          <Route element={<OfferHunterRoute />}>
-            <Route path="/offer-hunter" element={<OfferHunterPage />} />
-            <Route path="/offer-hunter/:huntId" element={<OfferHunterDetailPage />} />
+          {/* Antigo "Gestor de membros": virou o Saver */}
+          <Route path="/members" element={<Navigate to={SAVER_HOME_PATH} replace />} />
+          {/* Saver: audiência pela API (`/saver/access`); vitrine fora do guard de produto (senão laço) */}
+          <Route element={<SaverRoute />}>
+            <Route element={<ProductRoute product="SAVER" />}>
+              <Route path={SAVER_HOME_PATH} element={<SaverGroupsPage />} />
+              <Route path={`${SAVER_HOME_PATH}/settings`} element={<SaverSettingsPage />} />
+            </Route>
+            <Route path={SAVER_PLANS_PATH} element={<SaverPlansPage />} />
           </Route>
-          <Route path={AFFILIATE_CREDENTIALS_PATH} element={<AffiliateCredentialsPage />} />
-          <Route path={AFFILIATE_TUTORIALS_PATH} element={<TutorialsPage />} />
-          <Route path={AFFILIATE_PLANS_PATH} element={<PlansPage />} />
+          {/* Afiliados: sem o produto → vitrine dele. A vitrine fica fora do guard (senão laço). */}
+          <Route element={<ProductRoute product="AFFILIATES" />}>
+            <Route path="/offers" element={<OfferGeneratorPage />} />
+            <Route path="/monitoring" element={<MonitoringPage />} />
+            <Route path="/link-rotation" element={<LinkRotationPage />} />
+            <Route path="/broadcast-groups" element={<BroadcastGroupsPage />} />
+            <Route path="/storefront" element={<StorefrontPage />} />
+            <Route path="/offer-story" element={<OfferStoryPage />} />
+            {/* Caçador de Ofertas: visibilidade pela API (`/offer-hunts/access`), não por papel fixo */}
+            <Route element={<OfferHunterRoute />}>
+              <Route path="/offer-hunter" element={<OfferHunterPage />} />
+              <Route path="/offer-hunter/:huntId" element={<OfferHunterDetailPage />} />
+            </Route>
+            <Route path={AFFILIATE_CREDENTIALS_PATH} element={<AffiliateCredentialsPage />} />
+            <Route path={AFFILIATE_TUTORIALS_PATH} element={<TutorialsPage />} />
+          </Route>
+          <Route path={PRODUCT_PLANS_PATH.AFFILIATES} element={<PlansPage />} />
           {/* Caminho antigo: planos agora são por produto; mantém query (?feature=…) */}
           <Route path="/plans" element={<LegacyPlansRedirect />} />
           <Route path="/settings" element={<SettingsLayout />}>
@@ -113,8 +132,11 @@ export function AppRoutes() {
             <Route path="account/password" element={<ChangePasswordPage />} />
             {/* Caminho antigo: credenciais agora ficam em Afiliados; mantém query (?returnTo=…) */}
             <Route path="affiliate-credentials" element={<LegacyAffiliateCredentialsRedirect />} />
-            <Route path="ai" element={<AiSettingsPage />} />
-            <Route path="extension" element={<ExtensionSettingsPage />} />
+            {/* Consomem rotas de Afiliados na API (PROD-29) */}
+            <Route element={<ProductRoute product="AFFILIATES" />}>
+              <Route path="ai" element={<AiSettingsPage />} />
+              <Route path="extension" element={<ExtensionSettingsPage />} />
+            </Route>
             <Route path="subscription" element={<SubscriptionPage />} />
           </Route>
           <Route element={<SuperAdminRoute />}>
@@ -133,12 +155,13 @@ export function AppRoutes() {
             <Route path="/admin/costs/history" element={<AdminCostsPage />} />
             <Route path="/admin/redirect-links" element={<AdminRedirectLinksPage />} />
             <Route path="/admin/plan-entitlements" element={<AdminPlanEntitlementsPage />} />
+            <Route path={SAVER_ADMIN_PATH} element={<PlatformContactsPage />} />
           </Route>
         </Route>
       </Route>
 
-      {/* Fallback */}
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      {/* Fallback: o índice resolve o início por produto (sem login, PrivateRoute leva ao login) */}
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

@@ -124,6 +124,21 @@ describe('AdminPlanEntitlementsPage', () => {
     expect(screen.queryByText(t.confirm.titleNumber(NUM_LABEL, 'MAX'))).not.toBeInTheDocument();
   });
 
+  it('plano de outro produto: célula "—" sem Switch nem campo (claro)', async () => {
+    const owned = ['COPYSYNC_LITE', 'COPYSYNC_PRO', 'COPYSYNC_MAX'];
+    const saver = { SAVER_LITE: null, SAVER_PRO: null, SAVER_MAX: null };
+    vi.spyOn(adminPlanEntitlementsService, 'list').mockResolvedValue({
+      plans: [...owned, 'SAVER_LITE', 'SAVER_PRO', 'SAVER_MAX'],
+      entitlements: list().entitlements.map((r) => ({ ...r, plans: { ...r.plans, ...saver }, product: 'AFFILIATES', editablePlans: owned })),
+    });
+    renderWithTheme(<AdminPlanEntitlementsPage />, 'light');
+    expect(await screen.findByRole('checkbox', { name: t.switchAria('Afiliado Shein', 'MAX') })).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: t.switchAria('Afiliado Shein', 'Saver MAX') })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: t.number.aria(NUM_LABEL, 'Saver PRO') })).not.toBeInTheDocument();
+    expect(screen.getByLabelText(t.otherProduct.aria('Afiliado Shein', 'Saver LITE'))).toHaveTextContent('—');
+    expect(screen.getByTestId(`cell-${NUM}:SAVER_MAX`)).toHaveTextContent('—');
+  });
+
   it('falha ao carregar mostra erro com tentar de novo', async () => {
     vi.spyOn(adminPlanEntitlementsService, 'list').mockRejectedValue(new Error('x'));
     renderWithTheme(<AdminPlanEntitlementsPage />);
@@ -156,6 +171,19 @@ describe('AdminPlanEntitlementsPage', () => {
     expect(setAudience).toHaveBeenCalledWith(HUNTER, false);
     expect(await screen.findByText(t.audience.saved('Caçador de Ofertas', false))).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole('checkbox', { name: t.audience.aria('Caçador de Ofertas') })).not.toBeChecked());
+  });
+
+  it('linha "Saver" só de audiência: "—" nas colunas de plano, Switch só em "Só super admin"', async () => {
+    vi.spyOn(adminPlanEntitlementsService, 'list').mockResolvedValue({
+      plans: ['COPYSYNC_LITE', 'COPYSYNC_PRO', 'COPYSYNC_MAX'],
+      entitlements: [{ key: 'saver', plans: {}, superAdminOnly: true }],
+    });
+    renderWithTheme(<AdminPlanEntitlementsPage />, 'dark');
+    expect(await screen.findByText('Saver')).toBeInTheDocument();
+    for (const p of ['LITE', 'PRO', 'MAX']) expect(screen.queryByRole('checkbox', { name: t.switchAria('Saver', p) })).toBeNull();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.getAllByLabelText(t.audience.noneAria)).toHaveLength(3);
+    expect(screen.getByRole('checkbox', { name: t.audience.aria('Saver') })).toBeChecked();
   });
 
   it('serviço da audiência chama PUT /:key/audience', async () => {

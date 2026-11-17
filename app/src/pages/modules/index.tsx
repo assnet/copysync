@@ -14,14 +14,3 @@ export function MirroringPage() {
     />
   );
 }
-
-export function MembersPage() {
-  return (
-    <UpcomingModulePage
-      icon={MODULE_ICONS.members}
-      title="Gestor de membros"
-      subtitle="Participantes dos seus grupos em um só lugar"
-      description="Veja quem entra e sai, encontre membros repetidos entre grupos e organize listas para campanhas."
-    />
-  );
-}

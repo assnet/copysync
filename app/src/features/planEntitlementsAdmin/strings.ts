@@ -9,7 +9,10 @@ export const planEntitlementsAdminStrings = {
   columns: { feature: 'Recurso', audience: 'Só super admin' },
 
   /** Nome de exibição do plano (o mesmo da vitrine em `features/plans/catalog.ts`). */
-  planName: { COPYSYNC_LITE: 'LITE', COPYSYNC_PRO: 'PRO', COPYSYNC_MAX: 'MAX' } as Record<string, string>,
+  planName: {
+    COPYSYNC_LITE: 'LITE', COPYSYNC_PRO: 'PRO', COPYSYNC_MAX: 'MAX',
+    SAVER_LITE: 'Saver LITE', SAVER_PRO: 'Saver PRO', SAVER_MAX: 'Saver MAX',
+  } as Record<string, string>,
 
   /** Rótulo e descrição curta por chave; chave sem texto mostra o próprio nome técnico. */
   features: {
@@ -21,11 +24,22 @@ export const planEntitlementsAdminStrings = {
       label: 'Caçador de Ofertas',
       description: 'Buscar ofertas automaticamente no catálogo da Shein.',
     },
+    saver: {
+      label: 'Saver',
+      description: 'Produto Saver no menu. Quem tem o plano só vê quando a opção "Só super admin" está desligada.',
+    },
     offer_hunter_finds_per_day: {
       label: 'Achados por dia do Caçador',
       description: 'Quantas ofertas o Caçador pode encontrar por dia em cada cliente.',
     },
   } as Record<string, { label: string; description: string }>,
+
+  /** Célula de plano de outro produto: a chave não se aplica (sem controle). */
+  otherProduct: {
+    text: '—',
+    aria: (feature: string, plan: string) => `${feature} não se aplica ao plano ${plan}`,
+    tooltip: 'Recurso de outro produto: não se aplica a este plano.',
+  },
 
   notPresetHint: 'Sem valor gravado neste plano: conta como desligado.',
   notPresetHintNumber: 'Sem valor gravado neste plano: conta como 0.',

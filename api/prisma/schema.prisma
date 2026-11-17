@@ -83,6 +83,11 @@ enum AuditAction {
   WORKER_SCALE_REQUESTED
   INFRA_COST_SETTINGS_CHANGED
   STOREFRONT_DELETED
+  TENANT_PRODUCT_CHANGED
+  SAVER_EXPORTED
+  SAVER_PERMISSION_CHANGED
+  SAVER_PLATFORM_VIEWED
+  SAVER_PLATFORM_EXPORTED
 }
 
 enum ExtensionInstallationStatus {
@@ -200,6 +205,14 @@ model Tenant {
   offerHuntFinds             OfferHuntFind[]
   offerHunterSettings        OfferHunterSettings?
   offerHuntAiSuggestions     OfferHuntAiSuggestion[]
+  tenantProducts             TenantProduct[]
+  saverConfig                SaverConfig?
+  saverGroups                SaverGroup[]
+  saverGroupMemberships      SaverGroupMembership[]
+  saverExportGrants          SaverExportGrant[]
+  saverExtractions           SaverExtraction[]
+  saverExtractionItems       SaverExtractionItem[]
+  saverSessionStates         SaverSessionState[]
 
   @@index([slug])
   @@map("tenants")
@@ -223,7 +236,7 @@ model User {
   userTenants                UserTenant[]
   refreshTokens              RefreshToken[]
   auditLogs                  AuditLog[]
-  assignedConversations      ChatConversation[]          @relation("AssignedConversations")
+  assignedConversations      ChatConversation[]            @relation("AssignedConversations")
   createdOffers              Offer[]
   extensionSessions          ExtensionSession[]
   extensionInstallations     ExtensionInstallation[]
@@ -250,6 +263,8 @@ model UserTenant {
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  saverExportGrants SaverExportGrant[]
 
   @@unique([userId, tenantId])
   @@index([tenantId])
@@ -408,6 +423,10 @@ model Session {
   groupMonitorConfigs          GroupMonitorConfig[]
   linkRotations                LinkRotation[]
   offerHunterSettings          OfferHunterSettings[]
+  saverGroups                  SaverGroup[]
+  saverExtractions             SaverExtraction[]
+  saverExtractionItems         SaverExtractionItem[]
+  saverSessionState            SaverSessionState?
 
   @@index([tenantId])
   @@index([tenantId, status])
@@ -1437,14 +1456,14 @@ model OfferHuntFind {
 
 /// Destino do caçador: 1 grupo por tenant (sessão + conversa). Sessão/conversa apagada vira null.
 model OfferHunterSettings {
-  tenantId       String   @id
+  tenantId       String    @id
   sessionId      String?
   conversationId String?
   /// Teto diário de reenvios: início do dia (fuso do produto) do contador e reenvios nesse dia.
   resendDayStart DateTime?
-  resendsInDay   Int      @default(0)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  resendsInDay   Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   session      Session?          @relation(fields: [sessionId], references: [id], onDelete: SetNull)
@@ -1482,6 +1501,26 @@ model TenantEntitlement {
 
   @@unique([tenantId, key])
   @@map("tenant_entitlements")
+}
+
+// Acesso por produto (docs/acesso-por-produto.md). Sem linha: produto legado (AFFILIATES/CHAT) = ativo,
+// produto novo = inativo. Sem backfill. `product`/`status`/`source` são String para produto novo não exigir ALTER TYPE.
+model TenantProduct {
+  id            String    @id @default(cuid())
+  tenantId      String
+  product       String // ProductKey
+  status        String // ACTIVE | INACTIVE
+  planSlug      String? // plano do produto; null em produto legado desligado
+  expiresAt     DateTime?
+  source        String // BILLING | ADMIN
+  inactiveSince DateTime? // preenchido ao virar INACTIVE, limpo ao voltar
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, product])
+  @@map("tenant_products")
 }
 
 model PlanEntitlementPreset {
@@ -2088,4 +2127,168 @@ model RedirectLink {
   updatedAt DateTime @updatedAt
 
   @@map("redirect_links")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SAVER  (extração de contatos de grupos — .specs/features/saver/design.md §3)
+// `saver_contacts` é a base da PLATAFORMA (sem tenantId, de propósito): só caminhos `Platform*`
+// (super admin) e a gravação da extração a leem. Caminho do tenant passa por `saver_group_memberships`
+// filtrando `tenantId`. Sessão excluída é lógica (`sessions.deletedAt`): as FKs para `sessions` nunca
+// disparam na prática; o job cancela os itens. Índice único parcial de item pendente por grupo
+// (`saver_extraction_items_pending_group_key`) existe só na migration (Prisma 5 não declara parcial).
+// ─────────────────────────────────────────────────────────────────────────────
+
+model SaverConfig {
+  tenantId               String   @id
+  namePrefix             String?
+  excludeAdminsByDefault Boolean  @default(false)
+  defaultFormat          String   @default("CSV") // CSV | VCARD
+  autoRefresh            Boolean  @default(false)
+  updatedAt              DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("saver_configs")
+}
+
+model SaverGroup {
+  id             String    @id @default(cuid())
+  tenantId       String
+  sessionId      String? // última sessão que leu
+  groupJid       String
+  name           String
+  memberCount    Int       @default(0)
+  phoneCount     Int       @default(0)
+  lidOnlyCount   Int       @default(0)
+  lastScannedAt  DateTime?
+  lastScanStatus String? // SaverExtractionItemStatus
+  createdAt      DateTime  @default(now())
+  removedAt      DateTime? // remoção lógica: some para o tenant, libera o limite; vínculos ficam
+
+  tenant      Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  session     Session?               @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  memberships SaverGroupMembership[]
+  items       SaverExtractionItem[]
+
+  @@unique([tenantId, groupJid])
+  @@index([sessionId])
+  @@map("saver_groups")
+}
+
+/// Base da plataforma: 1 linha por pessoa, sem tenantId. NULLs não colidem nos únicos.
+model SaverContact {
+  id          String   @id @default(cuid())
+  phone       String?  @unique // só dígitos com DDI
+  lid         String?  @unique // sem sufixo
+  name        String? // melhor nome conhecido; só o super admin lê
+  firstSeenAt DateTime
+  lastSeenAt  DateTime
+
+  memberships SaverGroupMembership[]
+
+  @@index([lastSeenAt])
+  @@map("saver_contacts")
+}
+
+/// Vínculo contato × grupo do tenant que extraiu. `name` = nome lido NESTE grupo (o que o tenant exporta).
+model SaverGroupMembership {
+  id               String    @id @default(cuid())
+  tenantId         String
+  groupId          String
+  contactId        String
+  name             String?
+  isAdmin          Boolean   @default(false)
+  firstExtractedAt DateTime
+  lastExtractedAt  DateTime
+  lastExtractionId String?
+  leftAt           DateTime?
+
+  tenant  Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  group   SaverGroup   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  contact SaverContact @relation(fields: [contactId], references: [id], onDelete: Restrict)
+
+  @@unique([groupId, contactId])
+  @@index([contactId])
+  @@index([tenantId, contactId])
+  @@map("saver_group_memberships")
+}
+
+/// Liberação individual de exportar (ADMIN → OPERATOR do mesmo tenant). FK composta: sair do tenant apaga.
+model SaverExportGrant {
+  id              String   @id @default(cuid())
+  tenantId        String
+  userId          String
+  grantedByUserId String?
+  createdAt       DateTime @default(now())
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userTenant UserTenant @relation(fields: [userId, tenantId], references: [userId, tenantId], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+  @@map("saver_export_grants")
+}
+
+model SaverExtraction {
+  id                String    @id @default(cuid())
+  tenantId          String
+  sessionId         String?
+  requestedByUserId String?
+  trigger           String // MANUAL | AUTO
+  status            String // QUEUED | RUNNING | DONE | PARTIAL | FAILED | CANCELLED
+  totalGroups       Int       @default(0)
+  doneGroups        Int       @default(0)
+  failedGroups      Int       @default(0)
+  membersFound      Int       @default(0)
+  newContacts       Int       @default(0)
+  createdAt         DateTime  @default(now())
+  finishedAt        DateTime?
+
+  tenant  Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  session Session?              @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  items   SaverExtractionItem[]
+
+  @@index([tenantId, createdAt])
+  @@index([status])
+  @@map("saver_extractions")
+}
+
+model SaverExtractionItem {
+  id            String    @id @default(cuid())
+  extractionId  String
+  tenantId      String
+  sessionId     String
+  groupId       String
+  status        String // QUEUED | RUNNING | DONE | FAILED | CANCELLED
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime  @default(now())
+  lockedUntil   DateTime?
+  errorCode     String?
+  createdAt     DateTime  @default(now())
+  finishedAt    DateTime?
+
+  extraction SaverExtraction @relation(fields: [extractionId], references: [id], onDelete: Cascade)
+  tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  session    Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  group      SaverGroup      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, status, nextAttemptAt])
+  @@index([extractionId, status])
+  @@index([tenantId, createdAt])
+  @@index([groupId])
+  @@map("saver_extraction_items")
+}
+
+/// Ritmo do Saver por sessão (sem estado operacional só em memória).
+model SaverSessionState {
+  sessionId   String    @id
+  tenantId    String
+  nextScanAt  DateTime
+  pausedUntil DateTime?
+  pauseReason String?
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("saver_session_states")
 }

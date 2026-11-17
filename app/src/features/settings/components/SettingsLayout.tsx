@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   Box, Grid, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Typography,
@@ -11,20 +12,24 @@ import { AppIcon } from '@/components';
 import { subscriptionStrings } from '@/features/subscription/strings';
 import { settingsStrings } from '../strings';
 import { extensionStrings } from '@/features/extension/strings';
+import { hasProduct, useProductAccess, type ProductKey } from '@/features/products';
 
 const t = settingsStrings.layout;
 
-const SETTINGS_NAV = [
+/** `product`: item só aparece com o produto (lista carregada); a rota tem o mesmo guard (PROD-29). */
+const SETTINGS_NAV: { label: string; path: string; icon: ReactNode; product?: ProductKey }[] = [
   { label: t.navSessions, path: '/settings/sessions', icon: <PhoneIphoneOutlinedIcon fontSize="small" /> },
   { label: subscriptionStrings.menuLabel, path: '/settings/subscription', icon: <AppIcon icon={CreditCard} size="md" /> },
   { label: t.navAccount, path: '/settings/account', icon: <PersonOutlineIcon fontSize="small" /> },
-  { label: t.navAi, path: '/settings/ai', icon: <PsychologyOutlinedIcon fontSize="small" /> },
-  { label: extensionStrings.nav.title, path: '/settings/extension', icon: <ExtensionOutlinedIcon fontSize="small" /> },
+  { label: t.navAi, path: '/settings/ai', icon: <PsychologyOutlinedIcon fontSize="small" />, product: 'AFFILIATES' },
+  { label: extensionStrings.nav.title, path: '/settings/extension', icon: <ExtensionOutlinedIcon fontSize="small" />, product: 'AFFILIATES' },
 ];
 
 export function SettingsLayout() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { loaded, products } = useProductAccess();
+  const items = SETTINGS_NAV.filter((item) => !item.product || (loaded && hasProduct(products, item.product)));
 
   return (
     <Box>
@@ -35,7 +40,7 @@ export function SettingsLayout() {
       <Grid container spacing={3}>
         <Grid item xs={12} md={3}>
           <List disablePadding>
-            {SETTINGS_NAV.map((item) => {
+            {items.map((item) => {
               const active = location.pathname.startsWith(item.path);
               return (
                 <ListItem key={item.path} disablePadding sx={{ mb: 0.5 }}>

@@ -60,6 +60,17 @@ export const ENTITLEMENT_KEYS = {
    * Exceção à regra acima: ausente/`null` vale 0, nunca ilimitado (no caçador, sempre `?? 0`).
    */
   OFFER_HUNTER_FINDS_PER_DAY: 'offer_hunter_finds_per_day',
+  /**
+   * Saver (produto próprio). Exceção à regra acima: no Saver ausente = 0/desligado e só `null`
+   * explícito é ilimitado (`saver/domain/services/saverLimits.ts`). LITE 10, PRO 50, MAX ilimitado.
+   */
+  SAVER_GROUPS: 'saver_groups',
+  /** Saver: leituras de grupo em 24 h (proteção do número). LITE 20, PRO 100, MAX 500. Ausente = 0. */
+  SAVER_GROUP_SCANS_PER_DAY: 'saver_group_scans_per_day',
+  /** Saver: contatos distintos vinculados ao tenant. LITE 10.000, PRO 50.000, MAX ilimitado. Ausente = 0. */
+  SAVER_CONTACTS: 'saver_contacts',
+  /** Saver: atualização diária automática dos grupos (PRO e MAX). Só `true` libera; ausente = desligado. */
+  SAVER_AUTO_REFRESH_ENABLED: 'saver_auto_refresh_enabled',
 } as const;
 
 export type EntitlementKey = (typeof ENTITLEMENT_KEYS)[keyof typeof ENTITLEMENT_KEYS];

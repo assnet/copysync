@@ -288,6 +288,14 @@ const envSchema = z.object({
     z.string().url().optional(),
   ),
 
+  // ── Acesso por produto (docs/acesso-por-produto.md) ───────────────
+  // Governa só os produtos legados (Afiliados/Chat): off (padrão) = não consulta; log = consulta e
+  // registra would_block; enforce = 403 PRODUCT_UNAVAILABLE. Produto novo é sempre exigido.
+  PRODUCT_ACCESS_GATE_MODE: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim().toLowerCase() || undefined : v),
+    z.enum(['off', 'log', 'enforce']).default('off'),
+  ),
+
   // ── Proteção do login (docs/seguranca-login.md) ───────────────────
   // off = sem guarda; monitor (padrão) = grava + bloqueio 429; enforce = + Turnstile + código por e-mail.
   LOGIN_GUARD_MODE: z.preprocess(
@@ -351,6 +359,13 @@ const envSchema = z.object({
     .string()
     .transform((v) => v === 'true')
     .default('false'),
+  // ── Saver: extração de membros de grupo em segundo plano (.specs/features/saver, T14) ──
+  // Desligado por padrão: `.env` aponta para produção (escreve no banco e lê grupos no WhatsApp).
+  // `true` só na Render (worker/all) ou com banco local.
+  SAVER_EXTRACTION_WORKER_ENABLED: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
   // ── Métricas de recursos (.specs/features/monitoring-queue-isolation, entrega E) ──
   // Sampler de 60 s só em worker/all. Desligado por padrão; liga só na Render após RENDER_API_KEY.
   OPS_METRICS_SAMPLER_ENABLED: z
@@ -384,6 +399,10 @@ const envSchema = z.object({
   // Só VALOR INICIAL da audiência (chave nunca gravada): quem decide é a flag "Só super admin" em
   // /admin/plan-entitlements (`platform_settings.feature_audience`). Não ler em código novo.
   OFFER_HUNTER_AUDIENCE: z.enum(['super_admin', 'entitled']).default('super_admin'),
+  // ── Saver (.specs/features/saver, SAVER-47) ─────────────────────────────
+  // Só VALOR INICIAL da audiência do produto (chave `saver` nunca gravada); depois manda a flag
+  // "Só super admin" em /admin/plan-entitlements. Não ler em código novo.
+  SAVER_AUDIENCE: z.enum(['super_admin', 'entitled']).default('super_admin'),
   // Job que roda as caçadas agendadas, só em worker/all. Desligado por padrão; liga só na Render.
   OFFER_HUNTER_JOB_ENABLED: z
     .string()

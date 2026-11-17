@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const realLocation = window.location;
 let location: { pathname: string; href: string };
 
-function rejectWith(status: number, code: string): AxiosAdapter {
+function rejectWith(status: number, code: string, meta?: Record<string, unknown>): AxiosAdapter {
   return (config: InternalAxiosRequestConfig) =>
     Promise.reject(
       new AxiosError('fail', 'ERR', config, null, {
@@ -12,7 +12,7 @@ function rejectWith(status: number, code: string): AxiosAdapter {
         statusText: '',
         headers: {},
         config,
-        data: { error: { code, message: 'Tenant is suspended or cancelled' } },
+        data: { error: { code, message: 'Tenant is suspended or cancelled', ...(meta ? { meta } : {}) } },
       }),
     );
 }
@@ -65,6 +65,42 @@ describe('apiClient — tenant suspenso', () => {
     const api = await load(rejectWith(403, 'FORBIDDEN'));
     await expect(api.get('/x')).rejects.toBeTruthy();
     expect(location.href).toBe('http://localhost/dashboard');
+  });
+});
+
+describe('apiClient — produto fora do plano (403 PRODUCT_UNAVAILABLE)', () => {
+  it('leva à vitrine do produto, sem limpar a sessão', async () => {
+    location.pathname = '/offers';
+    const api = await load(rejectWith(403, 'PRODUCT_UNAVAILABLE', { product: 'AFFILIATES' }));
+    await expect(api.get('/offers')).rejects.toMatchObject({ code: 'PRODUCT_UNAVAILABLE', status: 403 });
+    expect(location.href).toBe('/affiliates/plans');
+    expect(localStorage.getItem('accessToken')).toBe('tok');
+  });
+
+  it('Saver vai para a vitrine dele', async () => {
+    const api = await load(rejectWith(403, 'PRODUCT_UNAVAILABLE', { product: 'SAVER' }));
+    await expect(api.get('/saver/overview')).rejects.toBeTruthy();
+    expect(location.href).toBe('/saver/plans');
+  });
+
+  it('produto desconhecido vai para a assinatura', async () => {
+    const api = await load(rejectWith(403, 'PRODUCT_UNAVAILABLE', { product: 'FUTURO' }));
+    await expect(api.get('/x')).rejects.toBeTruthy();
+    expect(location.href).toBe('/settings/subscription');
+  });
+
+  it('não redireciona estando na própria vitrine (sem laço) e só uma vez por carga', async () => {
+    location.pathname = '/affiliates/plans';
+    location.href = 'http://localhost/affiliates/plans';
+    const api = await load(rejectWith(403, 'PRODUCT_UNAVAILABLE', { product: 'CHAT' }));
+    await expect(api.get('/x')).rejects.toBeTruthy();
+    expect(location.href).toBe('http://localhost/affiliates/plans');
+    location.pathname = '/offers';
+    await expect(api.get('/y')).rejects.toBeTruthy();
+    expect(location.href).toBe('/affiliates/plans');
+    location.href = 'marcado';
+    await expect(api.get('/z')).rejects.toBeTruthy();
+    expect(location.href).toBe('marcado');
   });
 });
 

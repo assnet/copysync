@@ -36,3 +36,13 @@ export class RateLimitedError extends AppError {
     super('RATE_LIMITED', 'Too many requests, try again later', 429, { retryAfterSeconds });
   }
 }
+
+/**
+ * Gravação concorrente perdeu a corrida (unicidade, fusão ou trava entre transações). Retentável:
+ * quem chama repete depois, sem tratar como falha do recurso.
+ */
+export class ConcurrentWriteConflictError extends AppError {
+  constructor(resource: string) {
+    super('CONCURRENT_WRITE_CONFLICT', `Concurrent write conflict: ${resource}`, 409);
+  }
+}

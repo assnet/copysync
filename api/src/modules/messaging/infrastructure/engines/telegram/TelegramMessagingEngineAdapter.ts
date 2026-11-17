@@ -45,6 +45,7 @@ import type {
   SendMessageResult,
   SendReactionInput,
   MarkMessagesReadInput,
+  GroupMemberInfo,
   GroupParticipantInfo,
   ParticipatingGroupInfo,
   UpdateChatStateInput,
@@ -1016,6 +1017,11 @@ export class TelegramMessagingEngineAdapter implements IMessagingEngine, ISessio
       throw translateTelegramSendError(err);
     }
     throw new EngineOperationUnsupportedError(ENGINE, 'getGroupSummary:not-a-group');
+  }
+
+  /** Leitura de membros para a base de contatos só existe no WhatsApp. */
+  async getGroupMembers(_sessionId: string, _groupJid: string): Promise<GroupMemberInfo[]> {
+    throw new EngineOperationUnsupportedError(ENGINE, 'getGroupMembers');
   }
 
   async getGroupParticipants(sessionId: string, groupJid: string): Promise<GroupParticipantInfo[]> {

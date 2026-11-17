@@ -36,6 +36,7 @@ const output = (over: Partial<GetTenantSubscriptionOutput> = {}): GetTenantSubsc
     { key: 'offer_generations_per_day', channel: null, kind: 'daily', used: 3, limit: null, enabled: true },
     { key: 'storefront_enabled', channel: null, kind: 'feature', used: null, limit: null, enabled: false },
   ],
+  products: [{ product: 'AFFILIATES', planSlug: 'COPYSYNC_PRO', expiresAt: new Date('2026-12-01T03:00:00.000Z'), source: null }],
   ...over,
 } as GetTenantSubscriptionOutput);
 
@@ -78,6 +79,7 @@ describe('GET /subscription', () => {
         suspendedAt: null,
         expiresAt: '2026-12-01T03:00:00.000Z',
         limits: output().limits,
+        products: [{ product: 'AFFILIATES', planSlug: 'COPYSYNC_PRO', tier: 'pro', expiresAt: '2026-12-01T03:00:00.000Z', source: null }],
       },
     });
   });
@@ -117,5 +119,19 @@ describe('GET /subscription', () => {
     expect(res.statusCode).toBe(403);
     expect(res.json()).toMatchObject({ error: { code: 'FORBIDDEN' } });
     expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('products: Saver com tier pela vitrine; plano desconhecido vira null', async () => {
+    db.members.set('u1:t1', { role: 'ADMIN', tenant: { status: 'ACTIVE' } });
+    vi.spyOn(GetTenantSubscriptionUseCase.prototype, 'execute').mockResolvedValue(output({
+      products: [
+        { product: 'SAVER', planSlug: 'SAVER_MAX', expiresAt: null, source: 'ADMIN' },
+        { product: 'AFFILIATES', planSlug: 'PLANO_ANTIGO', expiresAt: null, source: null },
+      ],
+    }));
+    expect((await get(member)).json().data.products).toEqual([
+      { product: 'SAVER', planSlug: 'SAVER_MAX', tier: 'max', expiresAt: null, source: 'ADMIN' },
+      { product: 'AFFILIATES', planSlug: null, tier: null, expiresAt: null, source: null },
+    ]);
   });
 });

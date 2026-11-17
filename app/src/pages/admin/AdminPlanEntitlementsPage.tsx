@@ -25,7 +25,7 @@ function parseDraft(draft: string, min: number, max: number): number | null {
 }
 
 /**
- * Super admin: recursos da allowlist por plano. Booleano: Switch, cada troca confirma e grava.
+ * Super admin: recursos da allowlist por plano. Plano de outro produto mostra "—" sem controle. Booleano: Switch, cada troca confirma e grava.
  * Numérico: campo com salvar explícito + confirmação; o texto digitado e não salvo fica em
  * `usePersistedState` (aba) e some ao gravar.
  */
@@ -123,7 +123,27 @@ export function AdminPlanEntitlementsPage() {
                           const plan = planName(p);
                           const missing = raw === null || raw === undefined;
                           const type = row.type;
-                          if (type?.kind === 'integer') {
+                          // Linha só de audiência (produto, não preset): nada a gravar por plano
+                          if (!type) {
+                            return (
+                              <TableCell key={p} align="center">
+                                <Typography component="span" variant="body2" color="text.secondary" aria-label={t.audience.noneAria}>{t.audience.none}</Typography>
+                              </TableCell>
+                            );
+                          }
+                          // Chave de outro produto (ex.: Shein em plano Saver): sem controle, a API recusa
+                          if (row.editablePlans && !row.editablePlans.includes(p)) {
+                            return (
+                              <TableCell key={p} align="center" data-testid={`cell-${cellId(row.key, p)}`}>
+                                <Tooltip title={t.otherProduct.tooltip} arrow describeChild enterTouchDelay={0}>
+                                  <Typography component="span" variant="body2" color="text.disabled" tabIndex={0} aria-label={t.otherProduct.aria(label, plan)}>
+                                    {t.otherProduct.text}
+                                  </Typography>
+                                </Tooltip>
+                              </TableCell>
+                            );
+                          }
+                          if (type.kind === 'integer') {
                             const id = cellId(row.key, p);
                             const current = typeof raw === 'number' ? raw : null;
                             const draft = drafts[id] ?? (current === null ? '' : String(current));

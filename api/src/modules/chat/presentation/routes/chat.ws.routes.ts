@@ -10,6 +10,7 @@ import { logger } from '../../../../shared/logger/logger';
  * Endpoint: GET /api/chat/ws?token=<jwt>&tenantId=<id>
  *
  * - Auth is handled by sseAuthHook (reads token/tenantId from query string)
+ * - Produto CHAT: `withProduct('CHAT', chatWsRoutes)` em routes.ts põe o gate após o sseAuthHook (abertura)
  * - On connect: subscribes the socket to the tenant channel
  * - On close:   unsubscribes and cleans up
  * - Keepalive:  sends a JSON ping every 25 s to prevent proxy timeouts

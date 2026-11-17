@@ -1,8 +1,8 @@
 import type { IAuditLogRepository } from '../../../../shared/audit/IAuditLogRepository';
 import { ValidationError } from '../../../../shared/errors/internal/ResourceErrors';
-import { adminEntitlementTypeOf, isAdminEditableEntitlementKey, isValidAdminEntitlementValue } from '../../domain/adminEditableEntitlements';
+import { adminEntitlementProductOf, adminEntitlementTypeOf, isAdminEditableEntitlementKey, isValidAdminEntitlementValue } from '../../domain/adminEditableEntitlements';
 import type { IPlanEntitlementPresetRepository } from '../../domain/contracts/IPlanEntitlementPresetRepository';
-import { PLAN_SLUGS, type PlanSlug } from '../../domain/planPresets';
+import { isKnownPlanSlug, productOfPlanSlug, type AnyPlanSlug } from '../../domain/planCatalog';
 
 export interface SetPlanEntitlementCommand {
   planSlug: string;
@@ -14,7 +14,7 @@ export interface SetPlanEntitlementCommand {
 }
 
 export interface SetPlanEntitlementResult {
-  planSlug: PlanSlug;
+  planSlug: AnyPlanSlug;
   key: string;
   value: boolean | number;
   tenantsUpdated: number;
@@ -26,7 +26,7 @@ export type PlanEntitlementTransaction = <T>(
 ) => Promise<T>;
 
 /**
- * Super admin altera uma chave da allowlist num plano (SHEIN-15/16; inteiro na faixa para chave numérica): grava o preset, propaga
+ * Super admin altera uma chave da allowlist num plano do produto dono da chave (SHEIN-15/16; inteiro na faixa para chave numérica): grava o preset, propaga
  * para todos os tenants do plano e audita (`PLAN_ENTITLEMENT_CHANGED`), tudo na mesma transação.
  * Não chama a central: eventos de billing seguintes leem o preset novo.
  */
@@ -35,14 +35,19 @@ export class SetPlanEntitlementUseCase {
 
   async execute(cmd: SetPlanEntitlementCommand): Promise<SetPlanEntitlementResult> {
     if (!isAdminEditableEntitlementKey(cmd.key)) throw new ValidationError('Entitlement key is not editable', { key: cmd.key });
-    if (!(PLAN_SLUGS as readonly string[]).includes(cmd.planSlug)) {
+    if (!isKnownPlanSlug(cmd.planSlug)) {
       throw new ValidationError('Unknown plan', { planSlug: cmd.planSlug });
+    }
+    // Chave só nos planos do produto dono (Shein/Caçador = Afiliados): plano de outro produto = 400
+    const product = adminEntitlementProductOf(cmd.key);
+    if (productOfPlanSlug(cmd.planSlug) !== product) {
+      throw new ValidationError('Entitlement key does not belong to the plan product', { key: cmd.key, planSlug: cmd.planSlug, product });
     }
     const type = adminEntitlementTypeOf(cmd.key);
     if (!isValidAdminEntitlementValue(type, cmd.value)) {
       throw new ValidationError('Invalid entitlement value', { key: cmd.key, type });
     }
-    const planSlug = cmd.planSlug as PlanSlug;
+    const planSlug: AnyPlanSlug = cmd.planSlug;
     const { key, value } = cmd;
     return this.transaction(async ({ presets, audit }) => {
       const { tenantsUpdated } = await presets.setForPlan({ planSlug, key, value });

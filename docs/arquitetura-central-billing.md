@@ -158,6 +158,20 @@ permissões de uma assinatura na central (gatilho → `subscription.updated`) mu
 - **Não fazer**: nível por outra regra em um só dos caminhos; derrubar o evento por permissão desconhecida; gravar permissão
   no tenant (só o nível resultante).
 
+### Produto por plano (2026-11-17)
+
+Cada assinatura é de um produto ([`acesso-por-produto.md`](acesso-por-produto.md)). `resolvePlan(planSlug, permissions)`
+(`tenants/domain/planCatalog.ts`) devolve `{ product, planSlug }`: Afiliados como acima (`COPYSYNC_*`); Saver pela permissão
+`SAVER_LITE|PRO|MAX` (a mais alta vence) ou pelos slugs `copysync-saver-{lite|pro|max}-{mensal|anual}` (período não muda
+limites). Permissão de produto conhecido (`ALL_PLAN_SLUGS`) não gera o `warn` de permissão desconhecida.
+
+- Afiliados segue em `Tenant.planSlug`/`subscriptionExpiresAt`; produto novo grava só a linha em `tenant_products` e o preset
+  sem `whatsapp_sessions`/`telegram_sessions` (o merge das compartilhadas é o único escritor delas).
+- Corte e reconciliação decidem por produto (`pickGrantingByProduct`); plano desconhecido que dá acesso conta para Afiliados;
+  linha `source=ADMIN` nunca é desativada. Cliente novo só-Saver nasce com `planSlug` nulo e `AFFILIATES` inativo.
+- Central: cadastrar os planos `copysync-saver-*` com a permissão `SAVER_{TIER}` no snapshot (ação do dono). Até lá o Saver
+  sai por concessão manual (`PUT /admin/tenants/:tenantId/products/SAVER`).
+
 Link "defina sua senha": token gerado **pelo CopySync** (`UserInvite.tokenHash`, design §10); a central só envia o e-mail com o
 link pronto. O CopySync monta `data: { name, link, expiresAt }` (`ProvisionTenantUseCase.ts`); o `HubEmailSender` mapeia para
 `{ template: 'SET_PASSWORD', to, locale, vars: { name, setPasswordUrl, expiresInHours } }` (seção abaixo).

@@ -1,5 +1,6 @@
 import axios, { AxiosHeaders, type AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
 import { recordServerTime } from './serverClock';
+import { SUBSCRIPTION_PATH, isProductKey, plansPathFor } from '@/features/products/productAccess';
 
 type ApiErrorPayload = {
   error?: { message?: string; code?: string; meta?: { field?: string } & Record<string, unknown> };
@@ -45,14 +46,25 @@ function clearSessionAndRedirect(): void {
 // Tenant suspenso/cancelado: a tela de assinatura é a única que a API ainda serve
 // (SUB-02). Redireciona uma vez por carga de página, nunca a partir da própria tela,
 // e sem limpar a sessão: o usuário precisa continuar logado para regularizar.
-export const SUBSCRIPTION_PATH = '/settings/subscription';
+export { SUBSCRIPTION_PATH };
 let suspendedRedirectStarted = false;
+let productRedirectStarted = false;
 
 function redirectToSubscription(): void {
   if (suspendedRedirectStarted) return;
   if (window.location.pathname.startsWith(SUBSCRIPTION_PATH)) return;
   suspendedRedirectStarted = true;
   window.location.href = `${SUBSCRIPTION_PATH}?suspended=1`;
+}
+
+// Rota de produto fora do plano (403 PRODUCT_UNAVAILABLE): vitrine do produto dono da rota.
+// Uma vez por carga de página e nunca a partir da própria vitrine (sem laço).
+function redirectToProductPlans(product: unknown): void {
+  if (productRedirectStarted) return;
+  const target = isProductKey(product) ? plansPathFor(product) : SUBSCRIPTION_PATH;
+  if (window.location.pathname.startsWith(target)) return;
+  productRedirectStarted = true;
+  window.location.href = target;
 }
 
 function getErrorMessage(error: AxiosError<ApiErrorPayload>): string {
@@ -235,6 +247,10 @@ apiClient.interceptors.response.use(
 
     if (error.response?.data?.error?.code === 'TENANT_SUSPENDED') {
       redirectToSubscription();
+    }
+
+    if (error.response?.status === 403 && error.response.data?.error?.code === 'PRODUCT_UNAVAILABLE') {
+      redirectToProductPlans(error.response.data.error.meta?.product);
     }
 
     // Tenant inválido (banco trocado, ID antigo no localStorage) → sessão morta

@@ -93,6 +93,17 @@ describe('RenderPublicStorefrontUseCase', () => {
     expect(await render()).toEqual({ status: 503, html: '<unavailable>', styleHash: 'sha256-unavailable', cacheable: false });
   });
 
+  it('produto Afiliados inativo → 503 página genérica; ativo segue', async () => {
+    const page = publish(true);
+    fakes.offers.seed({ status: PUBLISHED });
+    const asked: string[] = [];
+    const products = { has: async (tenantId: string, product: string) => { asked.push(`${tenantId}/${product}`); return false; } };
+    expect(await new RenderPublicStorefrontUseCase(deps, products).render(address))
+      .toEqual({ status: 503, html: '<unavailable>', styleHash: 'sha256-unavailable', cacheable: false });
+    expect(asked).toEqual([`${page.tenantId}/AFFILIATES`]);
+    expect((await new RenderPublicStorefrontUseCase(deps, { has: async () => true }).render(address))?.status).toBe(200);
+  });
+
   it('pausada pelo plano → 200 pausada', async () => {
     publish(true, { status: StorefrontStatus.PAUSED_BY_PLAN });
     fakes.offers.seed({ status: PUBLISHED });

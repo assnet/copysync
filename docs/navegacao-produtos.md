@@ -29,7 +29,7 @@ Conta, IA e Extensão. Assinatura é do tenant (um `planSlug`), por isso fica aq
 | | | Planos | `/affiliates/plans` | |
 | CRM & Automação | `soon` | Chat (só super admin) | `/chat` | |
 | Gestor de Grupos | `soon` | — | — | |
-| Saver | `soon` | — | — | |
+| Saver | `available` só com audiência (`/saver/access`); sem o produto = cadeado | Grupos, Configurações, Planos; Base de contatos (admin, super admin) | `/saver`, `/saver/settings`, `/saver/plans`, `/admin/saver` | |
 | Aquecedor de Chip | `soon` | — | — | |
 | Lotar Grupos | `soon` | — | — | |
 
@@ -38,6 +38,12 @@ Produto `soon` com filho visível para o usuário atual (CRM para super admin) a
 Caçador de Ofertas: visibilidade vem da API (`GET /offer-hunts/access` → `useOfferHunterAccess` →
 `buildNavigation({ offerHunterVisible })`, mesma consulta do guard `OfferHunterRoute`). Selo MAX; item com selo que não cabe
 numa linha quebra em 2 (`ProductNavItem`), nunca encurtar o nome. Sem `superAdminOnly`: abrir ao público é desligar "Só super admin" em `/admin/plan-entitlements` ([`cacador-de-ofertas.md`](cacador-de-ofertas.md)).
+
+**Produto travado** ([`acesso-por-produto.md`](acesso-por-produto.md)): `buildNavigation({ products })` recebe os produtos
+do tenant (`useProductAccess`, vindo de `GET /tenants`). Produto `available` sem acesso ganha `locked: true` e fica só com
+o item Planos; o acordeão mostra cadeado (`AppIcon` + `Tooltip`). Rotas do produto ficam sob `<ProductRoute product=…>`
+(sem acesso → vitrine do produto). Enquanto os tenants não carregam, menu e guards mostram carregamento. Saver: quando
+as telas existirem, o item segue `saverVisible` (`GET /saver/access`, audiência "Só super admin", [`saver.md`](saver.md)).
 
 ## Onde fica cada coisa
 
@@ -116,18 +122,18 @@ persistida: vem da URL. Ver seção "Persistência" de [`padrao-ui-painel.md`](p
 
 ## Decisão: sessão é do tenant, não do produto
 
-Registrada em 2026-11-03, sem implementação ainda:
+Registrada em 2026-11-03; plano por produto implementado em 2026-11-17 ([`acesso-por-produto.md`](acesso-por-produto.md)):
 
-- Cada produto terá **plano, permissões e configurações próprios**, definidos numa etapa futura.
+- Cada produto tem **plano próprio**; permissões e configurações por produto seguem por produto (ex.: Saver).
 - **Sessão (número de WhatsApp conectado) pertence ao tenant.** A mesma sessão pode servir mais
   de um produto (número usado no Afiliados também atende CRM & Automação) e o usuário pode
   dedicar uma sessão por produto, se preferir. Limites de sessão seguem por tenant/plano
-  (`whatsapp_sessions`), nunca por produto.
+  (`whatsapp_sessions`), nunca por produto: com vários produtos vale a união (maior limite entre os planos ativos).
 - Consequência para o menu: Configurações → Sessões fica fora dos produtos, no bloco inferior.
 
 ## Próximos passos
 
-- Visibilidade de produto por entitlement (`NavProduct.status` ganha origem no tenant, não em constante).
+- Itens do Saver (`/saver`, `/saver/settings`, `/saver/plans`) e `/admin/saver` (tasks T20–T26 do Saver).
 - Permissões por produto e por usuário do tenant; produto sem permissão some do menu.
 - Configurações por produto (ex.: `/affiliates/settings`) como filho do próprio produto.
 

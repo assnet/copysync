@@ -5,6 +5,7 @@ import {
   Divider, Chip, Menu, MenuItem, Tooltip, alpha, useTheme,
   Snackbar,
   Alert,
+  CircularProgress,
 } from '@mui/material';
 import {
   ArrowLeftRight, ChevronLeft, ChevronRight, LogOut, Menu as MenuIcon,
@@ -23,8 +24,10 @@ import {
   type NavLink, type NavigationModel, type NavigationState,
 } from '@/features/navigation';
 import { useOfferHunterAccess } from '@/features/offerHunter/hooks/useOfferHunterAccess';
+import { useSaverAccess } from '@/features/saver/hooks/useSaverAccess';
 import { NavLinkItem } from './nav/NavLinkItem';
 import { ProductNavItem } from './nav/ProductNavItem';
+import { useProductAccess } from '@/features/products';
 import { CollapsedProductNavItem } from './nav/CollapsedProductNavItem';
 import { navSectionTitleSx } from './nav/navStyles';
 
@@ -56,11 +59,13 @@ interface DrawerContentProps {
   /** Drawer que renderiza: ids de `aria-controls` ficam únicos entre desktop e mobile. */
   idPrefix: 'desktop' | 'mobile';
   collapsed?: boolean;
+  /** `false` enquanto `GET /tenants` não respondeu: produtos mostram carregamento, sem cadeado presumido. */
+  productsLoaded: boolean;
   onToggleCollapse?: () => void;
   onClose?: () => void;
 }
 
-function DrawerContent({ model, nav, idPrefix, collapsed = false, onToggleCollapse, onClose }: DrawerContentProps) {
+function DrawerContent({ model, nav, idPrefix, collapsed = false, productsLoaded, onToggleCollapse, onClose }: DrawerContentProps) {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const theme = useTheme();
@@ -177,7 +182,12 @@ function DrawerContent({ model, nav, idPrefix, collapsed = false, onToggleCollap
 
         {sectionTitle(navigationStrings.sections.products)}
         <List disablePadding sx={{ px: 1 }}>
-          {model.products.map((product) => {
+          {!productsLoaded && (
+            <Box role="status" aria-label={navigationStrings.productsLoading} sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+              <CircularProgress size={20} />
+            </Box>
+          )}
+          {productsLoaded && model.products.map((product) => {
             const childKey = product.key === activeProductKey ? activeLinkKey : undefined;
             return collapsed ? (
               <CollapsedProductNavItem
@@ -325,9 +335,13 @@ export function AppLayout() {
   const isSuperAdmin = Boolean(user?.isSuperAdmin);
   // Caçador de Ofertas: visibilidade pela API (mesma consulta do guard `OfferHunterRoute`)
   const { visible: offerHunterVisible } = useOfferHunterAccess();
+  // Saver: audiência pela API (mesma consulta do guard `SaverRoute`); falso some com o produto inteiro.
+  const { visible: saverVisible } = useSaverAccess();
+  // Produtos do tenant ativo: produto fora do plano aparece com cadeado (só a vitrine).
+  const productAccess = useProductAccess();
   const navModel = useMemo(
-    () => buildNavigation({ isSuperAdmin, offerHunterVisible }),
-    [isSuperAdmin, offerHunterVisible],
+    () => buildNavigation({ isSuperAdmin, offerHunterVisible, saverVisible, products: productAccess.products }),
+    [isSuperAdmin, offerHunterVisible, saverVisible, productAccess.products],
   );
   const nav = useNavigationState(navModel, location.pathname);
 
@@ -408,7 +422,7 @@ export function AppLayout() {
         }}
         open
       >
-        <DrawerContent model={navModel} nav={nav} idPrefix="desktop" collapsed={sidebarCollapsed} onToggleCollapse={handleToggleSidebar} />
+        <DrawerContent model={navModel} nav={nav} idPrefix="desktop" collapsed={sidebarCollapsed} productsLoaded={productAccess.loaded} onToggleCollapse={handleToggleSidebar} />
       </Drawer>
 
       {/* Drawer mobile */}
@@ -420,7 +434,7 @@ export function AppLayout() {
         ModalProps={{ keepMounted: true }}
         sx={{ display: { xs: 'block', sm: 'none' }, '& .MuiDrawer-paper': { width: DRAWER_WIDTH_MOBILE } }}
       >
-        <DrawerContent model={navModel} nav={nav} idPrefix="mobile" onClose={() => setMobileOpen(false)} />
+        <DrawerContent model={navModel} nav={nav} idPrefix="mobile" productsLoaded={productAccess.loaded} onClose={() => setMobileOpen(false)} />
       </Drawer>
 
       {/* Conteúdo principal */}
@@ -485,7 +499,8 @@ export function AppLayout() {
                       try {
                         await switchTenant(t.id);
                         // Recarga completa: páginas, SSE/WebSocket e rascunhos são por tenant.
-                        window.location.assign('/dashboard');
+                        // `/` resolve o início pelos produtos do tenant novo.
+                        window.location.assign('/');
                       } catch {
                         setSwitchError(true);
                       }

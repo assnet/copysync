@@ -1,4 +1,5 @@
 import type { UserTenantMembership } from '../../../users/domain/contracts/IUserRepository';
+import type { ProductKey } from '../../../tenants/domain/services/resolveProductAccess';
 
 export interface LoginUserDto {
   id: string;
@@ -15,7 +16,8 @@ export interface LoginResultDto {
   userId: string;
   isSuperAdmin: boolean;
   user: LoginUserDto;
-  tenants: UserTenantMembership[];
+  /** `products` presente quando a leitura de produtos respondeu (opcional no login). */
+  tenants: (UserTenantMembership & { products?: ProductKey[] })[];
   refreshToken: string;
   refreshTokenExpiresAt: Date;
 }

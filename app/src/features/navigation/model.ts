@@ -1,7 +1,8 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   BadgePercent, Bookmark, Send, Bot, Crown, EyeOff, Flame, Globe, LayoutDashboard, Link2,
-  GraduationCap, KeyRound, MessagesSquare, Receipt, SlidersHorizontal, Server, Settings, Signpost, Tag, UserRoundPlus, Users, Workflow,
+  Contact, GraduationCap, KeyRound, MessagesSquare, Receipt, SlidersHorizontal, Server, Settings, Settings2, Signpost, Tag, UserRoundPlus,
+  Users, UsersRound, Workflow,
 } from 'lucide-react';
 import { MODULE_ICONS } from './icons';
 import { plansStrings } from '@/features/plans/strings';
@@ -13,7 +14,9 @@ import { workersAdminStrings } from '@/features/workersAdmin/strings';
 import { infraCostsStrings } from '@/features/infraCosts/strings';
 import { redirectLinksStrings } from '@/features/redirectLinks/strings';
 import { tutorialsStrings } from '@/features/tutorials/strings';
+import { saverStrings } from '@/features/saver/strings';
 import { navigationStrings as s } from './strings';
+import { AFFILIATE_PLANS_PATH, SAVER_HOME_PATH, SAVER_PLANS_PATH, type ProductKey } from '@/features/products/productAccess';
 
 /**
  * Modelo puro do menu lateral: só dados (ícone como componente Lucide, nunca JSX).
@@ -46,6 +49,8 @@ export interface NavProduct {
   tagline: string;
   icon: LucideIcon;
   status: NavProductStatus;
+  /** `available` fora do plano do tenant: cadeado e um único filho, a vitrine do produto. */
+  locked?: boolean;
   children: NavLink[];
 }
 
@@ -63,6 +68,13 @@ export interface BuildNavigationInput {
    * Os filhos de Afiliados não passam por `onlyAllowed`; por isso entrada própria e não `superAdminOnly`.
    */
   offerHunterVisible: boolean;
+  /**
+   * Saver no menu (SAVER-47): vem de `GET /saver/access` (`useSaverAccess`). `false` some com o produto
+   * inteiro; `true` sem o produto no plano = cadeado (só a vitrine).
+   */
+  saverVisible: boolean;
+  /** Produtos do tenant ativo (`useProductAccess`). Produto do menu fora da lista fica travado. */
+  products: readonly ProductKey[];
 }
 
 export interface ActiveEntry {
@@ -82,15 +94,31 @@ export function linkMatches(link: NavLink, pathname: string): boolean {
 
 /** Credenciais de afiliado moram no produto Afiliados (antes em Configurações; rota antiga redireciona). */
 export const AFFILIATE_CREDENTIALS_PATH = '/affiliates/credentials';
-/** Planos são por produto: a vitrine atual é a do Afiliados (rota antiga `/plans` redireciona). */
 /** Central de tutoriais em vídeo (docs/tutoriais.md). */
 export const AFFILIATE_TUTORIALS_PATH = '/affiliates/tutorials';
-export const AFFILIATE_PLANS_PATH = '/affiliates/plans';
+/** Planos são por produto: a vitrine de Afiliados mora em `features/products` (fonte única). */
+export { AFFILIATE_PLANS_PATH };
 
-export function buildNavigation({ isSuperAdmin, offerHunterVisible }: BuildNavigationInput): NavigationModel {
+/**
+ * Item do menu → produto que dá acesso. CRM fica fora: hoje só o super admin vê o Chat e ele
+ * passa pelo gate da API.
+ */
+const NAV_PRODUCT_ACCESS: Readonly<Record<string, ProductKey>> = { affiliates: 'AFFILIATES', saver: 'SAVER' };
+
+/** Base de contatos da plataforma (Saver, só super admin). */
+export const SAVER_ADMIN_PATH = '/admin/saver';
+
+/** Produto sem acesso: mantém só o item da vitrine de planos (único destino do cadeado). */
+function lockIfMissing(product: NavProduct, products: readonly ProductKey[], plansKey: string): NavProduct {
+  const required = NAV_PRODUCT_ACCESS[product.key];
+  if (!required || product.status !== 'available' || products.includes(required)) return product;
+  return { ...product, locked: true, children: product.children.filter((c) => c.key === plansKey) };
+}
+
+export function buildNavigation({ isSuperAdmin, offerHunterVisible, saverVisible, products }: BuildNavigationInput): NavigationModel {
   const onlyAllowed = (links: NavLink[]) => links.filter((l) => !l.superAdminOnly || isSuperAdmin);
 
-  const affiliates: NavProduct = {
+  const affiliatesFull: NavProduct = {
     key: 'affiliates',
     label: s.products.affiliates.label,
     tagline: s.products.affiliates.tagline,
@@ -113,6 +141,8 @@ export function buildNavigation({ isSuperAdmin, offerHunterVisible }: BuildNavig
     ],
   };
 
+  const affiliates = lockIfMissing(affiliatesFull, products, 'affiliate-plans');
+
   // Chat ainda não é produto dos planos: só super admin vê (a rota também redireciona os demais).
   const crmChildren = onlyAllowed([
     { key: 'chat', label: s.links.chat, path: '/chat', icon: MessagesSquare, superAdminOnly: true },
@@ -130,13 +160,26 @@ export function buildNavigation({ isSuperAdmin, offerHunterVisible }: BuildNavig
     key, label: copy.label, tagline: copy.tagline, icon, status: 'soon', children: [],
   });
 
+  const saver: NavProduct = lockIfMissing({
+    key: 'saver',
+    label: s.products.saver.label,
+    tagline: s.products.saver.tagline,
+    icon: Bookmark,
+    status: 'available',
+    children: [
+      { key: 'saver-groups', label: saverStrings.menu.groups, path: SAVER_HOME_PATH, icon: UsersRound },
+      { key: 'saver-settings', label: saverStrings.menu.settings, path: `${SAVER_HOME_PATH}/settings`, icon: Settings2 },
+      { key: 'saver-plans', label: saverStrings.menu.plans, path: SAVER_PLANS_PATH, icon: Crown },
+    ],
+  }, products, 'saver-plans');
+
   return {
     top: [{ key: 'dashboard', label: s.dashboard, path: '/dashboard', icon: LayoutDashboard }],
     products: [
       affiliates,
       crmAutomation,
       soon('group-manager', s.products.groupManager, Users),
-      soon('saver', s.products.saver, Bookmark),
+      ...(saverVisible ? [saver] : []),
       soon('chip-warmer', s.products.chipWarmer, Flame),
       soon('group-filler', s.products.groupFiller, UserRoundPlus),
     ],
@@ -147,6 +190,7 @@ export function buildNavigation({ isSuperAdmin, offerHunterVisible }: BuildNavig
           { key: 'admin-workers', label: workersAdminStrings.navLabel, path: '/admin/workers', icon: Server, matchPrefix: '/admin/workers' },
           { key: 'admin-costs', label: infraCostsStrings.navLabel, path: '/admin/costs', icon: Receipt, matchPrefix: '/admin/costs' },
           { key: 'admin-redirect-links', label: redirectLinksStrings.navLabel, path: '/admin/redirect-links', icon: Signpost },
+          { key: 'admin-saver', label: saverStrings.menu.platformContacts, path: SAVER_ADMIN_PATH, icon: Contact },
           { key: 'admin-plan-entitlements', label: s.links.planEntitlements, path: '/admin/plan-entitlements', icon: SlidersHorizontal },
         ]
       : [],

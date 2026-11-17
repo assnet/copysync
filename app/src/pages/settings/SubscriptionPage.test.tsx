@@ -3,6 +3,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { CssBaseline, ThemeProvider } from '@mui/material';
 import { renderWithTheme } from '@/test/renderWithTheme';
+import { writePersisted } from '@/hooks/usePersistedState';
 import { buildTheme } from '@/theme/theme';
 import { PrivacyProvider } from '@/features/privacy';
 import { PLAN_CATALOG } from '@/features/plans/catalog';
@@ -45,6 +46,8 @@ const page = (path = '/settings/subscription') => (
 );
 
 const renderPage = (path = '/settings/subscription', mode: 'light' | 'dark' = 'light') => renderWithTheme(page(path), mode);
+
+const anyCta = new RegExp(`${t.cta.label}|${t.cta.changeLabel}`);
 
 const rowKeys = () => Array.from(document.querySelectorAll('tr[data-key]')).map((r) => r.getAttribute('data-key'));
 
@@ -95,13 +98,13 @@ describe('SubscriptionPage', () => {
     svc.getSubscription.mockResolvedValue(sub);
     renderPage();
     expect(await screen.findByText(t.cta.operatorHint)).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: new RegExp(t.cta.label) })).toBeNull();
+    expect(screen.queryByRole('link', { name: anyCta })).toBeNull();
   });
 
-  it('ADMIN confirmado vê o botão de assinar', async () => {
+  it('ADMIN confirmado com plano ativo vê o botão de trocar', async () => {
     svc.getSubscription.mockResolvedValue(sub);
     renderPage();
-    expect(await screen.findByRole('link', { name: new RegExp(t.cta.label) })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: new RegExp(t.cta.changeLabel) })).toBeInTheDocument();
     expect(screen.queryByText(t.cta.operatorHint)).toBeNull();
   });
 
@@ -110,7 +113,7 @@ describe('SubscriptionPage', () => {
     svc.getSubscription.mockResolvedValue(sub);
     renderPage();
     await screen.findByText(pro.name);
-    expect(screen.queryByRole('link', { name: new RegExp(t.cta.label) })).toBeNull();
+    expect(screen.queryByRole('link', { name: anyCta })).toBeNull();
   });
 
   it('troca de tenant mostra skeleton e não o nome da conta anterior', async () => {
@@ -134,5 +137,74 @@ describe('SubscriptionPage', () => {
     renderPage('/settings/subscription?suspended=1');
     expect(await screen.findByText(t.pending.redirected)).toBeInTheDocument();
     expect(screen.getByText(t.pending.SUSPENDED.title)).toBeInTheDocument();
+  });
+
+  describe('por produto', () => {
+    const saverItem = { product: 'SAVER', planSlug: 'SAVER_PRO', tier: 'pro' as const, expiresAt: null, source: 'ADMIN' as const };
+    const withProducts = (products: SubscriptionResponse['products']): SubscriptionResponse => ({
+      ...sub,
+      limits: [
+        { ...sub.limits[0], product: null },
+        { key: 'storefront_enabled', channel: null, kind: 'feature', used: null, limit: null, enabled: true, product: 'AFFILIATES' },
+        { key: 'saver_groups', channel: null, kind: 'count', used: null, limit: 50, enabled: true, product: 'SAVER' },
+        { key: 'saver_auto_refresh_enabled', channel: null, kind: 'feature', used: null, limit: null, enabled: false, product: 'SAVER' },
+      ],
+      products,
+    });
+
+    it('legado: um cartão de Afiliados, título de sempre, sem itens do Saver', async () => {
+      svc.getSubscription.mockResolvedValue(withProducts([{ product: 'AFFILIATES', planSlug: 'COPYSYNC_PRO', tier: 'pro', expiresAt: null, source: null }]));
+      renderPage();
+      expect(await screen.findByText(pro.name)).toBeInTheDocument();
+      expect(screen.getByText(t.plan.eyebrow)).toBeInTheDocument();
+      expect(screen.getByText(t.limits.title)).toBeInTheDocument();
+      expect(document.querySelectorAll('[data-product]')).toHaveLength(1);
+      expect(rowKeys()).toEqual(['whatsapp_sessions', 'storefront_enabled']);
+    });
+
+    it.each(['light', 'dark'] as const)('Afiliados + Saver (%s): dois cartões, sessões só no primeiro, CTA de cada produto', async (mode) => {
+      svc.getSubscription.mockResolvedValue(withProducts([
+        { product: 'AFFILIATES', planSlug: 'COPYSYNC_PRO', tier: 'pro', expiresAt: null, source: null },
+        saverItem,
+      ]));
+      renderPage('/settings/subscription', mode);
+      expect(await screen.findByText('Saver PRO')).toBeInTheDocument();
+      expect(screen.getByText(t.plan.productEyebrow('Afiliados'))).toBeInTheDocument();
+      expect(screen.getByText(t.limits.productTitle('Saver'))).toBeInTheDocument();
+      const saver = document.querySelector('[data-product="SAVER"]')!;
+      expect(Array.from(saver.querySelectorAll('tr[data-key]')).map((r) => r.getAttribute('data-key'))).toEqual(['saver_groups', 'saver_auto_refresh_enabled']);
+      expect(saver.querySelector('[role="tablist"]')).toBeNull();
+      expect(screen.getByText(t.limits.availableFrom('PRO'))).toBeInTheDocument();
+      // Cada produto leva à própria vitrine
+      const links = screen.getAllByRole('link', { name: new RegExp(t.cta.changeLabel) });
+      expect(links.map((a) => a.getAttribute('href'))).toEqual(['/affiliates/plans', '/saver/plans']);
+    });
+
+    it('só-Saver: cartão do Saver com as sessões da conta', async () => {
+      svc.getSubscription.mockResolvedValue(withProducts([saverItem]));
+      renderPage();
+      expect(await screen.findByText('Saver PRO')).toBeInTheDocument();
+      expect(screen.queryByText(pro.name)).toBeNull();
+      expect(rowKeys()).toEqual(['whatsapp_sessions', 'saver_groups', 'saver_auto_refresh_enabled']);
+    });
+
+    it.each(['light', 'dark'] as const)('só-Saver (%s): só WhatsApp, sem abas, mesmo com a aba Telegram salva', async (mode) => {
+      writePersisted('subscription.channel', 'telegram');
+      const base = withProducts([saverItem]);
+      svc.getSubscription.mockResolvedValue({ ...base, limits: [...base.limits, { ...sub.limits[1], product: null }] });
+      renderPage('/settings/subscription', mode);
+      expect(await screen.findByText('Saver PRO')).toBeInTheDocument();
+      expect(screen.queryByRole('tablist')).toBeNull();
+      expect(screen.getByRole('heading', { name: t.channel.whatsapp })).toBeInTheDocument();
+      expect(rowKeys()).toEqual(['whatsapp_sessions', 'saver_groups', 'saver_auto_refresh_enabled']);
+    });
+
+    it('Afiliados + Saver: abas WhatsApp e Telegram no cartão com sessões', async () => {
+      const base = withProducts([{ product: 'AFFILIATES', planSlug: 'COPYSYNC_PRO', tier: 'pro', expiresAt: null, source: null }, saverItem]);
+      svc.getSubscription.mockResolvedValue({ ...base, limits: [...base.limits, { ...sub.limits[1], product: null }] });
+      renderPage();
+      await screen.findByText('Saver PRO');
+      expect(screen.getByRole('tab', { name: new RegExp(t.channel.telegram) })).toBeInTheDocument();
+    });
   });
 });
