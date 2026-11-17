@@ -1,7 +1,7 @@
 import { apiClient } from './apiClient';
 import type { ApiSuccess } from '@/types/api.types';
 import type {
-  RequestSaverExtractionInput, SaverAccess, SaverConfig, SaverExportFile, SaverExportGrant, SaverExportInput,
+  RequestSaverExtractionInput, SaverAccess, SaverConfigDetails, SaverExportFile, SaverExportGrant, SaverExportGrantChange, SaverExportInput,
   SaverExtraction, SaverGroup, SaverOverview, SaverSessionGroup, UpdateSaverConfigInput,
 } from '@/features/saver/types';
 
@@ -77,18 +77,19 @@ export const saverService = {
     return res.data.data;
   },
 
-  async setExportGrant(userId: string, allowed: boolean): Promise<SaverExportGrant> {
-    const res = await apiClient.put<ApiSuccess<SaverExportGrant>>(`${BASE}/permissions/${enc(userId)}`, { export: allowed });
+  async setExportGrant(userId: string, allowed: boolean): Promise<SaverExportGrantChange> {
+    const res = await apiClient.put<ApiSuccess<SaverExportGrantChange>>(`${BASE}/permissions/${enc(userId)}`, { export: allowed });
     return res.data.data;
   },
 
-  async getConfig(): Promise<SaverConfig> {
-    const res = await apiClient.get<ApiSuccess<SaverConfig>>(`${BASE}/config`);
+  /** Só `ADMIN` (`OPERATOR` lê a configuração pelo `overview`). */
+  async getConfig(): Promise<SaverConfigDetails> {
+    const res = await apiClient.get<ApiSuccess<SaverConfigDetails>>(`${BASE}/config`);
     return res.data.data;
   },
 
-  async updateConfig(body: UpdateSaverConfigInput): Promise<SaverConfig> {
-    const res = await apiClient.put<ApiSuccess<SaverConfig>>(`${BASE}/config`, body);
+  async updateConfig(body: UpdateSaverConfigInput): Promise<SaverConfigDetails> {
+    const res = await apiClient.put<ApiSuccess<SaverConfigDetails>>(`${BASE}/config`, body);
     return res.data.data;
   },
 
