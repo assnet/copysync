@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 import { UsageMetricsReadUnavailableError } from '../../../../shared/errors/internal/UsageMetricsErrors';
 import { FEATURE_USAGE_CATALOG } from '../../domain/services/featureUsageCatalog';
-import { FEATURE_USAGE_SOURCES, FIRST_DATA_DAYS_SQL, PrismaLiveFeatureUsageReader } from './PrismaLiveFeatureUsageReader';
+import { FEATURE_USAGE_SOURCES, FIRST_DATA_DAYS_SQL, PrismaLiveFeatureUsageReader, firstDataDaysSql } from './PrismaLiveFeatureUsageReader';
 import { ProcessUsageReadGate, createReadBudget, runWithinBudget, type UsageReadPrisma } from './featureUsageReadTimeout';
 
 type Call = { set: string; query: Prisma.Sql };
@@ -237,7 +237,7 @@ describe('PrismaLiveFeatureUsageReader (dublê)', () => {
     });
     await new PrismaLiveFeatureUsageReader(prisma).read(input());
     expect(calls).toHaveLength(12);
-    expect(calls[11]!.query).toBe(FIRST_DATA_DAYS_SQL);
+    expect(calls[11]!.query.sql).toBe(FIRST_DATA_DAYS_SQL.sql);
     expect(maxInFlight).toBe(1);
   });
 
@@ -278,6 +278,19 @@ describe('PrismaLiveFeatureUsageReader (dublê)', () => {
       { day: '2026-11-02', tenantId: 't', featureKey: 'offer_dispatch', kind: 'AUTOMATIC', uses: 3, activeDays: 1, lastDay: '2026-11-02' },
     ]);
     expect(out.firstDataDay).toEqual({ offer_dispatch: null });
+    expect(calls[1]!.query.sql).not.toMatch(/UNION ALL/);
+    expect(calls[1]!.query.sql).toMatch(/'offer_dispatch' AS key/);
+  });
+
+  it('primeiro dado só com os ramos pedidos; nenhum recurso = sem ida ao banco', async () => {
+    expect(firstDataDaysSql([])).toBeNull();
+    const two = firstDataDaysSql(['panel_login', 'ai_rewrite'])!.sql;
+    expect(two.match(/UNION ALL/g)).toHaveLength(1);
+    expect(two).toMatch(/'ai_rewrite'[\s\S]*'panel_login'/);
+    const { prisma, calls } = fakePrisma();
+    const out = await new PrismaLiveFeatureUsageReader(prisma).read({ ...input(), featureKeys: [] });
+    expect(calls).toHaveLength(0);
+    expect(out).toEqual({ rows: [], firstDataDay: {} });
   });
 });
 

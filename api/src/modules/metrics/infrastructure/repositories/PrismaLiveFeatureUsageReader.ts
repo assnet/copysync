@@ -176,23 +176,35 @@ export const FEATURE_USAGE_SOURCES: readonly FeatureUsageSourceQuery[] = [
 ];
 
 /** Primeiro dado de cada recurso: uma instrução, mesmo `WHERE` de classificação, sem período nem `GROUP BY`. */
-export const FIRST_DATA_DAYS_SQL = Prisma.sql`
-  SELECT 'offer_generator' AS key, MIN("createdAt") AS first FROM "offers" WHERE "origin" = 'GENERATOR'
-  UNION ALL SELECT 'group_monitoring', MIN("createdAt") FROM "offers" WHERE "origin" = 'MONITORING'
-  UNION ALL SELECT 'offer_dispatch', MIN("updatedAt") FROM "offer_dispatches" WHERE "status" = 'SENT'
-  UNION ALL SELECT 'offer_hunter', MIN("startedAt") FROM "offer_hunt_runs" WHERE "status" <> 'SKIPPED'
-  UNION ALL SELECT 'ai_rewrite', MIN("createdAt") FROM "ai_usage_logs" WHERE "success" AND "purpose" = 'offer.text'
-  UNION ALL SELECT 'offer_story', MIN("createdAt") FROM "ai_usage_logs" WHERE "success" AND "purpose" = 'offer_story_headline'
-  UNION ALL SELECT 'link_rotation', MIN("createdAt") FROM "link_rotations"
-  UNION ALL SELECT 'link_rotation_click', MIN("createdAt") FROM "link_clicks"
-  UNION ALL SELECT 'storefront', MIN("createdAt") FROM "storefront_offers" WHERE "status" IN ('DRAFT', 'PUBLISHED')
-  UNION ALL SELECT 'whatsapp_session', MIN("createdAt") FROM "sessions" WHERE "engine" <> 'telegram'
-  UNION ALL SELECT 'telegram_session', MIN("createdAt") FROM "sessions" WHERE "engine" = 'telegram'
-  UNION ALL SELECT 'saver_extraction', MIN("createdAt") FROM "saver_extractions"
-  UNION ALL SELECT 'affiliate_credentials', MIN("createdAt") FROM "audit_logs" WHERE "action" = 'AFFILIATE_CREDENTIAL_UPSERTED' AND "tenantId" IS NOT NULL
-  UNION ALL SELECT 'extension_sync', MIN("createdAt") FROM "audit_logs" WHERE "action" = 'AFFILIATE_SESSION_SYNCED' AND "tenantId" IS NOT NULL
-  UNION ALL SELECT 'saver_export', MIN("createdAt") FROM "audit_logs" WHERE "action" = 'SAVER_EXPORTED' AND "tenantId" IS NOT NULL AND meta->>'completed' = 'true'
-  UNION ALL SELECT 'panel_login', MIN("createdAt") FROM "login_events" WHERE "type" IN ('LOGIN_OK', 'LOGIN_CODE_VERIFIED') AND "userId" IS NOT NULL`;
+/** Um ramo por recurso: `MIN` da coluna de data da fonte (sem conteúdo, sem período). */
+const FIRST_DATA_BRANCHES: Record<FeatureUsageKey, Prisma.Sql> = {
+  offer_generator: Prisma.sql`SELECT 'offer_generator' AS key, MIN("createdAt") AS first FROM "offers" WHERE "origin" = 'GENERATOR'`,
+  group_monitoring: Prisma.sql`SELECT 'group_monitoring' AS key, MIN("createdAt") AS first FROM "offers" WHERE "origin" = 'MONITORING'`,
+  offer_dispatch: Prisma.sql`SELECT 'offer_dispatch' AS key, MIN("updatedAt") AS first FROM "offer_dispatches" WHERE "status" = 'SENT'`,
+  offer_hunter: Prisma.sql`SELECT 'offer_hunter' AS key, MIN("startedAt") AS first FROM "offer_hunt_runs" WHERE "status" <> 'SKIPPED'`,
+  ai_rewrite: Prisma.sql`SELECT 'ai_rewrite' AS key, MIN("createdAt") AS first FROM "ai_usage_logs" WHERE "success" AND "purpose" = 'offer.text'`,
+  offer_story: Prisma.sql`SELECT 'offer_story' AS key, MIN("createdAt") AS first FROM "ai_usage_logs" WHERE "success" AND "purpose" = 'offer_story_headline'`,
+  link_rotation: Prisma.sql`SELECT 'link_rotation' AS key, MIN("createdAt") AS first FROM "link_rotations"`,
+  link_rotation_click: Prisma.sql`SELECT 'link_rotation_click' AS key, MIN("createdAt") AS first FROM "link_clicks"`,
+  storefront: Prisma.sql`SELECT 'storefront' AS key, MIN("createdAt") AS first FROM "storefront_offers" WHERE "status" IN ('DRAFT', 'PUBLISHED')`,
+  whatsapp_session: Prisma.sql`SELECT 'whatsapp_session' AS key, MIN("createdAt") AS first FROM "sessions" WHERE "engine" <> 'telegram'`,
+  telegram_session: Prisma.sql`SELECT 'telegram_session' AS key, MIN("createdAt") AS first FROM "sessions" WHERE "engine" = 'telegram'`,
+  saver_extraction: Prisma.sql`SELECT 'saver_extraction' AS key, MIN("createdAt") AS first FROM "saver_extractions"`,
+  affiliate_credentials: Prisma.sql`SELECT 'affiliate_credentials' AS key, MIN("createdAt") AS first FROM "audit_logs" WHERE "action" = 'AFFILIATE_CREDENTIAL_UPSERTED' AND "tenantId" IS NOT NULL`,
+  extension_sync: Prisma.sql`SELECT 'extension_sync' AS key, MIN("createdAt") AS first FROM "audit_logs" WHERE "action" = 'AFFILIATE_SESSION_SYNCED' AND "tenantId" IS NOT NULL`,
+  saver_export: Prisma.sql`SELECT 'saver_export' AS key, MIN("createdAt") AS first FROM "audit_logs" WHERE "action" = 'SAVER_EXPORTED' AND "tenantId" IS NOT NULL AND meta->>'completed' = 'true'`,
+  panel_login: Prisma.sql`SELECT 'panel_login' AS key, MIN("createdAt") AS first FROM "login_events" WHERE "type" IN ('LOGIN_OK', 'LOGIN_CODE_VERIFIED') AND "userId" IS NOT NULL`,
+};
+
+/** `UNION ALL` só com os ramos dos recursos pedidos (ordem do catálogo); `null` se nenhum. */
+export function firstDataDaysSql(keys: Iterable<FeatureUsageKey>): Prisma.Sql | null {
+  const wanted = new Set(keys);
+  const branches = FEATURE_USAGE_CATALOG.filter((f) => wanted.has(f.key)).map((f) => FIRST_DATA_BRANCHES[f.key]);
+  return branches.length === 0 ? null : Prisma.join(branches, '\n  UNION ALL ', '', '');
+}
+
+/** Todos os ramos (testes e medição). */
+export const FIRST_DATA_DAYS_SQL = firstDataDaysSql(FEATURE_USAGE_CATALOG.map((f) => f.key))!;
 
 type FirstDataRow = { key: string; first: Date | null };
 
@@ -239,9 +251,11 @@ export class PrismaLiveFeatureUsageReader implements IFeatureUsageReader {
     wanted: ReadonlySet<FeatureUsageKey>,
     budget: UsageReadBudget,
   ): Promise<FeatureUsageReadResult['firstDataDay']> {
-    const raw = await runWithinBudget<FirstDataRow>(budget, this.prisma, FIRST_DATA_DAYS_SQL);
     const out: FeatureUsageReadResult['firstDataDay'] = {};
     for (const key of wanted) out[key] = null;
+    const sql = firstDataDaysSql(wanted);
+    if (!sql) return out;
+    const raw = await runWithinBudget<FirstDataRow>(budget, this.prisma, sql);
     for (const r of raw) {
       const key = r.key as FeatureUsageKey;
       if (wanted.has(key)) out[key] = r.first ? dayInZone(new Date(r.first)) : null;
