@@ -74,6 +74,18 @@ describe('fila de leituras de uso', () => {
     expect(maxInFlight).toBe(1);
   });
 
+  it('mesma chave do pedido em voo ainda descarta o enfileirado do canal com outra chave', async () => {
+    const k1 = adminUsageService.getSummary({ from: '1' });
+    const k2 = adminUsageService.getSummary({ from: '2' });
+    const again = adminUsageService.getSummary({ from: '1' });
+    expect(again).toBe(k1);
+    await expect(k2).rejects.toMatchObject({ code: 'USAGE_READ_SUPERSEDED' });
+    pending[0].resolve('um');
+    await flush();
+    await expect(k1).resolves.toBe('um');
+    expect(get).toHaveBeenCalledTimes(1);
+  });
+
   it('mesma chave em voo ou na fila reaproveita a promessa (StrictMode)', async () => {
     const a = adminUsageService.getSummary({ from: '1', to: '2' });
     const b = adminUsageService.getSummary({ to: '2', from: '1' });

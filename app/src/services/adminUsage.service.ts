@@ -56,7 +56,7 @@ function pump(): void {
 }
 
 function enqueueRead<T>(channel: UsageReadChannel, key: string, run: () => Promise<T>): Promise<T> {
-  if (inFlight && inFlight.channel === channel && inFlight.key === key) return inFlight.promise as Promise<T>;
+  // O descarte dos superados do canal vem antes de reaproveitar o pedido em voo.
   let same: QueuedRead | undefined;
   for (let i = waiting.length - 1; i >= 0; i -= 1) {
     const read = waiting[i];
@@ -68,6 +68,7 @@ function enqueueRead<T>(channel: UsageReadChannel, key: string, run: () => Promi
     waiting.splice(i, 1);
     read.reject(new UsageReadSupersededError());
   }
+  if (inFlight && inFlight.channel === channel && inFlight.key === key) return inFlight.promise as Promise<T>;
   if (same) return same.promise as Promise<T>;
 
   let resolve!: (value: unknown) => void;
