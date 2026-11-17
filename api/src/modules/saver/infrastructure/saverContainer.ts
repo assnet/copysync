@@ -139,7 +139,7 @@ const listGroups       = lazy(() => new ListSaverGroupsUseCase({ groups: groups(
 const audit = lazy(() => new PrismaAuditLogRepository());
 const listPlatformContacts   = lazy(() => new ListPlatformSaverContactsUseCase(platformContacts(), audit()));
 const getPlatformContact     = lazy(() => new GetPlatformSaverContactUseCase(platformContacts(), audit()));
-const platformContactsSummary = lazy(() => new GetPlatformSaverContactsSummaryUseCase(platformContacts()));
+const platformContactsSummary = lazy(() => new GetPlatformSaverContactsSummaryUseCase(platformContacts(), audit()));
 const listPlatformTenants    = lazy(() => new ListPlatformSaverTenantsUseCase(platformContacts()));
 const exportPlatformContacts = lazy(() => new ExportPlatformSaverContactsUseCase(platformContacts(), audit()));
 

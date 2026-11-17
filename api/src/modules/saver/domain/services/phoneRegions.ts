@@ -58,7 +58,10 @@ export interface PhoneRegionSummary {
   topDdd: { ddd: string; count: number }[];
   /** Universo do ranking de países: contatos com telefone, sem o filtro de DDI/DDD (base das porcentagens). */
   ddiBase: number;
-  /** Universo do ranking de DDD: telefones do Brasil, sem o filtro de DDD; 0 fora do `ddi = 55`. */
+  /**
+   * Universo do ranking de DDD: telefones do Brasil com DDD em uso (o mesmo que o ranking soma), sem o
+   * filtro de DDD; 0 fora do `ddi = 55`.
+   */
   dddBase: number;
 }
 
@@ -95,10 +98,12 @@ export function summarizePhonePrefixes(
     }
     ddiBase += count;
     const ddi = ddiOf(prefix);
-    if (filter.ddi === BRAZIL_DDI && ddi === BRAZIL_DDI) dddBase += count;
     if (ddi) byDdi.set(ddi, (byDdi.get(ddi) ?? 0) + count);
     const ddd = filter.ddi === BRAZIL_DDI ? brazilDddOf(prefix) : null;
-    if (ddd) byDdd.set(ddd, (byDdd.get(ddd) ?? 0) + count);
+    if (ddd) {
+      byDdd.set(ddd, (byDdd.get(ddd) ?? 0) + count);
+      dddBase += count;
+    }
     if (!wanted || (ddi === filter.ddi && prefix.startsWith(wanted))) withPhone += count;
   }
   return {

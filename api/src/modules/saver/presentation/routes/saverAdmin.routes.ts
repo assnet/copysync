@@ -19,8 +19,8 @@ import {
 
 /*
  * Base de contatos da PLATAFORMA (SAVER-45), `/api/admin/saver`. Fora do gate de produto e da audiência; só super
- * admin (hook + use case). Lista por cursor assinado (sem `limit`/offset); consulta e exportação auditadas;
- * indicadores (`/contacts/summary`) são só contagem agregada, sem auditoria.
+ * admin (hook + use case). Lista por cursor assinado (sem `limit`/offset); consulta, indicadores
+ * (`/contacts/summary`) e exportação auditados.
  */
 const preHandler = [authHook, saverSuperAdminHook];
 const tags = ['Saver (admin)'];

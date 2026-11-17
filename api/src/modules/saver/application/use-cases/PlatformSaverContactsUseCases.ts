@@ -72,8 +72,9 @@ function toFilter(q: PlatformSaverContactQuery): PlatformSaverContactFilter {
     if (d && Number.isNaN(d.getTime())) throw new ValidationError('Invalid date', { field });
   }
   if (from && to && from > to) throw new ValidationError('Start date must be before end date', { field: 'from' });
-  const ddi = q.ddi?.trim() || null;
-  const ddd = q.ddd?.trim() || null;
+  // Sem `trim`: o schema da rota já exige só dígitos; espaço aqui é entrada inválida (400).
+  const ddi = q.ddi || null;
+  const ddd = q.ddd || null;
   if (ddi && !isCountryCode(ddi)) throw new ValidationError('Country code must be a whole calling code (1 to 3 digits)', { field: 'ddi' });
   if (ddd && !/^\d{2}$/.test(ddd)) throw new ValidationError('Area code must have exactly 2 digits', { field: 'ddd' });
   if (ddd && ddi !== BRAZIL_DDI) throw new ValidationError('Area code is only accepted with country code 55', { field: 'ddd' });
@@ -134,11 +135,14 @@ export interface PlatformSaverContactsSummary extends PhoneRegionSummary {
  * Indicadores da tela: total da base, quantos casam com os filtros (com telefone × só LID), DDIs mais
  * comuns e, com `ddi = 55`, DDDs mais comuns. Mesmos filtros da lista, sem cursor. Os rankings ignoram o
  * próprio filtro de DDI/DDD (quadro inteiro); os totais não.
- * Sem auditoria de propósito: só contagem agregada, nenhum contato é lido, e a lista (auditada) roda com
- * os mesmos filtros na mesma tela.
+ * Auditado como a lista (`kind: 'summary'`, sem o texto da busca): com `search`, a contagem responde se um
+ * nome ou LID existe na base, então é consulta a dado pessoal.
  */
 export class GetPlatformSaverContactsSummaryUseCase {
-  constructor(private readonly contacts: IPlatformSaverContactRepository) {}
+  constructor(
+    private readonly contacts: IPlatformSaverContactRepository,
+    private readonly audit: IAuditLogRepository,
+  ) {}
 
   async execute(input: PlatformSaverContactQuery & { actor: PlatformSaverActor }): Promise<PlatformSaverContactsSummary> {
     assertSuperAdmin(input.actor);
@@ -146,7 +150,13 @@ export class GetPlatformSaverContactsSummaryUseCase {
     // Conta sem o filtro de DDI/DDD e aplica-o na dobra: os rankings seguem inteiros (a tela destaca o
     // item filtrado) e os totais valem para o DDI/DDD pedidos. Os demais filtros vão para o banco.
     const { total, prefixes } = await this.contacts.countByPhonePrefix({ ...filter, ddi: null, ddd: null }, PHONE_PREFIX_LENGTH);
-    return { total, ...summarizePhonePrefixes(prefixes, { ddi: filter.ddi, ddd: filter.ddd }) };
+    const summary = { total, ...summarizePhonePrefixes(prefixes, { ddi: filter.ddi, ddd: filter.ddd }) };
+    await this.audit.create({
+      userId: input.actor.userId,
+      action: 'SAVER_PLATFORM_VIEWED',
+      meta: { kind: 'summary', filters: auditFilters(filter), count: summary.filtered },
+    });
+    return summary;
   }
 }
 

@@ -63,7 +63,8 @@ describe('summarizePhonePrefixes', () => {
     expect(br).toMatchObject({ filtered: 66, withPhone: 66, lidOnly: 0 });
     expect(br.topDdd).toEqual([{ ddd: '11', count: 40 }, { ddd: '21', count: 25 }]);
     const rj = summarizePhonePrefixes(rows, { ddi: '55', ddd: '21' });
-    expect(rj).toMatchObject({ filtered: 25, withPhone: 25, lidOnly: 0, ddiBase: 78, dddBase: 66 });
+    // `5520…` (DDD que não existe) fica fora do ranking e da base das porcentagens dele.
+    expect(rj).toMatchObject({ filtered: 25, withPhone: 25, lidOnly: 0, ddiBase: 78, dddBase: 65 });
     expect(rj.topDdd).toEqual(br.topDdd);
   });
 

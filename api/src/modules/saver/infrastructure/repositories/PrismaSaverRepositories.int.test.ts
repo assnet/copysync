@@ -408,6 +408,14 @@ describe('base da plataforma', () => {
     expect(await listed('55', '11')).toEqual([phones[0], phones[1]]);
     expect(await listed('351')).toEqual([phones[3]]);
     expect(await listed('44')).toEqual([]);
+    // Lista e contagem tratam o só-LID igual: com DDI ele nunca entra.
+    for (const ddi of ['55', '351']) {
+      const rows = await platform.list({ ...filter, ddi }, null, 50);
+      expect(rows.every((r) => r.phone !== null && r.lid !== `lid${stamp}ddi`)).toBe(true);
+      const counted = (await platform.countByPhonePrefix({ ...filter, ddi }, 4)).prefixes;
+      expect(counted.some((p) => p.prefix === null)).toBe(false);
+      expect(counted.reduce((n, p) => n + p.count, 0)).toBe(rows.length);
+    }
 
     const all = await platform.countByPhonePrefix(filter, 3);
     expect(all.total).toBeGreaterThanOrEqual(6);
