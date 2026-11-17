@@ -1,0 +1,145 @@
+import { describe, expect, it } from 'vitest';
+import { catalogFixture as catalog, detailFixture, summaryFixture, summaryFixtureRaw as summaryRaw } from './testFixtures';
+import { featureUsageStrings as S } from './strings';
+import type {
+  UsageFeatureDetail, UsageFeatureItem, UsagePopulation, UsageRange, UsageSummary, UsageTenantItem, UsageTotals,
+} from './types';
+
+/* Validador de forma: o mapa de cada tipo é checado pelo `tsc` (chave a mais ou a menos não compila) e o teste
+ * compara as fixtures com ele (campo a mais ou a menos na fixture falha). */
+type Leaf = 'string' | 'number' | 'boolean' | 'null';
+type Shape = Leaf[] | { object: Record<string, Shape> } | { array: Shape };
+type ObjectShape<T> = { [K in keyof Required<T>]: Shape };
+
+const obj = <T,>(fields: ObjectShape<T>): Shape => ({ object: fields as Record<string, Shape> });
+const arr = (item: Shape): Shape => ({ array: item });
+const str: Leaf[] = ['string'];
+const num: Leaf[] = ['number'];
+const strOrNull: Leaf[] = ['string', 'null'];
+const numOrNull: Leaf[] = ['number', 'null'];
+
+const rangeShape = obj<UsageRange>({
+  from: str, to: str, timeZone: str, previousFrom: str, previousTo: str, granularity: str, maxDays: num,
+});
+const populationShape = obj<UsagePopulation>({
+  tenants: num,
+  internalExcluded: num,
+  byPlan: arr({ object: { family: str, plan: str, tenants: num } }),
+});
+const totalsShape = obj<UsageTotals>({
+  activeTenants: num, activeTenantsPrevious: numOrNull, featuresUsed: num, featuresNeverUsed: num, topFeature: strOrNull,
+});
+const featureShape = obj<UsageFeatureItem>({
+  key: str,
+  product: str,
+  planFamily: str,
+  kinds: arr(str),
+  coverage: str,
+  coverageReasons: arr(str),
+  retentionDays: numOrNull,
+  firstDataDay: strOrNull,
+  dataFrom: strOrNull,
+  uses: num,
+  usesPrevious: numOrNull,
+  activeTenants: num,
+  activeTenantsPrevious: numOrNull,
+  reach: num,
+  lastUsedDay: strOrNull,
+  byKind: arr({ object: { kind: str, uses: num, activeTenants: num } }),
+  byPlan: arr({ object: { plan: str, tenants: num, activeTenants: num, uses: num } }),
+  eligibleTenants: numOrNull,
+  adoption: numOrNull,
+  recurringTenants: numOrNull,
+  retainedTenants: numOrNull,
+});
+const summaryShape = obj<UsageSummary>({
+  range: rangeShape,
+  source: str,
+  freshAt: str,
+  population: populationShape,
+  totals: totalsShape,
+  features: arr(featureShape),
+  series: arr({ object: { bucket: str, activeTenants: num } }),
+});
+const detailShape = obj<UsageFeatureDetail>({
+  range: rangeShape,
+  source: str,
+  freshAt: str,
+  population: populationShape,
+  feature: featureShape,
+  series: arr({ object: { bucket: str, uses: num, activeTenants: num } }),
+});
+/** Item da lista de contas (sem fixture ainda): forma checada só pelo `tsc`. */
+const tenantItemShape = obj<UsageTenantItem>({
+  tenantId: str, tenantName: str, plan: str, status: str, internal: ['boolean'], uses: num, activeDays: num, lastUsedDay: strOrNull,
+});
+
+function leafOf(value: unknown): Leaf | 'other' {
+  if (value === null) return 'null';
+  const t = typeof value;
+  return t === 'string' || t === 'number' || t === 'boolean' ? t : 'other';
+}
+
+/** Lista de divergências (`caminho: problema`); vazia = a fixture bate com o tipo. */
+function shapeErrors(value: unknown, shape: Shape, path = '$'): string[] {
+  if (Array.isArray(shape)) {
+    return shape.includes(leafOf(value) as Leaf) ? [] : [`${path}: esperado ${shape.join('|')}, veio ${JSON.stringify(value)}`];
+  }
+  if ('array' in shape) {
+    if (!Array.isArray(value)) return [`${path}: esperado lista`];
+    return value.flatMap((item, i) => shapeErrors(item, shape.array, `${path}[${i}]`));
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return [`${path}: esperado objeto`];
+  const record = value as Record<string, unknown>;
+  const expected = Object.keys(shape.object);
+  const errors = Object.keys(record).filter((k) => !expected.includes(k)).map((k) => `${path}.${k}: campo a mais`);
+  for (const key of expected) {
+    if (!(key in record)) errors.push(`${path}.${key}: campo ausente`);
+    else errors.push(...shapeErrors(record[key], shape.object[key], `${path}.${key}`));
+  }
+  return errors;
+}
+
+
+describe('contrato do uso dos recursos (fixtures compartilhadas)', () => {
+  it('o resumo de exemplo tem exatamente a forma de UsageSummary', () => {
+    expect(shapeErrors(summaryFixture(), summaryShape)).toEqual([]);
+  });
+
+  it('o detalhe de exemplo tem exatamente a forma de UsageFeatureDetail', () => {
+    expect(shapeErrors(detailFixture(), detailShape)).toEqual([]);
+  });
+
+  it('o item da lista de contas tem forma declarada', () => {
+    expect(shapeErrors({ tenantId: 'a', tenantName: 'b', plan: 'NONE', status: 'ACTIVE', internal: false, uses: 1, activeDays: 1, lastUsedDay: null }, tenantItemShape)).toEqual([]);
+  });
+
+  it('o validador acusa campo a mais e campo a menos', () => {
+    const base = summaryFixture();
+    const extra = { ...base, totals: { ...base.totals, uses: 10 } };
+    expect(shapeErrors(extra, summaryShape)).toContain('$.totals.uses: campo a mais');
+    const { freshAt: _omit, ...missing } = base;
+    void _omit;
+    expect(shapeErrors(missing, summaryShape)).toContain('$.freshAt: campo ausente');
+  });
+
+  it('cada chave do catálogo tem rótulo e descrição em strings.ts', () => {
+    const features = S.features as Record<string, { label: string; description: string } | undefined>;
+    for (const key of catalog.featureKeys) {
+      expect(features[key]?.label, key).toBeTruthy();
+      expect(features[key]?.description, key).toBeTruthy();
+    }
+  });
+
+  it('cada código de cobertura parcial tem um texto próprio', () => {
+    const reasons = S.coverageReasons as Record<string, string | undefined>;
+    for (const code of catalog.coverageReasonCodes) expect(reasons[code], code).toBeTruthy();
+    const texts = catalog.coverageReasonCodes.map((c) => reasons[c]);
+    expect(new Set(texts).size).toBe(texts.length);
+  });
+
+  it('o resumo não traz nome de conta nem soma de usos', () => {
+    expect(summaryRaw).not.toContain('tenantName');
+    expect('uses' in summaryFixture().totals).toBe(false);
+  });
+});
