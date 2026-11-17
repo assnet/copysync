@@ -58,7 +58,7 @@ export function SavedGroupsTable({ groups, selected, onSelectedChange, selectabl
               </Box>
             </TableCell>
             <TableCell>{t.columns.lastScan}</TableCell>
-            {onRemove && <TableCell align="right"><Box component="span" sx={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>{t.columns.actions}</Box></TableCell>}
+            {onRemove && <TableCell align="right"><Box component="span" sx={{ position: 'absolute', width: '1px', height: '1px', overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>{t.columns.actions}</Box></TableCell>}
           </TableRow>
         </TableHead>
         <TableBody>
