@@ -14,10 +14,14 @@ export async function syncPlanEntitlements(
   tx: TransactionClient,
   tenantId: string,
   planSlug: string,
+  /** `excludeKeys`: chaves do preset que não são gravadas (plano de produto novo pula as compartilhadas). Vazio = tudo. */
+  options: { excludeKeys?: readonly string[] } = {},
 ): Promise<PlanSideEffectsResult> {
   const presets = await tx.planEntitlementPreset.findMany({ where: { planSlug } });
   if (presets.length === 0) log.warn({ tenantId, planSlug }, 'No entitlement presets found for plan');
+  const exclude = new Set(options.excludeKeys ?? []);
   for (const preset of presets) {
+    if (exclude.has(preset.key)) continue;
     await tx.tenantEntitlement.upsert({
       where: { tenantId_key: { tenantId, key: preset.key } },
       create: { tenantId, key: preset.key, value: entitlementJsonValue(preset.value) },
