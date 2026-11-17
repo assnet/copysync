@@ -312,6 +312,13 @@ export interface IMessagingEngine {
     groupJid: string,
   ): Promise<{ name: string; memberCount: number; isSelfAdmin: boolean }>;
   /**
+   * Membros do grupo lidos direto do canal, sem foto e sem cache: telefone e LID em dígitos
+   * (null quando o canal não revela), nome exibido e se é admin. `groupJid` com ou sem
+   * `@g.us`. Lança `SessionNotConnectedError` sem sessão, `EngineRateLimitedError` no limite
+   * de taxa e `EngineOperationUnsupportedError` no canal que não oferece a leitura.
+   */
+  getGroupMembers(sessionId: string, groupJid: string): Promise<GroupMemberInfo[]>;
+  /**
    * Baixa a foto de perfil de um contato ou grupo e devolve uma URL servida por nós.
    *
    * A URL que o WhatsApp fornece é temporária; persisti-la deixaria avatares quebrados
@@ -381,6 +388,17 @@ export interface ParticipatingGroupInfo {
 /** ADMINS_ONLY = só admins postam e a sessão não é admin; CHANNEL_READONLY = canal de transmissão sem permissão. */
 export type GroupPostBlockedReason = 'ADMINS_ONLY' | 'CHANNEL_READONLY';
 export type GroupInviteBlockedReason = 'NOT_ADMIN';
+
+/** Membro de grupo para a base de contatos: nunca carrega foto. */
+export interface GroupMemberInfo {
+  /** Telefone em dígitos, ou null quando o participante não revela o número. */
+  phone: string | null;
+  /** LID em dígitos (identificador do WhatsApp que esconde o número), ou null. */
+  lid: string | null;
+  /** Nome exibido, quando o canal o fornece. */
+  name: string | null;
+  isAdmin: boolean;
+}
 
 export interface GroupParticipantInfo {
   /**
