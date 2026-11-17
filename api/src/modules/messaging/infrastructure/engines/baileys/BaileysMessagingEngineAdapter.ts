@@ -69,6 +69,7 @@ import {
   translateSendError,
 } from './BaileysErrorTranslator';
 import { normalizeGroupMembers } from './group/normalizeGroupMembers';
+import { resolveLocalLidPhones } from './group/resolveLocalLidPhones';
 import { normalizeChatState, isEmptyChatState, type RawChatState, type ChatStateSource } from './normalizeChatState';
 import type { RemoteChatState } from '../../../../../shared/events/InternalMessagingEvent';
 import { outboundEchoRegistries } from './outboundEchoRegistries';
@@ -900,7 +901,14 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
       const metadata = await (entry.socket as BaileysSocketWithGroupHelpers).groupMetadata?.(remoteJid);
       // Sem metadados não é "grupo vazio": devolver [] faria o Saver marcar saída de todo membro.
       if (!metadata || !Array.isArray(metadata.participants)) throw new EngineTemporarilyUnavailableError();
-      return normalizeGroupMembers(metadata.participants);
+      const members = normalizeGroupMembers(metadata.participants);
+      // Número oculto: só o mapa LOCAL da sessão (cache + key store). Nunca consulta por membro ao servidor.
+      const lidMapping = (entry.socket as BaileysSocketWithGroupHelpers).signalRepository?.lidMapping;
+      return await resolveLocalLidPhones(
+        members,
+        lidMapping?.getPNsForLIDs ? (lids) => lidMapping.getPNsForLIDs!(lids) : null,
+        (err) => baileysLogger.debug({ err, sessionId }, 'Local LID mapping lookup failed; members kept without phone'),
+      );
     } catch (err) {
       throw translateGroupReadError(err);
     }
@@ -2365,6 +2373,8 @@ type BaileysSocketWithGroupHelpers = ReturnType<typeof makeWASocket> & {
   signalRepository?: {
     lidMapping?: {
       getPNForLID?: (lid: string) => Promise<string | null | undefined>;
+      /** Busca reversa só local (cache + key store `lid-mapping`); não dispara consulta ao servidor. */
+      getPNsForLIDs?: (lids: string[]) => Promise<{ lid: string; pn: string }[] | null | undefined>;
       getLIDForPN?: (pn: string) => Promise<string | null | undefined>;
     };
   };
