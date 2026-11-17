@@ -288,6 +288,14 @@ const envSchema = z.object({
     z.string().url().optional(),
   ),
 
+  // ── Acesso por produto (docs/acesso-por-produto.md) ───────────────
+  // Governa só os produtos legados (Afiliados/Chat): off (padrão) = não consulta; log = consulta e
+  // registra would_block; enforce = 403 PRODUCT_UNAVAILABLE. Produto novo é sempre exigido.
+  PRODUCT_ACCESS_GATE_MODE: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim().toLowerCase() || undefined : v),
+    z.enum(['off', 'log', 'enforce']).default('off'),
+  ),
+
   // ── Proteção do login (docs/seguranca-login.md) ───────────────────
   // off = sem guarda; monitor (padrão) = grava + bloqueio 429; enforce = + Turnstile + código por e-mail.
   LOGIN_GUARD_MODE: z.preprocess(
