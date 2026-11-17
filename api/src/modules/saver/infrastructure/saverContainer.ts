@@ -21,6 +21,11 @@ import { PrismaEntitlementReader } from '../../tenants/infrastructure/repositori
 import { GetSaverOverviewUseCase } from '../application/use-cases/GetSaverOverviewUseCase';
 import { ListSaverSessionGroupsUseCase } from '../application/use-cases/ListSaverSessionGroupsUseCase';
 import { PrismaSaverSessionReader } from './repositories/PrismaSaverSessionReader';
+import { RequestSaverExtractionUseCase } from '../application/use-cases/RequestSaverExtractionUseCase';
+import { GetSaverExtractionUseCase } from '../application/use-cases/GetSaverExtractionUseCase';
+import { CancelSaverExtractionUseCase } from '../application/use-cases/CancelSaverExtractionUseCase';
+import { RemoveSaverGroupUseCase } from '../application/use-cases/RemoveSaverGroupUseCase';
+import { ListSaverGroupsUseCase } from '../application/use-cases/ListSaverGroupsUseCase';
 import { getActiveEngine } from '../../../shared/engine/activeEngine';
 import { EngineNotReadyError } from '../../../shared/errors/internal/MessagingErrors';
 
@@ -56,6 +61,11 @@ export const saverContainer = {
 
   get getOverview(): GetSaverOverviewUseCase { return getOverview(); },
   get listSessionGroups(): ListSaverSessionGroupsUseCase { return listSessionGroups(); },
+  get requestExtraction(): RequestSaverExtractionUseCase { return requestExtraction(); },
+  get getExtraction(): GetSaverExtractionUseCase { return getExtraction(); },
+  get cancelExtraction(): CancelSaverExtractionUseCase { return cancelExtraction(); },
+  get removeGroup(): RemoveSaverGroupUseCase { return removeGroup(); },
+  get listGroups(): ListSaverGroupsUseCase { return listGroups(); },
 };
 
 /*
@@ -89,3 +99,15 @@ const listSessionGroups = lazy(() => new ListSaverSessionGroupsUseCase({
   groups: groups(),
   engine: activeEngine,
 }));
+
+const requestExtraction = lazy(() => new RequestSaverExtractionUseCase({
+  sessions: sessionReader(),
+  entitlements: entitlements(),
+  groups: groups(),
+  queue: queue(),
+  engine: activeEngine,
+}));
+const getExtraction    = lazy(() => new GetSaverExtractionUseCase({ queue: queue() }));
+const cancelExtraction = lazy(() => new CancelSaverExtractionUseCase({ queue: queue() }));
+const removeGroup      = lazy(() => new RemoveSaverGroupUseCase({ groups: groups(), queue: queue() }));
+const listGroups       = lazy(() => new ListSaverGroupsUseCase({ groups: groups() }));
