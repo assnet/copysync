@@ -8,12 +8,16 @@ import type {
   PlatformSaverContactKey,
   PlatformSaverContactLink,
   PlatformSaverContactRow,
+  PlatformSaverTenant,
+  PlatformSaverTenantKey,
 } from '../../domain/contracts/IPlatformSaverContactRepository';
 import { platformCsvHeader, toPlatformCsvLine } from '../../domain/services/exportFormatters';
 import {
   createPlatformSaverContactCursor,
+  createPlatformSaverTenantCursor,
   platformSaverContactScope,
   readPlatformSaverContactCursor,
+  readPlatformSaverTenantCursor,
 } from '../platformSaverContactCursor';
 
 /*
@@ -24,6 +28,7 @@ import {
 
 export const PLATFORM_SAVER_PAGE_SIZE = 50;
 export const PLATFORM_SAVER_EXPORT_BATCH = 1000;
+export const PLATFORM_SAVER_TENANT_PAGE_SIZE = 100;
 const SEARCH_MAX = 100;
 
 export interface PlatformSaverActor {
@@ -129,6 +134,39 @@ export class GetPlatformSaverContactUseCase {
       meta: { kind: 'detail', contactId: input.contactId, count: links.length },
     });
     return { contactId: input.contactId, links };
+  }
+}
+
+export interface ListPlatformSaverTenantsInput {
+  actor: PlatformSaverActor;
+  cursor?: string | null;
+}
+
+export interface ListPlatformSaverTenantsOutput {
+  items: PlatformSaverTenant[];
+  nextCursor: string | null;
+}
+
+/**
+ * Contas com vínculo no Saver para o seletor do filtro (id e nome). Por cursor keyset assinado (pode passar
+ * de centenas); tamanho de página fixo. Sem auditoria: só nome de conta, nenhum dado de contato.
+ */
+export class ListPlatformSaverTenantsUseCase {
+  constructor(private readonly contacts: IPlatformSaverContactRepository) {}
+
+  async execute(input: ListPlatformSaverTenantsInput): Promise<ListPlatformSaverTenantsOutput> {
+    assertSuperAdmin(input.actor);
+    let after: PlatformSaverTenantKey | null = null;
+    if (input.cursor) {
+      after = readPlatformSaverTenantCursor(input.cursor);
+      if (!after) throw new SaverCursorInvalidError();
+    }
+    const rows = await this.contacts.listTenants(after, PLATFORM_SAVER_TENANT_PAGE_SIZE + 1);
+    const items = rows.slice(0, PLATFORM_SAVER_TENANT_PAGE_SIZE);
+    const last = items[items.length - 1];
+    const nextCursor =
+      rows.length > PLATFORM_SAVER_TENANT_PAGE_SIZE && last ? createPlatformSaverTenantCursor({ name: last.name, id: last.id }) : null;
+    return { items, nextCursor };
   }
 }
 

@@ -250,6 +250,7 @@ export class FakeSaverStore {
       this.contacts.filter((c) => (c.phone && phones.includes(c.phone)) || (c.lid && lids.includes(c.lid))),
     list: async () => [],
     findLinks: async () => [],
+    listTenants: async () => [],
     applyGroupRead: async (
       tenantId: string,
       groupId: string,

@@ -4,7 +4,7 @@ import type { SaverExtractionDTO } from '../../application/use-cases/saverExtrac
 import type { CancelSaverExtractionOutput } from '../../application/use-cases/CancelSaverExtractionUseCase';
 import type { SaverGroupDTO } from '../../application/use-cases/ListSaverGroupsUseCase';
 import type { SaverConfigDTO, SaverExportGrantDTO } from '../../application/use-cases/SaverConfigUseCases';
-import type { ListPlatformSaverContactsOutput } from '../../application/use-cases/PlatformSaverContactsUseCases';
+import type { ListPlatformSaverContactsOutput, ListPlatformSaverTenantsOutput } from '../../application/use-cases/PlatformSaverContactsUseCases';
 import type { PlatformSaverContactLink, PlatformSaverContactRow } from '../../domain/contracts/IPlatformSaverContactRepository';
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
@@ -108,9 +108,14 @@ export const SaverPresenter = {
     return { items: out.items.map(SaverPresenter.platformContact), nextCursor: out.nextCursor };
   },
 
+  platformTenants(out: ListPlatformSaverTenantsOutput) {
+    return { items: out.items.map((t) => ({ id: t.id, name: t.name })), nextCursor: out.nextCursor };
+  },
+
   platformContactLink(l: PlatformSaverContactLink) {
     return {
       tenantId: l.tenantId,
+      tenantName: l.tenantName,
       groupId: l.groupId,
       groupName: l.groupName,
       name: l.name,

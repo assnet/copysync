@@ -90,8 +90,9 @@ const fake = vi.hoisted(() => {
       })),
       getContact: uc(() => ({
         contactId: 'c1',
-        links: [{ tenantId: 'tenant-a', groupId: 'sg1', groupName: 'Grupo', name: 'Ana', isAdmin: false, firstExtractedAt: NOW, lastExtractedAt: NOW, leftAt: null }],
+        links: [{ tenantId: 'tenant-a', tenantName: 'Loja A', groupId: 'sg1', groupName: 'Grupo', name: 'Ana', isAdmin: false, firstExtractedAt: NOW, lastExtractedAt: NOW, leftAt: null }],
       })),
+      listTenants: uc(() => ({ items: [{ id: 'tenant-a', name: 'Loja A' }], nextCursor: 'next' })),
       exportContacts: uc(() => ({ fileName: 'base-de-contatos-2026-11-17.csv', contentType: 'text/csv; charset=utf-8', lines: lines(['h\r\n', 'l\r\n']) })),
     },
   };
@@ -291,7 +292,7 @@ describe('privacidade das respostas JSON de /saver/*', () => {
 describe('/admin/saver/* (base da plataforma)', () => {
   it('fora do gate: ADMIN de tenant → 403; super admin sem produto → 200', async () => {
     st.products = new Set();
-    for (const [m, p, body] of [['GET', '/contacts'], ['GET', '/contacts/c1'], ['POST', '/exports', {}]] as [string, string, object?][]) {
+    for (const [m, p, body] of [['GET', '/contacts'], ['GET', '/contacts/c1'], ['GET', '/tenants'], ['POST', '/exports', {}]] as [string, string, object?][]) {
       const res = await call(m, `/api/admin/saver${p}`, body);
       expect(res.statusCode, `${m} ${p}`).toBe(403);
     }
@@ -303,7 +304,7 @@ describe('/admin/saver/* (base da plataforma)', () => {
     expect(fake.platform.listContacts.execute).toHaveBeenLastCalledWith(expect.objectContaining({
       actor: { userId: 'user-a', isSuperAdmin: true }, search: 'ana', from: new Date('2026-11-01'), to: null, cursor: null,
     }));
-    expect((await call('GET', '/api/admin/saver/contacts/c1')).json().data.links[0]).toMatchObject({ groupName: 'Grupo', leftAt: null });
+    expect((await call('GET', '/api/admin/saver/contacts/c1')).json().data.links[0]).toMatchObject({ tenantName: 'Loja A', groupName: 'Grupo', leftAt: null });
     expect(reader.has).not.toHaveBeenCalled();
   });
 
@@ -313,6 +314,14 @@ describe('/admin/saver/* (base da plataforma)', () => {
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-disposition']).toContain('base-de-contatos-2026-11-17.csv');
     expect(res.body).toBe('h\r\nl\r\n');
+  });
+
+  it('contas do filtro: id e nome por cursor; `limit` descartado', async () => {
+    st.isSuperAdmin = true;
+    const res = await call('GET', '/api/admin/saver/tenants?cursor=abc&limit=500');
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toEqual({ items: [{ id: 'tenant-a', name: 'Loja A' }], nextCursor: 'next' });
+    expect(fake.platform.listTenants.execute).toHaveBeenLastCalledWith({ actor: { userId: 'user-a', isSuperAdmin: true }, cursor: 'abc' });
   });
 
   it('`limit` no query não chega ao use case (só cursor)', async () => {
