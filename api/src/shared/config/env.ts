@@ -408,6 +408,12 @@ const envSchema = z.object({
     .string()
     .transform((v) => v === 'true')
     .default('false'),
+  // ── Uso dos recursos (.specs/features/usage-metrics, P2) ───────────────
+  // Job de consolidação diária do uso (`feature_usage_daily`), só em worker/all. Desligado por padrão; liga só na Render.
+  FEATURE_USAGE_ROLLUP_ENABLED: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
   // ── Custos da infraestrutura (.specs/features/infra-costs, COST-09) ─────
   // `api=srv-…,worker=srv-…,redis=red-…,postgres=dpg-…,static=srv-…`, só no `worker`. Parse em
   // `infraCostRenderResources.ts` (entrada inválida ignorada com warn sem o id). Nunca logado nem devolvido.

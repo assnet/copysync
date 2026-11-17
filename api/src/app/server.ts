@@ -57,6 +57,8 @@ import type { OpsMetricsSamplerJob } from '../modules/metrics/infrastructure/job
 import { createInfraCostSnapshotJob } from '../modules/metrics/infrastructure/infraCostsContainer';
 import type { InfraCostSnapshotJob } from '../modules/metrics/infrastructure/jobs/InfraCostSnapshotJob';
 import { startInfraCostSnapshotJob } from '../modules/metrics/infrastructure/infraCostSnapshotStart';
+import { createFeatureUsageRollupJob } from '../modules/metrics/infrastructure/featureUsageContainer';
+import { startFeatureUsageRollupJob } from '../modules/metrics/infrastructure/featureUsageRollupStart';
 import { createOfferHuntSchedulerJob, type OfferHuntSchedulerJob } from '../modules/campaigns/infrastructure/jobs/OfferHuntSchedulerJob';
 import { startOfferHunterSchedulerJob } from '../modules/campaigns/infrastructure/offerHunterSchedulerStart';
 import { startSaverExtractionJob } from '../modules/saver/infrastructure/jobs/startSaverExtractionJob';
@@ -515,6 +517,14 @@ async function start(): Promise<void> {
     logger.info({ render: snapshot.renderConfigured }, 'Infra cost snapshot job started');
   }
 
+  // ── Consolidação diária do uso dos recursos (usage-metrics P2) ───────────────
+  // Só worker/all e com a flag; só arma o timer `unref` de 15 min (nada no boot). Tudo sob lease no use case.
+  const featureUsageRollup = startFeatureUsageRollupJob(
+    jobs.has('featureUsageRollup') && env.FEATURE_USAGE_ROLLUP_ENABLED,
+    createFeatureUsageRollupJob,
+  );
+  if (featureUsageRollup) logger.info('Feature usage rollup job started');
+
   // ── Caçadas agendadas do Caçador de Ofertas (offer-hunter T11) ─────────────
   // Só worker/all e com a flag; 1 dono por vez via lease, posse por caçada em CAS. Timer `unref` de 60 s.
   const offerHunterScheduler: OfferHuntSchedulerJob | null = startOfferHunterSchedulerJob(
@@ -560,7 +570,8 @@ async function start(): Promise<void> {
     // OWN-04: a varredura de tenant inativo também (espera a passada em curso).
     // COST-09: o snapshot de custos também (cancela a cotação em voo, solta o lease).
     // T11: o caçador também (espera a caçada em curso; as não iniciadas são soltas sem mudar o horário).
-    if (adoption || opsMetricsSampler || workerAutoscaler || inactiveTenantSweep || infraCostSnapshot || offerHunterScheduler) {
+    // usage-metrics P2: a consolidação do uso também (espera o tick em curso; o use case solta os leases).
+    if (adoption || opsMetricsSampler || workerAutoscaler || inactiveTenantSweep || infraCostSnapshot || offerHunterScheduler || featureUsageRollup) {
       try {
         await Promise.all([
           adoption?.ticker.stop(),
@@ -570,6 +581,7 @@ async function start(): Promise<void> {
           inactiveTenantSweep?.stop(),
           infraCostSnapshot?.stop(),
           offerHunterScheduler?.stop(),
+          featureUsageRollup?.stop(),
         ]);
         if (adoption) logger.info('Session adoption stopped');
       } catch (err) {

@@ -7,11 +7,11 @@ const ALL: ProcessJob[] = [
   'linkRotationSync', 'sessionBootstrap', 'sessionReconciler', 'leaseKeeper',
   'sessionAdoption', 'workerHeartbeat', 'capacityAlert', 'outboundTmpSweep',
   'opsMetricsSampler', 'workerAutoscaler', 'inactiveTenantSweep', 'infraCostSnapshot', 'offerHunterScheduler',
-  'saverExtraction',
+  'saverExtraction', 'featureUsageRollup',
 ];
 
 describe('jobsFor', () => {
-  it('all liga os 22 jobs', () => {
+  it('all liga os 23 jobs', () => {
     expect([...jobsFor('all')].sort()).toEqual([...ALL].sort());
   });
 
@@ -58,6 +58,12 @@ describe('jobsFor', () => {
     expect(jobsFor('worker').has('infraCostSnapshot')).toBe(true);
     expect(jobsFor('all').has('infraCostSnapshot')).toBe(true);
     expect(jobsFor('http').has('infraCostSnapshot')).toBe(false);
+  });
+
+  it('consolidação do uso só em worker/all, nunca no http (usage-metrics P2)', () => {
+    expect(jobsFor('worker').has('featureUsageRollup')).toBe(true);
+    expect(jobsFor('all').has('featureUsageRollup')).toBe(true);
+    expect(jobsFor('http').has('featureUsageRollup')).toBe(false);
   });
 
   it('subida automática só em worker/all, nunca no http (WSCALE-15)', () => {
