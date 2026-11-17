@@ -11,7 +11,8 @@ import type {
 } from '../../domain/services/subscriptionReconcile';
 import { syncPlanEntitlements } from '../../billing/syncPlanEntitlements';
 import { SHARED_KEYS } from '../../../tenants/domain/sharedEntitlements';
-import { mergeProductSharedEntitlements, syncProductPlanEntitlements, writeBillingProductRow } from '../../billing/productBilling';
+import { syncProductPlanEntitlements, writeBillingProductRow } from '../../billing/productBilling';
+import { writeMergedSharedEntitlements } from '../../../tenants/infrastructure/productEntitlements';
 import { createTenantProductRepository } from '../../../tenants/infrastructure/productAccessContainer';
 import type { ProductKey } from '../../../tenants/domain/services/resolveProductAccess';
 
@@ -158,7 +159,7 @@ export class PrismaBillingReconcileRepository implements IBillingReconcileReposi
         lastSeq: decision.advanceTo?.toString() ?? null,
       });
       if (decision.products) await this.applyProducts(tx, row.id, decision.products, { suspended: false });
-      else if (productAware) await mergeProductSharedEntitlements(tx, row.id);
+      else if (productAware) await writeMergedSharedEntitlements(tx, row.id);
       return { decision, found: true };
     }, TX_OPTIONS);
   }
@@ -188,7 +189,7 @@ export class PrismaBillingReconcileRepository implements IBillingReconcileReposi
       }
     }
     // PROD-18: chaves compartilhadas pela união dos produtos ativos
-    if (!opts.suspended) await mergeProductSharedEntitlements(tx, tenantId);
+    if (!opts.suspended) await writeMergedSharedEntitlements(tx, tenantId);
   }
 
   /** Watermark só sobe (mesmo guarda do webhook); null = central sem evento, mantém. */
