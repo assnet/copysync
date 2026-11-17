@@ -11,15 +11,25 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Added
 
-#### integrations / tenants ([`docs/arquitetura-central-billing.md`](../docs/arquitetura-central-billing.md))
-
-- **`planPresets.ts`**, **`billing.routes.ts`**, **`ApplyBillingEventUseCase.ts`**, **`HubSubscriptionsClient.ts`**, **`subscriptionReconcile.ts`** — o nível do tenant passa a vir das permissões da assinatura: `resolveEffectivePlanSlug` (permissão `COPYSYNC_*` mais alta; sem nenhuma reconhecida, o `planSlug`). Antes `permissions` era descartado na borda, então editar as permissões de uma assinatura na central não mudava o nível. Agora a rota leva o campo ao use case, o cliente da central o copia de `GET /integrations/subscriptions` e evento, corte pela união e reconciliação usam a mesma função. Permissão desconhecida gera `warn` sem derrubar o evento; central sem o campo segue pelo `planSlug` (os 7 planos `copysync` de produção já trazem a permissão do próprio nível: nenhum tenant muda de nível).
-
 #### Painel (app/) — `tutorials` ([`docs/tutoriais.md`](../docs/tutoriais.md))
 
 - **`features/tutorials/*`**, **`routes/AppRoutes.tsx`**, **`features/navigation/model.ts`** — aba **Tutoriais** em Afiliados (`/affiliates/tutorials`, app 0.120.0): vitrine de 13 aulas em 3 trilhas, hero com aula em destaque, painel de trilha guiada (anel/barra), busca (`/`), filtros por estado e trilha, copiar link (`?aula=`), player em diálogo com retomada no ponto salvo e navegação anterior/próxima. Progresso (`progress.ts`) fica no navegador, por usuário, via `usePersistedState` escopo `browser`; conclusão automática aos 90% ou pelo botão. Ponto lido do iframe por `postMessage` (`youtubeBridge.ts`), sem carregar script do YouTube (CSP intacto). Aulas 7, 9 e 10 entram com vídeo em app 0.122.1 (as 13 aulas reproduzíveis).
 
 ---
+
+## [0.99.0] — 2026-11-16 — Nível do tenant pelas permissões da assinatura
+
+### Added
+
+#### integrations / tenants ([`docs/arquitetura-central-billing.md`](../docs/arquitetura-central-billing.md))
+
+- **`planPresets.ts`**, **`billing.routes.ts`**, **`ApplyBillingEventUseCase.ts`**, **`HubSubscriptionsClient.ts`**, **`subscriptionReconcile.ts`** — o nível do tenant passa a vir das permissões da assinatura: `resolveEffectivePlanSlug` (permissão `COPYSYNC_*` mais alta; sem nenhuma reconhecida, o `planSlug`). Antes `permissions` era descartado na borda, então editar as permissões de uma assinatura na central não mudava o nível. Agora a rota leva o campo ao use case, o cliente da central o copia de `GET /integrations/subscriptions` e evento, corte pela união e reconciliação usam a mesma função. Permissão desconhecida gera `warn` sem derrubar o evento; central sem o campo segue pelo `planSlug` (os 7 planos `copysync` de produção já trazem a permissão do próprio nível: nenhum tenant muda de nível).
+
+- **`ApplyBillingEventUseCase.test.ts`** — trava a suspensão e a reativação feitas pelo admin da central: `subscription.canceled` sem outra assinatura válida leva o tenant a `CANCELLED` sem apagar dados; `subscription.activated` volta a `ACTIVE`; `adminBlockedAt` continua vencendo. Doc: seção "Suspensão pelo admin da central" e contrato da renovação Cakto por aplicação.
+
+#### Ordem de deploy
+
+- Subir esta versão **antes** da API da central 1.96.0 (que passa a emitir `subscription.updated` quando as permissões de uma assinatura mudam).
 
 ## [0.98.2] — 2026-11-16 — Caçador: super admin sem a janela de 48 h do ranking
 
