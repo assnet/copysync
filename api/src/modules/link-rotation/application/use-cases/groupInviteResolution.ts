@@ -1,6 +1,7 @@
 import { GroupInviteNotAllowedError } from '../../../../shared/errors/internal/GroupErrors';
 import {
   EngineNotReadyError,
+  EngineRateLimitedError,
   EngineTemporarilyUnavailableError,
   RecoverableConnectionError,
 } from '../../../../shared/errors/internal/MessagingErrors';
@@ -22,6 +23,7 @@ export function isEngineUnavailable(err: unknown): boolean {
     err instanceof SessionNotConnectedError ||
     err instanceof EngineNotReadyError ||
     err instanceof EngineTemporarilyUnavailableError ||
+    err instanceof EngineRateLimitedError ||
     err instanceof RecoverableConnectionError
   );
 }

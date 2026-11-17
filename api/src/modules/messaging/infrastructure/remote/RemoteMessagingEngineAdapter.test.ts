@@ -42,6 +42,7 @@ const ARGS: Record<EngineMethod, unknown[]> = {
   listParticipatingGroups: [S],
   getGroupInviteLink: [S, 'g'],
   getGroupSummary: [S, 'g'],
+  getGroupMembers: [S, 'g'],
   fetchProfilePicture: [S, '5511', false],
   checkNumberExists: [S, '5511'],
   updateChatState: [{ sessionId: S, chatId: 'c', isGroup: false }],

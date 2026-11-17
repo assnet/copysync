@@ -197,6 +197,7 @@ export class MessagingEngineRouter implements IMessagingEngine, ISessionSocketCo
   async listParticipatingGroups(sessionId: string): Promise<ParticipatingGroupInfo[]> { return (await this.resolve(sessionId)).listParticipatingGroups(sessionId); }
   async getGroupInviteLink(sessionId: string, groupJid: string) { return (await this.resolve(sessionId)).getGroupInviteLink(sessionId, groupJid); }
   async getGroupSummary(sessionId: string, groupJid: string) { return (await this.resolve(sessionId)).getGroupSummary(sessionId, groupJid); }
+  async getGroupMembers(sessionId: string, groupJid: string) { return (await this.resolve(sessionId)).getGroupMembers(sessionId, groupJid); }
   async fetchProfilePicture(sessionId: string, jid: string, isGroup: boolean) { return (await this.resolve(sessionId)).fetchProfilePicture(sessionId, jid, isGroup); }
   async checkNumberExists(sessionId: string, phone: string) { return (await this.resolve(sessionId)).checkNumberExists(sessionId, phone); }
   async updateChatState(input: UpdateChatStateInput) { return (await this.resolve(input.sessionId)).updateChatState(input); }

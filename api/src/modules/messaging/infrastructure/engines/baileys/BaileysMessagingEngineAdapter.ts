@@ -42,6 +42,7 @@ import type {
   SendMessageResult,
   SendReactionInput,
   MarkMessagesReadInput,
+  GroupMemberInfo,
   GroupParticipantInfo,
   ParticipatingGroupInfo,
   UpdateChatStateInput,
@@ -65,6 +66,7 @@ import {
   translatePairingError,
   translateSendError,
 } from './BaileysErrorTranslator';
+import { normalizeGroupMembers } from './group/normalizeGroupMembers';
 import { normalizeChatState, isEmptyChatState, type RawChatState, type ChatStateSource } from './normalizeChatState';
 import type { RemoteChatState } from '../../../../../shared/events/InternalMessagingEvent';
 import { outboundEchoRegistries } from './outboundEchoRegistries';
@@ -881,6 +883,18 @@ export class BaileysMessagingEngineAdapter implements IMessagingEngine, ISession
         });
       }
       return { name: groupName ?? '', memberCount: summary.size, isSelfAdmin: summary.selfIsAdmin };
+    } catch (err) {
+      throw translateEngineError(err);
+    }
+  }
+
+  /** Leitura para a base de contatos: sem cache de metadados, sem foto (ver `getGroupParticipants`). */
+  async getGroupMembers(sessionId: string, groupJid: string): Promise<GroupMemberInfo[]> {
+    const entry = this.requireConnectedEntry(sessionId);
+    const remoteJid = groupJid.endsWith('@g.us') ? groupJid : `${groupJid}@g.us`;
+    try {
+      const metadata = await (entry.socket as BaileysSocketWithGroupHelpers).groupMetadata?.(remoteJid);
+      return normalizeGroupMembers(metadata?.participants);
     } catch (err) {
       throw translateEngineError(err);
     }

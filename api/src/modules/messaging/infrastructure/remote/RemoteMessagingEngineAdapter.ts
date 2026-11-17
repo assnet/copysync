@@ -17,6 +17,7 @@ import type {
   SendMessageResult,
   SendReactionInput,
   MarkMessagesReadInput,
+  GroupMemberInfo,
   GroupParticipantInfo,
   ParticipatingGroupInfo,
   UpdateChatStateInput,
@@ -244,6 +245,9 @@ export class RemoteMessagingEngineAdapter implements IMessagingEngine {
   }
   getGroupSummary(sessionId: string, groupJid: string): Promise<{ name: string; memberCount: number; isSelfAdmin: boolean }> {
     return this.dispatch(engineCall('getGroupSummary', sessionId, groupJid));
+  }
+  getGroupMembers(sessionId: string, groupJid: string): Promise<GroupMemberInfo[]> {
+    return this.dispatch(engineCall('getGroupMembers', sessionId, groupJid));
   }
   fetchProfilePicture(sessionId: string, jid: string, isGroup: boolean): Promise<string | null> {
     return this.dispatch(engineCall('fetchProfilePicture', sessionId, jid, isGroup));

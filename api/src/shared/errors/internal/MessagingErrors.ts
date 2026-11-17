@@ -34,6 +34,16 @@ export class EngineTemporarilyUnavailableError extends AppError {
   }
 }
 
+/**
+ * O canal recusou por limite de taxa (WhatsApp: IQ `<error code="429" text="rate-overlimit"/>`).
+ * Quem chama espera antes de repetir; não é falha da sessão.
+ */
+export class EngineRateLimitedError extends AppError {
+  constructor() {
+    super('ENGINE_RATE_LIMITED', 'Messaging engine rate limit reached', 429);
+  }
+}
+
 export class RecoverableConnectionError extends AppError {
   constructor(reason: string) {
     super('RECOVERABLE_CONNECTION_ERROR', `Recoverable connection error: ${reason}`, 503);
