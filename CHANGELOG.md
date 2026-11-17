@@ -9,6 +9,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — app 0.125.0 / api 0.102.0 — Uso dos recursos (P1, super admin)
+
+#### app / api ([`docs/uso-dos-recursos.md`](docs/uso-dos-recursos.md))
+
+- **`/admin/usage`** (`AdminUsagePage.tsx`, `features/featureUsage/*`, `adminUsage.service.ts`) — ranking dos recursos por contas que usaram e por volume, tendência, quebra por plano, nunca usados e contas que mais usam (nome sob `usage.tenantName`); CSV do resumo; fila única de leituras por aba (timeout de 8 s, limpa no logout).
+- **`metrics`** (`featureUsageCatalog.ts`, `aggregateFeatureUsage.ts`, `PrismaLiveFeatureUsageReader.ts`, `featureUsageReadTimeout.ts`, use cases e rotas `GET /admin/usage/*`) — leitura sob demanda das tabelas de domínio, orçamento de 2 s, uma leitura por processo com fila de até 4 (vaga devolvida no máximo 30 s após o orçamento), `inScope: false` no detalhe fora do recorte, auditoria `USAGE_METRICS_VIEWED` na lista de contas. Detalhes, migrations e medições dos índices em `api/CHANGELOG.md` [0.102.0].
+- **`contracts/feature-usage/`** — fixtures do contrato lidas pelos testes da API e do painel.
+
 ### Added — app 0.122.0 / api 0.98.0 — Caçador: ranking marca o que outra busca já enviou
 
 #### app

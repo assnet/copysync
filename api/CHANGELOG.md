@@ -17,6 +17,36 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.102.0] — 2026-11-17 — Uso dos recursos (P1): ranking dos recursos mais usados para o super admin (app 0.125.0)
+
+### Added
+
+#### Backend — metrics ([`docs/uso-dos-recursos.md`](../docs/uso-dos-recursos.md))
+
+- **`metrics/domain/services/featureUsageCatalog.ts`** (novo) — catálogo fechado de 16 recursos (chave, produto, família de plano, tipos do evento, fonte, motivos possíveis de cobertura parcial, retenção). Rótulo fica no painel.
+- **`featureUsagePeriod.ts`**, **`aggregateFeatureUsage.ts`** (novos) — período e buckets em `America/Sao_Paulo`; toda a conta em função pura: contas que usaram, alcance, tendência (`null` sem base), quebra por tipo e por plano (duas famílias, Afiliados e Saver), série, nunca usados, recorte por tipo, top contas. Sem total de usos entre recursos (somaria criação e envio da mesma oferta). Total anterior de contas nulo só quando algum recurso **com dado** não tem base.
+- **`PrismaLiveFeatureUsageReader.ts`**, **`featureUsagePeriodSql.ts`**, **`PrismaUsageTenantDirectory.ts`** (novos) — uma instrução por fonte (`offers`, `offer_dispatches`, `offer_hunt_runs`, `ai_usage_logs`, `link_rotations`, `link_clicks`, `storefront_offers`, `sessions`, `saver_extractions`, `audit_logs`, `login_events`), em sequência, dia por texto com dois `AT TIME ZONE`, `count(*)::int`, só colunas de classificação (exceção: `meta.completed` de `SAVER_EXPORTED`); primeiro dado por `MIN`; guarda de 100 mil linhas; plano por família via `resolveProductAccess`; conta interna = membro super admin.
+- **`featureUsageReadTimeout.ts`** (novo) — orçamento de 2 s por pedido (transação por instrução com `SET LOCAL statement_timeout` do que resta + temporizador que cobre a espera por conexão) e `usageReadGate`: uma leitura de uso por processo; leitura sobreposta **espera** em fila FIFO de até 4 dentro do próprio orçamento (fila cheia ou tempo esgotado = 503) em vez de ser recusada na hora. A vaga volta no máximo 30 s depois do fim do orçamento mesmo com consulta órfã pendente (log `warn`; evita portão preso por socket morto) — recomendado `socket_timeout` na `DATABASE_URL` da Render.
+- **`GetFeatureUsageSummaryUseCase.ts`**, **`GetFeatureUsageDetailUseCase.ts`**, **`ListFeatureUsageTenantsUseCase.ts`**, **`featureUsageTenantCursor.ts`** (novos) — teto de 90 dias; detalhe fora do recorte de tipo/plano responde 200 zerado com `inScope: false` e a lista `{ items: [], nextCursor: null }` (404 só chave inexistente); lista de 25 contas por cursor keyset assinado, válido só para as mesmas datas resolvidas (virar o dia invalida a página seguinte e o painel recomeça com aviso); 1ª página audita `USAGE_METRICS_VIEWED` (sem nome), esperando no máximo 500 ms.
+- **`featureUsage.routes.ts`**, **`featureUsage.schema.ts`**, **`featureUsagePresenter.ts`**, **`featureUsageContainer.ts`**, **`app/routes.ts`**, **`app/productRoutes.ts`** — `GET /admin/usage/summary`, `/admin/usage/features/:featureKey` e `/tenants` (`authHook` + `superAdminHook`), padrões no schema.
+- **`shared/errors/internal/UsageMetricsErrors.ts`** (novo) — `USAGE_METRICS_RANGE_INVALID` (400), `USAGE_METRICS_FEATURE_NOT_FOUND` (404), `USAGE_METRICS_CURSOR_INVALID` (400), `USAGE_METRICS_READ_UNAVAILABLE` (503).
+- **`contracts/feature-usage/`** (novo, raiz) — 4 JSON + README; testes da API (catálogo e presenter) e do painel leem os mesmos arquivos por caminho.
+- **`prisma/migrations/20261117150000_add_audit_action_usage_metrics`** — `USAGE_METRICS_VIEWED` em `AuditAction`.
+- **`prisma/migrations/20261117160000_add_usage_read_indexes`** — `offers(createdAt)` e `offer_dispatches(status, updatedAt)` com `IF NOT EXISTS`. Criação medida em Postgres 16 local (Apple M5, linhas sintéticas; Render não medido): `offer_dispatches` 250 mil linhas em 64–74 ms, `offers` 60 mil em 10 ms; abaixo de 2 s, migration normal no boot. Acima de 2 s no futuro: `CREATE INDEX CONCURRENTLY IF NOT EXISTS` antes do deploy. `MIN` do primeiro dado em `login_events`/`ai_usage_logs` ~6–7 ms com 200 mil linhas, sem índice novo.
+
+#### Frontend — featureUsage (app 0.125.0)
+
+- **`pages/admin/AdminUsagePage.tsx`**, **`features/featureUsage/*`**, **`services/adminUsage.service.ts`** (novos) — tela `/admin/usage` (Visão geral, Por plano, detalhe em `/admin/usage/features/:key`): KPIs, ranking, tendência, matriz recurso × plano, nunca usados, contas que mais usam com nome sob `usage.tenantName`, CSV do resumo, filtros em `usePersistedState`; fila única de leituras por aba, timeout de 8 s por leitura e fila limpa no logout.
+- **`navigation/model.ts`**, **`privacy/privacyFlags.ts`**, **`routes/AppRoutes.tsx`**, **`infraCosts/components/CursorResetNotice.tsx`** — item "Uso dos recursos" na seção Plataforma, flag de privacidade, rotas e aviso de cursor extraído para reuso.
+
+### Notas
+
+- Suposições conferidas no código: `SENT` só gravado por `markResult` (`updatedAt` = fim do envio); ofertas, envios, execuções do Caçador e IA sem limpeza; `login_events` podada em 30 dias e `link_clicks` em 90; vitrine e Gestor de Links apagados de verdade pelo usuário (medem o que ainda existe).
+- Limitação conhecida: com o tipo `ACCESS` marcado e período maior que 15 dias, o total anterior de contas fica sem base (retenção de 30 dias de `login_events`).
+- Migrations aditivas; restart da API necessário (migrations no boot).
+
+---
+
 ## [0.101.0] — 2026-11-17 — Saver: indicadores e filtro por DDI/DDD na base de contatos da plataforma (app 0.124.0)
 
 ### Added

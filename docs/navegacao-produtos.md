@@ -49,7 +49,7 @@ as telas existirem, o item segue `saverVisible` (`GET /saver/access`, audiência
 
 | Peça | Arquivo | Nota |
 |---|---|---|
-| Textos (rótulos, selos, aria) | `app/src/features/navigation/strings.ts` | padrão i18n do painel; nenhum rótulo fora daqui |
+| Textos (rótulos, selos, aria) | `app/src/features/navigation/strings.ts` | padrão i18n do painel; rótulos de produtos e itens de produto ficam aqui. Item da seção Plataforma usa o `navLabel` do `strings.ts` da própria feature (ex.: `infraCostsStrings.navLabel`, `featureUsageStrings.navLabel`) |
 | Modelo | `app/src/features/navigation/model.ts` | `buildNavigation({ isSuperAdmin })` → seções e `NavProduct[]`; `findActiveEntry(path)`; tipo `NavProduct` com `status: 'available' \| 'soon'` |
 | Estado | `app/src/features/navigation/useNavigationState.ts` | produtos expandidos em `usePersistedState('navigation.expandedProducts', …, { scope: 'browser' })` |
 | Acordeão (sidebar aberta) | `app/src/app/nav/ProductNavItem.tsx` | cabeçalho do produto + filhos |
@@ -140,7 +140,7 @@ Registrada em 2026-11-03; plano por produto implementado em 2026-11-17 ([`acesso
 ## O que não fazer
 
 - Rota nova sem item em `model.ts`, nem item em `model.ts` sem rota em `AppRoutes.tsx`.
-- Rótulo, selo ou aria hardcoded fora de `navigation/strings.ts`; `AppLayout.tsx` não declara item.
+- Rótulo, selo ou aria hardcoded (fora de `navigation/strings.ts` ou, em item de Plataforma, do `strings.ts` da feature); `AppLayout.tsx` não declara item.
 - Produto novo que não exista em `produto-roadmap.md` (seção "Produtos (menu)").
 - Marca em nome de chave, id, função ou evento (`copysync*`); nomes descrevem o recurso.
 - Esconder tela por plano no menu: o selo informa, a rota e o backend aplicam o gate.
