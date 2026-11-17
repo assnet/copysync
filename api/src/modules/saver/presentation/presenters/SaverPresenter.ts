@@ -37,6 +37,7 @@ export const SaverPresenter = {
       lastScanStatus: g.lastScanStatus,
       memberCount: g.memberCount,
       kind: g.kind,
+      selfIsAdmin: g.selfIsAdmin,
       selectable: g.selectable,
       unselectableReason: g.unselectableReason,
     };

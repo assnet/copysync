@@ -24,6 +24,8 @@ export interface SaverSessionGroupDTO {
   /** Total de membros vindo da listagem; null = desconhecido. */
   memberCount: number | null;
   kind: SaverGroupKind;
+  /** A sessão é administradora do grupo (só admin vê número em comunidade); null = a engine não informou. */
+  selfIsAdmin: boolean | null;
   /** false = não pode ser pedido para leitura (motivo em `unselectableReason`). */
   selectable: boolean;
   unselectableReason: SaverGroupUnselectableReason | null;
@@ -68,6 +70,7 @@ export class ListSaverSessionGroupsUseCase {
         lastScanStatus: s?.lastScanStatus ?? null,
         memberCount: typeof g.memberCount === 'number' ? g.memberCount : null,
         kind,
+        selfIsAdmin: typeof g.canInvite === 'boolean' ? g.canInvite : null,
         selectable: unselectableReason === null,
         unselectableReason,
       });

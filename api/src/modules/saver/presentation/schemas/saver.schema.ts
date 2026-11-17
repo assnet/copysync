@@ -141,6 +141,7 @@ export const sessionGroupsResponse = envelope({
     lastScanStatus: itemStatus,
     memberCount: { type: ['integer', 'null'] },
     kind: { type: 'string', enum: ['GROUP', 'COMMUNITY', 'COMMUNITY_ANNOUNCE'] },
+    selfIsAdmin: { type: ['boolean', 'null'] },
     selectable: { type: 'boolean' },
     unselectableReason: { type: ['string', 'null'], enum: ['COMMUNITY_PARENT', null] },
   }),
