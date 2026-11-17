@@ -29,7 +29,9 @@ export function useUsageTenants(
   after: object | null,
 ): UsageTenantsState {
   const queryKey = JSON.stringify(query);
+  /** Linhas e o recorte a que pertencem: no "Atualizar" (mesmo recorte) as anteriores ficam na tela até a nova página. */
   const [rows, setRows] = useState<UsageTenantItem[]>([]);
+  const [rowsKey, setRowsKey] = useState<string | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -56,6 +58,7 @@ export function useUsageTenants(
       .then((page) => {
         if (id !== request.current) return;
         setRows(page.items);
+        setRowsKey(queryKey);
         setNextCursor(page.nextCursor);
         setDoneFor(token);
       })
@@ -75,9 +78,9 @@ export function useUsageTenants(
 
   useEffect(() => {
     if (after === null) {
-      // Detalhe recarregando: descarta a lista anterior e qualquer resposta dela em voo.
+      // Detalhe recarregando: descarta qualquer resposta da lista em voo, mas mantém as linhas do mesmo recorte na
+      // tela (com "carregando") até a nova página chegar.
       request.current += 1;
-      setRows([]);
       setNextCursor(null);
       setLoading(false);
       setLoadingMore(false);
@@ -113,9 +116,10 @@ export function useUsageTenants(
   }, [featureKey, queryKey, nextCursor, loadingMore, load]);
 
   return {
-    rows,
+    rows: rowsKey === queryKey ? rows : [],
     hasMore: nextCursor !== null,
-    loading: loading || (after !== null && doneFor !== after),
+    // Sem resposta do detalhe (`after = null`) a lista também está esperando: nunca "nenhuma conta" nesse meio-tempo.
+    loading: loading || after === null || doneFor !== after,
     loadingMore,
     error,
     slow,

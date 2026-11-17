@@ -192,4 +192,25 @@ describe('FeatureDetailTab', () => {
     expect(await screen.findByText('Loja Alfa')).toBeInTheDocument();
     expect(getDetail).toHaveBeenLastCalledWith('offer_hunter', expect.objectContaining({ kind: 'ACTION,AUTOMATIC' }));
   });
+
+  it('"Atualizar" mantém as contas anteriores com carregando e nunca mostra a lista vazia na espera', async () => {
+    const user = userEvent.setup();
+    renderAt(DETAIL_PATH);
+    await screen.findByText('Loja Alfa');
+    const d = deferred<UsageFeatureDetail>();
+    const l = deferred<UsageTenantsPage>();
+    getDetail.mockReturnValueOnce(d.promise);
+    getTenants.mockReturnValueOnce(l.promise);
+    await user.click(screen.getByRole('button', { name: S.actions.refreshAria }));
+    expect(screen.getByText('Loja Alfa')).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: S.tenants.loading })).toBeInTheDocument();
+    expect(screen.queryByText(S.tenants.empty)).toBeNull();
+    await act(async () => { d.resolve(detailFixture()); });
+    await waitFor(() => expect(getTenants).toHaveBeenCalledTimes(2));
+    expect(screen.getByText('Loja Alfa')).toBeInTheDocument();
+    expect(screen.queryByText(S.tenants.empty)).toBeNull();
+    await act(async () => { l.resolve(page([tenant({ tenantName: 'Loja Nova' })])); });
+    expect(await screen.findByText('Loja Nova')).toBeInTheDocument();
+    expect(screen.queryByRole('progressbar', { name: S.tenants.loading })).toBeNull();
+  });
 });

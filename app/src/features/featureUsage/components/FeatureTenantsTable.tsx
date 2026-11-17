@@ -1,5 +1,5 @@
 import {
-  Alert, Box, Button, Chip, CircularProgress, IconButton, Stack, Table, TableBody, TableCell, TableContainer, TableHead,
+  Alert, Box, Button, Chip, CircularProgress, IconButton, LinearProgress, Stack, Table, TableBody, TableCell, TableContainer, TableHead,
   TableRow, Tooltip, Typography,
 } from '@mui/material';
 import { Filter } from 'lucide-react';
@@ -65,20 +65,23 @@ export function FeatureTenantsTable({ q, filteredTenantId, onFilter }: {
 }) {
   const blur = useBlur('usage.tenantName');
   let body;
-  if (q.loading) {
+  // "Atualizar": as linhas anteriores ficam com indicador de carregando; sem linhas, só o indicador.
+  const refreshing = q.loading && q.rows.length > 0;
+  if (q.loading && !refreshing) {
     body = (
       <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
         <CircularProgress aria-label={t.loading} />
       </Box>
     );
-  } else if (q.error || q.slow) {
+  } else if ((q.error || q.slow) && !q.loading) {
     body = <Box sx={{ p: 2 }}><UsageRetryAlert slow={q.slow} onRetry={q.reload} /></Box>;
   } else if (q.rows.length === 0) {
     body = <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>{t.empty}</Typography>;
   } else {
     body = (
       <>
-        <TableContainer>
+        {refreshing && <LinearProgress aria-label={t.loading} />}
+        <TableContainer aria-busy={refreshing}>
           <Table size="small" aria-label={t.aria}>
             <TableHead>
               <TableRow>
@@ -106,7 +109,7 @@ export function FeatureTenantsTable({ q, filteredTenantId, onFilter }: {
                   size="small"
                   variant="outlined"
                   onClick={q.loadMore}
-                  disabled={q.loadingMore}
+                  disabled={q.loadingMore || refreshing}
                   startIcon={q.loadingMore ? <CircularProgress size={14} aria-label={t.loadingMore} /> : undefined}
                   sx={{ minHeight: 44 }}
                 >
