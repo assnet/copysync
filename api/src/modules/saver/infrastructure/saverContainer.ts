@@ -19,6 +19,10 @@ import type { ISaverConfigRepository } from '../domain/contracts/ISaverConfigRep
 import { env } from '../../../shared/config/env';
 import { PrismaEntitlementReader } from '../../tenants/infrastructure/repositories/PrismaEntitlementReader';
 import { GetSaverOverviewUseCase } from '../application/use-cases/GetSaverOverviewUseCase';
+import { ListSaverSessionGroupsUseCase } from '../application/use-cases/ListSaverSessionGroupsUseCase';
+import { PrismaSaverSessionReader } from './repositories/PrismaSaverSessionReader';
+import { getActiveEngine } from '../../../shared/engine/activeEngine';
+import { EngineNotReadyError } from '../../../shared/errors/internal/MessagingErrors';
 
 /*
  * Composição do Saver (molde `linkRotationContainer.ts`). Tudo lazy: importar não toca banco.
@@ -51,6 +55,7 @@ export const saverContainer = {
   get configs(): ISaverConfigRepository { return configs(); },
 
   get getOverview(): GetSaverOverviewUseCase { return getOverview(); },
+  get listSessionGroups(): ListSaverSessionGroupsUseCase { return listSessionGroups(); },
 };
 
 /*
@@ -69,4 +74,18 @@ const getOverview = lazy(() => new GetSaverOverviewUseCase({
     configs: configs(),
     exportGrants: exportGrants(),
     queueRunning: saverQueueRunning,
+}));
+
+const sessionReader = lazy(() => new PrismaSaverSessionReader(prisma));
+/** Engine ativa do processo (remota em `http`); sem engine = `ENGINE_NOT_READY`. */
+function activeEngine() {
+  const engine = getActiveEngine();
+  if (!engine) throw new EngineNotReadyError();
+  return engine;
+}
+
+const listSessionGroups = lazy(() => new ListSaverSessionGroupsUseCase({
+  sessions: sessionReader(),
+  groups: groups(),
+  engine: activeEngine,
 }));
