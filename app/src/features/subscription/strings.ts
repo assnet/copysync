@@ -39,6 +39,10 @@ export const SUBSCRIPTION_LIMIT_KEYS = [
   'mercado_livre_affiliate_tags',
   'offer_hunter_enabled',
   'offer_hunter_finds_per_day',
+  'saver_groups',
+  'saver_contacts',
+  'saver_group_scans_per_day',
+  'saver_auto_refresh_enabled',
 ] as const;
 
 export type SubscriptionLimitKey = (typeof SUBSCRIPTION_LIMIT_KEYS)[number];
@@ -79,7 +83,18 @@ const FIXED_MIN_PLAN: Partial<Record<SubscriptionLimitKey, PlanSlug>> = {
   ai_requests_per_day: 'pro',
 };
 
-/** Menor plano do catálogo que libera a chave, ou `null` se nenhum libera. */
+/**
+ * Chaves do Saver: o catálogo de Afiliados não se aplica. Menor tier que libera, espelho de
+ * `SAVER_PLAN_PRESETS` da API (só a renovação automática fica fora do LITE).
+ */
+export const SAVER_MIN_TIER: Readonly<Record<string, 'LITE' | 'PRO' | 'MAX'>> = {
+  saver_groups: 'LITE',
+  saver_contacts: 'LITE',
+  saver_group_scans_per_day: 'LITE',
+  saver_auto_refresh_enabled: 'PRO',
+};
+
+/** Menor plano do catálogo de Afiliados que libera a chave, ou `null` se nenhum libera (chave do Saver = `null`). */
 export function minPlanFor(key: SubscriptionLimitKey): PlanCatalogItem | null {
   const field = CATALOG_FIELD[key];
   if (field) return PLAN_CATALOG.find((p) => p.limits[field] > 0) ?? null;
@@ -109,6 +124,10 @@ export const subscriptionStrings = {
     noPlan: 'Sem plano',
     noPlanTagline: 'Escolha um plano para liberar sessões, grupos e links.',
     tenantLabel: 'Conta',
+    /** Cartão de produto que não é Afiliados: "Plano atual · Saver". */
+    productEyebrow: (product: string) => `Plano atual · ${product}`,
+    /** Nome do plano no cartão do produto: "Saver PRO". */
+    productPlanName: (product: string, tier: string) => `${product} ${tier}`,
   },
 
   status: {
@@ -150,6 +169,8 @@ export const subscriptionStrings = {
 
   limits: {
     title: 'Limites do plano',
+    /** Título da tabela quando há mais de um produto: "Limites do plano Saver". */
+    productTitle: (product: string) => `Limites do plano ${product}`,
     channelTabsLabel: 'Canal',
     general: 'Recursos gerais',
     column: { resource: 'Recurso', usage: 'Uso', limit: 'Limite' },
@@ -210,5 +231,9 @@ export const subscriptionStrings = {
       label: 'Etiquetas do Mercado Livre',
       hint: 'Etiquetas da sua conta de afiliado aceitas nos links, contando a principal.',
     },
+    saver_groups: { label: 'Grupos salvos', hint: 'Grupos de onde os contatos são guardados.' },
+    saver_contacts: { label: 'Contatos guardados', hint: 'Total de contatos guardados a partir dos seus grupos.' },
+    saver_group_scans_per_day: { label: 'Leituras de grupo', hint: 'Leituras dos membros dos grupos por dia. O contador zera à meia-noite.' },
+    saver_auto_refresh_enabled: { label: 'Atualização automática', hint: 'Os grupos salvos são lidos de novo sozinhos, sem você pedir.' },
   } satisfies Record<SubscriptionLimitKey, { label: string; hint: string }>,
 };

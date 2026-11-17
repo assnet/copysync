@@ -135,4 +135,53 @@ describe('SubscriptionPage', () => {
     expect(await screen.findByText(t.pending.redirected)).toBeInTheDocument();
     expect(screen.getByText(t.pending.SUSPENDED.title)).toBeInTheDocument();
   });
+
+  describe('por produto', () => {
+    const saverItem = { product: 'SAVER', planSlug: 'SAVER_PRO', tier: 'pro' as const, expiresAt: null, source: 'ADMIN' as const };
+    const withProducts = (products: SubscriptionResponse['products']): SubscriptionResponse => ({
+      ...sub,
+      limits: [
+        { ...sub.limits[0], product: null },
+        { key: 'storefront_enabled', channel: null, kind: 'feature', used: null, limit: null, enabled: true, product: 'AFFILIATES' },
+        { key: 'saver_groups', channel: null, kind: 'count', used: null, limit: 50, enabled: true, product: 'SAVER' },
+        { key: 'saver_auto_refresh_enabled', channel: null, kind: 'feature', used: null, limit: null, enabled: false, product: 'SAVER' },
+      ],
+      products,
+    });
+
+    it('legado: um cartão de Afiliados, título de sempre, sem itens do Saver', async () => {
+      svc.getSubscription.mockResolvedValue(withProducts([{ product: 'AFFILIATES', planSlug: 'COPYSYNC_PRO', tier: 'pro', expiresAt: null, source: null }]));
+      renderPage();
+      expect(await screen.findByText(pro.name)).toBeInTheDocument();
+      expect(screen.getByText(t.plan.eyebrow)).toBeInTheDocument();
+      expect(screen.getByText(t.limits.title)).toBeInTheDocument();
+      expect(document.querySelectorAll('[data-product]')).toHaveLength(1);
+      expect(rowKeys()).toEqual(['whatsapp_sessions', 'storefront_enabled']);
+    });
+
+    it.each(['light', 'dark'] as const)('Afiliados + Saver (%s): dois cartões, sessões só no primeiro, CTA de Afiliados', async (mode) => {
+      svc.getSubscription.mockResolvedValue(withProducts([
+        { product: 'AFFILIATES', planSlug: 'COPYSYNC_PRO', tier: 'pro', expiresAt: null, source: null },
+        saverItem,
+      ]));
+      renderPage('/settings/subscription', mode);
+      expect(await screen.findByText('Saver PRO')).toBeInTheDocument();
+      expect(screen.getByText(t.plan.productEyebrow('Afiliados'))).toBeInTheDocument();
+      expect(screen.getByText(t.limits.productTitle('Saver'))).toBeInTheDocument();
+      const saver = document.querySelector('[data-product="SAVER"]')!;
+      expect(Array.from(saver.querySelectorAll('tr[data-key]')).map((r) => r.getAttribute('data-key'))).toEqual(['saver_groups', 'saver_auto_refresh_enabled']);
+      expect(saver.querySelector('[role="tablist"]')).toBeNull();
+      expect(screen.getByText(t.limits.availableFrom('PRO'))).toBeInTheDocument();
+      // Saver ainda sem vitrine registrada: só o botão de Afiliados
+      expect(screen.getAllByRole('link', { name: new RegExp(t.cta.label) })).toHaveLength(1);
+    });
+
+    it('só-Saver: cartão do Saver com as sessões da conta', async () => {
+      svc.getSubscription.mockResolvedValue(withProducts([saverItem]));
+      renderPage();
+      expect(await screen.findByText('Saver PRO')).toBeInTheDocument();
+      expect(screen.queryByText(pro.name)).toBeNull();
+      expect(rowKeys()).toEqual(['whatsapp_sessions', 'saver_groups', 'saver_auto_refresh_enabled']);
+    });
+  });
 });
