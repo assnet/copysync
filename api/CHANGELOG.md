@@ -25,6 +25,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Changed
 
+- **`features/saver/plans/catalog.ts`**, **`strings.ts`** — anual da vitrine igual ao checkout da Cakto: "12x de R$ 23,90 no cartão ou R$ 231,38 à vista por ano" (LITE; PRO 32,90/318,45; MAX 39,90/386,30). A Cakto repassa a tarifa do parcelamento.
 - **`features/saver/plans/SaverPlanCard.tsx`**, **`catalog.ts`** (`saverCheckoutPath`) — o botão da vitrine deixa de abrir o suporte e passa a abrir `/redirect/saver-<tier>-<período>` ("Assinar <plano>").
 
 ---
