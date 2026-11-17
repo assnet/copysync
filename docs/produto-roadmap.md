@@ -35,7 +35,7 @@ pelo do cliente, reescreve o texto com IA e reposta nos grupos dele, no horário
 | 15 | 🌐 Domínio personalizado | Site de ofertas e Gestor de Links servidos no domínio do cliente (CNAME + TLS automático) | `storefront/custom-domain` | ⏳ |
 | 16 | 🎧 Níveis de suporte | Suporte 24/7, prioritário ou exclusivo conforme o plano; só muda fila/SLA, nada no código além do entitlement | `tenants` (entitlement `support_tier`) | ⏳ |
 | 17 | 🎯 Caçador de Ofertas | Procura sozinho, no catálogo de comissão da Shein, as ofertas com melhor retorno (comissão × chance de venda), refina com ou sem IA e envia só as melhores para 1 grupo, de tempos em tempos | `campaigns/hunter` ([`cacador-de-ofertas.md`](cacador-de-ofertas.md)) | ✅ prévia só super admin (job desligado até o smoke); MAX |
-| 18 | 📇 Saver | Lê os membros dos grupos de WhatsApp do cliente, guarda cada contato uma vez na base da plataforma (vínculo com o grupo, data e hora da extração) e exporta CSV/vCard; tenant só vê contagens | `saver` (plano em `.specs/features/saver/`) | ⏳ em implementação |
+| 18 | 📇 Saver | Lê os membros dos grupos de WhatsApp do cliente, guarda cada contato uma vez na base da plataforma (vínculo com o grupo, data e hora da extração) e exporta CSV/vCard; tenant só vê contagens | `saver` ([doc](saver.md)) | 🟡 API pronta (extração, exportação, base da plataforma); painel pendente |
 
 ## Produtos (menu)
 
