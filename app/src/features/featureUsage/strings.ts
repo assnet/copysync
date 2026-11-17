@@ -405,6 +405,9 @@ export const featureUsageStrings = {
     loadFailed: 'Não foi possível carregar o uso dos recursos.',
     readSlow: 'A leitura demorou mais que o limite ou outra leitura está em andamento. Tente de novo em alguns segundos.',
     detailFailed: 'Não foi possível carregar os detalhes do recurso.',
+    /** Com dado anterior na tela: a atualização falhou e o que aparece pode estar desatualizado. */
+    staleFailed: 'Não foi possível atualizar. Os dados abaixo são da última leitura e podem estar desatualizados.',
+    staleSlow: 'A atualização demorou mais que o limite. Os dados abaixo são da última leitura e podem estar desatualizados.',
   },
 } as const;
 

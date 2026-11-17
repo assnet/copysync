@@ -166,4 +166,15 @@ describe('FeatureDetailTab', () => {
     expect(within(table).getByText(S.trend.weekOf('09/11'))).toBeInTheDocument();
     expect(screen.getByRole('button', { name: S.actions.showChart })).toBeInTheDocument();
   });
+
+  it('"Atualizar" com falha mantém o detalhe anterior e avisa que está desatualizado', async () => {
+    const user = userEvent.setup();
+    renderAt(DETAIL_PATH);
+    await screen.findByText('Loja Alfa');
+    getDetail.mockRejectedValueOnce({ code: 'USAGE_METRICS_READ_UNAVAILABLE', status: 503 });
+    await user.click(screen.getByRole('button', { name: S.actions.refreshAria }));
+    expect(await screen.findByText(S.errors.staleSlow)).toBeInTheDocument();
+    expect(screen.getByText(S.detail.measuresTitle)).toBeInTheDocument();
+    expect(screen.getByText('Loja Alfa')).toBeInTheDocument();
+  });
 });

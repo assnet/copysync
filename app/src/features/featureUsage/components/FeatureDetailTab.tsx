@@ -68,6 +68,9 @@ export default function FeatureDetailTab() {
   else {
     body = (
       <Stack spacing={2} aria-busy={detail.loading}>
+        {(detail.error || detail.slow) && !detail.loading && (
+          <UsageRetryAlert slow={detail.slow} onRetry={detail.reload} stale />
+        )}
         <UsageContextLine features={[detail.data.feature]} freshAt={detail.data.freshAt} />
         <FeatureDetail detail={detail.data} />
         <FeatureTenantsTable

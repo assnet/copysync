@@ -165,4 +165,18 @@ describe('AdminUsagePage', () => {
     await user.click(screen.getByRole('button', { name: S.actions.refreshAria }));
     await waitFor(() => expect(getSummary).toHaveBeenCalledTimes(2));
   });
+
+  it('"Atualizar" com falha mantém o dado anterior e avisa que está desatualizado', async () => {
+    const user = userEvent.setup();
+    renderAt(USAGE_PATH);
+    await screen.findByText(S.kpis.activeTenants.value('9', '15'));
+    getSummary.mockRejectedValueOnce({ status: 500 });
+    await user.click(screen.getByRole('button', { name: S.actions.refreshAria }));
+    expect(await screen.findByText(S.errors.staleFailed)).toBeInTheDocument();
+    expect(screen.getByText(S.kpis.activeTenants.value('9', '15'))).toBeInTheDocument();
+    getSummary.mockRejectedValueOnce({ code: 'USAGE_METRICS_READ_UNAVAILABLE', status: 503 });
+    await user.click(screen.getByRole('button', { name: S.actions.retry }));
+    expect(await screen.findByText(S.errors.staleSlow)).toBeInTheDocument();
+    expect(screen.getByText(S.kpis.activeTenants.value('9', '15'))).toBeInTheDocument();
+  });
 });

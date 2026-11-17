@@ -17,14 +17,20 @@ export function UsageContextLine({ features, freshAt }: { features: readonly Pic
   );
 }
 
-/** Erro e leitura lenta: `Alert` com "Tentar de novo" (o 503 `USAGE_METRICS_READ_UNAVAILABLE` tem texto próprio). */
-export function UsageRetryAlert({ slow, onRetry, message }: { slow: boolean; onRetry: () => void; message?: string }) {
+/**
+ * Erro e leitura lenta: `Alert` com "Tentar de novo" (o 503 `USAGE_METRICS_READ_UNAVAILABLE` tem texto próprio).
+ * `stale`: há dado anterior na tela, mostrado abaixo do aviso e marcado como desatualizado.
+ */
+export function UsageRetryAlert({ slow, onRetry, message, stale = false }: {
+  slow: boolean; onRetry: () => void; message?: string; stale?: boolean;
+}) {
+  const text = stale ? (slow ? S.errors.staleSlow : S.errors.staleFailed) : slow ? S.errors.readSlow : message ?? S.errors.loadFailed;
   return (
     <Alert
       severity={slow ? 'warning' : 'error'}
       action={<Button color="inherit" size="small" sx={{ whiteSpace: 'nowrap' }} onClick={onRetry}>{S.actions.retry}</Button>}
     >
-      {slow ? S.errors.readSlow : message ?? S.errors.loadFailed}
+      {text}
     </Alert>
   );
 }
@@ -62,8 +68,11 @@ export function UsageSummaryGate({
 
   const features = summaryFeatures(data, filters);
   const empty = features.length === 0 || data.totals.activeTenants === 0;
+  // Falha ao atualizar com dado anterior na tela: aviso acima, nunca some em silêncio.
+  const stale = (q.error || q.slow) && !q.loading;
   return (
     <Stack spacing={2} aria-busy={q.loading}>
+      {stale && <UsageRetryAlert slow={q.slow} onRetry={q.reload} stale />}
       <UsageContextLine features={features} freshAt={data.freshAt} />
       {empty ? (
         <EmptyState
