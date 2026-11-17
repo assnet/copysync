@@ -67,6 +67,8 @@ export interface SaverSessionGroup {
   /** false = não pode ser pedido para leitura (comunidade "pai"). */
   selectable: boolean;
   unselectableReason: 'COMMUNITY_PARENT' | null;
+  /** A sessão conectada é admin do grupo? `null`/ausente = desconhecido. */
+  selfIsAdmin?: boolean | null;
 }
 
 export type SaverSessionGroupKind = 'GROUP' | 'COMMUNITY' | 'COMMUNITY_ANNOUNCE';

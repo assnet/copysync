@@ -12,7 +12,9 @@ import { useSaverExtraction, useSaverGroups, useSaverOverview, useSaverSessionGr
 import { saverStrings as s } from '../strings';
 import type { SaverExtraction, SaverGroup } from '../types';
 import { sumSelectedMembers } from '../groupMembers';
-import { GROUP_PAGE_SIZE, pruneSelection, visibleGroups, type GroupFilter, type GroupSort } from '../groupList';
+import {
+  GROUP_PAGE_SIZE, countHiddenNumbersLikely, countMostlyHidden, pruneSelection, visibleGroups, type GroupFilter, type GroupSort,
+} from '../groupList';
 import { SelectionActionBar } from '../components/groups/SelectionActionBar';
 import { ExtractionProgress } from '../components/groups/ExtractionProgress';
 import { GroupSelectionTable } from '../components/groups/GroupSelectionTable';
@@ -84,6 +86,7 @@ export function SaverGroupsPage() {
   const scansLeft = scansExcluded ? null : ov?.groupScansPerDay.remaining ?? null;
   const tooMany = selection.length > SAVER_MAX_GROUPS_PER_REQUEST;
   const selectedMembers = sumSelectedMembers(live.data ?? [], selection);
+  const hiddenSelected = countHiddenNumbersLikely(live.data ?? [], selection);
   const overScans = scansLeft !== null && selection.length > scansLeft;
   const noPlan = saverWithoutPlan(ov);
   const limitMessage = limitBannerMessage(ov, requestError?.kind === 'limitReached' ? requestError.message : null);
@@ -160,6 +163,7 @@ export function SaverGroupsPage() {
   }, [live.data, selection, search, filter, sort, shown]);
   const kinds = useMemo(() => new Map((live.data ?? []).map((x) => [x.groupJid, x.kind])), [live.data]);
   const hiddenTotal = (saved.data ?? []).reduce((n, x) => n + x.lidOnlyCount, 0);
+  const mostlyHidden = countMostlyHidden(saved.data ?? []);
   const canExport = ov?.permissions.export ?? false;
   const savedList = saved.data ?? [];
   const exportGroups = savedList.filter((x) => exportIds.includes(x.id));
@@ -240,6 +244,7 @@ export function SaverGroupsPage() {
               members={selectedMembers}
               scansLeft={scansLeft}
               outside={outside}
+              hiddenNumbers={hiddenSelected}
               requesting={requesting}
               submitDisabled={submitDisabled}
               submitHint={submitHint}
@@ -283,7 +288,14 @@ export function SaverGroupsPage() {
               {hiddenTotal > 0 && (
                 <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, color: 'text.secondary' }}>
                   <Box component="span" sx={{ display: 'inline-flex', color: 'info.main', mt: '2px' }}><AppIcon icon={EyeOff} size="sm" /></Box>
-                  <Typography variant="caption">{g.saved.hiddenNotice(hiddenTotal)}</Typography>
+                  <Typography variant="caption">
+                    {g.saved.hiddenNotice(hiddenTotal)}
+                    {mostlyHidden > 0 && (
+                      <Box component="span" sx={{ display: 'block', mt: 0.25, color: 'warning.main' }}>
+                        {g.saved.hiddenLikelyCause(mostlyHidden)}
+                      </Box>
+                    )}
+                  </Typography>
                 </Box>
               )}
               <SavedGroupsTable

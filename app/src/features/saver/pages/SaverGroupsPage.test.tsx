@@ -468,6 +468,59 @@ describe('SaverGroupsPage', () => {
     expect(screen.getAllByText(g.table.kind.COMMUNITY_ANNOUNCE!)).toHaveLength(2);
   });
 
+  it.each(['light', 'dark'] as const)('selo de admin, aviso de números ocultos, filtro "Sou admin" e aviso na barra (%s)', async (mode) => {
+    svc.listSessionGroups.mockResolvedValue([
+      live('a@g.us', 'Avisos Norte', { kind: 'COMMUNITY_ANNOUNCE', selfIsAdmin: false }),
+      live('b@g.us', 'Avisos Sul', { kind: 'COMMUNITY_ANNOUNCE', selfIsAdmin: true }),
+      live('c@g.us', 'Vendas', { selfIsAdmin: false }),
+      live('d@g.us', 'Suporte'),
+    ]);
+    const user = userEvent.setup();
+    const first = page(mode);
+    await pickSession(user, 'Atendimento');
+    await screen.findByText('Avisos Norte');
+    expect(screen.getAllByText(g.table.selfAdmin)).toHaveLength(1);
+    const notice = screen.getByText(g.table.hiddenNumbers);
+    expect(notice.closest('li')).toHaveTextContent('Avisos Norte');
+    await user.hover(notice);
+    const tip = await screen.findByRole('tooltip');
+    expect(tip).toHaveTextContent(g.table.hiddenNumbersHint);
+    expect(tip).not.toHaveTextContent('Avisos Norte');
+    await user.unhover(notice);
+
+    // Marcar não é bloqueado: a barra só avisa.
+    expect(screen.queryByText(g.table.hiddenNumbersSelected(1))).toBeNull();
+    await user.click(screen.getByText('Avisos Norte'));
+    await user.click(screen.getByText('Vendas'));
+    expect(screen.getByText(g.table.hiddenNumbersSelected(1))).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: g.table.submit(2) })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: `${g.table.filters.selfAdmin} 1` }));
+    expect(screen.getByText('Avisos Sul')).toBeInTheDocument();
+    expect(screen.queryByText('Avisos Norte')).toBeNull();
+    first.unmount();
+
+    // Filtro persistido.
+    page(mode);
+    expect(await screen.findByRole('button', { name: `${g.table.filters.selfAdmin} 1` })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByText('Avisos Norte')).toBeNull();
+  });
+
+  it('grupos salvos: causa provável só quando quase todos vieram ocultos', async () => {
+    svc.listGroups.mockResolvedValue([savedGroup('x'), savedGroup('y', { memberCount: 100, phoneCount: 5, lidOnlyCount: 95 })]);
+    const first = page();
+    await screen.findByText('Salvo x');
+    expect(screen.getByText(g.saved.hiddenLikelyCause(1))).toBeInTheDocument();
+    expect(screen.getByText(g.saved.hiddenNotice(98), { exact: false })).toBeInTheDocument();
+    first.unmount();
+
+    svc.listGroups.mockResolvedValue([savedGroup('x')]);
+    page();
+    await screen.findByText('Salvo x');
+    expect(screen.getByText(g.saved.hiddenNotice(3))).toBeInTheDocument();
+    expect(screen.queryByText(/Causa provável/)).toBeNull();
+  });
+
   it('marcação de grupo que não existe mais não vira "exportar todos"', async () => {
     writePersisted('saver.groups.t1.exportSelection', ['sumiu', 'x']);
     svc.listGroups.mockResolvedValue([savedGroup('x'), savedGroup('y')]);

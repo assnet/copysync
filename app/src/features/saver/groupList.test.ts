@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { countByFilter, groupAvatarInitials, groupMatchesFilter, pruneSelection, searchGroups, sortGroups } from './groupList';
-import type { SaverSessionGroup } from './types';
+import {
+  countByFilter, countHiddenNumbersLikely, countMostlyHidden, hiddenNumbersLikely, isMostlyHidden, groupAvatarInitials, groupMatchesFilter, pruneSelection, searchGroups, sortGroups,
+} from './groupList';
+import type { SaverGroup, SaverSessionGroup } from './types';
 
 const g = (name: string | null, over: Partial<SaverSessionGroup> = {}): SaverSessionGroup => ({
   groupJid: `${name}@g.us`, name, saved: false, savedGroupId: null, lastScannedAt: null, lastScanStatus: null,
@@ -30,8 +32,39 @@ describe('groupList', () => {
   });
 
   it('filtros rápidos', () => {
-    expect(countByFilter(list)).toEqual({ all: 4, unread: 3, saved: 1, communities: 2 });
+    expect(countByFilter(list)).toEqual({ all: 4, unread: 3, saved: 1, communities: 2, selfAdmin: 0 });
     expect(groupMatchesFilter(list[0]!, 'unread')).toBe(false);
+  });
+
+  it('filtro "Sou admin": só selfIsAdmin true; false, null e ausente ficam fora', () => {
+    const admins = [g('a', { selfIsAdmin: true }), g('b', { selfIsAdmin: false }), g('c', { selfIsAdmin: null }), g('d')];
+    expect(admins.filter((x) => groupMatchesFilter(x, 'selfAdmin')).map((x) => x.name)).toEqual(['a']);
+    expect(countByFilter(admins).selfAdmin).toBe(1);
+  });
+
+  it('números ocultos prováveis: comunidade/avisos com sessão não admin; desconhecido e grupo comum não avisam', () => {
+    const ann = g('ann', { kind: 'COMMUNITY_ANNOUNCE', selfIsAdmin: false });
+    const parent = g('pai', { kind: 'COMMUNITY', selectable: false, selfIsAdmin: false });
+    const rows = [
+      ann, parent, g('adm', { kind: 'COMMUNITY_ANNOUNCE', selfIsAdmin: true }),
+      g('nulo', { kind: 'COMMUNITY_ANNOUNCE', selfIsAdmin: null }), g('semcampo', { kind: 'COMMUNITY_ANNOUNCE' }),
+      g('comum', { selfIsAdmin: false }),
+    ];
+    expect(rows.filter(hiddenNumbersLikely)).toEqual([ann, parent]);
+    // Só marcados, ainda na sessão e legíveis.
+    expect(countHiddenNumbersLikely(rows, rows.map((x) => x.groupJid).concat('sumiu@g.us'))).toBe(1);
+    expect(countHiddenNumbersLikely(rows, ['comum@g.us'])).toBe(0);
+  });
+
+  it('quase todos ocultos: a partir de 80% dos membros; sem contagem não entra', () => {
+    const s = (memberCount: number, lidOnlyCount: number) => ({ memberCount, lidOnlyCount }) as SaverGroup;
+    expect(isMostlyHidden(s(10, 8))).toBe(true);
+    expect(isMostlyHidden(s(10, 10))).toBe(true);
+    expect(isMostlyHidden(s(100, 79))).toBe(false);
+    expect(isMostlyHidden(s(0, 0))).toBe(false);
+    expect(isMostlyHidden(s(0, 5))).toBe(false);
+    expect(countMostlyHidden([s(10, 9), s(10, 3), s(0, 0), s(500, 400)])).toBe(2);
+    expect(countMostlyHidden([])).toBe(0);
   });
 
   it('busca ignora caixa e usa o texto de "sem nome"', () => {

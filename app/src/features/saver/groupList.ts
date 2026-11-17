@@ -1,7 +1,7 @@
-import type { SaverSessionGroup } from './types';
+import type { SaverGroup, SaverSessionGroup } from './types';
 
 /** Filtros rápidos da lista de grupos da sessão. */
-export const GROUP_FILTERS = ['all', 'unread', 'saved', 'communities'] as const;
+export const GROUP_FILTERS = ['all', 'unread', 'saved', 'communities', 'selfAdmin'] as const;
 export type GroupFilter = (typeof GROUP_FILTERS)[number];
 export const GROUP_SORTS = ['name', 'members'] as const;
 export type GroupSort = (typeof GROUP_SORTS)[number];
@@ -15,7 +15,29 @@ export const groupMatchesFilter = (g: SaverSessionGroup, f: GroupFilter): boolea
   f === 'unread' ? g.lastScannedAt === null
     : f === 'saved' ? g.saved
       : f === 'communities' ? g.kind !== 'GROUP'
-        : true;
+        : f === 'selfAdmin' ? g.selfIsAdmin === true
+          : true;
+
+/**
+ * Grupo de comunidade/avisos lido por sessão que não é admin: o WhatsApp entrega os membros sem número.
+ * Desconhecido (`null`/ausente) não avisa.
+ */
+export const hiddenNumbersLikely = (g: SaverSessionGroup): boolean => g.kind !== 'GROUP' && g.selfIsAdmin === false;
+
+/** Quantos grupos marcados (ainda na sessão e legíveis) devem vir com números ocultos. */
+export function countHiddenNumbersLikely(groups: readonly SaverSessionGroup[], selection: readonly string[]): number {
+  const chosen = new Set(selection);
+  return groups.filter((g) => g.selectable && chosen.has(g.groupJid) && hiddenNumbersLikely(g)).length;
+}
+
+/** Fração de membros sem número a partir da qual a causa provável é a sessão não ser admin. */
+export const MOSTLY_HIDDEN_RATIO = 0.8;
+
+/** Grupo salvo em que quase todos vieram sem número. Sem contagem de membros não entra. */
+export const isMostlyHidden = (g: Pick<SaverGroup, 'memberCount' | 'lidOnlyCount'>): boolean =>
+  g.memberCount > 0 && g.lidOnlyCount / g.memberCount >= MOSTLY_HIDDEN_RATIO;
+
+export const countMostlyHidden = (groups: readonly SaverGroup[]): number => groups.filter(isMostlyHidden).length;
 
 /** Busca pelo nome (o texto de "sem nome" entra na busca). */
 export function searchGroups(groups: readonly SaverSessionGroup[], search: string, untitled: string) {
@@ -25,7 +47,7 @@ export function searchGroups(groups: readonly SaverSessionGroup[], search: strin
 
 /** Quantos grupos cada filtro mostra, já com a busca aplicada. */
 export function countByFilter(groups: readonly SaverSessionGroup[]): Record<GroupFilter, number> {
-  const out = { all: 0, unread: 0, saved: 0, communities: 0 } as Record<GroupFilter, number>;
+  const out = { all: 0, unread: 0, saved: 0, communities: 0, selfAdmin: 0 } as Record<GroupFilter, number>;
   for (const g of groups) for (const f of GROUP_FILTERS) if (groupMatchesFilter(g, f)) out[f] += 1;
   return out;
 }

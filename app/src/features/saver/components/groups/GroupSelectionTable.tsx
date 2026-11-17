@@ -3,13 +3,13 @@ import {
   Box, Button, Checkbox, Chip, InputAdornment, List, ListItem, ListItemButton, Paper, TextField, ToggleButton,
   ToggleButtonGroup, Tooltip, Typography,
 } from '@mui/material';
-import { ChevronDown, CircleCheck, Info, Megaphone, Search, UsersRound } from 'lucide-react';
+import { ChevronDown, CircleCheck, EyeOff, Info, Megaphone, Search, ShieldCheck, UsersRound } from 'lucide-react';
 import { AppIcon, OverflowTooltipText } from '@/components';
 import { Blurred, useBlur } from '@/features/privacy';
 import { saverStrings } from '../../strings';
 import type { SaverSessionGroup } from '../../types';
 import {
-  GROUP_FILTERS, GROUP_PAGE_SIZE, GROUP_SORTS, countByFilter, searchGroups, visibleGroups,
+  GROUP_FILTERS, GROUP_PAGE_SIZE, GROUP_SORTS, countByFilter, hiddenNumbersLikely, searchGroups, visibleGroups,
   type GroupFilter, type GroupSort,
 } from '../../groupList';
 import { CopyGroupNameButton } from './CopyGroupNameButton';
@@ -243,10 +243,28 @@ export function GroupSelectionTable({
                             <MembersText count={g.memberCount} />{' · '}{scan}
                           </Typography>
                         )}
+                        {hiddenNumbersLikely(g) && (
+                          <Tooltip title={t.hiddenNumbersHint}>
+                            <Typography
+                              variant="caption"
+                              color="warning.main"
+                              tabIndex={0}
+                              sx={{ display: 'flex', alignItems: 'center', gap: 0.5, width: 'fit-content', maxWidth: '100%', cursor: 'help' }}
+                            >
+                              <AppIcon icon={EyeOff} size="inline" />
+                              {t.hiddenNumbers}
+                            </Typography>
+                          </Tooltip>
+                        )}
                       </Box>
-                      {(g.kind !== 'GROUP' || g.saved) && (
+                      {(g.kind !== 'GROUP' || g.saved || g.selfIsAdmin === true) && (
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, flexShrink: 0 }}>
                           <KindBadge kind={g.kind} />
+                          {g.selfIsAdmin === true && (
+                            <Tooltip title={t.selfAdminHint}>
+                              <Chip size="small" variant="outlined" icon={<AppIcon icon={ShieldCheck} size="sm" />} label={t.selfAdmin} tabIndex={0} />
+                            </Tooltip>
+                          )}
                           {g.saved && (
                             <Tooltip title={t.savedHint}>
                               <Chip size="small" color="success" variant="outlined" icon={<AppIcon icon={CircleCheck} size="sm" />} label={t.saved} />

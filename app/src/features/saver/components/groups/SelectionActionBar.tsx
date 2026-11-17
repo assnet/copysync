@@ -14,6 +14,8 @@ interface Props {
   scansLeft: number | null;
   /** Marcados que não aparecem na tela (filtro, busca ou página). */
   outside: number;
+  /** Marcados de comunidade/avisos em que a sessão não é admin (números devem vir ocultos). Só avisa. */
+  hiddenNumbers?: number;
   requesting: boolean;
   submitDisabled: boolean;
   submitHint: string;
@@ -26,7 +28,7 @@ interface Props {
  * ao rodapé da área visível (sticky), sem rolagem própria.
  */
 export function SelectionActionBar({
-  count, max, tooMany, members, scansLeft, outside, requesting, submitDisabled, submitHint, onClear, onSubmit,
+  count, max, tooMany, members, scansLeft, outside, hiddenNumbers = 0, requesting, submitDisabled, submitHint, onClear, onSubmit,
 }: Props) {
   const sticky = count > 0;
   // Celular: "Limpar" vira ícone para a barra caber em duas linhas sem cobrir a lista.
@@ -53,6 +55,11 @@ export function SelectionActionBar({
         {outside > 0 && (
           <Typography variant="caption" color="warning.main" sx={{ display: 'block' }}>
             {t.outsideView(outside)}
+          </Typography>
+        )}
+        {hiddenNumbers > 0 && (
+          <Typography variant="caption" color="warning.main" sx={{ display: 'block' }}>
+            {t.hiddenNumbersSelected(hiddenNumbers)}
           </Typography>
         )}
         {scansLeft !== null && (

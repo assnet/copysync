@@ -173,12 +173,13 @@ export const saverStrings = {
       } as Record<string, string>,
       unselectable: { COMMUNITY_PARENT: 'Não dá para ler a comunidade em si. Use o grupo de avisos dela.' } as Record<string, string>,
       filtersAria: 'Filtrar grupos',
-      filters: { all: 'Todos', unread: 'Não lidos', saved: 'Já salvos', communities: 'Comunidades' } as Record<string, string>,
+      filters: { all: 'Todos', unread: 'Não lidos', saved: 'Já salvos', communities: 'Comunidades', selfAdmin: 'Sou admin' } as Record<string, string>,
       filterHints: {
         all: 'Todos os grupos desta sessão.',
         unread: 'Grupos que você ainda não leu.',
         saved: 'Grupos com contatos já salvos. Ler de novo atualiza a lista.',
         communities: 'Comunidades e grupos de avisos.',
+        selfAdmin: 'Grupos em que esta sessão é administradora.',
       } as Record<string, string>,
       sortLabel: 'Ordenar por',
       sort: { name: 'Nome', members: 'Mais membros' } as Record<string, string>,
@@ -188,6 +189,15 @@ export const saverStrings = {
         `Mostrando ${shown.toLocaleString('pt-BR')} de ${total.toLocaleString('pt-BR')} ${total === 1 ? 'grupo' : 'grupos'}`,
       showMore: (n: number) => (n === 1 ? 'Mostrar mais 1 grupo' : `Mostrar mais ${n.toLocaleString('pt-BR')} grupos`),
       selectionBar: 'Grupos marcados',
+      selfAdmin: 'Você é admin',
+      selfAdminHint: 'Esta sessão é administradora do grupo.',
+      hiddenNumbers: 'Números ocultos: esta sessão não é admin',
+      hiddenNumbersHint:
+        'O WhatsApp só mostra os números de um grupo de comunidade para administradores. Conectar a sessão do número que é admin costuma resolver.',
+      hiddenNumbersSelected: (n: number) =>
+        n === 1
+          ? '1 grupo marcado deve vir com números ocultos: esta sessão não é admin.'
+          : `${n.toLocaleString('pt-BR')} grupos marcados devem vir com números ocultos: esta sessão não é admin.`,
       outsideView: (n: number) =>
         n === 1 ? '1 grupo marcado está fora do filtro atual e também será salvo.' : `${n.toLocaleString('pt-BR')} grupos marcados estão fora do filtro atual e também serão salvos.`,
     },
@@ -230,6 +240,8 @@ export const saverStrings = {
         n === 1
           ? '1 membro escondeu o número no WhatsApp. Ele entra no CSV sem telefone e fica fora do vCard.'
           : `${n.toLocaleString('pt-BR')} membros esconderam o número no WhatsApp. Eles entram no CSV sem telefone e ficam fora do vCard.`,
+      hiddenLikelyCause: (n: number) =>
+        `Quase todos os números vieram ocultos em ${n === 1 ? '1 grupo' : `${n.toLocaleString('pt-BR')} grupos`}. Causa provável: a sessão que leu não é admin do grupo. O WhatsApp só mostra os números para administradores; leia de novo com a sessão do número que é admin.`,
       scanStatus: { FAILED: 'A última leitura falhou', CANCELLED: 'A última leitura foi cancelada', QUEUED: 'Na fila', RUNNING: 'Lendo agora' } as Record<string, string>,
       remove: 'Remover grupo',
       removeTitle: 'Remover este grupo?',
