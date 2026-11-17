@@ -28,6 +28,7 @@ Hooks `[authHook, tenantAnyStatusHook]`; tenant do header `X-Tenant-Id`. `200 { 
 | Entitlements | `IEntitlementSnapshotReader.readAll` | 1 `findMany` |
 | Vencimento | `Tenant.subscriptionExpiresAt` | gravado pelo receiver em `activated`/`renewed`/`updated`; demais eventos preservam. Tenants antigos ficam `null` até o próximo evento |
 | Use case | `GetTenantSubscriptionUseCase.ts` | tenant inexistente → 404 |
+| Produtos | `SubscriptionPresenter.ts` | `products[]` (`product`, `planSlug`, `tier`, `expiresAt`, `source`) e `limits[].product`, aditivos; os campos de cima seguem descrevendo Afiliados ([`acesso-por-produto.md`](acesso-por-produto.md)) |
 
 ## Tenant suspenso
 
@@ -41,9 +42,13 @@ Hooks `[authHook, tenantAnyStatusHook]`; tenant do header `X-Tenant-Id`. `200 { 
 `SubscriptionLimitsTable`, `usageTone.ts`). Nome/tagline do `PLAN_CATALOG` (sem preço); chip de status;
 barra de uso com `usageTone` (≥80% `warning`, 100% `error`); aba de canal em `usePersistedState` (escopo `tab`);
 flag `subscription.tenantName`. CTA só para ADMIN (OPERATOR vê "fale com o administrador"): o botão leva
-sempre à vitrine `/affiliates/plans`, onde plano e período são escolhidos. Nunca abre o pagamento do plano atual
+à vitrine do produto (Afiliados: `/affiliates/plans`), onde plano e período são escolhidos. Nunca abre o pagamento do plano atual
 direto: quem quer trocar de plano ou assina o anual pagaria a oferta errada. Sem env (`VITE_BILLING_CHECKOUT_URL` removida no app 0.86.0).
 Ofertas: [`plano-lancamento-hub-copysync.md`](plano-lancamento-hub-copysync.md#ofertas-do-copysync-na-cakto).
+
+**Por produto**: um cartão de plano + tabela de limites para cada produto com acesso (`features/subscription/productLimits.ts`
+agrupa por `limits[].product`; sessões só no primeiro cartão; chaves `saver_*` no cartão do Saver). CTA leva à vitrine do
+próprio produto (`PRODUCT_PLANS_PATH`); produto sem vitrine fica sem botão. Tenant legado vê a mesma tela de antes.
 
 ## O que não fazer
 

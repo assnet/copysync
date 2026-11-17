@@ -1,6 +1,6 @@
 # Acesso por produto — Tarefas
 
-**Design**: `design.md` · **Status**: Aprovado (2026-11-11), nenhuma task iniciada · Branch: `feature/product-access` a partir de `feature/rebranding-app`
+**Design**: `design.md` · **Status**: Em execução (2026-11-17): ✅ T1–T22; ✅ T23 docs (`docs/acesso-por-produto.md`; versões e CHANGELOG ficam com o orquestrador); ⏳ T24 · Branch: `feature/product-access` a partir de `feature/rebranding-app`
 (features saem e voltam para ela). Cada tarefa = 1 subagente + 1 commit `type(product-access): …`.
 Gate: `.specs/codebase/TESTING.md` (`quick` ao fim da task, `full` antes do commit). Migration nunca roda local
 contra `api/.env` (produção): só Postgres descartável (`api/scripts/postgres-descartavel.sh`).
