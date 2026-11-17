@@ -10,7 +10,7 @@ import { serverNow } from '@/services/serverClock';
 import { HelpTip } from '@/features/opsMetrics/components/HelpTip';
 import { useBlur } from '@/features/privacy/PrivacyContext';
 import {
-  accountChipLabel, activeFiltersCount, clearUsageFilters, granularityOptions, kindLabel, planLabel, presetsWithin,
+  accountChipLabel, activeFiltersCount, clearUsageFilters, coerceGranularity, granularityOptions, kindLabel, planLabel, presetsWithin,
   productLabel, rangeErrorText, resolvePeriod, toggleKind, USAGE_DAY_GRANULARITY_MAX_DAYS, USAGE_FAMILY_PLANS, USAGE_KINDS, USAGE_PLAN_FAMILIES,
   USAGE_PRODUCTS, USAGE_TENANT_STATUSES, validateCustomRange, withPeriod, type UsageRangeError,
 } from '../rules';
@@ -113,7 +113,7 @@ function GranularityControl({ filters, onChange }: Pick<UsageFiltersBarProps, 'f
         exclusive
         size="small"
         color="primary"
-        value={filters.granularity}
+        value={coerceGranularity(filters.granularity, days)}
         onChange={(_, v: UsageGranularity | null) => v && onChange({ ...filters, granularity: v })}
         aria-label={f.granularity}
       >
@@ -125,7 +125,7 @@ function GranularityControl({ filters, onChange }: Pick<UsageFiltersBarProps, 'f
           );
           // Botão desabilitado não dispara eventos: o Tooltip fica num `span` em volta.
           return o.disabled ? (
-            <Tooltip key={o.value} title={f.dayDisabledHint(USAGE_DAY_GRANULARITY_MAX_DAYS)} enterTouchDelay={0}>
+            <Tooltip key={o.value} title={o.reason === 'singleDay' ? f.singleDayHint : f.dayDisabledHint(USAGE_DAY_GRANULARITY_MAX_DAYS)} enterTouchDelay={0}>
               <span>{button}</span>
             </Tooltip>
           ) : button;

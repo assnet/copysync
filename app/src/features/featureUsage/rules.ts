@@ -131,13 +131,22 @@ export function defaultGranularity(days: number): UsageGranularity {
   return days <= USAGE_DAY_DEFAULT_MAX_DAYS ? 'day' : 'week';
 }
 
-/** "Dia" desabilitado acima de 90 dias. */
-export function granularityOptions(days: number): { value: UsageGranularity; disabled: boolean }[] {
-  return USAGE_GRANULARITIES.map((value) => ({ value, disabled: value === 'day' && days > USAGE_DAY_GRANULARITY_MAX_DAYS }));
+/** Por que a opção está desabilitada: "Dia" acima de 90 dias; "Semana"/"Mês" com um dia só (gráfico de um ponto). */
+export type UsageGranularityBlock = 'dayTooLong' | 'singleDay';
+
+/** "Dia" desabilitado acima de 90 dias; com período de 1 dia só "Dia" fica. */
+export function granularityOptions(days: number): { value: UsageGranularity; disabled: boolean; reason: UsageGranularityBlock | null }[] {
+  return USAGE_GRANULARITIES.map((value) => {
+    const reason: UsageGranularityBlock | null = value === 'day'
+      ? (days > USAGE_DAY_GRANULARITY_MAX_DAYS ? 'dayTooLong' : null)
+      : (days <= 1 ? 'singleDay' : null);
+    return { value, disabled: reason !== null, reason };
+  });
 }
 
-/** `day` acima de 90 dias vira `week`. */
+/** `day` acima de 90 dias vira `week`; período de 1 dia é sempre `day`. */
 export function coerceGranularity(granularity: UsageGranularity, days: number): UsageGranularity {
+  if (days <= 1) return 'day';
   return granularity === 'day' && days > USAGE_DAY_GRANULARITY_MAX_DAYS ? 'week' : granularity;
 }
 

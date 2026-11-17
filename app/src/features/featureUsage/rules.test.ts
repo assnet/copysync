@@ -94,6 +94,15 @@ describe('granularidade', () => {
     expect(granularityOptions(400).filter((o) => !o.disabled).map((o) => o.value)).toEqual(['week', 'month']);
   });
 
+  it('período de 1 dia: só "Dia" (semana/mês desabilitados) e a granularidade vira "Dia"', () => {
+    const opts = granularityOptions(1);
+    expect(opts.filter((o) => !o.disabled).map((o) => o.value)).toEqual(['day']);
+    expect(opts.find((o) => o.value === 'week')?.reason).toBe('singleDay');
+    expect(granularityOptions(2).every((o) => !o.disabled)).toBe(true);
+    const f = withPeriod({ ...DEFAULT_USAGE_FILTERS, granularity: 'month' }, { preset: 'today' }, NOW_22H_BRT);
+    expect(f.granularity).toBe('day');
+  });
+
   it('trocar para período acima de 90 dias muda "Dia" para "Semana"', () => {
     const f = withPeriod(DEFAULT_USAGE_FILTERS, { preset: 'custom', from: '2026-05-01', to: '2026-11-01' }, NOW_22H_BRT);
     expect(f.granularity).toBe('week');

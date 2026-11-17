@@ -58,10 +58,12 @@ function SeriesChart({ detail, tableId }: { detail: UsageFeatureDetail; tableId:
   const small = useMediaQuery(theme.breakpoints.down('sm'));
   const colors = chartColors(theme.palette.mode);
   const { granularity } = detail.range;
+  // Um ponto só não forma linha: sem o marcador o gráfico fica vazio.
+  const showMark = detail.series.length <= 1;
   const series = useMemo(() => [
-    { id: 'uses', label: S.trend.usesSeries, color: colors.ordered[0], data: detail.series.map((p) => p.uses), showMark: false },
-    { id: 'tenants', label: S.trend.tenantsSeries, color: colors.ordered[1], data: detail.series.map((p) => p.activeTenants), showMark: false },
-  ], [detail.series, colors.ordered]);
+    { id: 'uses', label: S.trend.usesSeries, color: colors.ordered[0], data: detail.series.map((p) => p.uses), showMark },
+    { id: 'tenants', label: S.trend.tenantsSeries, color: colors.ordered[1], data: detail.series.map((p) => p.activeTenants), showMark },
+  ], [detail.series, colors.ordered, showMark]);
   return (
     <Box component="figure" aria-label={S.trend.aria} aria-describedby={tableId} sx={{ m: 0, minWidth: 0 }}>
       <Suspense fallback={<Skeleton variant="rounded" height={small ? 220 : 280} />}>

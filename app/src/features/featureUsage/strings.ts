@@ -188,6 +188,7 @@ export const featureUsageStrings = {
 
     granularity: 'Agrupar por',
     granularities,
+    singleDayHint: 'Com um dia só, o uso fica agrupado por dia.',
     dayDisabledHint: (max: number) => `"Dia" vale para períodos de até ${days(max)}. Acima disso, agrupe por semana ou mês.`,
 
     product: 'Produto',
