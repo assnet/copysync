@@ -46,6 +46,8 @@ const page = (path = '/settings/subscription') => (
 
 const renderPage = (path = '/settings/subscription', mode: 'light' | 'dark' = 'light') => renderWithTheme(page(path), mode);
 
+const anyCta = new RegExp(`${t.cta.label}|${t.cta.changeLabel}`);
+
 const rowKeys = () => Array.from(document.querySelectorAll('tr[data-key]')).map((r) => r.getAttribute('data-key'));
 
 describe('SubscriptionPage', () => {
@@ -95,13 +97,13 @@ describe('SubscriptionPage', () => {
     svc.getSubscription.mockResolvedValue(sub);
     renderPage();
     expect(await screen.findByText(t.cta.operatorHint)).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: new RegExp(t.cta.label) })).toBeNull();
+    expect(screen.queryByRole('link', { name: anyCta })).toBeNull();
   });
 
-  it('ADMIN confirmado vê o botão de assinar', async () => {
+  it('ADMIN confirmado com plano ativo vê o botão de trocar', async () => {
     svc.getSubscription.mockResolvedValue(sub);
     renderPage();
-    expect(await screen.findByRole('link', { name: new RegExp(t.cta.label) })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: new RegExp(t.cta.changeLabel) })).toBeInTheDocument();
     expect(screen.queryByText(t.cta.operatorHint)).toBeNull();
   });
 
@@ -110,7 +112,7 @@ describe('SubscriptionPage', () => {
     svc.getSubscription.mockResolvedValue(sub);
     renderPage();
     await screen.findByText(pro.name);
-    expect(screen.queryByRole('link', { name: new RegExp(t.cta.label) })).toBeNull();
+    expect(screen.queryByRole('link', { name: anyCta })).toBeNull();
   });
 
   it('troca de tenant mostra skeleton e não o nome da conta anterior', async () => {
@@ -173,7 +175,7 @@ describe('SubscriptionPage', () => {
       expect(saver.querySelector('[role="tablist"]')).toBeNull();
       expect(screen.getByText(t.limits.availableFrom('PRO'))).toBeInTheDocument();
       // Cada produto leva à própria vitrine
-      const links = screen.getAllByRole('link', { name: new RegExp(t.cta.label) });
+      const links = screen.getAllByRole('link', { name: new RegExp(t.cta.changeLabel) });
       expect(links.map((a) => a.getAttribute('href'))).toEqual(['/affiliates/plans', '/saver/plans']);
     });
 

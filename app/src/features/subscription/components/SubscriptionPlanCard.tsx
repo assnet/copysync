@@ -1,6 +1,6 @@
 import { Link as RouterLink } from 'react-router-dom';
 import { Alert, AlertTitle, Box, Button, Chip, Stack, Tooltip, Typography } from '@mui/material';
-import { Crown } from 'lucide-react';
+import { ArrowLeftRight, Crown } from 'lucide-react';
 import { AppIcon, SectionCard } from '@/components';
 import { navigationStrings } from '@/features/navigation';
 import { SUBSCRIPTION_PATH, plansPathFor } from '@/features/products';
@@ -56,7 +56,8 @@ export interface SubscriptionPlanCardProps {
 /**
  * Card do plano atual (SUB-06/07/09): nome e tagline do catálogo pelo slug (nunca preço), chip de
  * situação, vencimento em data local, conta (borrável) e botão para a vitrine interna, onde o
- * cliente escolhe plano e período (mensal/anual) antes do pagamento. Nunca leva direto ao pagamento
+ * cliente escolhe plano e período (mensal/anual) antes do pagamento. Plano ativo = "Trocar de plano";
+ * sem plano ou com pendência = "Ver planos e assinar". Nunca leva direto ao pagamento
  * do plano atual: quem quer trocar de plano ou assina o anual pagaria a oferta errada.
  */
 export function SubscriptionPlanCard({
@@ -79,9 +80,17 @@ export function SubscriptionPlanCard({
   // Vitrine do produto; sem vitrine registrada cairia nesta própria tela: sem botão.
   const plansPath = plansPathFor(key);
 
+  // Plano ativo: trocar (botão secundário); sem plano ou com pendência: assinar.
+  const changing = hasPlan && sub.status === 'ACTIVE';
   const cta = (
-    <Button variant="contained" disableElevation component={RouterLink} to={plansPath} startIcon={<AppIcon icon={Crown} />}>
-      {t.cta.label}
+    <Button
+      variant={changing ? 'outlined' : 'contained'}
+      disableElevation
+      component={RouterLink}
+      to={plansPath}
+      startIcon={<AppIcon icon={changing ? ArrowLeftRight : Crown} />}
+    >
+      {changing ? t.cta.changeLabel : t.cta.label}
     </Button>
   );
 
@@ -109,7 +118,7 @@ export function SubscriptionPlanCard({
           </Box>
           <Box sx={{ flexShrink: 0 }}>
             {plansPath === SUBSCRIPTION_PATH ? null : canSubscribe ? (
-              <Tooltip title={t.cta.tooltip} arrow describeChild>{cta}</Tooltip>
+              <Tooltip title={changing ? t.cta.changeTooltip : t.cta.tooltip} arrow describeChild>{cta}</Tooltip>
             ) : (
               <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 260 }}>{t.cta.operatorHint}</Typography>
             )}
