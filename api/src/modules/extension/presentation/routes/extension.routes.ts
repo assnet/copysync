@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { extensionAuthHook } from '../extensionAuthHook';
+import { extensionAffiliatesHook } from '../extensionAffiliatesHook';
 import { extensionRequestGuard } from '../extensionRequestGuard';
 import { extensionContainer } from '../../infrastructure/extensionContainer';
 import { IssueExtensionSessionUseCase } from '../../application/use-cases/IssueExtensionSessionUseCase';
@@ -181,7 +182,7 @@ export async function extensionRoutes(app: FastifyInstance): Promise<void> {
   app.put(
     '/marketplaces/ml/session',
     {
-      preHandler: [extensionAuthHook],
+      preHandler: [extensionAuthHook, extensionAffiliatesHook],
       onRequest: [extensionRequestGuard],
       config: { rateLimit: rateLimitPresets.extensionSync },
       schema: {
@@ -272,7 +273,7 @@ export async function extensionRoutes(app: FastifyInstance): Promise<void> {
   app.put(
     '/marketplaces/shein/session',
     {
-      preHandler: [extensionAuthHook],
+      preHandler: [extensionAuthHook, extensionAffiliatesHook],
       onRequest: [extensionRequestGuard],
       config: { rateLimit: rateLimitPresets.extensionSync },
       schema: {

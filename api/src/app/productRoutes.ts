@@ -74,6 +74,49 @@ export function insertGateAfterTenantHook(current: RouteOptions['preHandler'], g
   return list;
 }
 
+/** Rota de plugin de produto que ficou sem gate (sem `tenantHook`/`sseAuthHook`). Lista pequena, montada no boot. */
+export interface UngatedProductRoute {
+  product: ProductKey;
+  method: string;
+  url: string;
+}
+
+const ungated: UngatedProductRoute[] = [];
+
+function recordUngated(product: ProductKey, route: RouteOptions): void {
+  const methods = Array.isArray(route.method) ? route.method : [route.method];
+  for (const method of methods) ungated.push({ product, method: String(method), url: route.url });
+}
+
+/** Rotas de plugin de produto registradas sem gate neste processo (o teste confere contra a lista de exceções). */
+export function listUngatedProductRoutes(): readonly UngatedProductRoute[] {
+  return ungated;
+}
+
+/**
+ * Exceções conhecidas de plugin de produto sem hook de tenant (`MÉTODO url` sem o prefixo da API). Rota
+ * nova sem âncora quebra `productRoutes.registry.test.ts` até entrar aqui com o motivo.
+ * - Extensão por cookie (`extensionAuthHook`, sem `tenantContext`): as de sincronização checam o produto
+ *   pelo `mlTenantId` dentro do módulo (`extensionAffiliatesHook`); logout, perfil e heartbeat são da
+ *   instalação (design §3.5).
+ * - Extensão com Bearer sem tenant (sessões da extensão do usuário) e ciclo de vida (público): sem tenant.
+ * - `GET /offer-hunts/access`: só diz se o menu do caçador aparece (nunca 403, sem dado do tenant).
+ * `HEAD` automático do Fastify não entra (o teste ignora).
+ */
+export const UNGATED_PRODUCT_ROUTE_EXCEPTIONS: ReadonlySet<string> = new Set<string>([
+  'PUT /extension/marketplaces/ml/session',
+  'PUT /extension/marketplaces/shein/session',
+  'DELETE /extension/session',
+  'GET /extension/me',
+  'POST /extension/heartbeat',
+  'GET /extension/sessions',
+  'DELETE /extension/sessions/:id',
+  'POST /extension/lifecycle/event',
+  'POST /extension/lifecycle/uninstall',
+  'POST /extension/lifecycle/feedback',
+  'GET /offer-hunts/access',
+]);
+
 export interface ProductRouteDeps {
   reader?: IProductAccessReader;
   mode?: ProductGateMode;
@@ -89,7 +132,9 @@ export function withProduct<O>(product: ProductKey, plugin: Plugin<O>, deps: Pro
   return async function productScopedRoutes(instance: FastifyInstance, opts: O): Promise<void> {
     const gate = createProductGate(product, deps.reader ?? productAccessReader(), deps.mode ?? env.PRODUCT_ACCESS_GATE_MODE);
     instance.addHook('onRoute', (route) => {
-      route.preHandler = insertGateAfterTenantHook(route.preHandler, gate);
+      const next = insertGateAfterTenantHook(route.preHandler, gate);
+      if (next === route.preHandler) recordUngated(product, route);
+      route.preHandler = next;
     });
     await plugin(instance, opts);
   };
