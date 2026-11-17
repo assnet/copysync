@@ -1,4 +1,5 @@
 import type { PlatformSaverContact } from '../entities/SaverEntities';
+import type { MergeGroupReadResult } from '../services/mergeGroupRead';
 
 /**
  * Base da PLATAFORMA (sem `tenantId`). Só use cases `Platform*` (super admin) e a gravação da extração
@@ -44,4 +45,14 @@ export interface IPlatformSaverContactRepository {
     limit: number,
   ): Promise<PlatformSaverContactRow[]>;
   findLinks(contactId: string): Promise<PlatformSaverContactLink[]>;
+  /**
+   * Aplica o resultado de `mergeGroupRead` numa transação (lotes de 500, ordenados por chave; fusão sob
+   * advisory lock). Insert que bate na unicidade (outro tenant gravou antes) vira update. Devolve os ids
+   * finais dos inserts, na ordem de `contactInserts`, e quantos foram realmente criados.
+   */
+  applyGroupRead(
+    tenantId: string,
+    groupId: string,
+    result: MergeGroupReadResult,
+  ): Promise<{ insertedIds: string[]; created: number }>;
 }
