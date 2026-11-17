@@ -16,6 +16,12 @@ import type { ISaverTeamReader } from '../domain/contracts/ISaverTeamReader';
 import type { ISaverExtractionQueue } from '../domain/contracts/ISaverExtractionQueue';
 import type { ISaverSessionStateStore } from '../domain/contracts/ISaverSessionStateStore';
 import type { ISaverConfigRepository } from '../domain/contracts/ISaverConfigRepository';
+import { PrismaAuditLogRepository } from '../../../shared/audit/PrismaAuditLogRepository';
+import {
+  ExportPlatformSaverContactsUseCase,
+  GetPlatformSaverContactUseCase,
+  ListPlatformSaverContactsUseCase,
+} from '../application/use-cases/PlatformSaverContactsUseCases';
 
 /*
  * Composição do Saver (molde `linkRotationContainer.ts`). Tudo lazy: importar não toca banco.
@@ -46,4 +52,16 @@ export const saverContainer = {
   get queue(): ISaverExtractionQueue { return queue(); },
   get sessionStates(): ISaverSessionStateStore { return sessionStates(); },
   get configs(): ISaverConfigRepository { return configs(); },
+};
+
+// ── Base da plataforma (T16, só super admin) ──
+const audit = lazy(() => new PrismaAuditLogRepository());
+const listPlatformContacts   = lazy(() => new ListPlatformSaverContactsUseCase(platformContacts(), audit()));
+const getPlatformContact     = lazy(() => new GetPlatformSaverContactUseCase(platformContacts(), audit()));
+const exportPlatformContacts = lazy(() => new ExportPlatformSaverContactsUseCase(platformContacts(), audit()));
+
+export const saverPlatformUseCases = {
+  get listContacts(): ListPlatformSaverContactsUseCase { return listPlatformContacts(); },
+  get getContact(): GetPlatformSaverContactUseCase { return getPlatformContact(); },
+  get exportContacts(): ExportPlatformSaverContactsUseCase { return exportPlatformContacts(); },
 };
