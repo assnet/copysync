@@ -15,7 +15,8 @@ import { createEmailSenderFromEnv } from '../infrastructure/email/EmailSenderFac
 import { syncPlanEntitlements } from './syncPlanEntitlements';
 import type { HubSubscriptionsFailure, IHubSubscriptionsClient } from '../application/ports/IHubSubscriptionsClient';
 import { graceMsFromHours, pickGrantingByProduct, pickGrantingSubscription, unknownPlanPermissions, type HubSubscriptionSnapshot, type ProductGrantingPick } from '../domain/services/subscriptionReconcile';
-import { mergeProductSharedEntitlements, syncProductPlanEntitlements, writeBillingProductRow } from './productBilling';
+import { syncProductPlanEntitlements, writeBillingProductRow } from './productBilling';
+import { writeMergedSharedEntitlements } from '../../tenants/infrastructure/productEntitlements';
 import { env } from '../../../shared/config/env';
 import { createHubSubscriptionsClientFromEnv } from '../infrastructure/billing/createReconcileSubscriptionsUseCase';
 import { buildTenantSlug, tenantNameFrom } from './buildTenantSlug';
@@ -515,7 +516,7 @@ export class ApplyBillingEventUseCase {
       blocked,
     });
     // PROD-18: chaves compartilhadas pela união dos produtos ativos (só tenant multi-produto)
-    if (!blocked && (productsTouched || newPlan || tenant.hasProductRows)) await mergeProductSharedEntitlements(tx, tenant.id);
+    if (!blocked && (productsTouched || newPlan || tenant.hasProductRows)) await writeMergedSharedEntitlements(tx, tenant.id);
 
     await advanceWatermark();
     const outcome: BillingOutcome = kept ? 'KEPT_ACTIVE' : 'APPLIED';

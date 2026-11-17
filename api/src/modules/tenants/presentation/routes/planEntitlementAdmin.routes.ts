@@ -44,6 +44,8 @@ const listResponse = {
               key: { type: 'string' },
               type: valueType,
               plans: { type: 'object', properties: Object.fromEntries(ALL_PLAN_SLUGS.map((p) => [p, presetValue])) },
+              product: { type: 'string' },
+              editablePlans: { type: 'array', items: { type: 'string' } },
               superAdminOnly: { type: ['boolean', 'null'] },
             },
           },

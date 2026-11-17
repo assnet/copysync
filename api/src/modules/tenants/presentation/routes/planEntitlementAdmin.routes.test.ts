@@ -21,6 +21,7 @@ vi.mock('../../../../shared/http/hooks/authHook', async () => {
 
 const URL = '/api/admin/plan-entitlements';
 const SAVER_NULL = { SAVER_LITE: null, SAVER_PRO: null, SAVER_MAX: null };
+const OWNED = { product: 'AFFILIATES' as const, editablePlans: ['COPYSYNC_LITE' as const, 'COPYSYNC_PRO' as const, 'COPYSYNC_MAX' as const] };
 const PUT_OK = `${URL}/COPYSYNC_PRO/marketplace_shein_enabled`;
 let app: FastifyInstance;
 
@@ -56,9 +57,9 @@ describe('GET /admin/plan-entitlements', () => {
 
   it('super admin → 200 com planos e chaves', async () => {
     vi.spyOn(ListAdminPlanEntitlementsUseCase.prototype, 'execute').mockResolvedValue([
-      { key: 'marketplace_shein_enabled', type: { kind: 'boolean' }, plans: { COPYSYNC_LITE: null, COPYSYNC_PRO: false, COPYSYNC_MAX: true, ...SAVER_NULL }, superAdminOnly: null },
-      { key: 'offer_hunter_finds_per_day', type: { kind: 'integer', min: 0, max: 100 }, plans: { COPYSYNC_LITE: 0, COPYSYNC_PRO: 0, COPYSYNC_MAX: 10, ...SAVER_NULL }, superAdminOnly: null },
-      { key: 'offer_hunter_enabled', type: { kind: 'boolean' }, plans: { COPYSYNC_LITE: false, COPYSYNC_PRO: false, COPYSYNC_MAX: true, ...SAVER_NULL }, superAdminOnly: true },
+      { key: 'marketplace_shein_enabled', type: { kind: 'boolean' }, plans: { COPYSYNC_LITE: null, COPYSYNC_PRO: false, COPYSYNC_MAX: true, ...SAVER_NULL }, ...OWNED, superAdminOnly: null },
+      { key: 'offer_hunter_finds_per_day', type: { kind: 'integer', min: 0, max: 100 }, plans: { COPYSYNC_LITE: 0, COPYSYNC_PRO: 0, COPYSYNC_MAX: 10, ...SAVER_NULL }, ...OWNED, superAdminOnly: null },
+      { key: 'offer_hunter_enabled', type: { kind: 'boolean' }, plans: { COPYSYNC_LITE: false, COPYSYNC_PRO: false, COPYSYNC_MAX: true, ...SAVER_NULL }, ...OWNED, superAdminOnly: true },
     ]);
     const res = await app.inject({ method: 'GET', url: URL });
     expect(res.statusCode).toBe(200);
@@ -67,9 +68,9 @@ describe('GET /admin/plan-entitlements', () => {
       data: {
         plans: ['COPYSYNC_LITE', 'COPYSYNC_PRO', 'COPYSYNC_MAX', 'SAVER_LITE', 'SAVER_PRO', 'SAVER_MAX'],
         entitlements: [
-          { key: 'marketplace_shein_enabled', type: { kind: 'boolean' }, plans: { COPYSYNC_LITE: null, COPYSYNC_PRO: false, COPYSYNC_MAX: true, ...SAVER_NULL }, superAdminOnly: null },
-          { key: 'offer_hunter_finds_per_day', type: { kind: 'integer', min: 0, max: 100 }, plans: { COPYSYNC_LITE: 0, COPYSYNC_PRO: 0, COPYSYNC_MAX: 10, ...SAVER_NULL }, superAdminOnly: null },
-          { key: 'offer_hunter_enabled', type: { kind: 'boolean' }, plans: { COPYSYNC_LITE: false, COPYSYNC_PRO: false, COPYSYNC_MAX: true, ...SAVER_NULL }, superAdminOnly: true },
+          { key: 'marketplace_shein_enabled', type: { kind: 'boolean' }, plans: { COPYSYNC_LITE: null, COPYSYNC_PRO: false, COPYSYNC_MAX: true, ...SAVER_NULL }, ...OWNED, superAdminOnly: null },
+          { key: 'offer_hunter_finds_per_day', type: { kind: 'integer', min: 0, max: 100 }, plans: { COPYSYNC_LITE: 0, COPYSYNC_PRO: 0, COPYSYNC_MAX: 10, ...SAVER_NULL }, ...OWNED, superAdminOnly: null },
+          { key: 'offer_hunter_enabled', type: { kind: 'boolean' }, plans: { COPYSYNC_LITE: false, COPYSYNC_PRO: false, COPYSYNC_MAX: true, ...SAVER_NULL }, ...OWNED, superAdminOnly: true },
         ],
       },
     });
@@ -89,6 +90,12 @@ describe('PUT /admin/plan-entitlements/:planSlug/:key', () => {
 
   it('chave fora da allowlist → 400 VALIDATION_ERROR (use case real, sem transação)', async () => {
     const res = await app.inject({ method: 'PUT', url: `${URL}/COPYSYNC_PRO/storefront_enabled`, payload: { value: true } });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('plano de outro produto (chave de Afiliados em plano Saver) → 400 VALIDATION_ERROR', async () => {
+    const res = await app.inject({ method: 'PUT', url: `${URL}/SAVER_MAX/offer_hunter_enabled`, payload: { value: true } });
     expect(res.statusCode).toBe(400);
     expect(res.json().error.code).toBe('VALIDATION_ERROR');
   });

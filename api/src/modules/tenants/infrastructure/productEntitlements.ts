@@ -11,20 +11,32 @@ import {
 } from '../domain/services/resolveProductAccess';
 
 type Db = Pick<TransactionClient, 'tenant' | 'tenantProduct' | 'planEntitlementPreset' | 'tenantEntitlement'>;
+type PresetDb = Pick<TransactionClient, 'planEntitlementPreset' | 'tenantEntitlement'>;
 
 const SHARED: readonly string[] = SHARED_KEYS;
 
-function toPresetValue(raw: unknown): PlanPresetValue {
-  return typeof raw === 'boolean' || typeof raw === 'number' ? raw : null;
+/** Valor de preset vindo do banco (Json): número, booleano, `null` ou texto numérico. Outro = ignorado. */
+function presetValue(value: unknown): PlanPresetValue | undefined {
+  if (value === null || typeof value === 'number' || typeof value === 'boolean') return value;
+  if (typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value))) return Number(value);
+  return undefined;
 }
 
 /**
- * Grava em `tenant_entitlements` o preset do plano (lido do banco, onde o admin edita), sem as chaves
- * compartilhadas: essas só o merge escreve (docs/acesso-por-produto.md). Sem efeitos de troca de plano.
+ * Único ponto que grava o preset do plano (lido do banco, onde o admin edita) em `tenant_entitlements`,
+ * pulando `excludeKeys`. Sem efeitos de troca de plano (`syncPlanEntitlements` os roda depois). Devolve
+ * quantas linhas o preset tem (antes do filtro).
  */
-export async function writePlanPresetWithoutSharedKeys(db: Db, tenantId: string, planSlug: string): Promise<number> {
-  const presets = await db.planEntitlementPreset.findMany({ where: { planSlug, key: { notIn: [...SHARED] } } });
+export async function writePlanPreset(
+  db: PresetDb,
+  tenantId: string,
+  planSlug: string,
+  excludeKeys: readonly string[] = [],
+): Promise<number> {
+  const presets = await db.planEntitlementPreset.findMany({ where: { planSlug } });
+  const exclude = new Set(excludeKeys);
   for (const p of presets) {
+    if (exclude.has(p.key)) continue;
     const value = entitlementJsonValue(p.value);
     await db.tenantEntitlement.upsert({
       where: { tenantId_key: { tenantId, key: p.key } },
@@ -35,10 +47,28 @@ export async function writePlanPresetWithoutSharedKeys(db: Db, tenantId: string,
   return presets.length;
 }
 
+/** Preset do plano sem as chaves compartilhadas: essas só o merge escreve (PROD-18). */
+export function writePlanPresetWithoutSharedKeys(db: PresetDb, tenantId: string, planSlug: string): Promise<number> {
+  return writePlanPreset(db, tenantId, planSlug, SHARED);
+}
+
+async function sharedPresetOf(db: PresetDb, planSlug: string): Promise<Record<string, PlanPresetValue>> {
+  const rows = await db.planEntitlementPreset.findMany({ where: { planSlug, key: { in: [...SHARED] } } });
+  const out: Record<string, PlanPresetValue> = {};
+  for (const r of rows) {
+    const v = presetValue(r.value);
+    if (v !== undefined) out[r.key] = v;
+  }
+  return out;
+}
+
 /**
- * União das chaves compartilhadas (`mergeSharedEntitlements`) entre os produtos com acesso do tenant e
- * grava o resultado. Plano de cada produto: linha de `tenant_products`; Afiliados sem plano na linha usa
- * `Tenant.planSlug`. Produto ativo sem plano (legado ilimitado) = não grava nada. Sem produto = não grava.
+ * Único ponto que grava as chaves compartilhadas (`whatsapp_sessions`, `telegram_sessions`): união
+ * (`mergeSharedEntitlements`: maior vence, `null` vence) dos presets dos produtos com acesso. Usado pelo
+ * admin, pela propagação de preset, pelo webhook e pela reconciliação.
+ * - Plano de Afiliados: `tenant_products.planSlug` (concessão do admin) ou, sem ele, `Tenant.planSlug`.
+ *   Afiliados ativo sem plano (legado ilimitado) = não grava nada.
+ * - Produto novo ativo sem plano = fora da união. Nenhum produto com acesso = não grava.
  */
 export async function writeMergedSharedEntitlements(db: Db, tenantId: string): Promise<void> {
   const [tenant, rows] = await Promise.all([
@@ -52,17 +82,13 @@ export async function writeMergedSharedEntitlements(db: Db, tenantId: string): P
     if (accessSourceOf(product) !== product) continue; // CHAT acompanha AFFILIATES: sem plano próprio
     const row = byProduct.get(product);
     if (!resolveProductAccess(product, row ? { status: row.status as TenantProductStatus } : null)) continue;
-    plans.push(row?.planSlug ?? (product === 'AFFILIATES' ? tenant.planSlug : null));
+    const slug = row?.planSlug ?? (product === 'AFFILIATES' ? tenant.planSlug : null);
+    if (slug === null && product !== 'AFFILIATES') continue;
+    plans.push(slug);
   }
   if (plans.length === 0) return;
-  const slugs = plans.filter((p): p is string => p !== null);
-  const presetRows = slugs.length
-    ? await db.planEntitlementPreset.findMany({ where: { planSlug: { in: slugs }, key: { in: [...SHARED] } } })
-    : [];
-  const presets = plans.map((slug) => {
-    if (slug === null) return null;
-    return Object.fromEntries(presetRows.filter((r) => r.planSlug === slug).map((r) => [r.key, toPresetValue(r.value)]));
-  });
+  const presets: (Record<string, PlanPresetValue> | null)[] = [];
+  for (const slug of plans) presets.push(slug === null ? null : await sharedPresetOf(db, slug));
   const merged = mergeSharedEntitlements(presets);
   if (!merged) return;
   for (const [key, raw] of Object.entries(merged)) {

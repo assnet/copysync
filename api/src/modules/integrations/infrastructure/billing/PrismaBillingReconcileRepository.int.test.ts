@@ -5,6 +5,7 @@ import { prisma } from '../../../../shared/database/prisma.client';
 import type { HubSubscriptionsResult, IHubSubscriptionsClient } from '../../application/ports/IHubSubscriptionsClient';
 import type { HubSubscription } from '../../domain/services/subscriptionReconcile';
 import { ApplyBillingEventUseCase } from '../../billing/ApplyBillingEventUseCase';
+import { entitlementJsonValue } from '../../billing/entitlementJsonValue';
 import { ReconcileSubscriptionsUseCase } from '../../billing/ReconcileSubscriptionsUseCase';
 import { PrismaBillingReconcileRepository } from './PrismaBillingReconcileRepository';
 
@@ -35,6 +36,7 @@ afterAll(async () => {
   await prisma.billingEventReceipt.deleteMany({ where: { tenantId: { in: created } } });
   await prisma.auditLog.deleteMany({ where: { tenantId: { in: created } } });
   await prisma.tenantEntitlement.deleteMany({ where: { tenantId: { in: created } } });
+  await prisma.tenantProduct.deleteMany({ where: { tenantId: { in: created } } });
   await prisma.tenant.deleteMany({ where: { id: { in: created } } });
   await prisma.$disconnect();
 });
@@ -247,6 +249,36 @@ describe('Reconciliação por produto com Postgres', () => {
     snap(t.customer, [sub(), saverSub({ billingStatus: 'REFUNDED' })], 5n);
     await reconcile();
     expect(await products(t.id)).toEqual([expect.objectContaining({ product: 'SAVER', status: 'ACTIVE', source: 'ADMIN' })]);
+  });
+
+  it('troca de plano de Afiliados com Saver ADMIN sem assinatura: sessões nunca abaixo do maior preset; 2ª passada sem escrita', async () => {
+    // Presets das compartilhadas fixados aqui (outros testes podem editá-los); restaurados no fim
+    const shared = { COPYSYNC_LITE: 1, COPYSYNC_PRO: 1, SAVER_MAX: 2 } as const;
+    const original = await prisma.planEntitlementPreset.findMany({ where: { planSlug: { in: Object.keys(shared) }, key: 'whatsapp_sessions' } });
+    for (const [planSlug, value] of Object.entries(shared)) {
+      await prisma.planEntitlementPreset.upsert({
+        where: { planSlug_key: { planSlug, key: 'whatsapp_sessions' } },
+        create: { planSlug, key: 'whatsapp_sessions', value },
+        update: { value },
+      });
+    }
+    try {
+      const t = await tenant('pa-admin-swap', { planSlug: 'COPYSYNC_LITE', lastBillingEventSeq: 5n });
+      await prisma.tenantProduct.create({ data: { tenantId: t.id, product: 'SAVER', status: 'ACTIVE', planSlug: 'SAVER_MAX', source: 'ADMIN' } });
+      await prisma.tenantEntitlement.create({ data: { tenantId: t.id, key: 'whatsapp_sessions', value: 2 } });
+      snap(t.customer, [sub()], 5n); // só Afiliados PRO na central; nada de Saver
+      await reconcile();
+      expect(await read(t.id)).toMatchObject({ planSlug: 'COPYSYNC_PRO', status: 'ACTIVE' });
+      const sessions = await prisma.tenantEntitlement.findUniqueOrThrow({ where: { tenantId_key: { tenantId: t.id, key: 'whatsapp_sessions' } } });
+      expect(sessions.value).toBe(Math.max(shared.COPYSYNC_PRO, shared.SAVER_MAX));
+      expect(await products(t.id)).toEqual([expect.objectContaining({ product: 'SAVER', status: 'ACTIVE', planSlug: 'SAVER_MAX', source: 'ADMIN' })]);
+      const before = withoutStamp(await fingerprint(t.id));
+      await reconcile();
+      expect(withoutStamp(await fingerprint(t.id))).toEqual(before);
+    } finally {
+      await prisma.planEntitlementPreset.deleteMany({ where: { planSlug: { in: Object.keys(shared) }, key: 'whatsapp_sessions' } });
+      for (const r of original) await prisma.planEntitlementPreset.create({ data: { id: r.id, planSlug: r.planSlug, key: r.key, value: entitlementJsonValue(r.value) } });
+    }
   });
 
   it('só-Saver com vencimento de Afiliados antigo não entra no lote de vencidos', async () => {
