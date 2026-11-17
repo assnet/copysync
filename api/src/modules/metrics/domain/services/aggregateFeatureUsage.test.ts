@@ -128,8 +128,10 @@ describe('primeiro dado, limite efetivo e tendência', () => {
     expect(f.activeTenantsPrevious).toBeNull();
   });
 
+  const ALL_BASE = { ...FIRST, telegram_session: '2026-01-01' };
+
   it('compara com o período anterior quando há base', () => {
-    const out = run([r('2026-11-10', 't1', 'offer_generator', 'ACTION', 3), r('2026-10-01', 't2', 'offer_generator', 'ACTION', 2), r('2026-10-02', 't1', 'offer_generator', 'ACTION')]);
+    const out = run([r('2026-11-10', 't1', 'offer_generator', 'ACTION', 3), r('2026-10-01', 't2', 'offer_generator', 'ACTION', 2), r('2026-10-02', 't1', 'offer_generator', 'ACTION')], { firstDataDay: ALL_BASE });
     const f = feature(out, 'offer_generator');
     expect(f.uses).toBe(3);
     expect(f.usesPrevious).toBe(3);
@@ -140,6 +142,19 @@ describe('primeiro dado, limite efetivo e tendência', () => {
   it('tendência nula quando o período anterior começa antes do primeiro dado', () => {
     const out = run([r('2026-11-10', 't1', 'offer_generator', 'ACTION')], { firstDataDay: { ...FIRST, offer_generator: '2026-10-01' } });
     expect(feature(out, 'offer_generator').usesPrevious).toBeNull();
+  });
+
+  it('total anterior nulo quando um recurso do recorte tem o primeiro dado dentro do período anterior', () => {
+    const rows = [r('2026-10-01', 't2', 'offer_generator', 'ACTION')];
+    expect(run(rows, { firstDataDay: ALL_BASE }).totals.activeTenantsPrevious).toBe(1);
+    const out = run(rows, { firstDataDay: { ...ALL_BASE, offer_dispatch: '2026-10-05' } });
+    expect(feature(out, 'offer_generator').activeTenantsPrevious).toBe(1);
+    expect(out.totals.activeTenantsPrevious).toBeNull();
+  });
+
+  it('total anterior nulo com recurso sem dado ou com corte de retenção no recorte', () => {
+    expect(run([]).totals.activeTenantsPrevious).toBeNull(); // telegram_session sem dado
+    expect(run([], { firstDataDay: ALL_BASE, filters: { kinds: ['ACCESS'] } }).totals.activeTenantsPrevious).toBeNull();
   });
 
   it('total de contas ativas sem base quando nenhum recurso tem dado antes do período anterior', () => {

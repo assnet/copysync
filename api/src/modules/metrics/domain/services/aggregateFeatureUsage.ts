@@ -238,6 +238,8 @@ export function aggregateFeatureUsage(input: AggregateFeatureUsageInput): Featur
   const overallBuckets = new Map(bucketKeys.map((k) => [k, new Set<string>()]));
   const activeTenants = new Set<string>();
   const activeTenantsPrev = new Set<string>();
+  // Total anterior só quando TODO recurso do recorte tem base no período anterior (sem corte de retenção nele).
+  let everyHasBase = true;
   const featureSeries: FeatureUsageAggregate['featureSeries'] = {};
 
   const items: FeatureUsageItem[] = features.map((feature) => {
@@ -273,6 +275,7 @@ export function aggregateFeatureUsage(input: AggregateFeatureUsageInput): Featur
     const first = firstDataDay[feature.key] ?? null;
     const dataFrom = dataFromOf(first, feature.retentionDays, now);
     const hasBase = dataFrom !== null && period.previousFrom >= dataFrom;
+    if (!hasBase) everyHasBase = false;
     const reasons = coverageReasonsFor(feature, period, today);
 
     featureSeries[feature.key] = bucketKeys.map((k) => ({
@@ -314,15 +317,12 @@ export function aggregateFeatureUsage(input: AggregateFeatureUsageInput): Featur
   const used = items.filter((i) => i.activeTenants > 0);
   const top = [...used].sort((a, b) => b.activeTenants - a.activeTenants || b.uses - a.uses || (a.key < b.key ? -1 : 1))[0];
 
-  // Base geral: algum recurso com dado antes do período anterior e nenhuma fonte podada cortando o período anterior.
-  const anyBase = items.some((i) => i.firstDataDay !== null && i.firstDataDay <= period.previousFrom);
-  const retentionCut = items.some((i) => i.retentionDays !== null && i.dataFrom !== null && i.dataFrom > period.previousFrom);
 
   return {
     population: { tenants: populationTenants.size, internalExcluded, byPlan: populationByPlan },
     totals: {
       activeTenants: activeTenants.size,
-      activeTenantsPrevious: anyBase && !retentionCut ? activeTenantsPrev.size : null,
+      activeTenantsPrevious: everyHasBase ? activeTenantsPrev.size : null,
       featuresUsed: used.length,
       featuresNeverUsed: items.length - used.length,
       topFeature: top?.key ?? null,
