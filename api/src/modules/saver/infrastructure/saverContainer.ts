@@ -22,6 +22,7 @@ import {
   GetPlatformSaverContactUseCase,
   ListPlatformSaverContactsUseCase,
 } from '../application/use-cases/PlatformSaverContactsUseCases';
+import { ExportSavedContactsUseCase } from '../application/use-cases/ExportSavedContactsUseCase';
 
 /*
  * Composição do Saver (molde `linkRotationContainer.ts`). Tudo lazy: importar não toca banco.
@@ -64,4 +65,11 @@ export const saverPlatformUseCases = {
   get listContacts(): ListPlatformSaverContactsUseCase { return listPlatformContacts(); },
   get getContact(): GetPlatformSaverContactUseCase { return getPlatformContact(); },
   get exportContacts(): ExportPlatformSaverContactsUseCase { return exportPlatformContacts(); },
+};
+
+// ── Exportação e configuração do tenant (T17, T18) ──
+const exportSavedContacts = lazy(() => new ExportSavedContactsUseCase(groups(), memberships(), exportGrants(), audit()));
+
+export const saverTenantUseCases = {
+  get exportSavedContacts(): ExportSavedContactsUseCase { return exportSavedContacts(); },
 };
