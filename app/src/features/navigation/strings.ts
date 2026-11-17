@@ -12,6 +12,10 @@ export const navigationStrings = {
   soon: 'Em breve',
   /** Título do Tooltip de produto ainda não lançado: "Em breve · tagline". */
   soonWithTagline: (tagline: string) => `Em breve · ${tagline}`,
+  /** Tooltip do cadeado: produto fora do plano do tenant (único destino: a vitrine dele). */
+  lockedTooltip: (product: string) => `${product} não está no seu plano. Veja os planos para liberar.`,
+  /** Nome acessível do produto carregando enquanto a lista de tenants não respondeu. */
+  productsLoading: 'Carregando produtos',
 
   products: {
     affiliates: { label: 'Afiliados', tagline: 'Ofertas, monitoramento e links' },
@@ -40,6 +44,7 @@ export const navigationStrings = {
     mainNav: 'Navegação principal',
     openSubmenu: (product: string) => `Abrir submenu de ${product}`,
     productSoon: (product: string) => `${product}: em breve`,
+    productLocked: (product: string) => `${product}: fora do seu plano`,
     activeChildHint: 'Contém a tela atual',
     /** Nome acessível do produto recolhido que contém a tela atual. */
     productWithActiveChild: (product: string) => `${product} · Contém a tela atual`,

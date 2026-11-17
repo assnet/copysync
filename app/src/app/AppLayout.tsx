@@ -25,6 +25,7 @@ import {
 import { useOfferHunterAccess } from '@/features/offerHunter/hooks/useOfferHunterAccess';
 import { NavLinkItem } from './nav/NavLinkItem';
 import { ProductNavItem } from './nav/ProductNavItem';
+import { useProductAccess } from '@/features/products';
 import { CollapsedProductNavItem } from './nav/CollapsedProductNavItem';
 import { navSectionTitleSx } from './nav/navStyles';
 
@@ -325,9 +326,11 @@ export function AppLayout() {
   const isSuperAdmin = Boolean(user?.isSuperAdmin);
   // Caçador de Ofertas: visibilidade pela API (mesma consulta do guard `OfferHunterRoute`)
   const { visible: offerHunterVisible } = useOfferHunterAccess();
+  // Produtos do tenant ativo: produto fora do plano aparece com cadeado (só a vitrine).
+  const productAccess = useProductAccess();
   const navModel = useMemo(
-    () => buildNavigation({ isSuperAdmin, offerHunterVisible }),
-    [isSuperAdmin, offerHunterVisible],
+    () => buildNavigation({ isSuperAdmin, offerHunterVisible, products: productAccess.products }),
+    [isSuperAdmin, offerHunterVisible, productAccess.products],
   );
   const nav = useNavigationState(navModel, location.pathname);
 

@@ -14,7 +14,7 @@ import { infraCostsStrings } from '@/features/infraCosts/strings';
 import { redirectLinksStrings } from '@/features/redirectLinks/strings';
 import { tutorialsStrings } from '@/features/tutorials/strings';
 import { navigationStrings as s } from './strings';
-import { AFFILIATE_PLANS_PATH } from '@/features/products/productAccess';
+import { AFFILIATE_PLANS_PATH, type ProductKey } from '@/features/products/productAccess';
 
 /**
  * Modelo puro do menu lateral: só dados (ícone como componente Lucide, nunca JSX).
@@ -47,6 +47,8 @@ export interface NavProduct {
   tagline: string;
   icon: LucideIcon;
   status: NavProductStatus;
+  /** `available` fora do plano do tenant: cadeado e um único filho, a vitrine do produto. */
+  locked?: boolean;
   children: NavLink[];
 }
 
@@ -64,6 +66,8 @@ export interface BuildNavigationInput {
    * Os filhos de Afiliados não passam por `onlyAllowed`; por isso entrada própria e não `superAdminOnly`.
    */
   offerHunterVisible: boolean;
+  /** Produtos do tenant ativo (`useProductAccess`). Produto do menu fora da lista fica travado. */
+  products: readonly ProductKey[];
 }
 
 export interface ActiveEntry {
@@ -88,10 +92,23 @@ export const AFFILIATE_TUTORIALS_PATH = '/affiliates/tutorials';
 /** Planos são por produto: a vitrine de Afiliados mora em `features/products` (fonte única). */
 export { AFFILIATE_PLANS_PATH };
 
-export function buildNavigation({ isSuperAdmin, offerHunterVisible }: BuildNavigationInput): NavigationModel {
+/**
+ * Item do menu → produto que dá acesso. CRM fica fora: hoje só o super admin vê o Chat e ele
+ * passa pelo gate da API.
+ */
+const NAV_PRODUCT_ACCESS: Readonly<Record<string, ProductKey>> = { affiliates: 'AFFILIATES' };
+
+/** Produto sem acesso: mantém só o item da vitrine de planos (único destino do cadeado). */
+function lockIfMissing(product: NavProduct, products: readonly ProductKey[], plansKey: string): NavProduct {
+  const required = NAV_PRODUCT_ACCESS[product.key];
+  if (!required || product.status !== 'available' || products.includes(required)) return product;
+  return { ...product, locked: true, children: product.children.filter((c) => c.key === plansKey) };
+}
+
+export function buildNavigation({ isSuperAdmin, offerHunterVisible, products }: BuildNavigationInput): NavigationModel {
   const onlyAllowed = (links: NavLink[]) => links.filter((l) => !l.superAdminOnly || isSuperAdmin);
 
-  const affiliates: NavProduct = {
+  const affiliatesFull: NavProduct = {
     key: 'affiliates',
     label: s.products.affiliates.label,
     tagline: s.products.affiliates.tagline,
@@ -113,6 +130,8 @@ export function buildNavigation({ isSuperAdmin, offerHunterVisible }: BuildNavig
       { key: 'affiliate-plans', label: plansStrings.menuLabel, path: AFFILIATE_PLANS_PATH, icon: Crown },
     ],
   };
+
+  const affiliates = lockIfMissing(affiliatesFull, products, 'affiliate-plans');
 
   // Chat ainda não é produto dos planos: só super admin vê (a rota também redireciona os demais).
   const crmChildren = onlyAllowed([
