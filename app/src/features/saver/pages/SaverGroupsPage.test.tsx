@@ -36,7 +36,8 @@ const session = (over: Partial<SessionItem> = {}): SessionItem => ({
   updatedAt: '2026-11-01T10:00:00.000Z', ...over,
 });
 const live = (jid: string, name: string, over: Partial<SaverSessionGroup> = {}): SaverSessionGroup => ({
-  groupJid: jid, name, saved: false, savedGroupId: null, lastScannedAt: null, lastScanStatus: null, ...over,
+  groupJid: jid, name, saved: false, savedGroupId: null, lastScannedAt: null, lastScanStatus: null,
+  memberCount: null, kind: 'GROUP', selectable: true, unselectableReason: null, ...over,
 });
 const savedGroup = (id: string, over: Partial<SaverGroup> = {}): SaverGroup => ({
   id, groupJid: `${id}@g.us`, name: `Salvo ${id}`, sessionId: 's1', memberCount: 10, phoneCount: 7, lidOnlyCount: 3,
@@ -241,6 +242,66 @@ describe('SaverGroupsPage', () => {
     await pickSession(user, 'Atendimento');
     await screen.findByText('Vendas');
     expect(screen.getByRole('button', { name: g.table.submit(0) })).toBeDisabled();
+  });
+
+  it.each(['light', 'dark'] as const)('mostra membros, comunidade e total dos marcados; comunidade "pai" não marca (%s)', async (mode) => {
+    svc.listSessionGroups.mockResolvedValue([
+      live('a@g.us', 'Vendas', { memberCount: 1200 }),
+      live('b@g.us', 'Bairro', { kind: 'COMMUNITY', selectable: false, unselectableReason: 'COMMUNITY_PARENT', memberCount: 3 }),
+      live('c@g.us', 'Avisos do bairro', { kind: 'COMMUNITY_ANNOUNCE', memberCount: 800 }),
+      live('d@g.us', 'Sem total'),
+    ]);
+    const user = userEvent.setup();
+    page(mode);
+    await pickSession(user, 'Atendimento');
+    expect(await screen.findByText(g.table.members(1200), { exact: false })).toBeInTheDocument();
+    expect(screen.getByText(g.table.kind.COMMUNITY!)).toBeInTheDocument();
+    expect(screen.getByText(g.table.kind.COMMUNITY_ANNOUNCE!)).toBeInTheDocument();
+    expect(screen.getByText(g.table.unselectable.COMMUNITY_PARENT!)).toBeInTheDocument();
+    expect(screen.getByLabelText(g.table.membersUnknown)).toBeInTheDocument();
+
+    await user.click(screen.getByText('Vendas'));
+    await user.click(screen.getByText('Avisos do bairro'));
+    expect(screen.getByText(g.table.selectedMembers(2000, false))).toBeInTheDocument();
+    await user.click(screen.getByText('Sem total'));
+    expect(screen.getByText(g.table.selectedMembers(2000, true))).toBeInTheDocument();
+    await user.click(screen.getByRole('checkbox', { name: g.table.selectAll }));
+    await user.click(screen.getByRole('checkbox', { name: g.table.selectAll }));
+    expect(screen.getByText(g.table.selected(3, 50))).toBeInTheDocument();
+  });
+
+  it.each(['light', 'dark'] as const)('copiar nome copia sem marcar a linha (%s)', async (mode) => {
+    svc.listSessionGroups.mockResolvedValue([live('a@g.us', 'Vendas')]);
+    svc.listGroups.mockResolvedValue([savedGroup('x')]);
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
+    page(mode);
+    await pickSession(user, 'Atendimento');
+    await user.click(await screen.findByRole('button', { name: s.groups.copyName.actionOf('Vendas') }));
+    expect(writeText).toHaveBeenCalledWith('Vendas');
+    expect(await screen.findByText(s.groups.copyName.copied, { selector: '.MuiAlert-message' })).toBeInTheDocument();
+    expect(screen.getByText(g.table.selected(0, 50))).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: s.groups.copyName.actionOf('Salvo x') }));
+    expect(writeText).toHaveBeenLastCalledWith('Salvo x');
+  });
+
+  it('copiar com privacidade ligada: copia o nome real sem expô-lo no rótulo; falha avisa', async () => {
+    window.localStorage.setItem('privacy.blur', JSON.stringify(['saver.groupNames']));
+    svc.listSessionGroups.mockResolvedValue([live('a@g.us', 'Vendas')]);
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
+    page();
+    await pickSession(user, 'Atendimento');
+    expect(screen.queryByRole('button', { name: s.groups.copyName.actionOf('Vendas') })).toBeNull();
+    const btn = await screen.findByRole('button', { name: s.groups.copyName.action });
+    await user.click(btn);
+    expect(writeText).toHaveBeenCalledWith('Vendas');
+    writeText.mockRejectedValueOnce(new Error('denied'));
+    const exec = vi.fn(() => false);
+    Object.defineProperty(document, 'execCommand', { value: exec, configurable: true });
+    await user.click(btn);
+    expect(await screen.findByText(s.groups.copyName.failed)).toBeInTheDocument();
+    expect(screen.getByText(g.table.selected(0, 50))).toBeInTheDocument();
   });
 
   it('grupos salvos mostram só contagens, aviso de número oculto e remover', async () => {

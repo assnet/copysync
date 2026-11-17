@@ -61,7 +61,15 @@ export interface SaverSessionGroup {
   savedGroupId: string | null;
   lastScannedAt: string | null;
   lastScanStatus: SaverExtractionItemStatus | null;
+  /** null = o WhatsApp não informou. */
+  memberCount: number | null;
+  kind: SaverSessionGroupKind;
+  /** false = não pode ser pedido para leitura (comunidade "pai"). */
+  selectable: boolean;
+  unselectableReason: 'COMMUNITY_PARENT' | null;
 }
+
+export type SaverSessionGroupKind = 'GROUP' | 'COMMUNITY' | 'COMMUNITY_ANNOUNCE';
 
 /** `GET /saver/groups`: grupos salvos com contagens. */
 export interface SaverGroup {

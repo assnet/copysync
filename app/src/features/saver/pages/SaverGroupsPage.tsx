@@ -11,6 +11,7 @@ import { describeSaverError, type SaverError } from '../errors';
 import { useSaverExtraction, useSaverGroups, useSaverOverview, useSaverSessionGroups, useSaverSessions } from '../hooks';
 import { saverStrings as s } from '../strings';
 import type { SaverExtraction, SaverGroup } from '../types';
+import { sumSelectedMembers } from '../groupMembers';
 import { ExtractionProgress } from '../components/groups/ExtractionProgress';
 import { GroupSelectionTable } from '../components/groups/GroupSelectionTable';
 import { SavedGroupsTable } from '../components/groups/SavedGroupsTable';
@@ -77,6 +78,7 @@ export function SaverGroupsPage() {
   const scansExcluded = ov?.groupScansPerDay.limit === 0;
   const scansLeft = scansExcluded ? null : ov?.groupScansPerDay.remaining ?? null;
   const tooMany = selection.length > SAVER_MAX_GROUPS_PER_REQUEST;
+  const selectedMembers = sumSelectedMembers(live.data ?? [], selection);
   const overScans = scansLeft !== null && selection.length > scansLeft;
   const noPlan = saverWithoutPlan(ov);
   const limitMessage = limitBannerMessage(ov, requestError?.kind === 'limitReached' ? requestError.message : null);
@@ -208,6 +210,11 @@ export function SaverGroupsPage() {
             <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.5 }}>
               <Box sx={{ mr: 'auto' }}>
                 <Typography variant="body2" color={tooMany ? 'error.main' : 'text.secondary'}>{g.table.selected(selection.length, SAVER_MAX_GROUPS_PER_REQUEST)}</Typography>
+                {selectedMembers && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                    {g.table.selectedMembers(selectedMembers.total, selectedMembers.partial)}
+                  </Typography>
+                )}
                 {scansLeft !== null && <Typography variant="caption" color="text.secondary">{g.table.scansLeft(scansLeft)}</Typography>}
               </Box>
               {selection.length > 0 && <Button onClick={clearSelection} disabled={requesting}>{g.table.clear}</Button>}

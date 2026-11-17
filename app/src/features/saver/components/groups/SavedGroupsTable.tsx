@@ -7,6 +7,7 @@ import { AppIcon } from '@/components';
 import { Blurred, useBlur } from '@/features/privacy';
 import { saverStrings } from '../../strings';
 import type { SaverGroup } from '../../types';
+import { CopyGroupNameButton } from './CopyGroupNameButton';
 
 const t = saverStrings.groups.saved;
 const num = (n: number) => n.toLocaleString('pt-BR');
@@ -71,10 +72,13 @@ export function SavedGroupsTable({ groups, selected, onSelectedChange, selectabl
                     <Checkbox checked={chosen.has(g.id)} onChange={() => toggle(g.id)} slotProps={{ input: { 'aria-label': `${t.selectGroup}: ${g.name}` } }} />
                   </TableCell>
                 )}
-                <TableCell sx={{ maxWidth: 280 }}>
-                  <Blurred when={blur} radius={5}>
-                    <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>{g.name}</Typography>
-                  </Blurred>
+                <TableCell sx={{ maxWidth: 320 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
+                    <Blurred when={blur} radius={5}>
+                      <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>{g.name}</Typography>
+                    </Blurred>
+                    <CopyGroupNameButton name={g.name} hideName={blur} />
+                  </Box>
                 </TableCell>
                 <TableCell align="right">{num(g.memberCount)}</TableCell>
                 <TableCell align="right">{num(g.phoneCount)}</TableCell>

@@ -162,6 +162,22 @@ export const saverStrings = {
       submit: (n: number) => (n === 1 ? 'Salvar contatos de 1 grupo' : `Salvar contatos de ${n} grupos`),
       noExtractPermission: 'Só o administrador da conta pode ler grupos.',
       clear: 'Limpar seleção',
+      members: (n: number | null) => (n === null ? '—' : n === 1 ? '1 membro' : `${n.toLocaleString('pt-BR')} membros`),
+      membersUnknown: 'O WhatsApp não informou o total de membros deste grupo.',
+      selectedMembers: (n: number, partial: boolean) =>
+        `${partial ? 'Pelo menos ' : ''}${n.toLocaleString('pt-BR')} ${n === 1 ? 'membro' : 'membros'} nos grupos marcados`,
+      kind: { COMMUNITY: 'Comunidade', COMMUNITY_ANNOUNCE: 'Avisos da comunidade' } as Record<string, string>,
+      kindHint: {
+        COMMUNITY: 'A comunidade não tem membros próprios. Marque o grupo de avisos dela para salvar todos os membros.',
+        COMMUNITY_ANNOUNCE: 'Grupo de avisos da comunidade: reúne todos os membros dela.',
+      } as Record<string, string>,
+      unselectable: { COMMUNITY_PARENT: 'Não dá para ler a comunidade em si. Use o grupo de avisos dela.' } as Record<string, string>,
+    },
+    copyName: {
+      action: 'Copiar nome do grupo',
+      actionOf: (name: string) => `Copiar nome do grupo ${name}`,
+      copied: 'Nome copiado',
+      failed: 'Não foi possível copiar o nome. Tente de novo.',
     },
     progress: {
       title: 'Leitura dos grupos',
