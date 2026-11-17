@@ -214,6 +214,7 @@ model Tenant {
   saverExtractions           SaverExtraction[]
   saverExtractionItems       SaverExtractionItem[]
   saverSessionStates         SaverSessionState[]
+  featureUsageDaily          FeatureUsageDaily[]
 
   @@index([slug])
   @@map("tenants")
@@ -511,6 +512,23 @@ model InfraResourceHour {
 }
 
 // Sessão-hora e contratadas por tenant por dia (UTC). Incremento guardado por `lastHour`.
+/// Uso dos recursos por dia (Brasília) × conta × recurso × tipo do evento (P2). Só contagem, sem `userId`.
+/// `updatedAt` sem DEFAULT no banco: todo SQL cru grava a coluna explicitamente.
+model FeatureUsageDaily {
+  day        DateTime @db.Date // dia em America/Sao_Paulo
+  tenantId   String
+  featureKey String // chave do catálogo ou "view:<chave do menu>"
+  kind       String // ACTION | AUTOMATIC | AUDIENCE | ACCESS (tipo do evento)
+  uses       Int
+  updatedAt  DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([day, tenantId, featureKey, kind])
+  @@index([featureKey, day])
+  @@map("feature_usage_daily")
+}
+
 model TenantSessionHour {
   day                DateTime @db.Date
   tenantId           String
