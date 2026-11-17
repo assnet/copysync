@@ -32,7 +32,10 @@ const features: Record<UsageFeatureKey, { label: string; description: string }> 
   link_rotation: { label: linkRotationStrings.menuLabel, description: 'Links criados no gestor.' },
   link_rotation_click: { label: 'Cliques nos links', description: 'Cliques do público nos links do gestor.' },
   storefront: { label: nav.storefront, description: 'Ofertas adicionadas à página, em rascunho ou publicadas.' },
-  offer_story: { label: nav.offerStory, description: 'Stories com o título escrito pela IA.' },
+  offer_story: {
+    label: nav.offerStory,
+    description: 'Artes de story geradas. Antes do início da contagem própria, só as com título escrito pela IA.',
+  },
   affiliate_credentials: { label: nav.affiliateCredentials, description: 'Credenciais e etiquetas de afiliado salvas.' },
   extension_sync: { label: 'Extensão do navegador', description: 'Sincronizações da extensão que trocaram o token.' },
   whatsapp_session: { label: 'Sessão WhatsApp', description: 'Sessões de WhatsApp criadas, inclusive as removidas depois.' },
@@ -77,7 +80,7 @@ const planFamilies: Record<UsagePlanFamily, string> = {
 const coverageReasons: Record<UsageCoverageReason, string> = {
   EXISTING_ONLY: 'Conta só o que ainda existe: itens apagados pelo cliente saem da conta.',
   RETENTION: 'A fonte apaga registros antigos: o começo do período pode estar incompleto.',
-  AI_HEADLINE_ONLY: 'Conta só quando a IA escreve o título do story.',
+  AI_HEADLINE_ONLY: 'Antes do início da contagem própria, conta só quando a IA escreve o título do story.',
   MIXED_EVENTS: 'Soma credenciais e etiquetas salvas.',
   MIXED_TRIGGERS: 'Conta como automático, mas inclui os disparados à mão: a fonte não separa os dois.',
   TOKEN_CHANGE_ONLY: 'Conta só quando a extensão troca o token: o uso real é maior.',
@@ -99,6 +102,8 @@ const presets: Record<UsagePeriodPreset, string> = {
   '7d': '7 dias',
   '30d': '30 dias',
   '90d': '90 dias',
+  '180d': '6 meses',
+  '365d': '12 meses',
   custom: 'Personalizado',
 };
 
@@ -241,6 +246,17 @@ export const featureUsageStrings = {
     noDataYet: 'sem dados ainda',
     updatedAt: (time: string) => `atualizado às ${time}`,
     sourceHint: (source: string) => `Fonte: ${source}.`,
+    /** Indicação discreta quando a resposta veio da leitura sob demanda (`source = live`). */
+    liveBadge: 'Leitura direta',
+    liveHint: 'O resumo diário ainda não cobre este período: os números foram lidos agora nas tabelas de origem, com limite de 90 dias.',
+    dailyHint: 'Números do resumo diário, consolidado pelo sistema ao longo do dia. Permite períodos de até 400 dias.',
+    /** Agregado diário sem atualizar há mais de 1 h. */
+    stale: (age: string) => `O resumo diário não é atualizado há ${age}. Os números podem estar atrasados.`,
+    age: (minutes: number) => {
+      if (minutes < 60) return `${minutes} min`;
+      const hours = Math.floor(minutes / 60);
+      return hours < 24 ? `${hours} h` : `${Math.floor(hours / 24)} ${Math.floor(hours / 24) === 1 ? 'dia' : 'dias'}`;
+    },
   },
 
   kpis: {

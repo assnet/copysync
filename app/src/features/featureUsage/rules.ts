@@ -13,8 +13,15 @@ import type {
 /* ── Constantes ────────────────────────────────────────────────────── */
 
 export const USAGE_TIME_ZONE = 'America/Sao_Paulo';
-/** Teto do período no painel antes da primeira resposta (P1). O teto em vigor vem de `range.maxDays`. */
-export const USAGE_MAX_DAYS = 90;
+/** Teto absoluto do período no painel (o mesmo do schema da API, com o agregado diário). */
+export const USAGE_MAX_DAYS = 400;
+/**
+ * Teto assumido antes da primeira resposta (o da leitura sob demanda). O teto em vigor vem sempre de `range.maxDays`;
+ * assim um filtro salvo longo volta ao padrão no reload em vez de ser recusado pela API.
+ */
+export const USAGE_INITIAL_MAX_DAYS = 90;
+/** Agregado diário sem atualizar há mais que isto mostra aviso na linha de contexto. */
+export const USAGE_DAILY_STALE_MS = 60 * 60 * 1000;
 /** "Dia" só até este número de dias (acima, semana ou mês). */
 export const USAGE_DAY_GRANULARITY_MAX_DAYS = 90;
 /** Até aqui o padrão é "Dia"; acima, "Semana" (mesma regra do schema da API). */
@@ -25,8 +32,10 @@ export const USAGE_RANKING_MAX_BARS = 12;
 export const USAGE_FILTERS_KEY = 'usage.filters';
 export const USAGE_FILTERS_VERSION = 1;
 
-export const USAGE_PRESETS: UsagePeriodPreset[] = ['today', '7d', '30d', '90d', 'custom'];
-const PRESET_DAYS: Record<Exclude<UsagePeriodPreset, 'custom'>, number> = { today: 1, '7d': 7, '30d': 30, '90d': 90 };
+export const USAGE_PRESETS: UsagePeriodPreset[] = ['today', '7d', '30d', '90d', '180d', '365d', 'custom'];
+const PRESET_DAYS: Record<Exclude<UsagePeriodPreset, 'custom'>, number> = {
+  today: 1, '7d': 7, '30d': 30, '90d': 90, '180d': 180, '365d': 365,
+};
 export const USAGE_GRANULARITIES: UsageGranularity[] = ['day', 'week', 'month'];
 export const USAGE_PRODUCTS: UsageProduct[] = ['AFFILIATES', 'CHAT', 'SAVER', 'SESSION', 'ACCESS'];
 export const USAGE_KINDS: UsageKind[] = ['ACTION', 'AUTOMATIC', 'AUDIENCE', 'ACCESS'];
@@ -182,7 +191,7 @@ const TENANT_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
  * `deserialize` de `usage.filters`: valida campo a campo e devolve o padrão no que não servir (JSON inválido, forma
  * antiga, valor fora da lista). Personalizado inválido, no futuro ou acima de `maxDays` volta ao preset padrão.
  */
-export function parseUsageFilters(raw: unknown, nowMs: number, maxDays: number = USAGE_MAX_DAYS): UsageFilters {
+export function parseUsageFilters(raw: unknown, nowMs: number, maxDays: number = USAGE_INITIAL_MAX_DAYS): UsageFilters {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ...DEFAULT_USAGE_FILTERS, kinds: [...DEFAULT_USAGE_FILTERS.kinds] };
   const r = raw as Record<string, unknown>;
   const d = DEFAULT_USAGE_FILTERS;
@@ -584,6 +593,23 @@ export function formatClock(iso: string): string {
 export function contextLine(input: { firstDataDay: UsageDay | null; freshAt: string }): string {
   const since = input.firstDataDay ? S.context.dataSince(formatDay(input.firstDataDay, true)) : S.context.noDataYet;
   return [S.context.timeZone, since, S.context.updatedAt(formatClock(input.freshAt))].join(' · ');
+}
+
+/**
+ * Situação da fonte para a linha de contexto: `live` = lida agora nas tabelas de origem (indicação discreta);
+ * `stale` = agregado diário sem atualizar há mais de 1 h (aviso). Fonte desconhecida (API mais nova) = `daily`.
+ * `nowMs` vem de `serverNow()`; `freshAt` inválido nunca vira aviso.
+ */
+export function sourceState(input: { source: string; freshAt: string }, nowMs: number): 'live' | 'fresh' | 'stale' {
+  if (input.source === 'live') return 'live';
+  const fresh = Date.parse(input.freshAt);
+  return Number.isFinite(fresh) && nowMs - fresh > USAGE_DAILY_STALE_MS ? 'stale' : 'fresh';
+}
+
+/** Minutos inteiros desde `freshAt` (0 quando no futuro ou inválido). */
+export function minutesSince(freshAt: string, nowMs: number): number {
+  const fresh = Date.parse(freshAt);
+  return Number.isFinite(fresh) ? Math.max(0, Math.floor((nowMs - fresh) / 60_000)) : 0;
 }
 
 /* ── Erros da API ──────────────────────────────────────────────────── */

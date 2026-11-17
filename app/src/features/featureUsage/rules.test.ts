@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   accountChipLabel, activeFiltersCount, buildPlanMatrix, contextLine, coverageTexts, csvCell, DEFAULT_USAGE_FILTERS,
   earliestFirstDataDay, featureDataSince, featuresTotal, formatCount, formatDay, formatPlanCell, formatReach,
-  formatTenantsComparison, formatTrend, granularityOptions, neverUsedFeatures, parseUsageFilters, rankingSlice,
+  formatTenantsComparison, formatTrend, granularityOptions, minutesSince, neverUsedFeatures, parseUsageFilters, presetsWithin, rankingSlice,
   resolvePeriod, sortFeatures, summaryCsvFileName, summaryToCsv, toggleKind, toUsageQuery, todayInZone,
-  topFeatureOf, usageTrend, validateCustomRange, visibleFeatures, withPeriod,
+  sourceState, topFeatureOf, USAGE_INITIAL_MAX_DAYS, USAGE_MAX_DAYS, usageTrend, validateCustomRange, visibleFeatures, withPeriod,
 } from './rules';
+import { forgetUsageMaxDays, knownUsageMaxDays, rememberUsageMaxDays } from './usageMaxDays';
 import { featureUsageStrings as S } from './strings';
 import { summaryFixture } from './testFixtures';
 import type { UsageFeatureItem, UsageFilters } from './types';
@@ -84,6 +85,60 @@ describe('parseUsageFilters', () => {
   it('preset que não é personalizado não leva datas', () => {
     const f = parseUsageFilters({ ...DEFAULT_USAGE_FILTERS, preset: '7d', from: '2026-11-01', to: '2026-11-02' }, NOW_22H_BRT);
     expect(f).toMatchObject({ preset: '7d', from: null, to: null });
+  });
+});
+
+describe('teto de 400 dias (agregado diário)', () => {
+  it('painel aceita até 400 dias, mas antes da primeira resposta assume 90', () => {
+    expect(USAGE_MAX_DAYS).toBe(400);
+    expect(USAGE_INITIAL_MAX_DAYS).toBe(90);
+    forgetUsageMaxDays();
+    expect(knownUsageMaxDays()).toBe(90);
+    rememberUsageMaxDays(400);
+    expect(knownUsageMaxDays()).toBe(400);
+    rememberUsageMaxDays(1000);
+    expect(knownUsageMaxDays()).toBe(400);
+    forgetUsageMaxDays();
+  });
+
+  it('"6 meses" e "12 meses" só aparecem quando o teto em vigor comporta', () => {
+    expect(presetsWithin(90)).toEqual(['today', '7d', '30d', '90d', 'custom']);
+    expect(presetsWithin(400)).toEqual(['today', '7d', '30d', '90d', '180d', '365d', 'custom']);
+    expect(presetsWithin(200)).not.toContain('365d');
+  });
+
+  it('preset longo salvo volta ao padrão quando o teto atual não comporta, em vez de ir à API e errar', () => {
+    const saved = { ...DEFAULT_USAGE_FILTERS, preset: '365d', granularity: 'week' };
+    expect(parseUsageFilters(saved, NOW_22H_BRT).preset).toBe('30d');
+    expect(parseUsageFilters(saved, NOW_22H_BRT, 90).preset).toBe('30d');
+    expect(parseUsageFilters(saved, NOW_22H_BRT, 400)).toMatchObject({ preset: '365d', granularity: 'week' });
+    expect(validateCustomRange('2025-10-13', '2026-11-17', 400, NOW_22H_BRT)).toBe('tooLong');
+  });
+
+  it('"12 meses" resolve 365 dias até hoje e troca "dia" por "semana"', () => {
+    const f = withPeriod(DEFAULT_USAGE_FILTERS, { preset: '365d' }, NOW_22H_BRT);
+    expect(f.granularity).toBe('week');
+    expect(resolvePeriod(f, NOW_22H_BRT)).toEqual({ from: '2025-11-18', to: '2026-11-17', days: 365 });
+    expect(toUsageQuery(f, NOW_22H_BRT)).toMatchObject({ from: '2025-11-18', to: '2026-11-17', granularity: 'week' });
+  });
+});
+
+describe('fonte e atualização', () => {
+  const now = Date.parse('2026-11-17T18:02:11.000Z');
+  it('live é sempre indicado; daily só avisa com mais de 1 h sem atualizar', () => {
+    expect(sourceState({ source: 'live', freshAt: '2020-01-01T00:00:00.000Z' }, now)).toBe('live');
+    expect(sourceState({ source: 'daily', freshAt: '2026-11-17T17:02:11.000Z' }, now)).toBe('fresh');
+    expect(sourceState({ source: 'daily', freshAt: '2026-11-17T17:02:10.000Z' }, now)).toBe('stale');
+    expect(sourceState({ source: 'daily', freshAt: 'inválido' }, now)).toBe('fresh');
+  });
+
+  it('idade do agregado em minutos, horas e dias', () => {
+    expect(minutesSince('2026-11-17T15:02:11.000Z', now)).toBe(180);
+    expect(minutesSince('2026-11-18T00:00:00.000Z', now)).toBe(0);
+    expect(S.context.age(45)).toBe('45 min');
+    expect(S.context.age(180)).toBe('3 h');
+    expect(S.context.age(60 * 24)).toBe('1 dia');
+    expect(S.context.age(60 * 50)).toBe('2 dias');
   });
 });
 

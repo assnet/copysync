@@ -89,7 +89,7 @@ export default function FeatureDetailTab() {
         {(detail.error || detail.slow) && !detail.loading && (
           <UsageRetryAlert slow={detail.slow} onRetry={detail.reload} stale />
         )}
-        <UsageContextLine features={[detail.data.feature]} freshAt={detail.data.freshAt} />
+        <UsageContextLine features={[detail.data.feature]} freshAt={detail.data.freshAt} source={detail.data.source} />
         <FeatureDetail detail={detail.data} />
         <FeatureTenantsTable
           q={tenants}

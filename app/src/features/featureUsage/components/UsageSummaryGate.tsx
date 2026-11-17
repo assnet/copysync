@@ -1,19 +1,65 @@
 import type { ReactNode } from 'react';
-import { Alert, Button, Skeleton, Stack, Typography } from '@mui/material';
-import { ChartColumn } from 'lucide-react';
+import { Alert, Box, Button, Chip, Skeleton, Stack, Tooltip, Typography } from '@mui/material';
+import { ChartColumn, Info, Radio, TriangleAlert } from 'lucide-react';
+import { serverNow } from '@/services/serverClock';
 import { AppIcon, EmptyState, ServiceUpdatingState } from '@/components';
-import { contextLine, earliestFirstDataDay, visibleFeatures } from '../rules';
+import { contextLine, earliestFirstDataDay, minutesSince, sourceState, visibleFeatures } from '../rules';
 import { featureUsageStrings as S } from '../strings';
-import type { UsageFeatureItem, UsageFilters, UsageSummary } from '../types';
+import type { UsageFeatureItem, UsageFilters, UsageSource, UsageSummary } from '../types';
 import { useUsagePage } from '../hooks/useUsagePage';
 import { UsageKpiRowSkeleton } from './UsageKpiRow';
 
-/** "Dias no horário de Brasília · dados desde 26/10/2026 · atualizado às 15:02" (menor `firstDataDay` visível). */
-export function UsageContextLine({ features, freshAt }: { features: readonly Pick<UsageFeatureItem, 'firstDataDay'>[]; freshAt: string }) {
+/**
+ * "Dias no horário de Brasília · dados desde 26/10/2026 · atualizado às 15:02" (menor `firstDataDay` visível), com a
+ * fonte: leitura sob demanda (`live`) ganha um chip discreto; agregado diário sem atualizar há mais de 1 h, um aviso.
+ */
+export function UsageContextLine({ features, freshAt, source }: {
+  features: readonly Pick<UsageFeatureItem, 'firstDataDay'>[]; freshAt: string; source: UsageSource;
+}) {
+  const now = serverNow();
+  const state = sourceState({ source, freshAt }, now);
   return (
-    <Typography variant="caption" color="text.secondary" component="p" aria-label={S.context.aria}>
-      {contextLine({ firstDataDay: earliestFirstDataDay(features), freshAt })}
-    </Typography>
+    <Stack spacing={0.5} aria-label={S.context.aria} role="group">
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
+        <Typography variant="caption" color="text.secondary" component="p">
+          {contextLine({ firstDataDay: earliestFirstDataDay(features), freshAt })}
+        </Typography>
+        {state === 'live' ? (
+          <Tooltip title={S.context.liveHint} enterTouchDelay={0}>
+            <Chip
+              size="small"
+              variant="outlined"
+              tabIndex={0}
+              icon={<AppIcon icon={Radio} size="inline" aria-hidden />}
+              label={S.context.liveBadge}
+              aria-label={`${S.context.liveBadge}. ${S.context.liveHint}`}
+              sx={{ height: 22, color: 'text.secondary', '& .MuiChip-label': { px: 0.75, fontSize: 11, fontWeight: 600 } }}
+            />
+          </Tooltip>
+        ) : (
+          <Tooltip title={S.context.dailyHint} enterTouchDelay={0}>
+            <Box component="span" tabIndex={0} aria-label={S.context.dailyHint} sx={{ display: 'inline-flex', color: 'text.secondary' }}>
+              <AppIcon icon={Info} size="sm" aria-hidden />
+            </Box>
+          </Tooltip>
+        )}
+      </Stack>
+      {state === 'stale' && (
+        <Typography
+          variant="caption"
+          component="p"
+          role="status"
+          color="text.primary"
+          sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
+        >
+          {/* Só o ícone no tom de aviso: o âmbar do tema não tem contraste de texto no claro. */}
+          <Box component="span" sx={{ display: 'inline-flex', color: (t) => (t.palette.mode === 'light' ? t.palette.warning.dark : t.palette.warning.main) }}>
+            <AppIcon icon={TriangleAlert} size="inline" aria-hidden />
+          </Box>
+          {S.context.stale(S.context.age(minutesSince(freshAt, now)))}
+        </Typography>
+      )}
+    </Stack>
   );
 }
 
@@ -73,7 +119,7 @@ export function UsageSummaryGate({
   return (
     <Stack spacing={2} aria-busy={q.loading}>
       {stale && <UsageRetryAlert slow={q.slow} onRetry={q.reload} stale />}
-      <UsageContextLine features={features} freshAt={data.freshAt} />
+      <UsageContextLine features={features} freshAt={data.freshAt} source={data.source} />
       {empty ? (
         <EmptyState
           icon={<AppIcon icon={ChartColumn} size="lg" aria-hidden />}

@@ -54,7 +54,7 @@ export interface UsageRange {
   previousFrom: UsageDay;
   previousTo: UsageDay;
   granularity: UsageGranularity;
-  /** Teto do período em vigor (90 na P1; 400 com o agregado). */
+  /** Teto do período em vigor (90 sem o agregado; 400 quando o agregado cobre o período). */
   maxDays: number;
 }
 
@@ -178,7 +178,8 @@ export interface UsageTenantsPage {
 
 /* ── Filtros (estado do painel) ─────────────────────────────────────── */
 
-export type UsagePeriodPreset = 'today' | '7d' | '30d' | '90d' | 'custom';
+/** `180d`/`365d` só aparecem quando o teto em vigor (`range.maxDays`) os comporta (agregado diário, P2). */
+export type UsagePeriodPreset = 'today' | '7d' | '30d' | '90d' | '180d' | '365d' | 'custom';
 export type UsageSort = 'tenants' | 'uses' | 'trend';
 
 /**
