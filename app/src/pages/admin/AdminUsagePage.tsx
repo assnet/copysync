@@ -16,6 +16,7 @@ import { useUsageSummary } from '@/features/featureUsage/hooks/useUsageSummary';
 import { useLoadedAccountNames } from '@/features/featureUsage/hooks/useLoadedAccountNames';
 import { UsagePageContext, type UsagePageValue } from '@/features/featureUsage/hooks/useUsagePage';
 import { UsageFiltersBar } from '@/features/featureUsage/components/UsageFiltersBar';
+import { ExportSummaryButton } from '@/features/featureUsage/components/ExportSummaryButton';
 
 /** Cada aba em chunk próprio (gráficos e tabelas carregam à parte). */
 const OverviewTab = lazy(() => import('@/features/featureUsage/components/OverviewTab'));
@@ -98,7 +99,15 @@ export function AdminUsagePage() {
         <PageHeader
           title={S.pageTitle}
           subtitle={S.pageSubtitle}
-          action={<Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>{refresh}</Stack>}
+          action={(
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+              {/* No detalhe o resumo não é lido: sem dado da tela para exportar. */}
+              {featureKey === null && (
+                <ExportSummaryButton summary={summary.data} loading={summary.loading} sort={filters.sort} />
+              )}
+              {refresh}
+            </Stack>
+          )}
           sx={{ mb: 2 }}
         />
         <Tabs
