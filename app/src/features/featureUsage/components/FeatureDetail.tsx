@@ -8,6 +8,7 @@ import { AppIcon, SectionCard } from '@/components';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { chartColors } from '@/features/opsMetrics/chartColors';
 import { HelpTip } from '@/features/opsMetrics/components/HelpTip';
+import { srOnly } from '@/features/infraCosts/components/costParts';
 import {
   bucketLabel, bucketTick, coverageTexts, featureDataSince, featureLabel, featureUsesTrend, formatCount, formatDay,
   formatInteger, formatReach, formatTenantsComparison, formatTrend, formatUsesComparison, kindLabel, planLabel,
@@ -90,7 +91,7 @@ function SeriesChart({ detail, tableId }: { detail: UsageFeatureDetail; tableId:
 function SeriesTable({ detail, id, hidden }: { detail: UsageFeatureDetail; id: string; hidden: boolean }) {
   const { granularity } = detail.range;
   return (
-    <TableContainer id={id} sx={hidden ? visuallyHidden : undefined}>
+    <TableContainer id={id} sx={hidden ? srOnly : undefined}>
       <Table size="small" aria-label={S.trend.tableAria}>
         <TableHead>
           <TableRow>
@@ -113,9 +114,6 @@ function SeriesTable({ detail, id, hidden }: { detail: UsageFeatureDetail; id: s
   );
 }
 
-const visuallyHidden = {
-  position: 'absolute', width: 1, height: 1, p: 0, m: -1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
-} as const;
 
 /**
  * Corpo do detalhe de um recurso: medidas do período (com comparação), aviso de contagem parcial, série de usos e

@@ -1,10 +1,8 @@
 import { Box } from '@mui/material';
 import { Blurred } from '@/features/privacy';
+import { srOnly } from '@/features/infraCosts/components/costParts';
 import { featureUsageStrings as S } from '../strings';
 
-const visuallyHidden = {
-  position: 'absolute', width: 1, height: 1, p: 0, m: -1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
-} as const;
 
 /**
  * Nome da conta sob a flag `usage.tenantName`. `Blurred` só borra a imagem e deixa o nome no DOM; com a flag ligada o
@@ -15,7 +13,7 @@ export function BlurredAccountName({ blur, tenantId, name }: { blur: boolean; te
   return (
     <>
       <Blurred when inline radius={5}><span aria-hidden="true">{name}</span></Blurred>
-      <Box component="span" sx={visuallyHidden}>{S.filters.accountShort(tenantId)}</Box>
+      <Box component="span" sx={srOnly}>{S.filters.accountShort(tenantId)}</Box>
     </>
   );
 }
