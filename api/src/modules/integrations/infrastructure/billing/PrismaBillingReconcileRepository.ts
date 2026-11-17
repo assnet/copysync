@@ -6,8 +6,13 @@ import type {
   IBillingReconcileRepository,
   ReconcileCandidate,
 } from '../../application/ports/IBillingReconcileRepository';
-import type { LocalBillingState, LocalTenantStatus, ReconcileDecision } from '../../domain/services/subscriptionReconcile';
+import type {
+  LocalBillingState, LocalProductState, LocalTenantStatus, ProductReconcileEntry, ReconcileDecision,
+} from '../../domain/services/subscriptionReconcile';
 import { syncPlanEntitlements } from '../../billing/syncPlanEntitlements';
+import { mergeProductSharedEntitlements, syncProductPlanEntitlements, writeBillingProductRow } from '../../billing/productBilling';
+import { createTenantProductRepository } from '../../../tenants/infrastructure/productAccessContainer';
+import type { ProductKey } from '../../../tenants/domain/services/resolveProductAccess';
 
 const LEASE_NAME = 'billing-reconcile';
 /** Mesmo teto do webhook (lock + entitlements + efeitos do plano). */
@@ -53,7 +58,13 @@ export class PrismaBillingReconcileRepository implements IBillingReconcileReposi
   async listCandidates(limit: number, now: Date, graceMs: number): Promise<ReconcileCandidate[]> {
     const base = { billingCustomerId: { not: null } } as const;
     const overdue = await this.db.tenant.findMany({
-      where: { ...base, status: 'ACTIVE', subscriptionExpiresAt: { lt: new Date(now.getTime() - graceMs) } },
+      where: {
+        ...base,
+        status: 'ACTIVE',
+        subscriptionExpiresAt: { lt: new Date(now.getTime() - graceMs) },
+        // PROD-28: Afiliados inativo (segue ativo por outro produto) não é "Afiliados vencido"
+        tenantProducts: { none: { product: 'AFFILIATES', status: 'INACTIVE' } },
+      },
       select: { id: true, billingCustomerId: true },
       orderBy: [{ subscriptionExpiresAt: 'asc' }, { id: 'asc' }],
       take: Math.floor(limit / 2), // floor: com lote 1 o rodízio nunca fica sem vaga
@@ -86,12 +97,19 @@ export class PrismaBillingReconcileRepository implements IBillingReconcileReposi
       const row = rows[0];
       if (!row) return { decision: { kind: 'noop' }, found: false };
 
+      // Linhas de produto lidas sob a mesma trava (só leitura; tenant legado = mapa vazio)
+      const products = new Map<ProductKey, LocalProductState>(
+        (await createTenantProductRepository(tx).findAll(row.id)).map((p) => [
+          p.product, { active: p.status === 'ACTIVE', planSlug: p.planSlug, expiresAt: p.expiresAt, source: p.source },
+        ]),
+      );
       const decision = decide({
         status: row.status,
         planSlug: row.planSlug,
         lastBillingEventSeq: row.lastBillingEventSeq,
         adminBlocked: row.adminBlockedAt !== null,
         subscriptionExpiresAt: row.subscriptionExpiresAt,
+        products,
       });
       if (decision.kind === 'suspend') {
         // Mesmo efeito do `subscription.payment_failed` no webhook: entitlements e plano ficam
@@ -99,6 +117,22 @@ export class PrismaBillingReconcileRepository implements IBillingReconcileReposi
         await this.advanceWatermark(tx, row.id, decision.advanceTo);
         await this.audit(tx, row, 'TENANT_STATUS_CHANGED', {
           reasons: ['no_access'], newStatus: 'SUSPENDED', planSlug: row.planSlug, lastSeq: decision.advanceTo?.toString() ?? null,
+        });
+        // PROD-16: corte total não cria linha de Afiliados; linhas de produto novo existentes ficam inativas
+        if (decision.products) await this.applyProducts(tx, row.id, decision.products, { suspended: true });
+        return { decision, found: true };
+      }
+      if (decision.kind === 'products') {
+        // Produto novo decide sozinho: nunca `Tenant.planSlug`, vencimento nem entitlements de Afiliados
+        if (decision.activate) await tx.tenant.update({ where: { id: row.id }, data: { status: 'ACTIVE', suspendedAt: null } });
+        await this.applyProducts(tx, row.id, decision.products, { suspended: false });
+        await this.advanceWatermark(tx, row.id, decision.advanceTo);
+        await this.audit(tx, row, decision.activate ? 'TENANT_STATUS_CHANGED' : 'TENANT_UPDATED', {
+          reasons: decision.reasons,
+          newStatus: decision.activate ? 'ACTIVE' : row.status,
+          planSlug: row.planSlug,
+          products: decision.products.map((p) => ({ product: p.product, active: p.active, planSlug: p.planSlug })),
+          lastSeq: decision.advanceTo?.toString() ?? null,
         });
         return { decision, found: true };
       }
@@ -119,8 +153,37 @@ export class PrismaBillingReconcileRepository implements IBillingReconcileReposi
         subscriptionId: decision.subscriptionId,
         lastSeq: decision.advanceTo?.toString() ?? null,
       });
+      if (decision.products) await this.applyProducts(tx, row.id, decision.products, { suspended: false });
       return { decision, found: true };
     }, TX_OPTIONS);
+  }
+
+  /**
+   * Linhas de produto da decisão, na transação da trava. Afiliados ativo só atualiza linha existente (sem linha
+   * = ativo); inativo cria, salvo no corte total. Produto novo ativo sincroniza o preset sem chaves compartilhadas;
+   * inativo grava a linha (estado estável para a próxima passada). Linha ADMIN nunca é desativada.
+   */
+  private async applyProducts(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    entries: readonly ProductReconcileEntry[],
+    opts: { suspended: boolean },
+  ): Promise<void> {
+    for (const e of entries) {
+      if (e.product === 'AFFILIATES') {
+        if (opts.suspended) continue;
+        await writeBillingProductRow(tx, tenantId, { product: 'AFFILIATES', active: e.active, planSlug: e.planSlug, expiresAt: e.expiresAt }, { onlyIfExists: e.active });
+        continue;
+      }
+      if (e.active && e.planSlug && !opts.suspended) {
+        await writeBillingProductRow(tx, tenantId, { product: e.product, active: true, planSlug: e.planSlug, expiresAt: e.expiresAt });
+        await syncProductPlanEntitlements(tx, tenantId, e.planSlug);
+      } else {
+        await writeBillingProductRow(tx, tenantId, { product: e.product, active: false, planSlug: null }, { onlyIfExists: opts.suspended });
+      }
+    }
+    // PROD-18: chaves compartilhadas pela união dos produtos ativos
+    if (!opts.suspended) await mergeProductSharedEntitlements(tx, tenantId);
   }
 
   /** Watermark só sobe (mesmo guarda do webhook); null = central sem evento, mantém. */

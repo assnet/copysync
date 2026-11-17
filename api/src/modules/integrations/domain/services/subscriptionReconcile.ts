@@ -1,6 +1,6 @@
 import { PLAN_SLUGS, resolveEffectivePlanSlug, type PlanSlug } from '../../../tenants/domain/planPresets';
 import { ALL_PLAN_SLUGS, resolvePlan, type AnyPlanSlug } from '../../../tenants/domain/planCatalog';
-import type { ProductKey } from '../../../tenants/domain/services/resolveProductAccess';
+import { isLegacyProduct, type ProductKey } from '../../../tenants/domain/services/resolveProductAccess';
 
 /**
  * Regras puras da reconciliação de assinaturas com a central (sem banco, sem HTTP).
@@ -54,6 +54,8 @@ export interface LocalProductState {
   active: boolean;
   planSlug: string | null;
   expiresAt: Date | null;
+  /** `ADMIN` = concessão do super admin: a reconciliação nunca a desativa (PROD-22). Ausente = `BILLING`. */
+  source?: 'BILLING' | 'ADMIN';
 }
 
 /** Estado esperado de um produto pela central (só quando há assinatura de produto novo). */
@@ -249,16 +251,30 @@ function productEntries(pick: ProductGrantingPick): ProductReconcileEntry[] {
   return entries;
 }
 
-/** Linha local diferente da esperada. Sem linha de Afiliados = ativo (legado). Estado local ausente = mudou. */
+/**
+ * Linha local diferente da esperada. Estado local ausente = mudou. Afiliados: sem linha = ativo (legado) e só o
+ * status conta (plano e vencimento de Afiliados vivem no tenant). Linha ADMIN ativa nunca conta como desativável.
+ */
 function productsChanged(local: LocalBillingState, entries: readonly ProductReconcileEntry[]): boolean {
   if (!local.products) return true;
   return entries.some((e) => {
     const row = local.products!.get(e.product);
-    if (!row) return !(e.product === 'AFFILIATES' && e.active && e.planSlug === null);
+    if (!row) return !(e.product === 'AFFILIATES' && e.active);
+    if (row.source === 'ADMIN' && row.active && !e.active) return false;
     if (row.active !== e.active) return true;
-    if (!e.active) return false;
+    if (!e.active || e.product === 'AFFILIATES') return false;
     return row.planSlug !== e.planSlug || (row.expiresAt?.getTime() ?? null) !== (e.expiresAt?.getTime() ?? null);
   });
+}
+
+/** Linha local ativa (origem BILLING) de produto novo sem nenhuma assinatura dele na central: deve ficar inativa. */
+function orphanProductEntries(local: LocalBillingState, pick: ProductGrantingPick): ProductReconcileEntry[] {
+  const out: ProductReconcileEntry[] = [];
+  for (const [product, row] of local.products ?? []) {
+    if (isLegacyProduct(product) || !row.active || row.source === 'ADMIN' || pick.byProduct.has(product)) continue;
+    out.push({ product, active: false, planSlug: null, subscriptionId: null, expiresAt: null });
+  }
+  return out;
 }
 
 /**
@@ -272,9 +288,10 @@ export function decideReconcile(local: LocalBillingState, snapshot: HubSubscript
   if (localSeq !== null && (lastSeq === null || localSeq > lastSeq)) return { kind: 'stale' };
   const pick = pickGrantingSubscription(snapshot.subscriptions, now, graceMs);
   const byProduct = pickGrantingByProduct(snapshot.subscriptions, now, graceMs);
-  const newProduct = [...byProduct.byProduct.keys()].some((p) => p !== 'AFFILIATES');
-  // Sem assinatura de produto novo: decisão idêntica à de antes (`products` nunca aparece)
-  const products = newProduct ? productEntries(byProduct) : undefined;
+  const orphans = orphanProductEntries(local, byProduct);
+  const newProduct = orphans.length > 0 || [...byProduct.byProduct.keys()].some((p) => p !== 'AFFILIATES');
+  // Sem assinatura nem linha ativa de produto novo: decisão idêntica à de antes (`products` nunca aparece)
+  const products = newProduct ? [...productEntries(byProduct), ...orphans] : undefined;
   if (!pick.grants) {
     if (local.adminBlocked) return { kind: 'admin_suspended' };
     if (local.status !== 'ACTIVE') return { kind: 'noop' };

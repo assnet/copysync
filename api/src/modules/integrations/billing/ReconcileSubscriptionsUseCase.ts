@@ -51,6 +51,8 @@ export class ReconcileSubscriptionsUseCase {
     /** Após o commit da suspensão (desconecta sessões, como no webhook). */
     private readonly notifySuspended: (tenantId: string) => void = (tenantId) =>
       internalEventBus.emit('TENANT_SUSPENDED', { type: 'TENANT_SUSPENDED', tenantId }),
+    /** Após o commit de decisão que grava linhas de produto (descarta o cache de acesso por produto). */
+    private readonly invalidateProducts: (tenantId: string) => void = () => undefined,
   ) {}
 
   /** `null` = lease com outro processo (passada não rodou). */
@@ -98,7 +100,14 @@ export class ReconcileSubscriptionsUseCase {
     if (!found) return;
 
     const lastSeq = snapshot.lastSeq?.toString() ?? null;
+    if ((decision.kind === 'apply' || decision.kind === 'suspend' || decision.kind === 'products') && decision.products) {
+      this.invalidateProducts(tenantId);
+    }
     switch (decision.kind) {
+      case 'products':
+        summary.corrected++;
+        log.info({ tenantId, reasons: decision.reasons, products: decision.products.map((p) => ({ product: p.product, active: p.active, planSlug: p.planSlug })), lastSeq }, 'Tenant products reconciled with hub');
+        return;
       case 'apply':
         summary.corrected++;
         log.info({ tenantId, reasons: decision.reasons, planSlug: decision.planSlug, subscriptionId: decision.subscriptionId, lastSeq }, 'Tenant reconciled with hub');

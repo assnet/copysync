@@ -3,6 +3,7 @@ import { graceMsFromHours } from '../../domain/services/subscriptionReconcile';
 import { ReconcileSubscriptionsUseCase } from '../../billing/ReconcileSubscriptionsUseCase';
 import { HubSubscriptionsClient } from './HubSubscriptionsClient';
 import { PrismaBillingReconcileRepository } from './PrismaBillingReconcileRepository';
+import { productAccessReader } from '../../../tenants/infrastructure/productAccessContainer';
 
 /** Cliente M2M da central a partir do env (reconciliação e eventos de corte); só com `BILLING_ENABLED`. */
 export function createHubSubscriptionsClientFromEnv(): HubSubscriptionsClient {
@@ -20,5 +21,5 @@ export function createReconcileSubscriptionsUseCase(): ReconcileSubscriptionsUse
     batchSize: env.BILLING_RECONCILE_BATCH_SIZE,
     leaseTtlMs: env.BILLING_RECONCILE_LEASE_TTL_MS,
     graceMs: graceMsFromHours(env.BILLING_GRACE_HOURS),
-  });
+  }, undefined, undefined, (tenantId) => productAccessReader().invalidate(tenantId));
 }

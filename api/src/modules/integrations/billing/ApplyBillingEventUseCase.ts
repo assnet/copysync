@@ -3,7 +3,10 @@ import { prisma } from '../../../shared/database/prisma.client';
 import { logger } from '../../../shared/logger/logger';
 import { internalEventBus } from '../../../shared/events/InternalEventBus';
 import { SlugTakenError } from '../../../shared/errors/internal/TeamErrors';
-import { resolveEffectivePlanSlug, type PlanSlug } from '../../tenants/domain/planPresets';
+import type { PlanSlug } from '../../tenants/domain/planPresets';
+import { resolvePlan, type ResolvedPlan } from '../../tenants/domain/planCatalog';
+import { isLegacyProduct, type ProductKey } from '../../tenants/domain/services/resolveProductAccess';
+import { createTenantProductRepository, productAccessReader } from '../../tenants/infrastructure/productAccessContainer';
 import type { ProvisionTenantInput, ProvisionTenantOutput } from '../../tenants/application/use-cases/ProvisionTenantUseCase';
 import { ProvisionTenantUseCase } from '../../tenants/application/use-cases/ProvisionTenantUseCase';
 import { normalizeEmail } from '../../../shared/utils/normalizeEmail';
@@ -11,7 +14,8 @@ import { PrismaAuditLogRepository } from '../../../shared/audit/PrismaAuditLogRe
 import { createEmailSenderFromEnv } from '../infrastructure/email/EmailSenderFactory';
 import { syncPlanEntitlements } from './syncPlanEntitlements';
 import type { HubSubscriptionsFailure, IHubSubscriptionsClient } from '../application/ports/IHubSubscriptionsClient';
-import { graceMsFromHours, pickGrantingSubscription, unknownPlanPermissions, type HubSubscriptionSnapshot } from '../domain/services/subscriptionReconcile';
+import { graceMsFromHours, pickGrantingByProduct, pickGrantingSubscription, unknownPlanPermissions, type HubSubscriptionSnapshot, type ProductGrantingPick } from '../domain/services/subscriptionReconcile';
+import { mergeProductSharedEntitlements, syncProductPlanEntitlements, writeBillingProductRow } from './productBilling';
 import { env } from '../../../shared/config/env';
 import { createHubSubscriptionsClientFromEnv } from '../infrastructure/billing/createReconcileSubscriptionsUseCase';
 import { buildTenantSlug, tenantNameFrom } from './buildTenantSlug';
@@ -89,6 +93,10 @@ interface LockedTenantRow {
   lastBillingEventSeq: bigint | null;
   /** Bloqueio do super-admin: o webhook nunca muda o status (só plano/vencimento/watermark). */
   adminBlockedAt: Date | null;
+  /** Há linha em `tenant_products` (tenant multi-produto). Ausente/false = caminho de hoje, sem tocar produtos. */
+  hasProductRows?: boolean;
+  /** Há linha `AFFILIATES` em `tenant_products`. */
+  hasAffiliatesRow?: boolean;
 }
 
 /** Tenant existente (criado sem `billingCustomerId`) que recebe o cliente da central pelo e-mail do dono. */
@@ -132,7 +140,7 @@ const MAX_SLUG_ATTEMPTS = 3;
 /** Teto explícito da transação (lock + entitlements + efeitos do plano). */
 const TX_OPTIONS = { timeout: 15_000, maxWait: 5_000 } as const;
 
-type TxResult = { outcome: BillingOutcome; tenantId?: string; suspended?: boolean };
+type TxResult = { outcome: BillingOutcome; tenantId?: string; suspended?: boolean; productsTouched?: boolean };
 
 /** Evento de corte chegou à transação sem a consulta à central (tenant apareceu entre a leitura e a trava). */
 class UnionLookupRequiredError extends Error {}
@@ -154,11 +162,14 @@ export class ApplyBillingEventUseCase {
   async execute(input: ApplyBillingEventInput): Promise<ApplyResult> {
     const { eventId, billingCustomerId, seq } = input;
     const type = isBillingEventType(input.eventType) ? input.eventType : null;
-    const planSlug = this.resolvePlanSlug(input);
+    const resolved = this.resolvePlan(input);
+    // Afiliados segue em `planSlug` (caminho de hoje); produto novo só em `newPlan`
+    const planSlug: PlanSlug | null = resolved?.product === 'AFFILIATES' ? (resolved.planSlug as PlanSlug) : null;
+    const newPlan: ResolvedPlan | null = resolved && resolved.product !== 'AFFILIATES' ? resolved : null;
 
     let link: LinkCandidate | null = null;
     if (type === 'subscription.activated') {
-      const decision = await this.provisionIfUnknown(input, planSlug);
+      const decision = await this.provisionIfUnknown(input, resolved);
       if ('reason' in decision) {
         const { reason } = decision;
         log.error({ eventId, externalUserId: billingCustomerId, reason }, 'Billing activation cannot provision tenant; receipt not written so the hub retries');
@@ -169,7 +180,11 @@ export class ApplyBillingEventUseCase {
 
     // Corte decidido pela união das assinaturas na central; consulta FORA da transação (sem segurar a trava)
     let snapshot: HubSubscriptionSnapshot | null = null;
-    if (type && UNION_DECIDED.has(type) && (await this.needsUnionLookup(input))) {
+    const lookup = type !== null && (
+      (UNION_DECIDED.has(type) && (await this.needsUnionLookup(input)))
+      || (newPlan !== null && ACTIVATING.has(type) && (await this.needsProductActivationLookup(input)))
+    );
+    if (lookup) {
       const res = await (this.subscriptions ?? createHubSubscriptionsClientFromEnv()).fetchByCustomer(billingCustomerId);
       if (!res.ok) {
         const { key, persistent } = classifyHubLookupFailure(res.reason, res.status);
@@ -185,7 +200,7 @@ export class ApplyBillingEventUseCase {
 
     let result: TxResult;
     try {
-      result = await prisma.$transaction((tx) => this.applyInTx(tx, input, type, planSlug, link, snapshot), TX_OPTIONS);
+      result = await prisma.$transaction((tx) => this.applyInTx(tx, input, type, planSlug, link, snapshot, newPlan), TX_OPTIONS);
     } catch (err) {
       if (err instanceof UnionLookupRequiredError) {
         log.warn({ eventId }, 'Cut event reached transaction without hub lookup; hub will retry');
@@ -199,6 +214,7 @@ export class ApplyBillingEventUseCase {
       throw err;
     }
 
+    if (result.productsTouched && result.tenantId) productAccessReader().invalidate(result.tenantId);
     if (result.suspended && result.tenantId) {
       internalEventBus.emit('TENANT_SUSPENDED', { type: 'TENANT_SUSPENDED', tenantId: result.tenantId });
     }
@@ -217,14 +233,28 @@ export class ApplyBillingEventUseCase {
   }
 
   /**
-   * Nível pela permissão `COPYSYNC_*` mais alta ou, sem ela, pelo planSlug (mesma regra da
-   * reconciliação). Nenhum dos dois válido = null: não grava plano nem entitlements.
+   * PROD-14: ativação de produto novo que vai reativar tenant não `ACTIVE` sem linha `AFFILIATES` decide
+   * Afiliados pelo snapshot da central (mesmas condições de efeito do corte).
    */
-  private resolvePlanSlug(input: ApplyBillingEventInput): PlanSlug | null {
+  private async needsProductActivationLookup(input: ApplyBillingEventInput): Promise<boolean> {
+    const [receipt, tenant] = await Promise.all([
+      prisma.billingEventReceipt.findUnique({ where: { eventId: input.eventId } }),
+      prisma.tenant.findUnique({ where: { billingCustomerId: input.billingCustomerId }, select: { id: true, status: true, lastBillingEventSeq: true } }),
+    ]);
+    if (receipt || !tenant || tenant.status === 'ACTIVE') return false;
+    if (tenant.lastBillingEventSeq !== null && input.seq <= tenant.lastBillingEventSeq) return false;
+    return (await createTenantProductRepository().find(tenant.id, 'AFFILIATES')) === null;
+  }
+
+  /**
+   * Produto e plano: Afiliados pela permissão `COPYSYNC_*` mais alta ou, sem ela, pelo planSlug (mesma
+   * regra da reconciliação); produto novo pela família dele (`resolvePlan`). Nada válido = null.
+   */
+  private resolvePlan(input: ApplyBillingEventInput): ResolvedPlan | null {
     const { planSlug: raw, permissions } = input.payload;
     const unknown = unknownPlanPermissions(permissions);
     if (unknown.length > 0) log.warn({ eventId: input.eventId, permissions: unknown }, 'Billing event with unknown permissions; ignored');
-    const slug = resolveEffectivePlanSlug(raw, permissions);
+    const slug = resolvePlan(raw, permissions);
     if (slug) return slug;
     if (raw != null && raw !== '') log.warn({ eventId: input.eventId, planSlug: raw }, 'Billing event with unknown planSlug; plan not applied');
     return null;
@@ -234,7 +264,7 @@ export class ApplyBillingEventUseCase {
    * Cliente novo: vincula pelo e-mail ao tenant único do dono sem `billingCustomerId` ou provisiona.
    * Devolve o motivo quando não dá; `link` = vincular na transação; `link: null` = tenant existe ou foi criado.
    */
-  private async provisionIfUnknown(input: ApplyBillingEventInput, planSlug: PlanSlug | null): Promise<ProvisionDecision> {
+  private async provisionIfUnknown(input: ApplyBillingEventInput, resolved: ResolvedPlan | null): Promise<ProvisionDecision> {
     const { eventId, billingCustomerId } = input;
     const [receipt, tenant] = await Promise.all([
       prisma.billingEventReceipt.findUnique({ where: { eventId } }),
@@ -243,7 +273,8 @@ export class ApplyBillingEventUseCase {
     if (receipt || tenant) return { link: null };
     const email = input.payload.email;
     if (!email) return { reason: 'missing_email' };
-    if (!planSlug) return { reason: 'invalid_plan_slug' };
+    if (!resolved) return { reason: 'invalid_plan_slug' };
+    const affiliates = resolved.product === 'AFFILIATES';
 
     const link = await this.findLinkCandidate(eventId, email);
     if (link) return { link };
@@ -260,8 +291,9 @@ export class ApplyBillingEventUseCase {
           slug: buildTenantSlug(name),
           owner: { email, name },
           billingCustomerId,
-          planSlug,
+          planSlug: affiliates ? resolved.planSlug : undefined,
           origin: 'BILLING_WEBHOOK',
+          ...(affiliates ? {} : { initialProducts: [{ product: resolved.product, planSlug: resolved.planSlug }] }),
         });
         log.info({ eventId, tenantId: out.tenantId }, 'Tenant provisioned from billing event');
         return { link: null };
@@ -301,7 +333,9 @@ export class ApplyBillingEventUseCase {
   /** Trava o tenant do cliente da central (eventos do mesmo cliente serializam até o commit). */
   private lockByCustomer(tx: TxClient, billingCustomerId: string): Promise<LockedTenantRow[]> {
     return tx.$queryRaw<LockedTenantRow[]>`
-      SELECT "id", "status"::text AS "status", "lastBillingEventSeq", "adminBlockedAt"
+      SELECT "id", "status"::text AS "status", "lastBillingEventSeq", "adminBlockedAt",
+             EXISTS (SELECT 1 FROM "tenant_products" tp WHERE tp."tenantId" = "tenants"."id") AS "hasProductRows",
+             EXISTS (SELECT 1 FROM "tenant_products" tp WHERE tp."tenantId" = "tenants"."id" AND tp."product" = 'AFFILIATES') AS "hasAffiliatesRow"
         FROM "tenants" WHERE "billingCustomerId" = ${billingCustomerId}
        FOR UPDATE`;
   }
@@ -317,7 +351,9 @@ export class ApplyBillingEventUseCase {
     link: LinkCandidate,
   ): Promise<{ tenant: LockedTenantRow; linkPending: boolean }> {
     const rows = await tx.$queryRaw<LockedTenantRow[]>`
-      SELECT "id", "status"::text AS "status", "lastBillingEventSeq", "adminBlockedAt"
+      SELECT "id", "status"::text AS "status", "lastBillingEventSeq", "adminBlockedAt",
+             EXISTS (SELECT 1 FROM "tenant_products" tp WHERE tp."tenantId" = "tenants"."id") AS "hasProductRows",
+             EXISTS (SELECT 1 FROM "tenant_products" tp WHERE tp."tenantId" = "tenants"."id" AND tp."product" = 'AFFILIATES') AS "hasAffiliatesRow"
         FROM "tenants" WHERE "id" = ${link.tenantId} AND "billingCustomerId" IS NULL
        FOR UPDATE`;
     if (rows[0]) {
@@ -340,6 +376,7 @@ export class ApplyBillingEventUseCase {
     planSlug: PlanSlug | null,
     link: LinkCandidate | null = null,
     snapshot: HubSubscriptionSnapshot | null = null,
+    newPlan: ResolvedPlan | null = null,
   ): Promise<TxResult> {
     const { eventId, billingCustomerId, seq } = input;
 
@@ -412,28 +449,53 @@ export class ApplyBillingEventUseCase {
       data.status = 'ACTIVE';
       data.suspendedAt = null;
     };
+    // Por produto (docs/acesso-por-produto.md); tenant sem linha de produto e evento de Afiliados = caminho de hoje
+    let affiliatesWrite: { active: boolean } | null = null;
+    let cutPick: ProductGrantingPick | null = null;
+    let blocked = false;
     if (ACTIVATING.has(type)) {
       unblock();
+      if (newPlan && !wasActive && !tenant.hasAffiliatesRow) {
+        // PROD-14: decide Afiliados pelo snapshot da central, nunca pelo status local
+        if (!snapshot) throw new UnionLookupRequiredError();
+        const byProduct = pickGrantingByProduct(snapshot.subscriptions, new Date(), graceMsFromHours(env.BILLING_GRACE_HOURS));
+        if (!byProduct.legacyGrants) affiliatesWrite = { active: false };
+      } else if (!newPlan && tenant.hasAffiliatesRow) {
+        affiliatesWrite = { active: true };
+      }
     } else if (UNION_DECIDED.has(type)) {
       // União (regra do PulsoSocial): alguma assinatura do cliente ainda dá acesso → mantém
       if (!snapshot) throw new UnionLookupRequiredError();
-      const pick = pickGrantingSubscription(snapshot.subscriptions, new Date(), graceMsFromHours(env.BILLING_GRACE_HOURS));
+      const now = new Date();
+      const graceMs = graceMsFromHours(env.BILLING_GRACE_HOURS);
+      const pick = pickGrantingSubscription(snapshot.subscriptions, now, graceMs);
+      const byProduct = pickGrantingByProduct(snapshot.subscriptions, now, graceMs);
+      const productAware = Boolean(tenant.hasProductRows) || [...byProduct.byProduct.keys()].some((p) => p !== 'AFFILIATES');
+      if (productAware) cutPick = byProduct;
       if (pick.grants) {
         kept = true;
         unblock();
         if (pick.sub) data.subscriptionExpiresAt = pick.sub.expiresAt === null ? null : new Date(pick.sub.expiresAt);
         syncSlug = pick.planSlug;
+        if (productAware) {
+          // PROD-15: Afiliados só fica inativo se outro produto dá acesso e nada de Afiliados/desconhecido dá
+          if (pick.planSlug && pick.sub) affiliatesWrite = tenant.hasAffiliatesRow ? { active: true } : null;
+          else if (!byProduct.legacyGrants) affiliatesWrite = { active: false };
+        }
       } else {
+        blocked = true;
         block(type === 'subscription.payment_failed' ? 'SUSPENDED' : 'CANCELLED');
       }
     }
-    // Vencimento só muda em ativação/renovação/atualização; demais eventos mantêm
+    // Vencimento só muda em ativação/renovação/atualização; demais eventos mantêm (produto novo grava na linha dele)
     const expiresAt = input.payload.expiresAt;
+    let productExpiresAt: Date | null | undefined;
     if (PLAN_SYNC.has(type) && expiresAt !== undefined) {
       // A rota já recusa malformado; aqui, por defesa, malformado mantém o gravado (nunca vira "sem vencimento")
       const parsed = parseExpiresAt(expiresAt);
-      if (parsed.valid) data.subscriptionExpiresAt = parsed.value;
-      else log.warn({ eventId: input.eventId }, 'Malformed expiresAt ignored');
+      if (!parsed.valid) log.warn({ eventId: input.eventId }, 'Malformed expiresAt ignored');
+      else if (newPlan) productExpiresAt = parsed.value;
+      else data.subscriptionExpiresAt = parsed.value;
     }
     if (syncSlug) data.planSlug = syncSlug;
 
@@ -444,9 +506,66 @@ export class ApplyBillingEventUseCase {
     // Entitlements + rodízio (LROT-14) + Página de Ofertas (STORE-02) no mesmo commit
     if (syncSlug) await syncPlanEntitlements(tx, tenant.id, syncSlug);
 
+    const productsTouched = await this.applyProducts(tx, tenant.id, {
+      newPlan: newPlan && PLAN_SYNC.has(type) ? newPlan : null,
+      productExpiresAt,
+      affiliatesWrite,
+      affiliatesPlanSlug: syncSlug,
+      cutPick,
+      blocked,
+    });
+    // PROD-18: chaves compartilhadas pela união dos produtos ativos (só tenant multi-produto)
+    if (!blocked && (productsTouched || newPlan || tenant.hasProductRows)) await mergeProductSharedEntitlements(tx, tenant.id);
+
     await advanceWatermark();
     const outcome: BillingOutcome = kept ? 'KEPT_ACTIVE' : 'APPLIED';
     await receipt(outcome);
-    return { outcome, tenantId: tenant.id, suspended };
+    return { outcome, tenantId: tenant.id, suspended, productsTouched };
+  }
+
+  /** Linhas de `tenant_products` do evento. Devolve se alguma linha foi gravada. */
+  private async applyProducts(
+    tx: TxClient,
+    tenantId: string,
+    p: {
+      newPlan: ResolvedPlan | null;
+      productExpiresAt: Date | null | undefined;
+      affiliatesWrite: { active: boolean } | null;
+      affiliatesPlanSlug: string | null;
+      cutPick: ProductGrantingPick | null;
+      blocked: boolean;
+    },
+  ): Promise<boolean> {
+    let touched = false;
+    if (p.newPlan) {
+      touched = await writeBillingProductRow(tx, tenantId, { product: p.newPlan.product, active: true, planSlug: p.newPlan.planSlug, expiresAt: p.productExpiresAt });
+      await syncProductPlanEntitlements(tx, tenantId, p.newPlan.planSlug);
+    }
+    if (p.cutPick) {
+      // Produto novo: com acesso sincroniza; sem acesso (ou corte total) linha existente vira inativa
+      const existing = await createTenantProductRepository(tx).findAll(tenantId);
+      const keys = new Set<ProductKey>([...p.cutPick.byProduct.keys(), ...existing.map((r) => r.product)]);
+      for (const product of keys) {
+        if (isLegacyProduct(product)) continue;
+        const g = p.cutPick.byProduct.get(product);
+        if (!p.blocked && g?.grants && g.planSlug && g.sub) {
+          const expiresAt = g.sub.expiresAt === null ? null : new Date(g.sub.expiresAt);
+          touched = (await writeBillingProductRow(tx, tenantId, { product, active: true, planSlug: g.planSlug, expiresAt })) || touched;
+          await syncProductPlanEntitlements(tx, tenantId, g.planSlug);
+        } else {
+          touched = (await writeBillingProductRow(tx, tenantId, { product, active: false, planSlug: null }, { onlyIfExists: true })) || touched;
+        }
+      }
+    }
+    if (p.affiliatesWrite) {
+      const { active } = p.affiliatesWrite;
+      // Ativo: só atualiza linha existente (sem linha = ativo); inativo: cria (PROD-14/15)
+      touched = (await writeBillingProductRow(
+        tx, tenantId,
+        { product: 'AFFILIATES', active, planSlug: active ? p.affiliatesPlanSlug : null },
+        { onlyIfExists: active },
+      )) || touched;
+    }
+    return touched;
   }
 }

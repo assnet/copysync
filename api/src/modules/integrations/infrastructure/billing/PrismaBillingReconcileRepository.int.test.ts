@@ -196,3 +196,66 @@ describe('Reconciliação com Postgres', () => {
     expect((await read(other.id)).adminBlockedAt).toBeNull();
   });
 });
+
+describe('Reconciliação por produto com Postgres', () => {
+  const FUT = '2027-06-01T00:00:00.000Z';
+  const saverSub = (o: Partial<HubSubscription> = {}) => sub({ id: `sv-${stamp}`, planSlug: 'copysync-saver-pro-mensal', expiresAt: FUT, ...o });
+  const products = (id: string) => prisma.tenantProduct.findMany({ where: { tenantId: id }, orderBy: { product: 'asc' } });
+  const fingerprint = async (id: string) => ({
+    tenant: await read(id),
+    products: await products(id),
+    audits: await prisma.auditLog.count({ where: { tenantId: id } }),
+    entitlements: await prisma.tenantEntitlement.findMany({ where: { tenantId: id }, orderBy: { key: 'asc' } }),
+  });
+  const withoutStamp = <T extends { tenant: { billingReconciledAt: Date | null } }>(f: T) => ({ ...f, tenant: { ...f.tenant, billingReconciledAt: null } });
+
+  it('tenant sem assinatura de produto novo: nenhuma linha de produto, escritas de hoje', async () => {
+    const t = await tenant('pa-legacy', { planSlug: 'COPYSYNC_LITE', lastBillingEventSeq: 5n });
+    snap(t.customer, [sub()], 5n);
+    await reconcile();
+    expect(await read(t.id)).toMatchObject({ planSlug: 'COPYSYNC_PRO', status: 'ACTIVE' });
+    expect(await products(t.id)).toEqual([]);
+    const before = withoutStamp(await fingerprint(t.id));
+    await reconcile();
+    expect(withoutStamp(await fingerprint(t.id))).toEqual(before);
+  });
+
+  it('Afiliados + Saver: 1ª passada grava a linha; 2ª passada sem mudança na central não escreve nada', async () => {
+    const t = await tenant('pa-both', { planSlug: 'COPYSYNC_PRO', lastBillingEventSeq: 5n });
+    snap(t.customer, [sub(), saverSub()], 5n);
+    await reconcile();
+    expect(await products(t.id)).toEqual([expect.objectContaining({ product: 'SAVER', status: 'ACTIVE', planSlug: 'SAVER_PRO', expiresAt: new Date(FUT), source: 'BILLING' })]);
+    const before = withoutStamp(await fingerprint(t.id));
+    await reconcile();
+    expect(withoutStamp(await fingerprint(t.id))).toEqual(before);
+  });
+
+  it('Afiliados cortado com Saver ativo: Afiliados inativo, tenant segue ativo, estável na 2ª passada', async () => {
+    const t = await tenant('pa-cut', { planSlug: 'COPYSYNC_PRO', lastBillingEventSeq: 5n });
+    snap(t.customer, [sub({ billingStatus: 'REFUNDED' }), saverSub()], 5n);
+    await reconcile();
+    expect((await products(t.id)).map((p) => [p.product, p.status])).toEqual([['AFFILIATES', 'INACTIVE'], ['SAVER', 'ACTIVE']]);
+    expect(await read(t.id)).toMatchObject({ status: 'ACTIVE', planSlug: 'COPYSYNC_PRO' });
+    const before = withoutStamp(await fingerprint(t.id));
+    await reconcile();
+    expect(withoutStamp(await fingerprint(t.id))).toEqual(before);
+  });
+
+  it('linha ADMIN nunca é desativada por falta de assinatura', async () => {
+    const t = await tenant('pa-admin', { planSlug: 'COPYSYNC_PRO', lastBillingEventSeq: 5n });
+    await prisma.tenantProduct.create({ data: { tenantId: t.id, product: 'SAVER', status: 'ACTIVE', planSlug: 'SAVER_LITE', source: 'ADMIN' } });
+    snap(t.customer, [sub(), saverSub({ billingStatus: 'REFUNDED' })], 5n);
+    await reconcile();
+    expect(await products(t.id)).toEqual([expect.objectContaining({ product: 'SAVER', status: 'ACTIVE', source: 'ADMIN' })]);
+  });
+
+  it('só-Saver com vencimento de Afiliados antigo não entra no lote de vencidos', async () => {
+    const recent = new Date();
+    const saverOnly = await tenant('pa-overdue-saver', { planSlug: null, billingReconciledAt: recent, subscriptionExpiresAt: new Date('1990-01-01T00:00:00Z') });
+    await prisma.tenantProduct.create({ data: { tenantId: saverOnly.id, product: 'AFFILIATES', status: 'INACTIVE', source: 'BILLING' } });
+    const control = await tenant('pa-overdue-aff', { planSlug: 'COPYSYNC_PRO', billingReconciledAt: recent, subscriptionExpiresAt: new Date('1991-01-01T00:00:00Z') });
+    const list = await repo.listCandidates(2, new Date(), 24 * 3_600_000);
+    expect(list[0]!.tenantId).toBe(control.id);
+    expect(list.map((c) => c.tenantId)).not.toContain(saverOnly.id);
+  });
+});
