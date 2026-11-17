@@ -3,6 +3,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { CssBaseline, ThemeProvider } from '@mui/material';
 import { renderWithTheme } from '@/test/renderWithTheme';
+import { writePersisted } from '@/hooks/usePersistedState';
 import { buildTheme } from '@/theme/theme';
 import { PrivacyProvider } from '@/features/privacy';
 import { PLAN_CATALOG } from '@/features/plans/catalog';
@@ -185,6 +186,25 @@ describe('SubscriptionPage', () => {
       expect(await screen.findByText('Saver PRO')).toBeInTheDocument();
       expect(screen.queryByText(pro.name)).toBeNull();
       expect(rowKeys()).toEqual(['whatsapp_sessions', 'saver_groups', 'saver_auto_refresh_enabled']);
+    });
+
+    it.each(['light', 'dark'] as const)('só-Saver (%s): só WhatsApp, sem abas, mesmo com a aba Telegram salva', async (mode) => {
+      writePersisted('subscription.channel', 'telegram');
+      const base = withProducts([saverItem]);
+      svc.getSubscription.mockResolvedValue({ ...base, limits: [...base.limits, { ...sub.limits[1], product: null }] });
+      renderPage('/settings/subscription', mode);
+      expect(await screen.findByText('Saver PRO')).toBeInTheDocument();
+      expect(screen.queryByRole('tablist')).toBeNull();
+      expect(screen.getByRole('heading', { name: t.channel.whatsapp })).toBeInTheDocument();
+      expect(rowKeys()).toEqual(['whatsapp_sessions', 'saver_groups', 'saver_auto_refresh_enabled']);
+    });
+
+    it('Afiliados + Saver: abas WhatsApp e Telegram no cartão com sessões', async () => {
+      const base = withProducts([{ product: 'AFFILIATES', planSlug: 'COPYSYNC_PRO', tier: 'pro', expiresAt: null, source: null }, saverItem]);
+      svc.getSubscription.mockResolvedValue({ ...base, limits: [...base.limits, { ...sub.limits[1], product: null }] });
+      renderPage();
+      await screen.findByText('Saver PRO');
+      expect(screen.getByRole('tab', { name: new RegExp(t.channel.telegram) })).toBeInTheDocument();
     });
   });
 });

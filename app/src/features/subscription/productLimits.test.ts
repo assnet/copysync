@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SubscriptionLimitItem, SubscriptionResponse } from '@/types/api.types';
-import { limitsForProduct, productLabel, productOfLimit, subscriptionProductCards } from './productLimits';
+import { limitsForProduct, productLabel, productOfLimit, subscriptionChannels, subscriptionProductCards } from './productLimits';
 
 const lim = (key: string, product?: string | null): SubscriptionLimitItem =>
   ({ key, channel: null, kind: 'count', used: 0, limit: 1, enabled: true, ...(product !== undefined ? { product } : {}) });
@@ -45,5 +45,12 @@ describe('productLimits', () => {
   it('rótulo do produto', () => {
     expect(productLabel('SAVER')).toBe('Saver');
     expect(productLabel('AFFILIATES')).toBe('Afiliados');
+  });
+
+  it('canais: Telegram só com produto que usa Telegram (Saver é só WhatsApp)', () => {
+    const card = (product: 'AFFILIATES' | 'SAVER') => ({ product, item: { product, planSlug: null, tier: null, expiresAt: null, source: null } });
+    expect(subscriptionChannels([card('SAVER')])).toEqual(['whatsapp']);
+    expect(subscriptionChannels([card('AFFILIATES'), card('SAVER')])).toEqual(['whatsapp', 'telegram']);
+    expect(subscriptionChannels([card('AFFILIATES')])).toEqual(['whatsapp', 'telegram']);
   });
 });
