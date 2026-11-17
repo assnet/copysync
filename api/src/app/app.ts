@@ -232,6 +232,7 @@ export async function buildApp() {
                 name: { type: 'string' },
                 slug: { type: 'string' },
                 role: { type: 'string' },
+                products: { type: 'array', items: { type: 'string' } },
               },
             },
           },
@@ -250,6 +251,8 @@ export async function buildApp() {
       slug: { type: 'string' },
       role: { type: 'string', enum: ['OWNER', 'ADMIN', 'MEMBER', 'SUPER_ADMIN'] },
       status: { type: 'string' },
+      /** Produtos com acesso (docs/acesso-por-produto.md). Aditivo. */
+      products: { type: 'array', items: { type: 'string' } },
     },
   });
 
