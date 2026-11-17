@@ -57,9 +57,10 @@ export const saverService = {
     return res.data.data;
   },
 
+  /** Cancela o que ainda está na fila; devolve a extração atualizada. */
   async cancelExtraction(id: string): Promise<SaverExtraction> {
-    const res = await apiClient.post<ApiSuccess<SaverExtraction>>(`${BASE}/extractions/${enc(id)}/cancel`);
-    return res.data.data;
+    const res = await apiClient.post<ApiSuccess<{ extraction: SaverExtraction; cancelledItems: number }>>(`${BASE}/extractions/${enc(id)}/cancel`);
+    return res.data.data.extraction;
   },
 
   async listGroups(): Promise<SaverGroup[]> {

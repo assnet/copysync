@@ -113,8 +113,12 @@ export interface SaverExportGrantChange {
 }
 
 export interface SaverExportOptions {
-  namePrefix?: string | null;
+  /** Prefixo do nome (até 40 caracteres). */
+  prefix?: string | null;
   excludeAdmins?: boolean;
+  /** Só quem ainda está no grupo. */
+  onlyActive?: boolean;
+  /** Uma linha por contato e grupo (CSV ganha a coluna `Grupo`). */
   onePerGroup?: boolean;
   onlyWithPhone?: boolean;
 }
@@ -123,7 +127,7 @@ export interface SaverExportOptions {
 export interface SaverExportInput {
   format: SaverExportFormat;
   groupIds: string[] | 'all';
-  options: SaverExportOptions;
+  options?: SaverExportOptions;
 }
 
 /** Arquivo pronto para o download por `Blob`. */
@@ -143,3 +147,6 @@ export const ACTIVE_EXTRACTION_STATUSES: readonly SaverExtractionStatus[] = ['QU
 export function isExtractionActive(status: SaverExtractionStatus): boolean {
   return ACTIVE_EXTRACTION_STATUSES.includes(status);
 }
+
+/** Mesmo formato de `SaverExportGrantChange` (nome usado pela tela de grupos). */
+export type SaverExportGrantUpdate = SaverExportGrantChange;

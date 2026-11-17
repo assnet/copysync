@@ -1,0 +1,243 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { renderWithTheme } from '@/test/renderWithTheme';
+import { PrivacyProvider } from '@/features/privacy';
+import { writePersisted } from '@/hooks/usePersistedState';
+import type { SessionItem } from '@/types/api.types';
+import type { SaverExtraction, SaverGroup, SaverOverview, SaverSessionGroup } from '../types';
+
+const svc = vi.hoisted(() => ({
+  getOverview: vi.fn(), listSessionGroups: vi.fn(), listGroups: vi.fn(), requestExtraction: vi.fn(),
+  getExtraction: vi.fn(), cancelExtraction: vi.fn(), removeGroup: vi.fn(), exportContacts: vi.fn(),
+}));
+const sessionsSvc = vi.hoisted(() => ({ list: vi.fn() }));
+vi.mock('@/services/saver.service', () => ({ saverService: svc }));
+vi.mock('@/services/session.service', () => ({ sessionService: sessionsSvc }));
+vi.mock('@/contexts/TenantContext', () => ({ useTenant: () => ({ activeTenantId: 't1' }) }));
+
+import { SaverGroupsPage } from './SaverGroupsPage';
+import { saverStrings as s } from '../strings';
+
+const g = s.groups;
+const usage = (used: number, limit: number | null) => ({ used, limit, remaining: limit === null ? null : limit - used });
+const overview = (over: Partial<SaverOverview> = {}): SaverOverview => ({
+  groups: usage(1, 10), contacts: usage(3, 1000), groupScansPerDay: usage(0, 20), autoRefreshEnabled: false,
+  permissions: { view: true, extract: true, export: true, configure: true },
+  config: { namePrefix: null, excludeAdminsByDefault: false, defaultFormat: 'CSV', autoRefresh: false },
+  queueRunning: true, ...over,
+});
+const session = (over: Partial<SessionItem> = {}): SessionItem => ({
+  id: 's1', tenantId: 't1', name: 'Atendimento', engine: 'baileys', phone: null, externalRef: null, status: 'CONNECTED',
+  lastConnectedAt: null, lastDisconnectedAt: null, lastSeenAt: null, createdAt: '2026-11-01T10:00:00.000Z',
+  updatedAt: '2026-11-01T10:00:00.000Z', ...over,
+});
+const live = (jid: string, name: string, over: Partial<SaverSessionGroup> = {}): SaverSessionGroup => ({
+  groupJid: jid, name, saved: false, savedGroupId: null, lastScannedAt: null, lastScanStatus: null, ...over,
+});
+const savedGroup = (id: string, over: Partial<SaverGroup> = {}): SaverGroup => ({
+  id, groupJid: `${id}@g.us`, name: `Salvo ${id}`, sessionId: 's1', memberCount: 10, phoneCount: 7, lidOnlyCount: 3,
+  lastScannedAt: '2026-11-16T13:30:00.000Z', lastScanStatus: 'DONE', createdAt: '2026-11-16T13:00:00.000Z', ...over,
+});
+const extraction = (status: SaverExtraction['status'], over: Partial<SaverExtraction> = {}): SaverExtraction => ({
+  id: 'e1', sessionId: 's1', trigger: 'MANUAL', status, totalGroups: 2, doneGroups: 0, failedGroups: 0,
+  membersFound: 0, newContacts: 0, createdAt: '2026-11-17T10:00:00.000Z', finishedAt: null, ...over,
+});
+
+function Where() {
+  const loc = useLocation();
+  return <div data-testid="where">{loc.pathname + loc.search}</div>;
+}
+const page = (mode: 'light' | 'dark' = 'light') =>
+  renderWithTheme(
+    <PrivacyProvider>
+      <MemoryRouter initialEntries={['/saver']}>
+        <Routes><Route path="*" element={<><SaverGroupsPage /><Where /></>} /></Routes>
+      </MemoryRouter>
+    </PrivacyProvider>,
+    mode,
+  );
+
+async function pickSession(user: ReturnType<typeof userEvent.setup>, name: string) {
+  await user.click(await screen.findByRole('combobox', { name: g.session.label }));
+  await user.click(await screen.findByRole('option', { name: new RegExp(name) }));
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  window.sessionStorage.clear();
+  window.localStorage.clear();
+  svc.getOverview.mockResolvedValue(overview());
+  svc.listGroups.mockResolvedValue([]);
+  svc.listSessionGroups.mockResolvedValue([]);
+  sessionsSvc.list.mockResolvedValue({ sessions: [session()], total: 1 });
+});
+afterEach(() => vi.useRealTimers());
+
+describe('SaverGroupsPage', () => {
+  it.each(['light', 'dark'] as const)('sessão sem grupos mostra a lista vazia e o uso do plano (%s)', async (mode) => {
+    const user = userEvent.setup();
+    page(mode);
+    await pickSession(user, 'Atendimento');
+    expect(await screen.findByText(g.table.empty)).toBeInTheDocument();
+    expect(screen.getByText(g.usage.scans)).toBeInTheDocument();
+    expect(screen.getByText(g.saved.empty)).toBeInTheDocument();
+  });
+
+  it('sessão desconectada não consulta e leva a reconectar', async () => {
+    sessionsSvc.list.mockResolvedValue({ sessions: [session({ status: 'DISCONNECTED' })], total: 1 });
+    const user = userEvent.setup();
+    page();
+    await pickSession(user, 'Atendimento');
+    expect(await screen.findByText(g.session.disconnectedTitle)).toBeInTheDocument();
+    expect(svc.listSessionGroups).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: g.session.reconnect }));
+    expect(screen.getByTestId('where')).toHaveTextContent('/settings/sessions');
+  });
+
+  it('SESSION_NOT_CONNECTED da API também mostra o atalho para reconectar', async () => {
+    svc.listSessionGroups.mockRejectedValue({ code: 'SESSION_NOT_CONNECTED', status: 409 });
+    const user = userEvent.setup();
+    page();
+    await pickSession(user, 'Atendimento');
+    expect(await screen.findByRole('button', { name: g.session.reconnect })).toBeInTheDocument();
+  });
+
+  it('sessão Telegram mostra o aviso e não consulta', async () => {
+    sessionsSvc.list.mockResolvedValue({ sessions: [session({ id: 's2', name: 'Canal TG', engine: 'telegram' })], total: 1 });
+    const user = userEvent.setup();
+    page('dark');
+    await pickSession(user, 'Canal TG');
+    expect(await screen.findByText(g.session.telegramOnly)).toBeInTheDocument();
+    expect(svc.listSessionGroups).not.toHaveBeenCalled();
+  });
+
+  it('sem sessão leva a conectar', async () => {
+    sessionsSvc.list.mockResolvedValue({ sessions: [], total: 0 });
+    const user = userEvent.setup();
+    page();
+    await user.click(await screen.findByRole('button', { name: g.session.connect }));
+    expect(screen.getByTestId('where')).toHaveTextContent('/settings/sessions?create=1&returnTo=/saver');
+  });
+
+  it('seleção persiste após remontar e limpa ao concluir o pedido', async () => {
+    svc.listSessionGroups.mockResolvedValue([live('a@g.us', 'Vendas'), live('b@g.us', 'Suporte', { saved: true })]);
+    svc.requestExtraction.mockResolvedValue(extraction('QUEUED'));
+    svc.getExtraction.mockResolvedValue(extraction('QUEUED'));
+    const user = userEvent.setup();
+    const first = page();
+    await pickSession(user, 'Atendimento');
+    await user.click(await screen.findByText('Vendas'));
+    expect(screen.getByText(g.table.selected(1, 50))).toBeInTheDocument();
+    first.unmount();
+
+    page();
+    expect(await screen.findByText(g.table.selected(1, 50))).toBeInTheDocument();
+    expect(screen.getByText(g.table.saved)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: g.table.submit(1) }));
+    expect(svc.requestExtraction).toHaveBeenCalledWith({ sessionId: 's1', groupJids: ['a@g.us'] });
+    expect(await screen.findByText(g.progress.status.QUEUED!)).toBeInTheDocument();
+    expect(screen.getByText(g.table.selected(0, 50))).toBeInTheDocument();
+    expect(window.sessionStorage.getItem('ui.saver.groups.selection')).toBeNull();
+  });
+
+  it('progresso para de consultar ao terminar e recarrega os grupos salvos', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    writePersisted('saver.groups.extraction', 'e1');
+    svc.getExtraction
+      .mockResolvedValueOnce(extraction('RUNNING', { doneGroups: 1, membersFound: 40 }))
+      .mockResolvedValue(extraction('DONE', { doneGroups: 2, membersFound: 80, newContacts: 12 }));
+    page();
+    expect(await screen.findByText(g.progress.status.RUNNING!)).toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(3_000); });
+    expect(await screen.findByText(g.progress.status.DONE!)).toBeInTheDocument();
+    expect(screen.getByText(g.progress.newContacts(12))).toBeInTheDocument();
+    await waitFor(() => expect(svc.listGroups).toHaveBeenCalledTimes(2));
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+    expect(svc.getExtraction).toHaveBeenCalledTimes(2);
+  });
+
+  it('cancelar pede o cancelamento', async () => {
+    writePersisted('saver.groups.extraction', 'e1');
+    svc.getExtraction.mockResolvedValue(extraction('RUNNING'));
+    svc.cancelExtraction.mockResolvedValue(extraction('CANCELLED'));
+    const user = userEvent.setup();
+    page();
+    await user.click(await screen.findByRole('button', { name: g.progress.cancel }));
+    expect(svc.cancelExtraction).toHaveBeenCalledWith('e1');
+    expect(await screen.findByText(g.progress.status.CANCELLED!)).toBeInTheDocument();
+  });
+
+  it('limite esgotado mostra a faixa com caminho para os planos', async () => {
+    svc.getOverview.mockResolvedValue(overview({ groupScansPerDay: usage(20, 20) }));
+    const user = userEvent.setup();
+    page();
+    expect(await screen.findByText(g.limitBanner.reached(s.limitKeys.saver_group_scans_per_day!))).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: g.limitBanner.cta }));
+    expect(screen.getByTestId('where')).toHaveTextContent('/saver/plans');
+  });
+
+  it('PLAN_LIMIT_REACHED do pedido vira a faixa de limite', async () => {
+    svc.listSessionGroups.mockResolvedValue([live('a@g.us', 'Vendas')]);
+    svc.requestExtraction.mockRejectedValue({ code: 'PLAN_LIMIT_REACHED', status: 403, meta: { key: 'saver_groups', limit: 10 } });
+    const user = userEvent.setup();
+    page();
+    await pickSession(user, 'Atendimento');
+    await user.click(await screen.findByText('Vendas'));
+    await user.click(screen.getByRole('button', { name: g.table.submit(1) }));
+    expect(await screen.findByText(s.limitReached(s.limitKeys.saver_groups!, 10))).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: g.limitBanner.cta })).toBeInTheDocument();
+  });
+
+  it('sem permissão de ler grupos o botão fica desabilitado', async () => {
+    svc.getOverview.mockResolvedValue(overview({ permissions: { view: true, extract: false, export: false, configure: false } }));
+    svc.listSessionGroups.mockResolvedValue([live('a@g.us', 'Vendas')]);
+    const user = userEvent.setup();
+    page();
+    await pickSession(user, 'Atendimento');
+    await screen.findByText('Vendas');
+    expect(screen.getByRole('button', { name: g.table.submit(0) })).toBeDisabled();
+  });
+
+  it('grupos salvos mostram só contagens, aviso de número oculto e remover', async () => {
+    svc.listGroups.mockResolvedValue([savedGroup('x')]);
+    svc.removeGroup.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    page();
+    expect(await screen.findByText('Salvo x')).toBeInTheDocument();
+    expect(screen.getByText(g.saved.hiddenNotice(3))).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: `${g.saved.remove}: Salvo x` }));
+    await user.click(screen.getByRole('button', { name: g.saved.removeConfirm }));
+    expect(svc.removeGroup).toHaveBeenCalledWith('x');
+  });
+
+  it.each(['light', 'dark'] as const)('nomes de grupo borrados com a flag (%s)', async (mode) => {
+    window.localStorage.setItem('privacy.blur', JSON.stringify(['saver.groupNames']));
+    svc.listGroups.mockResolvedValue([savedGroup('x')]);
+    svc.listSessionGroups.mockResolvedValue([live('a@g.us', 'Vendas')]);
+    const user = userEvent.setup();
+    page(mode);
+    expect((await screen.findByText('Salvo x')).closest('[data-blurred="true"]')).not.toBeNull();
+    await pickSession(user, 'Atendimento');
+    expect((await screen.findByText('Vendas')).closest('[data-blurred="true"]')).not.toBeNull();
+  });
+
+  it('botão Exportar segue permissions.export do resumo', async () => {
+    svc.listGroups.mockResolvedValue([savedGroup('x')]);
+    svc.getOverview.mockResolvedValue(overview({ permissions: { view: true, extract: true, export: false, configure: false } }));
+    const first = page();
+    expect(await screen.findByText('Salvo x')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: g.saved.exportAll })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: g.saved.selectAll })).not.toBeInTheDocument();
+    first.unmount();
+
+    svc.getOverview.mockResolvedValue(overview({ permissions: { view: true, extract: true, export: true, configure: false } }));
+    const user = userEvent.setup();
+    page();
+    await user.click(await screen.findByRole('checkbox', { name: `${g.saved.selectGroup}: Salvo x` }));
+    await user.click(screen.getByRole('button', { name: g.saved.exportSelected(1) }));
+    expect(await screen.findByRole('dialog', { name: s.exportDialog.title })).toBeInTheDocument();
+    expect(screen.getByText(s.exportDialog.scopeSelected(1))).toBeInTheDocument();
+  });
+});
