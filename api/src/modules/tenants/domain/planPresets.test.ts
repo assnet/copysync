@@ -137,4 +137,13 @@ describe('resolveEffectivePlanSlug', () => {
   it('permissão reconhecida resolve mesmo com slug desconhecido', () => {
     expect(resolveEffectivePlanSlug('plano-x', [' COPYSYNC_LITE '])).toBe('COPYSYNC_LITE');
   });
+  it('caracterização: slug de outro produto não resolve; permissão de outro produto é ignorada', () => {
+    expect(resolvePlanSlug('copysync-saver-pro-mensal')).toBeNull();
+    expect(resolveEffectivePlanSlug('copysync-lite-mensal', ['SAVER_MAX'])).toBe('COPYSYNC_LITE');
+    expect(resolveEffectivePlanSlug(null, ['SAVER_PRO'])).toBeNull();
+    expect(resolveEffectivePlanSlug('copysync-saver-max-anual', ['SAVER_MAX'])).toBeNull();
+  });
+  it('caracterização: oferta DEV com permissão menor = permissão vence', () => {
+    expect(resolveEffectivePlanSlug('copysync-dev-anual', ['COPYSYNC_LITE'])).toBe('COPYSYNC_LITE');
+  });
 });
