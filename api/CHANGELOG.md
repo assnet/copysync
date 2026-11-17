@@ -17,7 +17,22 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
-## [0.100.4] — 2026-11-17 — Saver: tela Grupos sem rolagem dupla (só app 0.123.4)
+## [0.100.4] — 2026-11-17 — Saver: número oculto (fontes locais, aviso de sessão não admin) e tela Grupos (app 0.123.5)
+
+### Added
+
+#### Backend — saver / messaging ([`docs/saver.md`](../docs/saver.md), "Número oculto")
+
+- **`engines/baileys/group/resolveLocalLidPhones.ts`** (novo), **`BaileysMessagingEngineAdapter.ts`** — `getGroupMembers` completa o telefone de membro só-LID pelo mapa LOCAL da sessão (`lidMapping.getPNsForLIDs`: cache + key store `lid-mapping`, sem rede), em blocos de 500; falha = membro segue sem telefone. Motivo: grupo de avisos com 957 membros veio com 953 só-LID. Nenhuma consulta nova ao WhatsApp por membro (risco de banimento).
+- **`ISaverKnownContactReader.ts`**, **`PrismaSaverKnownContactReader.ts`**, **`enrichWithKnownContacts.ts`** (novos), **`ProcessNextSaverItemUseCase.ts`**, **`saverContainer.ts`**, **`createSaverExtractionJob.ts`** — antes do `mergeGroupRead`, membro só-LID ganha o telefone e membro sem nome ganha o nome que o MESMO tenant já tem em `chat_contacts` (leitura por `tenantId`, sem importar o módulo de chat). Falha na consulta não derruba a leitura.
+- **`mergeGroupRead.ts`** — `SaverReadMember.tenantName`: nome conhecido pelo tenant entra só no vínculo, nunca em `saver_contacts.name` (SAVER-46).
+- **`ListSaverSessionGroupsUseCase.ts`**, **`SaverPresenter.ts`**, **`saver.schema.ts`** — `selfIsAdmin` (`boolean | null`) na listagem de grupos da sessão (= `canInvite` do engine; no WhatsApp, sessão é admin).
+
+#### Painel (app/) — saver
+
+- **`GroupSelectionTable.tsx`**, **`SelectionActionBar.tsx`**, **`groupList.ts`**, **`strings.ts`**, **`types.ts`** — selo "Você é admin", aviso "Números ocultos: esta sessão não é admin" em comunidade/avisos (Tooltip com a causa), linha de aviso na barra de seleção e filtro rápido "Sou admin".
+- **`SaverGroupsPage.tsx`** — em "Grupos salvos", quando ≥ 80 % dos membros de um grupo vieram ocultos, o aviso explica a causa provável (sessão que leu não é admin).
+
 
 ### Changed
 

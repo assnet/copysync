@@ -141,6 +141,32 @@ Membro com número oculto vem só com LID (sem sufixo, só dígitos). Fica guard
 fora do vCard. Só-telefone e só-LID da mesma pessoa viram dois contatos até uma leitura trazer o par. O par LID de
 participante de grupo mora aqui, não no chat ([`chat-ingestao-por-entitlement.md`](chat-ingestao-por-entitlement.md)).
 
+## Número oculto: o que conseguimos recuperar e o que não
+
+O WhatsApp só entrega o telefone dos membros de grupo de comunidade/avisos para quem é **admin** do grupo. Sessão
+que lê como membro comum recebe só LID (produção, 2026-11-17: 4/957, 3/219 com número, todos admins). É limite da
+plataforma, não erro de leitura.
+
+Recuperamos, sempre sem consulta nova ao WhatsApp:
+
+| Fonte | Onde | O que rende |
+| --- | --- | --- |
+| Mapa local LID→telefone da sessão | `engines/baileys/group/resolveLocalLidPhones.ts`, chamado em `getGroupMembers`; usa `lidMapping.getPNsForLIDs` (só cache + key store `lid-mapping`, persistido em `session_auth_keys`), blocos de 500 | Telefone de quem a sessão já viu: postou em grupo, conversou 1:1, veio no histórico. Pouco (≈ 5 % num grupo de 219), de graça |
+| Contatos do próprio tenant | `ISaverKnownContactReader` → `PrismaSaverKnownContactReader` (lê `chat_contacts` por `tenantId`), `enrichWithKnownContacts` antes do `mergeGroupRead` | Telefone do só-LID com par visto em conversa 1:1 do tenant; nome para quem veio sem nome (casa por LID ou telefone) |
+| Sessão admin | Painel: selo "Você é admin", aviso "Números ocultos: esta sessão não é admin", filtro "Sou admin" (`selfIsAdmin` na listagem = `canInvite` do engine) | Ler com a sessão do número que é admin traz todos os números. É a única forma de recuperar a maioria |
+
+Regras: falha em qualquer fonte = membro segue sem telefone, a leitura nunca cai. O nome vindo de `chat_contacts`
+(`tenantName`) entra **só no vínculo do tenant**; nunca em `saver_contacts.name` (SAVER-46). O telefone descoberto
+vai para a base como qualquer telefone lido. Nome que é só número não conta como nome. `groupMetadata` quase nunca
+traz nome: coluna Nome vazia no CSV é falta de nome na origem, não erro.
+
+Continua impossível: número de quem nunca interagiu com a sessão nem com o tenant, em grupo onde a sessão não é
+admin. Enriquecimento passivo (aprender par/nome quando o membro posta) é a T30, ainda não implementada.
+
+**Proibido** (risco de banimento do número do cliente): USync, `onWhatsApp`, `fetchStatus`, `profilePictureUrl` ou
+qualquer IQ por membro; `getLIDForPN`/`getLIDsForPNs` em lote (dispara USync quando falta no mapa); abrir conversa
+ou enviar mensagem para descobrir número; usar contato ou nome de outro tenant.
+
 ## Pendências jurídicas (bloqueio de venda em escala)
 
 Com a base sendo da plataforma, a CopySync vira controladora de dado pessoal de terceiros. Antes de vender em escala,
@@ -159,6 +185,7 @@ exclusão a pedido do titular e regra de retenção.
 - Registrar nome, número ou LID em log ou auditoria (só ids, filtros e contagens).
 - Apagar ou sobrescrever telefone guardado; fundir contato por nome ou heurística; duplicar contato.
 - Liberar comunidade "pai" para leitura ou buscar `groupMetadata` por grupo só para contar membros na listagem.
+- Consultar o WhatsApp por membro para revelar número oculto (lista em "Número oculto").
 - Buscar foto de perfil; alterar `getGroupParticipants`, `groupMetadataCache` ou eventos do adapter.
 - Importar `chat`, `campaigns`, `automation`, `link-rotation` ou `storefront` em `modules/saver`.
 - Extrair em rota HTTP ou em job singleton de cluster; guardar ritmo em memória.
