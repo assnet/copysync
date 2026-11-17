@@ -160,6 +160,56 @@ describe('fila', () => {
   });
 });
 
+describe('pedido sob a trava do tenant', () => {
+  it('10 pedidos simultâneos com teto de 2 grupos: só 2 passam; nada gravado nos barrados', async () => {
+    const t = await makeTenant('req-race');
+    const s = await makeSession(t);
+    const guard = (u: { activeCount: number; activeRequested: number }) => {
+      if (u.activeCount + 1 - u.activeRequested > 2) throw new Error('LIMIT');
+    };
+    const results = await Promise.allSettled(
+      Array.from({ length: 10 }, (_, i) =>
+        queue.requestGroups(
+          { tenantId: t, sessionId: s, requestedByUserId: null, groups: [{ groupJid: `rr${i}-${stamp}`, name: null }], scansSince: new Date(0), now },
+          guard,
+        ),
+      ),
+    );
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(2);
+    expect(results.filter((r) => r.status === 'rejected').every((r) => (r as PromiseRejectedResult).reason.message === 'LIMIT')).toBe(true);
+    expect(await groups.countActive(t)).toBe(2);
+    expect(await prisma.saverExtraction.count({ where: { tenantId: t } })).toBe(2);
+  });
+
+  it('teto diário: pedidos simultâneos não passam da janela; grupo já salvo mantém o nome', async () => {
+    const t = await makeTenant('req-scan');
+    const s = await makeSession(t);
+    await queue.requestGroups(
+      { tenantId: t, sessionId: s, requestedByUserId: null, groups: [{ groupJid: `rs-${stamp}`, name: 'Original' }], scansSince: new Date(0), now },
+      () => undefined,
+    );
+    const guard = (u: { scansUsed: number }) => {
+      if (u.scansUsed + 1 > 3) throw new Error('SCANS');
+    };
+    const results = await Promise.allSettled(
+      Array.from({ length: 6 }, (_, i) =>
+        queue.requestGroups(
+          { tenantId: t, sessionId: s, requestedByUserId: null, groups: [{ groupJid: `rs${i}-${stamp}`, name: null }], scansSince: new Date(0), now },
+          guard,
+        ),
+      ),
+    );
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(2);
+    expect(await queue.countScansSince(t, new Date(0))).toBe(3);
+    const ext = await queue.requestGroups(
+      { tenantId: t, sessionId: s, requestedByUserId: null, groups: [{ groupJid: `rs-${stamp}`, name: null }], scansSince: new Date(0), now },
+      () => undefined,
+    );
+    expect(ext).toMatchObject({ totalGroups: 0, status: 'CANCELLED' });
+    expect((await groups.findByJids(t, [`rs-${stamp}`]))[0]?.name).toBe('Original');
+  });
+});
+
 describe('pedido de super admin (SAVER-47)', () => {
   it('tenant sem produto: cancela só os pendentes de pedido comum; o do super admin segue', async () => {
     const t = await makeTenant('sa');

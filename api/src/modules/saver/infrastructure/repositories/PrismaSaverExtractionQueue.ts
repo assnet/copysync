@@ -4,8 +4,11 @@ import type {
   EnqueueSaverExtractionInput,
   ISaverExtractionQueue,
   ReleaseSaverItemInput,
+  RequestSaverGroupsInput,
+  SaverRequestUsage,
 } from '../../domain/contracts/ISaverExtractionQueue';
-import { SaverExtractionItemStatus, SaverExtractionStatus } from '../../domain/enums/SaverEnums';
+import { SaverExtractionItemStatus, SaverExtractionStatus, SaverExtractionTrigger } from '../../domain/enums/SaverEnums';
+import { lockSaverTenant } from './saverTenantLock';
 import { PrismaSaverMapper } from '../mappers/PrismaSaverMapper';
 
 type TxClient = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
@@ -23,35 +26,40 @@ export class PrismaSaverExtractionQueue implements ISaverExtractionQueue {
 
   /** Extração + itens numa transação; grupo já pendente fica fora (índice único parcial). Sem item = CANCELLED. */
   async enqueue(input: EnqueueSaverExtractionInput): Promise<SaverExtraction> {
+    const row = await this.prisma.$transaction((tx) => enqueueIn(tx, input));
+    return PrismaSaverMapper.extraction(row);
+  }
+
+  async requestGroups(input: RequestSaverGroupsInput, guard: (usage: SaverRequestUsage) => void): Promise<SaverExtraction> {
+    const { tenantId, now } = input;
+    const jids = [...new Set(input.groups.map((g) => g.groupJid))];
     const row = await this.prisma.$transaction(async (tx) => {
-      const extraction = await tx.saverExtraction.create({
-        data: {
-          tenantId: input.tenantId,
-          sessionId: input.sessionId,
-          requestedByUserId: input.requestedByUserId,
-          trigger: input.trigger,
-          status: SaverExtractionStatus.QUEUED,
-          createdAt: input.now,
-        },
-      });
-      const groupIds = [...new Set(input.groupIds)].sort();
-      const total =
-        groupIds.length === 0
-          ? 0
-          : await tx.$executeRaw`
-        INSERT INTO "saver_extraction_items"
-          ("id", "extractionId", "tenantId", "sessionId", "groupId", "status", "nextAttemptAt", "createdAt")
-        SELECT gen_random_uuid()::text, ${extraction.id}, g."tenantId", ${input.sessionId}, g."id", 'QUEUED', ${input.now}, ${input.now}
-        FROM "saver_groups" g
-        WHERE g."tenantId" = ${input.tenantId} AND g."id" = ANY(${groupIds}::text[]) AND g."removedAt" IS NULL
-        ORDER BY g."id"
-        ON CONFLICT ("groupId") WHERE "status" IN ('QUEUED', 'RUNNING') DO NOTHING`;
-      return tx.saverExtraction.update({
-        where: { id: extraction.id },
-        data:
-          total > 0
-            ? { totalGroups: total }
-            : { status: SaverExtractionStatus.CANCELLED, finishedAt: input.now },
+      await lockSaverTenant(tx, tenantId);
+      const [activeCount, activeRequested, scansUsed] = await Promise.all([
+        tx.saverGroup.count({ where: { tenantId, removedAt: null } }),
+        tx.saverGroup.count({ where: { tenantId, removedAt: null, groupJid: { in: jids } } }),
+        tx.saverExtractionItem.count({
+          where: { tenantId, createdAt: { gte: input.scansSince }, status: { not: SaverExtractionItemStatus.CANCELLED } },
+        }),
+      ]);
+      guard({ activeCount, activeRequested, scansUsed });
+      const groupIds: string[] = [];
+      for (const g of input.groups) {
+        const saved = await tx.saverGroup.upsert({
+          where: { tenantId_groupJid: { tenantId, groupJid: g.groupJid } },
+          create: { tenantId, sessionId: input.sessionId, groupJid: g.groupJid, name: g.name || g.groupJid },
+          update: { sessionId: input.sessionId, removedAt: null, ...(g.name ? { name: g.name } : {}) },
+          select: { id: true },
+        });
+        groupIds.push(saved.id);
+      }
+      return enqueueIn(tx, {
+        tenantId,
+        sessionId: input.sessionId,
+        requestedByUserId: input.requestedByUserId,
+        trigger: SaverExtractionTrigger.MANUAL,
+        groupIds,
+        now,
       });
     });
     return PrismaSaverMapper.extraction(row);
@@ -183,6 +191,38 @@ export class PrismaSaverExtractionQueue implements ISaverExtractionQueue {
       return count;
     });
   }
+}
+
+async function enqueueIn(tx: TxClient, input: EnqueueSaverExtractionInput) {
+  const extraction = await tx.saverExtraction.create({
+    data: {
+      tenantId: input.tenantId,
+      sessionId: input.sessionId,
+      requestedByUserId: input.requestedByUserId,
+      trigger: input.trigger,
+      status: SaverExtractionStatus.QUEUED,
+      createdAt: input.now,
+    },
+  });
+  const groupIds = [...new Set(input.groupIds)].sort();
+  const total =
+    groupIds.length === 0
+      ? 0
+      : await tx.$executeRaw`
+    INSERT INTO "saver_extraction_items"
+      ("id", "extractionId", "tenantId", "sessionId", "groupId", "status", "nextAttemptAt", "createdAt")
+    SELECT gen_random_uuid()::text, ${extraction.id}, g."tenantId", ${input.sessionId}, g."id", 'QUEUED', ${input.now}, ${input.now}
+    FROM "saver_groups" g
+    WHERE g."tenantId" = ${input.tenantId} AND g."id" = ANY(${groupIds}::text[]) AND g."removedAt" IS NULL
+    ORDER BY g."id"
+    ON CONFLICT ("groupId") WHERE "status" IN ('QUEUED', 'RUNNING') DO NOTHING`;
+  return tx.saverExtraction.update({
+    where: { id: extraction.id },
+    data:
+      total > 0
+        ? { totalGroups: total }
+        : { status: SaverExtractionStatus.CANCELLED, finishedAt: input.now },
+  });
 }
 
 /**

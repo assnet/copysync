@@ -11,6 +11,32 @@ export interface EnqueueSaverExtractionInput {
   now: Date;
 }
 
+export interface SaverRequestGroupInput {
+  groupJid: string;
+  /** Nome do engine; vazio mantém o salvo (ou o JID, se novo). */
+  name: string | null;
+}
+
+export interface RequestSaverGroupsInput {
+  tenantId: string;
+  sessionId: string;
+  requestedByUserId: string | null;
+  groups: readonly SaverRequestGroupInput[];
+  /** Início da janela de `saver_group_scans_per_day`. */
+  scansSince: Date;
+  now: Date;
+}
+
+/** Uso lido sob a trava do tenant, entregue ao `guard` antes de gravar. */
+export interface SaverRequestUsage {
+  /** Grupos ativos do tenant. */
+  activeCount: number;
+  /** Dos grupos pedidos, quantos já estão salvos e ativos (não consomem `saver_groups`). */
+  activeRequested: number;
+  /** Leituras na janela (itens não cancelados). */
+  scansUsed: number;
+}
+
 /**
  * Posse do item pega por `claimNext`: o `lockedUntil` gravado no claim é o token. Item cancelado (grupo
  * removido, extração cancelada) ou retomado por outro claim (trava vencida) não bate mais.
@@ -36,6 +62,11 @@ export interface ReleaseSaverItemInput {
 
 export interface ISaverExtractionQueue {
   enqueue(input: EnqueueSaverExtractionInput): Promise<SaverExtraction>;
+  /**
+   * Pedido atômico (SAVER-09/10): numa transação sob a trava do tenant lê o uso, chama `guard` (que lança
+   * para barrar; nada é gravado), salva/reativa os grupos e enfileira. Pedidos simultâneos não passam do teto.
+   */
+  requestGroups(input: RequestSaverGroupsInput, guard: (usage: SaverRequestUsage) => void): Promise<SaverExtraction>;
   /** 1 item da sessão (`SKIP LOCKED`), marca RUNNING com trava até `lockUntil`; trava vencida volta a concorrer. */
   claimNext(sessionId: string, now: Date, lockUntil: Date): Promise<SaverExtractionItem | null>;
   /**

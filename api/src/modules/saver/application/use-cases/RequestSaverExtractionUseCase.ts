@@ -1,8 +1,6 @@
 import type { IEntitlementSnapshotReader } from '../../../tenants/domain/contracts/IEntitlementSnapshotReader';
 import type { ISaverExtractionQueue } from '../../domain/contracts/ISaverExtractionQueue';
-import type { ISaverGroupRepository } from '../../domain/contracts/ISaverGroupRepository';
 import type { ISaverSessionReader } from '../../domain/contracts/ISaverSessionReader';
-import { SaverExtractionTrigger } from '../../domain/enums/SaverEnums';
 import { fitsSaverLimit, readSaverLimits, SAVER_LIMIT_KEYS } from '../../domain/services/saverLimits';
 import { PlanLimitReachedError } from '../../../../shared/errors/internal/PlanErrors';
 import { ValidationError } from '../../../../shared/errors/internal/ResourceErrors';
@@ -22,15 +20,15 @@ export interface RequestSaverExtractionInput {
 export interface RequestSaverExtractionDeps {
   sessions: ISaverSessionReader;
   entitlements: IEntitlementSnapshotReader;
-  groups: Pick<ISaverGroupRepository, 'findByJids' | 'countActive' | 'upsertMany'>;
-  queue: Pick<ISaverExtractionQueue, 'countScansSince' | 'enqueue'>;
+  queue: Pick<ISaverExtractionQueue, 'requestGroups'>;
   engine: () => SaverGroupListingEngine;
   now?: () => Date;
 }
 
 /**
  * Pede a leitura de N grupos da sessão (SAVER-09, SAVER-10). Valida `saver_groups` (salvos + novos) e
- * `saver_group_scans_per_day` (24 h corridas) ANTES de gravar; grupo já pendente não duplica (fila ignora).
+ * `saver_group_scans_per_day` (24 h corridas) ANTES de gravar, sob a trava do tenant (`requestGroups`);
+ * grupo já pendente não duplica (fila ignora).
  * Grupo removido pedido de novo é reativado (conta de novo no limite).
  */
 export class RequestSaverExtractionUseCase {
@@ -53,36 +51,26 @@ export class RequestSaverExtractionUseCase {
     }
 
     const now = this.deps.now?.() ?? new Date();
-    const [snapshot, existing, activeCount, scansUsed] = await Promise.all([
-      this.deps.entitlements.readAll(tenantId),
-      this.deps.groups.findByJids(tenantId, jids),
-      this.deps.groups.countActive(tenantId),
-      this.deps.queue.countScansSince(tenantId, new Date(now.getTime() - SAVER_SCAN_WINDOW_MS)),
-    ]);
-    const limits = readSaverLimits(snapshot);
-    const activeJids = new Set(existing.filter((g) => g.removedAt === null).map((g) => g.groupJid));
-    const adding = jids.filter((j) => !activeJids.has(j)).length;
-    if (!fitsSaverLimit(limits.groups, activeCount, adding)) {
-      throw new PlanLimitReachedError(SAVER_LIMIT_KEYS.GROUPS, limits.groups ?? 0);
-    }
-    if (!fitsSaverLimit(limits.groupScansPerDay, scansUsed, jids.length)) {
-      throw new PlanLimitReachedError(SAVER_LIMIT_KEYS.GROUP_SCANS_PER_DAY, limits.groupScansPerDay ?? 0);
-    }
-
-    const names = new Map(existing.map((g) => [g.groupJid, g.name]));
-    const saved = await this.deps.groups.upsertMany(
-      tenantId,
-      session.id,
-      jids.map((j) => ({ groupJid: j, name: live.get(j) || names.get(j) || j })),
+    const limits = readSaverLimits(await this.deps.entitlements.readAll(tenantId));
+    // Contagem, gravação e fila numa transação sob a trava do tenant: pedidos simultâneos não passam do teto.
+    const extraction = await this.deps.queue.requestGroups(
+      {
+        tenantId,
+        sessionId: session.id,
+        requestedByUserId: actor.userId,
+        groups: jids.map((j) => ({ groupJid: j, name: live.get(j) || null })),
+        scansSince: new Date(now.getTime() - SAVER_SCAN_WINDOW_MS),
+        now,
+      },
+      ({ activeCount, activeRequested, scansUsed }) => {
+        if (!fitsSaverLimit(limits.groups, activeCount, jids.length - activeRequested)) {
+          throw new PlanLimitReachedError(SAVER_LIMIT_KEYS.GROUPS, limits.groups ?? 0);
+        }
+        if (!fitsSaverLimit(limits.groupScansPerDay, scansUsed, jids.length)) {
+          throw new PlanLimitReachedError(SAVER_LIMIT_KEYS.GROUP_SCANS_PER_DAY, limits.groupScansPerDay ?? 0);
+        }
+      },
     );
-    const extraction = await this.deps.queue.enqueue({
-      tenantId,
-      sessionId: session.id,
-      requestedByUserId: actor.userId,
-      trigger: SaverExtractionTrigger.MANUAL,
-      groupIds: saved.map((g) => g.id),
-      now,
-    });
     return toSaverExtractionDTO(extraction);
   }
 }

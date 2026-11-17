@@ -6,7 +6,11 @@ import { RemoveSaverGroupUseCase } from './RemoveSaverGroupUseCase';
 import { ListSaverGroupsUseCase } from './ListSaverGroupsUseCase';
 import { actorOf, savedGroup, sessionRef } from './saverUseCaseFakes';
 import type { SaverExtraction, SaverGroup } from '../../domain/entities/SaverEntities';
-import type { EnqueueSaverExtractionInput } from '../../domain/contracts/ISaverExtractionQueue';
+import type {
+  EnqueueSaverExtractionInput,
+  RequestSaverGroupsInput,
+  SaverRequestUsage,
+} from '../../domain/contracts/ISaverExtractionQueue';
 import type { SaverGroupUpsertInput } from '../../domain/contracts/ISaverGroupRepository';
 import { SaverExtractionStatus, SaverExtractionTrigger } from '../../domain/enums/SaverEnums';
 
@@ -41,12 +45,28 @@ function world(snapshot: Record<string, unknown>, opts: { scansUsed?: number } =
     status: SaverExtractionStatus.QUEUED, totalGroups: 0, doneGroups: 0, failedGroups: 0, membersFound: 0,
     newContacts: 0, createdAt: NOW, finishedAt: null, ...over,
   });
+  const enqueue = vi.fn(async (input: EnqueueSaverExtractionInput) => {
+    const fresh = [...new Set(input.groupIds)].filter((id) => !pending.has(id));
+    fresh.forEach((id) => pending.add(id));
+    return extraction({ totalGroups: fresh.length, status: fresh.length ? SaverExtractionStatus.QUEUED : SaverExtractionStatus.CANCELLED });
+  });
   const queue = {
-    countScansSince: vi.fn(async () => opts.scansUsed ?? 0),
-    enqueue: vi.fn(async (input: EnqueueSaverExtractionInput) => {
-      const fresh = [...new Set(input.groupIds)].filter((id) => !pending.has(id));
-      fresh.forEach((id) => pending.add(id));
-      return extraction({ totalGroups: fresh.length, status: fresh.length ? SaverExtractionStatus.QUEUED : SaverExtractionStatus.CANCELLED });
+    enqueue,
+    /** Mesma ordem do repositório: uso → guard → grava grupos → enfileira. */
+    requestGroups: vi.fn(async (input: RequestSaverGroupsInput, guard: (u: SaverRequestUsage) => void) => {
+      const jids = input.groups.map((g) => g.groupJid);
+      const active = groups.filter((g) => g.tenantId === input.tenantId && !g.removedAt);
+      guard({
+        activeCount: active.length,
+        activeRequested: active.filter((g) => jids.includes(g.groupJid)).length,
+        scansUsed: opts.scansUsed ?? 0,
+      });
+      const saved = await groupRepo.upsertMany(
+        input.tenantId,
+        input.sessionId,
+        input.groups.map((g) => ({ groupJid: g.groupJid, name: g.name || groups.find((x) => x.groupJid === g.groupJid)?.name || g.groupJid })),
+      );
+      return enqueue({ ...input, trigger: SaverExtractionTrigger.MANUAL, groupIds: saved.map((g) => g.id) });
     }),
     findExtraction: vi.fn(async (t: string, id: string) => (t === 't1' && id === 'e1' ? extraction({ totalGroups: 2 }) : null)),
     cancelQueued: vi.fn(async () => 2),
@@ -62,7 +82,6 @@ function world(snapshot: Record<string, unknown>, opts: { scansUsed?: number } =
   const request = new RequestSaverExtractionUseCase({
     sessions: { findById: async (t) => (t === 't1' ? sessionRef() : null) },
     entitlements: { readAll: async () => snapshot },
-    groups: groupRepo,
     queue,
     engine: () => engine,
     now: () => NOW,
@@ -78,6 +97,13 @@ describe('RequestSaverExtractionUseCase', () => {
   it('salva grupos (JID sem @g.us, nome do engine) e enfileira MANUAL', async () => {
     const w = world({ saver_groups: 5, saver_group_scans_per_day: 10 });
     const r = await w.request.execute(OPERATOR, { sessionId: 's1', groupJids: ['111@g.us', '333', '111'] });
+    expect(w.queue.requestGroups).toHaveBeenCalledWith(
+      expect.objectContaining({
+        groups: [{ groupJid: '111', name: 'Um' }, { groupJid: '333', name: null }],
+        scansSince: new Date(NOW.getTime() - 24 * 3_600_000),
+      }),
+      expect.any(Function),
+    );
     expect(w.groupRepo.upsertMany).toHaveBeenCalledWith('t1', 's1', [
       { groupJid: '111', name: 'Um' },
       { groupJid: '333', name: '333' },

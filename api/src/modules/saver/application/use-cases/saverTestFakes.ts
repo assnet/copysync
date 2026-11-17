@@ -46,6 +46,10 @@ export class FakeSaverQueue implements ISaverExtractionQueue {
     throw new Error('not used');
   }
 
+  async requestGroups(): Promise<SaverExtraction> {
+    throw new Error('not used');
+  }
+
   async claimNext(sessionId: string, now: Date, lockUntil: Date): Promise<SaverExtractionItem | null> {
     if (this.deletedSessions.has(sessionId)) return null;
     const item = this.items.find(
