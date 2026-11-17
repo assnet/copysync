@@ -3,6 +3,7 @@ import type { IGroupMonitorRepository } from '../../domain/contracts/IGroupMonit
 import { extractUrls, matchesKeywords } from '../../domain/services/offerMessageText';
 import { isWithinPostingWindow } from '../../../campaigns/domain/services/postingWindow';
 import type { IEntitlementReader } from '../../../tenants/domain/contracts/IEntitlementReader';
+import type { IProductAccessReader } from '../../../tenants/domain/contracts/IProductAccessReader';
 import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
 
 /** Fotos que o envio aceita (`SendStoredMediaMessageUseCase`). `image/jpg` vira `image/jpeg`. */
@@ -34,6 +35,8 @@ export class RegisterCapturedMessageUseCase {
     captured: ICapturedOfferRepository;
     /** "Capturar fora do horário" é do Max: lido só quando a mensagem cai fora da janela. */
     entitlements: Pick<IEntitlementReader, 'getBoolean'>;
+    /** Afiliados inativo: mensagem ignorada (sem captura). Ausente = sempre ativo (design product-access §3.5). */
+    products?: Pick<IProductAccessReader, 'has'>;
     now?: () => Date;
   }) {}
 
@@ -44,6 +47,7 @@ export class RegisterCapturedMessageUseCase {
 
     const group = await this.deps.monitors.findActiveMonitoredGroup(m.tenantId, m.sessionId, m.groupJid);
     if (!group || !matchesKeywords(text, group.keywords)) return 'ignored';
+    if (this.deps.products && !(await this.deps.products.has(group.tenantId, 'AFFILIATES'))) return 'ignored';
     const capturedAt = (this.deps.now ?? (() => new Date()))();
     // Fora da janela (faixa + dia da semana) sem "capturar fora do horário" (desligado ou plano sem): nem entra na fila
     const outside = !isWithinPostingWindow(capturedAt, {
