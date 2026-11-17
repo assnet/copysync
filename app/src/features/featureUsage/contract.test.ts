@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { catalogFixture as catalog, detailFixture, summaryFixture, summaryFixtureRaw as summaryRaw } from './testFixtures';
+import tenantsRaw from '../../../../contracts/feature-usage/feature-tenants.response.json?raw';
 import { featureUsageStrings as S } from './strings';
 import type {
-  UsageFeatureDetail, UsageFeatureItem, UsagePopulation, UsageRange, UsageSummary, UsageTenantItem, UsageTotals,
+  UsageFeatureDetail, UsageFeatureItem, UsagePopulation, UsageRange, UsageSummary, UsageTenantItem, UsageTenantsPage, UsageTotals,
 } from './types';
+
+/** Lista de contas de exemplo (`?raw`, como as outras fixtures em `testFixtures.ts`); cópia nova a cada chamada. */
+const tenantsFixture = (): UsageTenantsPage => JSON.parse(tenantsRaw) as UsageTenantsPage;
 
 /* Validador de forma: o mapa de cada tipo é checado pelo `tsc` (chave a mais ou a menos não compila) e o teste
  * compara as fixtures com ele (campo a mais ou a menos na fixture falha). */
@@ -61,18 +65,20 @@ const summaryShape = obj<UsageSummary>({
   features: arr(featureShape),
   series: arr({ object: { bucket: str, activeTenants: num } }),
 });
-const detailShape = obj<UsageFeatureDetail>({
+/** `inScope` (false = tipo/plano excluem o recurso) entra no contrato do detalhe; a interseção vale com ou sem o campo em `types.ts`. */
+const detailShape = obj<UsageFeatureDetail & { inScope: boolean }>({
   range: rangeShape,
   source: str,
   freshAt: str,
   population: populationShape,
+  inScope: ['boolean'],
   feature: featureShape,
   series: arr({ object: { bucket: str, uses: num, activeTenants: num } }),
 });
-/** Item da lista de contas (sem fixture ainda): forma checada só pelo `tsc`. */
 const tenantItemShape = obj<UsageTenantItem>({
   tenantId: str, tenantName: str, plan: str, status: str, internal: ['boolean'], uses: num, activeDays: num, lastUsedDay: strOrNull,
 });
+const tenantsPageShape = obj<UsageTenantsPage>({ items: arr(tenantItemShape), nextCursor: strOrNull });
 
 function leafOf(value: unknown): Leaf | 'other' {
   if (value === null) return 'null';
@@ -110,8 +116,10 @@ describe('contrato do uso dos recursos (fixtures compartilhadas)', () => {
     expect(shapeErrors(detailFixture(), detailShape)).toEqual([]);
   });
 
-  it('o item da lista de contas tem forma declarada', () => {
-    expect(shapeErrors({ tenantId: 'a', tenantName: 'b', plan: 'NONE', status: 'ACTIVE', internal: false, uses: 1, activeDays: 1, lastUsedDay: null }, tenantItemShape)).toEqual([]);
+  it('a lista de contas de exemplo tem exatamente a forma de UsageTenantsPage', () => {
+    const page = tenantsFixture();
+    expect(page.items.length).toBeGreaterThan(0);
+    expect(shapeErrors(page, tenantsPageShape)).toEqual([]);
   });
 
   it('o validador acusa campo a mais e campo a menos', () => {

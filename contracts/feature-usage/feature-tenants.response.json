@@ -1,0 +1,25 @@
+{
+  "items": [
+    {
+      "tenantId": "c7a1e0f4-0000-4000-8000-000000000001",
+      "tenantName": "Conta Exemplo A",
+      "plan": "COPYSYNC_MAX",
+      "status": "ACTIVE",
+      "internal": false,
+      "uses": 42,
+      "activeDays": 12,
+      "lastUsedDay": "2026-11-14"
+    },
+    {
+      "tenantId": "c7a1e0f4-0000-4000-8000-000000000002",
+      "tenantName": "Conta Exemplo B",
+      "plan": "NONE",
+      "status": "SUSPENDED",
+      "internal": true,
+      "uses": 7,
+      "activeDays": 3,
+      "lastUsedDay": "2026-11-02"
+    }
+  ],
+  "nextCursor": "eyJ1Ijo3LCJ0IjoiYzdhMWUwZjQifQ~assinatura-ficticia"
+}

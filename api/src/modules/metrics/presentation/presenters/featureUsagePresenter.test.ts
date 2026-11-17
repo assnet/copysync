@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { GetFeatureUsageSummaryUseCase, type FeatureUsageQueryInput } from '../../application/use-cases/GetFeatureUsageSummaryUseCase';
 import { GetFeatureUsageDetailUseCase } from '../../application/use-cases/GetFeatureUsageDetailUseCase';
+import { ListFeatureUsageTenantsUseCase } from '../../application/use-cases/ListFeatureUsageTenantsUseCase';
 import {
   FakeFeatureUsageReader,
   FakeUsageReadGate,
@@ -66,7 +67,12 @@ function useCases() {
     usageTenant('t3', 'NONE', 'SAVER_LITE', { internal: true }),
   ]);
   const deps = { reader, directory, gate: new FakeUsageReadGate(), now: () => NOW };
-  return { summary: new GetFeatureUsageSummaryUseCase(deps), detail: new GetFeatureUsageDetailUseCase(deps) };
+  const audit = { create: async () => undefined };
+  return {
+    summary: new GetFeatureUsageSummaryUseCase(deps),
+    detail: new GetFeatureUsageDetailUseCase(deps),
+    tenants: new ListFeatureUsageTenantsUseCase({ ...deps, audit }),
+  };
 }
 
 describe('featureUsagePresenter × contrato', () => {
@@ -83,6 +89,20 @@ describe('featureUsagePresenter × contrato', () => {
       { kind: 'ACTION', uses: 2, activeTenants: 1 },
       { kind: 'AUTOMATIC', uses: 5, activeTenants: 1 },
     ]);
+  });
+
+  it('detalhe fora do recorte também bate com o exemplo', async () => {
+    const body = presentFeatureUsageDetail(await useCases().detail.execute({ ...INPUT, featureKey: 'panel_login' }));
+    expect(body.inScope).toBe(false);
+    expect(sameShape(body, fixture('feature-detail.response.json'))).toEqual([]);
+  });
+
+  it('lista de contas bate com contracts/feature-usage/feature-tenants.response.json', async () => {
+    const body = presentFeatureUsageTenants(await useCases().tenants.execute({ ...INPUT, featureKey: 'offer_hunter', actorUserId: 'admin-1' }));
+    expect(body.items.length).toBeGreaterThan(0);
+    expect(sameShape(body, fixture('feature-tenants.response.json'))).toEqual([]);
+    const sample = fixture('feature-tenants.response.json') as { nextCursor: string | null };
+    expect(sameShape({ ...body, nextCursor: 'x' }, sample)).toEqual([]);
   });
 
   it('a comparação falha com campo a mais ou a menos', () => {
