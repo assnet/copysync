@@ -62,14 +62,38 @@ describe('ExportSavedContactsUseCase', () => {
     const { uc, memberships, entries } = setup();
     const file = await uc.execute({ actor: ADMIN, format: SaverExportFormat.CSV, groupIds: ['g1'], options: { prefix: ' VIP ' } });
     expect(file).toMatchObject({ fileName: 'contatos-2026-11-17.csv', total: 2, skippedWithoutPhone: 0 });
-    expect(entries).toHaveLength(1); // antes do primeiro byte
+    expect(entries).toHaveLength(0); // auditoria só ao fim do stream
     const lines = await collect(file.lines);
     expect(lines[0]).toMatch(/^﻿Nome,Telefone,LID,Extraído em\r\n$/);
     expect(lines[1]).toBe('VIP Vinculo 1,5511900000001,,17/11/2026 12:30\r\n');
     expect(lines[2]).toBe('VIP Vinculo 2,,999,17/11/2026 12:30\r\n');
     expect(memberships.countForExport).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't1', groupIds: ['g1'] }));
-    expect(entries[0]).toMatchObject({ tenantId: 't1', userId: 'a1', action: 'SAVER_EXPORTED', meta: { format: 'CSV', count: 2 } });
+    expect(entries[0]).toMatchObject({
+      tenantId: 't1', userId: 'a1', action: 'SAVER_EXPORTED',
+      meta: { format: 'CSV', count: 2, expectedCount: 2, completed: true },
+    });
     expect(JSON.stringify(entries)).not.toMatch(/Vinculo|5511900|999|VIP/);
+  });
+
+  it('download interrompido: auditoria com o que saiu e completed=false', async () => {
+    const { uc, entries } = setup({ rows: [[row(1), row(2), row(3)]], count: { total: 3, withPhone: 3, lidOnly: 0 } });
+    const file = await uc.execute({ actor: ADMIN, format: SaverExportFormat.CSV, groupIds: ['g1'] });
+    for await (const l of file.lines) {
+      if (l.includes('Vinculo 1')) break;
+    }
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.meta).toMatchObject({ count: 1, expectedCount: 3, completed: false });
+  });
+
+  it('erro no meio do stream também audita como incompleto', async () => {
+    const failing = () => (async function* () {
+      yield [row(1)];
+      throw new Error('db');
+    })();
+    const { uc, entries } = setup({ rows: failing, count: { total: 2, withPhone: 2, lidOnly: 0 } });
+    const file = await uc.execute({ actor: ADMIN, format: SaverExportFormat.CSV, groupIds: ['g1'] });
+    await expect(collect(file.lines)).rejects.toThrow('db');
+    expect(entries[0]!.meta).toMatchObject({ count: 1, completed: false });
   });
 
   it('vCard deixa só-LID fora e informa quantos', async () => {
