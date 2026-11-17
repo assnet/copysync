@@ -47,7 +47,10 @@ export function useSaverExtraction(id: string | null, initial?: SaverExtraction 
         if (isExtractionActive(next.status)) schedule();
       } catch (err) {
         if (stopped) return;
-        setError(describeSaverError(err));
+        const described = describeSaverError(err);
+        setError(described);
+        // Falha passageira não congela o progresso: tenta de novo no próximo intervalo (recusa definitiva para).
+        if (described.kind === 'serviceUnavailable' || described.kind === 'other') schedule();
       }
     };
 

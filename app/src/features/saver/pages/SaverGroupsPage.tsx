@@ -1,3 +1,4 @@
+import { useTenant } from '@/contexts/TenantContext';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, AlertTitle, Box, Button, CircularProgress, Stack, Tooltip, Typography } from '@mui/material';
 import { Download, EyeOff, MessageCircleOff, Plus, RefreshCw, Save, UsersRound, WifiOff } from 'lucide-react';
@@ -24,11 +25,14 @@ export const SAVER_SESSIONS_PATH = '/settings/sessions';
 export const SAVER_CONNECT_PATH = '/settings/sessions?create=1&returnTo=/saver';
 
 const g = s.groups;
-const KEY = 'saver.groups';
+const KEY_BASE = 'saver.groups';
 
 /** Grupos do Saver: escolher sessão, marcar grupos, acompanhar a leitura e ver os grupos salvos (só contagens). */
 export function SaverGroupsPage() {
   const navigate = useNavigate();
+  // Estado de trabalho por conta: sessão, seleção e extração de uma conta nunca valem em outra.
+  const { activeTenantId } = useTenant();
+  const KEY = `${KEY_BASE}.${activeTenantId ?? 'none'}`;
   const overview = useSaverOverview();
   const sessions = useSaverSessions();
   const saved = useSaverGroups();
@@ -134,8 +138,13 @@ export function SaverGroupsPage() {
   const canExport = ov?.permissions.export ?? false;
   const savedList = saved.data ?? [];
   const exportGroups = savedList.filter((x) => exportIds.includes(x.id));
-  const exportAll = exportGroups.length === 0;
-  const exportButton = canExport && savedList.length > 0 && (
+  // "Todos" só por escolha explícita (nenhum grupo marcado). Marcação que não existe mais na lista não vira "todos".
+  const exportAll = exportIds.length === 0;
+  const staleExport = exportIds.length > 0 && saved.data !== undefined && saved.data !== null && exportGroups.length !== exportIds.length;
+  useEffect(() => {
+    if (staleExport) setExportIds(exportGroups.map((x) => x.id));
+  }, [staleExport, exportGroups, setExportIds]);
+  const exportButton = canExport && savedList.length > 0 && (exportAll || exportGroups.length > 0) && (
     <Button variant="outlined" startIcon={<AppIcon icon={Download} size="sm" />} onClick={() => { setExported(null); setExportOpen(true); }}>
       {exportAll ? g.saved.exportAll : g.saved.exportSelected(exportGroups.length)}
     </Button>

@@ -139,12 +139,12 @@ describe('SaverGroupsPage', () => {
     expect(svc.requestExtraction).toHaveBeenCalledWith({ sessionId: 's1', groupJids: ['a@g.us'] });
     expect(await screen.findByText(g.progress.status.QUEUED!)).toBeInTheDocument();
     expect(screen.getByText(g.table.selected(0, 50))).toBeInTheDocument();
-    expect(window.sessionStorage.getItem('ui.saver.groups.selection')).toBeNull();
+    expect(window.sessionStorage.getItem('ui.saver.groups.t1.selection')).toBeNull();
   });
 
   it('progresso para de consultar ao terminar e recarrega os grupos salvos', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    writePersisted('saver.groups.extraction', 'e1');
+    writePersisted('saver.groups.t1.extraction', 'e1');
     svc.getExtraction
       .mockResolvedValueOnce(extraction('RUNNING', { doneGroups: 1, membersFound: 40 }))
       .mockResolvedValue(extraction('DONE', { doneGroups: 2, membersFound: 80, newContacts: 12 }));
@@ -159,7 +159,7 @@ describe('SaverGroupsPage', () => {
   });
 
   it('cancelar pede o cancelamento', async () => {
-    writePersisted('saver.groups.extraction', 'e1');
+    writePersisted('saver.groups.t1.extraction', 'e1');
     svc.getExtraction.mockResolvedValue(extraction('RUNNING'));
     svc.cancelExtraction.mockResolvedValue(extraction('CANCELLED'));
     const user = userEvent.setup();
@@ -239,5 +239,14 @@ describe('SaverGroupsPage', () => {
     await user.click(screen.getByRole('button', { name: g.saved.exportSelected(1) }));
     expect(await screen.findByRole('dialog', { name: s.exportDialog.title })).toBeInTheDocument();
     expect(screen.getByText(s.exportDialog.scopeSelected(1))).toBeInTheDocument();
+  });
+
+  it('marcação de grupo que não existe mais não vira "exportar todos"', async () => {
+    writePersisted('saver.groups.t1.exportSelection', ['sumiu', 'x']);
+    svc.listGroups.mockResolvedValue([savedGroup('x'), savedGroup('y')]);
+    svc.getOverview.mockResolvedValue(overview({ permissions: { view: true, extract: true, export: true, configure: false } }));
+    page();
+    expect(await screen.findByRole('button', { name: g.saved.exportSelected(1) })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: g.saved.exportAll })).not.toBeInTheDocument();
   });
 });
