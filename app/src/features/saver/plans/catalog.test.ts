@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SAVER_PLAN_CATALOG, saverAnnualTotal, saverPlanBySlug, saverPriceFor } from './catalog';
+import { SAVER_PLAN_CATALOG, saverAnnualTotal, saverCheckoutPath, saverPlanBySlug, saverPriceFor } from './catalog';
 import { saverPlansStrings as t } from './strings';
 
 describe('catálogo do Saver (vitrine)', () => {
@@ -39,5 +39,12 @@ describe('catálogo do Saver (vitrine)', () => {
     const all = JSON.stringify(t).toLowerCase();
     expect(all).not.toMatch(/todos os (números|nomes|contatos)|todo membro|100%|copysync|waio/);
     expect(t.hiddenNumber.body.toLowerCase()).toContain('escondem o número');
+  });
+});
+
+describe('saverCheckoutPath', () => {
+  it('monta o slug do link de redirecionamento por plano e período', () => {
+    expect(saverCheckoutPath('lite', 'monthly')).toBe('/redirect/saver-lite-mensal');
+    expect(saverCheckoutPath('max', 'annual')).toBe('/redirect/saver-max-anual');
   });
 });

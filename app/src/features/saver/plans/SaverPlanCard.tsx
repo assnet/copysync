@@ -1,10 +1,9 @@
 import { Box, Button, Chip, Divider, Paper, Stack, Tooltip, Typography } from '@mui/material';
 import { alpha } from '@mui/material/styles';
-import { Check, Info, MessageCircle } from 'lucide-react';
+import { Check, CreditCard, Info } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { formatPrice } from '@/features/plans/strings';
-import { SUPPORT_CHAT_PATH } from '@/features/platformLinks/links';
-import { saverAnnualTotal, saverPriceFor, type SaverBillingPeriod, type SaverPlanCatalogItem } from './catalog';
+import { saverAnnualTotal, saverCheckoutPath, saverPriceFor, type SaverBillingPeriod, type SaverPlanCatalogItem } from './catalog';
 import { saverPlansStrings as t } from './strings';
 
 interface Props {
@@ -91,12 +90,12 @@ export function SaverPlanCard({ plan, period, current, canSubscribe }: Props) {
               variant={plan.recommended ? 'contained' : 'outlined'}
               disableElevation
               component="a"
-              href={SUPPORT_CHAT_PATH}
+              href={saverCheckoutPath(plan.tier, period)}
               target="_blank"
               rel="noopener noreferrer"
-              startIcon={<AppIcon icon={MessageCircle} />}
+              startIcon={<AppIcon icon={CreditCard} />}
             >
-              {t.card.cta}
+              {t.card.cta(plan.name)}
             </Button>
           </Tooltip>
         ) : (

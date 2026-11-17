@@ -30,7 +30,11 @@ Planos `SAVER_LITE/PRO/MAX` (`tenants/domain/planPresets.ts`, `SAVER_PLAN_PRESET
   consome. Ao estourar → 403 `PLAN_LIMIT_REACHED`.
 - **Plano de Afiliados nunca dá Saver**: o produto exige linha `SAVER` ativa (cobrança ou concessão manual
   `PUT /admin/tenants/:tenantId/products/SAVER`). As compartilhadas só são gravadas pelo merge do acesso por produto.
-- Preço: só vitrine (`features/saver/plans/catalog.ts`, a criar), nunca no banco. Valores em
+- Compra: o botão "Assinar <plano>" da vitrine abre `/redirect/saver-<lite|pro|max>-<mensal|anual>` (`saverCheckoutPath`).
+  Os 6 links nascem na migration `20261117130000_add_saver_checkout_redirect_links` (só `INSERT … ON CONFLICT (slug) DO
+  NOTHING`: slug existente não é tocado) apontando para os checkouts Cakto, já ligados ao webhook da central. Trocar destino =
+  Plataforma → Links de redirecionamento, sem deploy.
+- Preço: só vitrine (`features/saver/plans/catalog.ts`), nunca no banco. Valores em
   [`produto-roadmap.md`](produto-roadmap.md#planos-do-saver-decisões-de-2026-11-10-2026-11-11-e-2026-11-17).
 
 ## Audiência "Só super admin"

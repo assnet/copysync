@@ -17,6 +17,18 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.100.1] — 2026-11-17 — Checkout do Saver por link de redirecionamento (app 0.123.1)
+
+### Added
+
+- **Migration `20261117130000_add_saver_checkout_redirect_links`** — 6 links `saver-{lite|pro|max}-{mensal|anual}` para os checkouts Cakto do Saver; só acrescenta (`ON CONFLICT (slug) DO NOTHING`), nunca altera slug existente.
+
+### Changed
+
+- **`features/saver/plans/SaverPlanCard.tsx`**, **`catalog.ts`** (`saverCheckoutPath`) — o botão da vitrine deixa de abrir o suporte e passa a abrir `/redirect/saver-<tier>-<período>` ("Assinar <plano>").
+
+---
+
 ## [0.100.0] — 2026-11-17 — Acesso por produto e módulo Saver (app 0.123.0)
 
 ### Added
