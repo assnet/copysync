@@ -1,4 +1,5 @@
-import type { PlanPresetValue, PlanSlug } from '../planPresets';
+import type { PlanPresetValue } from '../planPresets';
+import type { AnyPlanSlug } from '../planCatalog';
 
 export interface PlanEntitlementPresetRow {
   planSlug: string;
@@ -8,7 +9,8 @@ export interface PlanEntitlementPresetRow {
 }
 
 export interface SetPlanEntitlementInput {
-  planSlug: PlanSlug;
+  /** Afiliados ou produto novo (`ALL_PLAN_SLUGS`). */
+  planSlug: AnyPlanSlug;
   key: string;
   value: PlanPresetValue;
 }
@@ -17,8 +19,9 @@ export interface SetPlanEntitlementInput {
 export interface IPlanEntitlementPresetRepository {
   listByKeys(keys: readonly string[]): Promise<PlanEntitlementPresetRow[]>;
   /**
-   * Grava o preset e propaga o valor para `tenant_entitlements` de todos os tenants com esse `planSlug`,
-   * na mesma transação. Devolve quantos tenants receberam o valor.
+   * Grava o preset e propaga o valor para `tenant_entitlements` na mesma transação: plano de Afiliados =
+   * tenants com esse `Tenant.planSlug`; produto novo = linha ativa de `tenant_products` com o plano (chave
+   * compartilhada só pelo merge). Devolve quantos tenants foram alcançados.
    */
   setForPlan(input: SetPlanEntitlementInput): Promise<{ tenantsUpdated: number }>;
 }

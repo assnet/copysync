@@ -12,6 +12,7 @@ import { workerAdminRoutes } from '../modules/sessions/presentation/routes/worke
 import { opsMetricsRoutes } from '../modules/metrics/presentation/routes/opsMetrics.routes';
 import { infraCostsRoutes } from '../modules/metrics/presentation/routes/infraCosts.routes';
 import { planEntitlementAdminRoutes } from '../modules/tenants/presentation/routes/planEntitlementAdmin.routes';
+import { tenantProductAdminRoutes } from '../modules/tenants/presentation/routes/tenantProductAdmin.routes';
 import { chatRoutes } from '../modules/chat/presentation/routes/chat.routes';
 import { chatWsRoutes } from '../modules/chat/presentation/routes/chat.ws.routes';
 import {
@@ -115,6 +116,8 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
     prefix: `${env.API_PREFIX}/integrations/affiliate-credentials`,
   });
   await app.register(marketplaceRiskAdminRoutes, { prefix: `${env.API_PREFIX}/admin/tenants` });
+  // Concessão manual de produto (super admin); caminho próprio sob o mesmo prefixo
+  await app.register(tenantProductAdminRoutes, { prefix: `${env.API_PREFIX}/admin/tenants` });
 
   // ── Gerador de ofertas (auth + tenant scope required) ──────────────────────
   await app.register(withProduct('AFFILIATES', offerRoutes), { prefix: `${env.API_PREFIX}/campaigns/offers` });

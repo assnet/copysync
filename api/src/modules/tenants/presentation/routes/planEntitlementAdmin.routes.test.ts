@@ -20,6 +20,7 @@ vi.mock('../../../../shared/http/hooks/authHook', async () => {
 });
 
 const URL = '/api/admin/plan-entitlements';
+const SAVER_NULL = { SAVER_LITE: null, SAVER_PRO: null, SAVER_MAX: null };
 const PUT_OK = `${URL}/COPYSYNC_PRO/marketplace_shein_enabled`;
 let app: FastifyInstance;
 
@@ -55,20 +56,20 @@ describe('GET /admin/plan-entitlements', () => {
 
   it('super admin → 200 com planos e chaves', async () => {
     vi.spyOn(ListAdminPlanEntitlementsUseCase.prototype, 'execute').mockResolvedValue([
-      { key: 'marketplace_shein_enabled', type: { kind: 'boolean' }, plans: { COPYSYNC_LITE: null, COPYSYNC_PRO: false, COPYSYNC_MAX: true }, superAdminOnly: null },
-      { key: 'offer_hunter_finds_per_day', type: { kind: 'integer', min: 0, max: 100 }, plans: { COPYSYNC_LITE: 0, COPYSYNC_PRO: 0, COPYSYNC_MAX: 10 }, superAdminOnly: null },
-      { key: 'offer_hunter_enabled', type: { kind: 'boolean' }, plans: { COPYSYNC_LITE: false, COPYSYNC_PRO: false, COPYSYNC_MAX: true }, superAdminOnly: true },
+      { key: 'marketplace_shein_enabled', type: { kind: 'boolean' }, plans: { COPYSYNC_LITE: null, COPYSYNC_PRO: false, COPYSYNC_MAX: true, ...SAVER_NULL }, superAdminOnly: null },
+      { key: 'offer_hunter_finds_per_day', type: { kind: 'integer', min: 0, max: 100 }, plans: { COPYSYNC_LITE: 0, COPYSYNC_PRO: 0, COPYSYNC_MAX: 10, ...SAVER_NULL }, superAdminOnly: null },
+      { key: 'offer_hunter_enabled', type: { kind: 'boolean' }, plans: { COPYSYNC_LITE: false, COPYSYNC_PRO: false, COPYSYNC_MAX: true, ...SAVER_NULL }, superAdminOnly: true },
     ]);
     const res = await app.inject({ method: 'GET', url: URL });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
       success: true,
       data: {
-        plans: ['COPYSYNC_LITE', 'COPYSYNC_PRO', 'COPYSYNC_MAX'],
+        plans: ['COPYSYNC_LITE', 'COPYSYNC_PRO', 'COPYSYNC_MAX', 'SAVER_LITE', 'SAVER_PRO', 'SAVER_MAX'],
         entitlements: [
-          { key: 'marketplace_shein_enabled', type: { kind: 'boolean' }, plans: { COPYSYNC_LITE: null, COPYSYNC_PRO: false, COPYSYNC_MAX: true }, superAdminOnly: null },
-          { key: 'offer_hunter_finds_per_day', type: { kind: 'integer', min: 0, max: 100 }, plans: { COPYSYNC_LITE: 0, COPYSYNC_PRO: 0, COPYSYNC_MAX: 10 }, superAdminOnly: null },
-          { key: 'offer_hunter_enabled', type: { kind: 'boolean' }, plans: { COPYSYNC_LITE: false, COPYSYNC_PRO: false, COPYSYNC_MAX: true }, superAdminOnly: true },
+          { key: 'marketplace_shein_enabled', type: { kind: 'boolean' }, plans: { COPYSYNC_LITE: null, COPYSYNC_PRO: false, COPYSYNC_MAX: true, ...SAVER_NULL }, superAdminOnly: null },
+          { key: 'offer_hunter_finds_per_day', type: { kind: 'integer', min: 0, max: 100 }, plans: { COPYSYNC_LITE: 0, COPYSYNC_PRO: 0, COPYSYNC_MAX: 10, ...SAVER_NULL }, superAdminOnly: null },
+          { key: 'offer_hunter_enabled', type: { kind: 'boolean' }, plans: { COPYSYNC_LITE: false, COPYSYNC_PRO: false, COPYSYNC_MAX: true, ...SAVER_NULL }, superAdminOnly: true },
         ],
       },
     });
