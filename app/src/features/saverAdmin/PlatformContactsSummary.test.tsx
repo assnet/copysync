@@ -13,7 +13,7 @@ vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { isSuperAdmi
 import { PlatformContactsFooter } from './PlatformContactsFooter';
 import { PlatformContactsPage } from './PlatformContactsPage';
 import { saverAdminStrings as s } from './strings';
-import { EMPTY_PLATFORM_FILTERS } from './types';
+import { EMPTY_PLATFORM_FILTERS, normalizePlatformFilters } from './types';
 
 const contact = (id: string) => ({
   id, name: `Contato ${id}`, phone: `551198765000${id}`, lid: null, tenantCount: 1, groupCount: 1,
@@ -128,7 +128,7 @@ describe('filtros por país (DDI) e DDD', () => {
     await waitFor(() => expect(svc.listContacts).toHaveBeenCalledTimes(1));
     await user.click(screen.getByRole('combobox', { name: s.filters.ddi }));
     await user.click(await screen.findByRole('option', { name: s.filters.otherDdi }));
-    const input = screen.getByRole('textbox', { name: s.filters.customDdi });
+    const input = await screen.findByRole('textbox', { name: s.filters.customDdi });
     await user.type(input, '3a5');
     expect(input).toHaveValue('35');
     expect(await screen.findByText(s.filters.customDdiIncomplete)).toBeInTheDocument();
@@ -157,7 +157,7 @@ describe('filtros por país (DDI) e DDD', () => {
     await waitFor(() => expect(svc.listContacts).toHaveBeenCalledTimes(1));
     fireEvent.mouseDown(screen.getByRole('combobox', { name: s.filters.ddi }));
     fireEvent.click(await screen.findByRole('option', { name: s.filters.otherDdi }));
-    fireEvent.change(screen.getByRole('textbox', { name: s.filters.customDdi }), { target: { value: '353' } });
+    fireEvent.change(await screen.findByRole('textbox', { name: s.filters.customDdi }), { target: { value: '353' } });
     // Antes de o timer do DDI disparar, a conta muda.
     fireEvent.mouseDown(screen.getByRole('combobox', { name: s.filters.tenant }));
     fireEvent.click(await screen.findByRole('option', { name: 'Loja Verde' }));
@@ -179,6 +179,27 @@ describe('filtros por país (DDI) e DDD', () => {
     await waitFor(() => expect(lastFilters()).toEqual(EMPTY_PLATFORM_FILTERS));
     expect(screen.queryByText(s.filters.customDdiIncomplete)).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue('35')).not.toBeInTheDocument();
+    // O campo não fica preso em "Outro código" vazio: o seletor volta.
+    expect(screen.queryByRole('textbox', { name: s.filters.customDdi })).not.toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: s.filters.ddi })).toHaveTextContent(s.filters.allCountries);
+  });
+
+  it('código que nunca vira país (começa por 0) mostra erro, não ajuda; nada é aplicado', async () => {
+    const user = userEvent.setup();
+    page();
+    await waitFor(() => expect(svc.listContacts).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole('combobox', { name: s.filters.ddi }));
+    await user.click(await screen.findByRole('option', { name: s.filters.otherDdi }));
+    const input = await screen.findByRole('textbox', { name: s.filters.customDdi });
+    await user.type(input, '3');
+    expect(await screen.findByText(s.filters.customDdiIncomplete)).toBeInTheDocument();
+    expect(input).not.toHaveAttribute('aria-invalid', 'true');
+    await user.clear(input);
+    await user.type(input, '05');
+    expect(await screen.findByText(s.filters.customDdiInvalid)).toBeInTheDocument();
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    await new Promise((r) => setTimeout(r, 500));
+    expect(svc.listContacts).toHaveBeenCalledTimes(1);
   });
 
   it('país da lista digitado em "Outro código": o campo só vira seletor depois de perder o foco', async () => {
@@ -187,7 +208,7 @@ describe('filtros por país (DDI) e DDD', () => {
     await waitFor(() => expect(svc.listContacts).toHaveBeenCalledTimes(1));
     await user.click(screen.getByRole('combobox', { name: s.filters.ddi }));
     await user.click(await screen.findByRole('option', { name: s.filters.otherDdi }));
-    const input = screen.getByRole('textbox', { name: s.filters.customDdi });
+    const input = await screen.findByRole('textbox', { name: s.filters.customDdi });
     await user.type(input, '55');
     await waitFor(() => expect(lastFilters()).toEqual({ ...EMPTY_PLATFORM_FILTERS, ddi: '55' }), { timeout: 2000 });
     expect(screen.getByRole('textbox', { name: s.filters.customDdi })).toHaveValue('55');
@@ -234,6 +255,35 @@ describe('resumo e lista coerentes durante a troca de filtro', () => {
     expect(await screen.findByText(s.summary.dddTitle)).toBeInTheDocument();
     expect(await screen.findByText(s.table.showing('2', '3.600'))).toBeInTheDocument();
     expect(tile('summary-filtered').getByText(s.summary.shareOfBase('2,8%'))).toBeInTheDocument();
+  });
+
+  it('resumo de outros filtros na tela: barras desabilitadas; DDD nunca é gravado com país diferente do Brasil', async () => {
+    window.sessionStorage.setItem('ui.saverAdmin.filters', JSON.stringify({ v: 1, d: { ...EMPTY_PLATFORM_FILTERS, ddi: '55' } }));
+    svc.getSummary.mockReset();
+    svc.getSummary.mockResolvedValueOnce(BR_SUMMARY).mockImplementationOnce(() => new Promise(() => {}));
+    const user = userEvent.setup();
+    page();
+    expect(await screen.findByText(s.summary.dddTitle)).toBeInTheDocument();
+    for (const bar of screen.getAllByTestId('summary-bar')) expect(bar).toBeEnabled();
+
+    await user.click(screen.getByRole('combobox', { name: s.filters.ddi }));
+    await user.click(await screen.findByRole('option', { name: '+351 Portugal' }));
+    await waitFor(() => expect(lastFilters()).toEqual({ ...EMPTY_PLATFORM_FILTERS, ddi: '351' }));
+    // As barras de DDD do resumo antigo seguem na tela, mas não aplicam nada.
+    const stale = screen.getAllByTestId('summary-bar');
+    expect(stale).toHaveLength(2);
+    for (const bar of stale) expect(bar).toBeDisabled();
+    fireEvent.click(stale[0]!);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(lastFilters()).toEqual({ ...EMPTY_PLATFORM_FILTERS, ddi: '351' });
+    expect(JSON.parse(window.sessionStorage.getItem('ui.saverAdmin.filters')!).d).toMatchObject({ ddi: '351', ddd: '' });
+  });
+
+  it('normalização dos filtros: DDD só sobrevive com o Brasil', () => {
+    const br = { ...EMPTY_PLATFORM_FILTERS, ddi: '55', ddd: '11' };
+    expect(normalizePlatformFilters(br)).toBe(br);
+    expect(normalizePlatformFilters({ ...br, ddi: '351' })).toEqual({ ...EMPTY_PLATFORM_FILTERS, ddi: '351' });
+    expect(normalizePlatformFilters({ ...br, ddi: '' })).toEqual(EMPTY_PLATFORM_FILTERS);
   });
 
   it('um só anúncio por troca de filtro: o rodapé é a única região viva', async () => {

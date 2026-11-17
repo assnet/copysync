@@ -122,7 +122,10 @@ já em cache: `memberCount = size ?? participants.length`; `kind` por `isCommuni
   rodapé só na quantidade exibida. A contagem fica guardada com os filtros a que responde: durante a troca de
   filtro a tela mostra o resumo anterior inteiro (esmaecido) e o rodapé só usa o total quando ele é dos filtros da
   lista. Campos de filtro alteram o estado por atualização funcional (o DDI digitado é aplicado por timer de 400 ms
-  e não pode desfazer outra escolha). Nomes de país e região de DDD ficam em `strings.ts`.
+  e não pode desfazer outra escolha) e toda escrita passa por `updateFilters` da página, que aplica
+  `normalizePlatformFilters` (DDD só com `ddi = 55`, num lugar só). Barras ficam desabilitadas enquanto o resumo na
+  tela é de outros filtros. Código de país começando por 0 é recusado no painel e na API. Nomes de país e região de
+  DDD ficam em `strings.ts`.
 - Não fazer: `substring(phone, 1, 2)` para achar o DDI; `limit`/`offset` vindo do painel; borrar os indicadores
   como se fossem contato; tirar a auditoria do resumo; devolver contato no resumo; `trim` em `ddi`/`ddd` (o schema
   da rota já exige só dígitos); aceitar DDD com outro país; salvar lista ou

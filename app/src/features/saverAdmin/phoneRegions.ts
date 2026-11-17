@@ -15,7 +15,8 @@ const TWO_DIGIT_DDI = new Set([
 export const BRAZIL_DDI = '55';
 
 export function ddiOf(phone: string | null | undefined): string | null {
-  if (!phone || !/^\d+$/.test(phone)) return null;
+  // Nenhum código de país começa por 0.
+  if (!phone || !/^[1-9]\d*$/.test(phone)) return null;
   if (ONE_DIGIT_DDI.has(phone[0]!)) return phone[0]!;
   if (phone.length >= 2 && TWO_DIGIT_DDI.has(phone.slice(0, 2))) return phone.slice(0, 2);
   return phone.length >= 3 ? phone.slice(0, 3) : null;
@@ -24,6 +25,19 @@ export function ddiOf(phone: string | null | undefined): string | null {
 /** Código inteiro de país ("5" e "551" não são). */
 export function isCountryCode(ddi: string): boolean {
   return /^\d{1,3}$/.test(ddi) && ddiOf(ddi) === ddi;
+}
+
+export type CountryCodeDraft = 'empty' | 'valid' | 'incomplete' | 'invalid';
+
+/**
+ * Estado do código de país enquanto é digitado. `incomplete` ainda pode virar código com mais um dígito
+ * ("35" → "351"); `invalid` nunca vira: começa por 0, tem um código menor na frente ("12", "551") ou já
+ * tem 3 dígitos sem ser código.
+ */
+export function countryCodeDraft(draft: string): CountryCodeDraft {
+  if (draft === '') return 'empty';
+  if (isCountryCode(draft)) return 'valid';
+  return /^[1-9]\d?$/.test(draft) && ddiOf(draft) === null ? 'incomplete' : 'invalid';
 }
 
 /** Países do seletor, na ordem de exibição (Brasil primeiro). Nomes em `strings.ts`. */

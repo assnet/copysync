@@ -99,7 +99,7 @@ export function PlatformContactsFilters({ value, onChange, periodInvalid }: Prop
         variant="text"
         color="inherit"
         disabled={!dirty}
-        onClick={() => onChange(EMPTY_PLATFORM_FILTERS)}
+        onClick={() => onChange(() => EMPTY_PLATFORM_FILTERS)}
         startIcon={<AppIcon icon={Eraser} size="inline" />}
         sx={{ minHeight: 40, whiteSpace: 'nowrap', justifySelf: { xs: 'stretch', sm: 'start' }, gridColumn: { sm: '1 / -1', lg: 'auto' } }}
       >

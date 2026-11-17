@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { Box, IconButton, InputAdornment, MenuItem, TextField, Tooltip, Typography } from '@mui/material';
 import { AppIcon } from '@/components';
-import { BRAZIL_DDDS, BRAZIL_DDI, COMMON_DDIS, countryName, dddRegion, isCountryCode } from './phoneRegions';
+import { BRAZIL_DDDS, BRAZIL_DDI, COMMON_DDIS, countryCodeDraft, countryName, dddRegion, isCountryCode } from './phoneRegions';
 import { NUMERIC } from './platformContactsStyle';
 import { saverAdminStrings as s } from './strings';
 
@@ -26,16 +26,19 @@ const code = (text: string) => <Box component="span" sx={{ ...NUMERIC, fontWeigh
  *
  * O campo digitado tem rascunho próprio. `emitted` guarda o último DDI que ESTE campo aplicou: mudança do
  * filtro igual a ele é eco (o rascunho fica); qualquer outra veio de fora (barra dos indicadores, "Limpar
- * filtros", reload) e o campo acompanha. Rascunho incompleto some ao sair do campo, nunca fica texto órfão.
+ * filtros", reload) e o campo acompanha. Sair do campo sem código inteiro volta ao seletor: nunca fica texto
+ * órfão nem o campo preso vazio.
  */
 export function PlatformPhoneFilters({ ddi, ddd, onChange }: Props) {
   const listed = ddi === '' || COMMON_DDIS.includes(ddi);
   const [custom, setCustom] = useState(!listed);
   const [draft, setDraft] = useState(listed ? '' : ddi);
   const emitted = useRef<string | null>(null);
+  /** O usuário já digitou neste campo desde que ele abriu (sair sem ter digitado não fecha o campo). */
+  const touched = useRef(false);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
-  const incomplete = draft !== '' && !isCountryCode(draft);
+  const draftState = countryCodeDraft(draft);
 
   const emit = (next: string) => {
     emitted.current = next;
@@ -47,6 +50,7 @@ export function PlatformPhoneFilters({ ddi, ddd, onChange }: Props) {
     emitted.current = null;
     if (own) return;
     const other = ddi !== '' && !COMMON_DDIS.includes(ddi);
+    touched.current = false;
     setCustom(other);
     setDraft(other ? ddi : '');
   }, [ddi]);
@@ -62,8 +66,20 @@ export function PlatformPhoneFilters({ ddi, ddd, onChange }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft, custom]);
 
+  /**
+   * "Outro código…" só troca o seletor pelo campo DEPOIS que o menu termina de fechar: ao fechar, o menu
+   * devolve o foco ao seletor, e trocar antes disso tirava o foco do campo recém-criado (que, vazio e sem
+   * foco, voltava na hora para o seletor).
+   */
+  const wantCustom = useRef(false);
   const pick = (value: string) => {
-    if (value !== OTHER) return emit(value);
+    if (value === OTHER) wantCustom.current = true;
+    else emit(value);
+  };
+  const enterCustom = () => {
+    if (!wantCustom.current) return;
+    wantCustom.current = false;
+    touched.current = false;
     setCustom(true);
     setDraft('');
     if (ddi) emit('');
@@ -73,10 +89,16 @@ export function PlatformPhoneFilters({ ddi, ddd, onChange }: Props) {
     setDraft('');
     if (ddi) emit('');
   };
-  /** Ao sair do campo: rascunho incompleto some; país que está na lista volta a aparecer no seletor. */
+  /**
+   * Ao sair do campo sem um código inteiro (vazio, pela metade ou inválido): volta ao seletor e o filtro
+   * de país zera na hora, sem esperar o timer (vale depois que o usuário digitou algo). País que está na lista também volta a aparecer no seletor.
+   */
   const leaveField = () => {
-    if (incomplete) return setDraft('');
-    if (draft !== '' && draft === ddi && COMMON_DDIS.includes(draft)) {
+    if (draftState !== 'valid') {
+      // Só depois de o usuário ter digitado: a perda de foco de quando o campo acaba de abrir (o menu do
+      // seletor devolvendo o foco) não pode fechá-lo.
+      if (touched.current) backToList();
+    } else if (draft === ddi && COMMON_DDIS.includes(draft)) {
       setCustom(false);
       setDraft('');
     }
@@ -92,9 +114,10 @@ export function PlatformPhoneFilters({ ddi, ddd, onChange }: Props) {
           placeholder={s.filters.customDdiPlaceholder}
           value={draft}
           autoFocus={draft === ''}
-          onChange={(e) => setDraft(e.target.value.replace(/\D+/g, '').slice(0, 3))}
+          onChange={(e) => { touched.current = true; setDraft(e.target.value.replace(/\D+/g, '').slice(0, 3)); }}
           onBlur={leaveField}
-          helperText={incomplete ? s.filters.customDdiIncomplete : undefined}
+          error={draftState === 'invalid'}
+          helperText={draftState === 'invalid' ? s.filters.customDdiInvalid : draftState === 'incomplete' ? s.filters.customDdiIncomplete : undefined}
           inputProps={{ inputMode: 'numeric', 'aria-label': s.filters.customDdi }}
           InputLabelProps={{ shrink: true }}
           InputProps={{
@@ -119,7 +142,7 @@ export function PlatformPhoneFilters({ ddi, ddd, onChange }: Props) {
             InputLabelProps={{ shrink: true }}
             SelectProps={{
               displayEmpty: true,
-              MenuProps: { PaperProps: { sx: { maxHeight: 360 } } },
+              MenuProps: { PaperProps: { sx: { maxHeight: 360 } }, TransitionProps: { onExited: enterCustom } },
               renderValue: (v) => (v ? `+${String(v)} ${countryName(String(v))}` : s.filters.allCountries),
             }}
           >

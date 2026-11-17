@@ -53,14 +53,14 @@ function Tile({ label, hint, value, note, tone, loading, testId }: TileProps) {
 
 interface Bar { value: string; code: string; name: string; count: number; active: boolean; action: string }
 
-function Distribution({ title, bars, base, onPick }: { title: string; bars: Bar[]; base: number; onPick: (code: string) => void }) {
+function Distribution({ title, bars, base, disabled, onPick }: { title: string; bars: Bar[]; base: number; disabled: boolean; onPick: (code: string) => void }) {
   const theme = useTheme();
   const max = Math.max(...bars.map((b) => b.count), 1);
   return (
     <Box component="section" aria-label={title} sx={{ p: { xs: 1.75, sm: 2.25 }, minWidth: 0 }}>
       <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', columnGap: 2 }}>
         <Typography component="h3" variant="body2" color="text.secondary">{title}</Typography>
-        {bars.length > 0 && <Typography variant="caption" color="text.secondary">{s.summary.distributionHint}</Typography>}
+        {bars.length > 0 && <Typography variant="caption" color="text.secondary">{disabled ? s.summary.updating : s.summary.distributionHint}</Typography>}
       </Box>
       {bars.length === 0 ? (
         <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>{s.summary.distributionEmpty}</Typography>
@@ -71,8 +71,10 @@ function Distribution({ title, bars, base, onPick }: { title: string; bars: Bar[
             const share = formatShare(b.count, base);
             return (
               <Box component="li" key={b.value} sx={{ breakInside: 'avoid', py: 0.125 }}>
-                <Tooltip title={b.active ? s.summary.removeFilter : b.action} arrow placement="top" describeChild>
+                {/* Resumo de outros filtros (carregando o novo): a barra não aplica nada; sem Tooltip em botão desabilitado. */}
+                <Tooltip title={disabled ? '' : b.active ? s.summary.removeFilter : b.action} arrow placement="top" describeChild>
                   <ButtonBase
+                    disabled={disabled}
                     onClick={() => onPick(b.active ? '' : b.value)}
                     aria-pressed={b.active}
                     aria-label={`${b.action}. ${s.summary.barValue(b.count, share)}`}
@@ -186,7 +188,7 @@ export function PlatformContactsSummary({ state, onPickDdi, onPickDdd }: Props) 
         )}
       </Box>
       {dist && ready ? (
-        <Distribution title={dist.title} bars={dist.list} base={dist.byDdd ? data.dddBase : data.ddiBase} onPick={dist.byDdd ? onPickDdd : onPickDdi} />
+        <Distribution title={dist.title} bars={dist.list} base={dist.byDdd ? data.dddBase : data.ddiBase} disabled={!state.current} onPick={dist.byDdd ? onPickDdd : onPickDdi} />
       ) : (
         <Box sx={{ p: { xs: 1.75, sm: 2.25 } }} data-testid="summary-distribution-loading">
           <Box component="span" sx={VISUALLY_HIDDEN}>{s.summary.updating}</Box>

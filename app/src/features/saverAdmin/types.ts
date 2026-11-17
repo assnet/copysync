@@ -62,6 +62,14 @@ export interface PlatformContactFilters {
 
 export const EMPTY_PLATFORM_FILTERS: PlatformContactFilters = { search: '', tenantId: '', from: '', to: '', ddi: '', ddd: '' };
 
+/**
+ * Invariantes dos filtros, num lugar só: DDD só existe com o Brasil (`ddi = 55`). Todo caminho que altera os
+ * filtros na tela passa por aqui (ver `updateFilters` da página), então nenhum campo precisa repetir a regra.
+ */
+export function normalizePlatformFilters(f: PlatformContactFilters): PlatformContactFilters {
+  return f.ddi !== '55' && f.ddd !== '' ? { ...f, ddd: '' } : f;
+}
+
 /** `GET /admin/saver/contacts/summary`: só contagens agregadas (nenhum dado de contato). */
 export interface PlatformContactsSummary {
   /** Contatos da base inteira, sem filtro. */

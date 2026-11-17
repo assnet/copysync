@@ -1,5 +1,4 @@
-import { useId } from 'react';
-import { ChevronRight, Info } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import {
   Box, ButtonBase, Chip, IconButton, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography,
   useMediaQuery, useTheme,
@@ -18,22 +17,23 @@ interface Props {
 }
 
 /**
- * Cabeçalho com dica: a dica é texto oculto ligado à coluna por `aria-describedby`; o ícone é só o alvo do
- * Tooltip (mouse e teclado) e fica fora da árvore de acessibilidade.
+ * Cabeçalho com dica: mesmo padrão do `HeaderHint` dos Custos (rótulo sublinhado pontilhado com Tooltip
+ * `describeChild`). Um só caminho para leitor de tela: o nome da coluna é o rótulo e a dica é a descrição
+ * dele; sem ícone focável nem texto repetido.
  */
 function HeadWithHint({ label, hint, align }: { label: string; hint: string; align?: 'right' }) {
-  const hintId = useId();
+  const theme = useTheme();
   return (
-    <TableCell align={align} aria-describedby={hintId}>
-      <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
-        {label}
-        <Tooltip title={hint} arrow describeChild>
-          <Box component="span" tabIndex={0} role="img" aria-labelledby={hintId} sx={{ display: 'inline-flex', color: 'text.secondary', cursor: 'help', borderRadius: '4px' }}>
-            <AppIcon icon={Info} size="inline" />
-          </Box>
-        </Tooltip>
-        <Box component="span" id={hintId} sx={VISUALLY_HIDDEN}>{hint}</Box>
-      </Box>
+    <TableCell align={align}>
+      <Tooltip title={hint} arrow enterTouchDelay={0} describeChild>
+        <Box
+          component="span"
+          tabIndex={0}
+          sx={{ borderBottom: 1, borderBottomStyle: 'dotted', borderBottomColor: 'text.disabled', cursor: 'help', borderRadius: '2px', ...focusRingSx(theme) }}
+        >
+          {label}
+        </Box>
+      </Tooltip>
     </TableCell>
   );
 }

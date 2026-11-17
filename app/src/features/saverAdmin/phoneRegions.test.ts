@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { toPlatformFilterParams } from '@/services/saverAdmin.service';
-import { BRAZIL_DDDS, COMMON_DDIS, ddiOf, isCountryCode, splitPhone } from './phoneRegions';
+import { BRAZIL_DDDS, COMMON_DDIS, countryCodeDraft, ddiOf, isCountryCode, splitPhone } from './phoneRegions';
 import { formatCount, formatShare } from './format';
 import { EMPTY_PLATFORM_FILTERS } from './types';
 
@@ -10,7 +10,15 @@ describe('phoneRegions', () => {
     expect(ddiOf('14155550100')).toBe('1');
     expect(ddiOf('351912345678')).toBe('351');
     expect(['1', '55', '351'].every(isCountryCode)).toBe(true);
-    expect(['5', '551', '12', '', 'x'].some(isCountryCode)).toBe(false);
+    expect(['5', '551', '12', '', 'x', '0', '00', '055', '099'].some(isCountryCode)).toBe(false);
+    expect(ddiOf('0551199990000')).toBeNull();
+  });
+
+  it('código digitado: incompleto ainda pode completar; inválido nunca', () => {
+    expect(countryCodeDraft('')).toBe('empty');
+    expect(['1', '55', '353'].map(countryCodeDraft)).toEqual(['valid', 'valid', 'valid']);
+    expect(['3', '35', '5', '21'].map(countryCodeDraft)).toEqual(['incomplete', 'incomplete', 'incomplete', 'incomplete']);
+    expect(['0', '00', '05', '12', '551', '70'].map(countryCodeDraft)).toEqual(Array(6).fill('invalid'));
   });
 
   it('Brasil primeiro na lista; 67 DDDs em ordem', () => {

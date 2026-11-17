@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type SetStateAction } from 'react';
 import { Contact, Download, SearchX } from 'lucide-react';
 import { Alert, Box, Button, CircularProgress, Skeleton, Snackbar, Stack, Tooltip, Typography } from '@mui/material';
 import { AppIcon, EmptyState, PageHeader } from '@/components';
@@ -13,7 +13,7 @@ import { PlatformContactsFooter } from './PlatformContactsFooter';
 import { PlatformContactsSummary } from './PlatformContactsSummary';
 import { PlatformContactsTable } from './PlatformContactsTable';
 import { saverAdminStrings as s } from './strings';
-import { EMPTY_PLATFORM_FILTERS, type PlatformContactFilters } from './types';
+import { EMPTY_PLATFORM_FILTERS, normalizePlatformFilters, type PlatformContactFilters } from './types';
 import { usePlatformContacts } from './usePlatformContacts';
 import { usePlatformContactsSummary } from './usePlatformContactsSummary';
 
@@ -27,6 +27,15 @@ export const SEARCH_DEBOUNCE_MS = 400;
  */
 export function PlatformContactsPage() {
   const [filters, setFilters] = usePersistedState<PlatformContactFilters>('saverAdmin.filters', EMPTY_PLATFORM_FILTERS, { version: 1 });
+  /**
+   * Único caminho de escrita dos filtros (campos, barras dos indicadores, "Limpar"): sempre sobre o valor mais
+   * recente e sempre normalizado (DDD só com o Brasil), venha a alteração de onde vier.
+   */
+  const updateFilters = useCallback(
+    (action: SetStateAction<PlatformContactFilters>) =>
+      setFilters((prev) => normalizePlatformFilters(typeof action === 'function' ? action(prev) : action)),
+    [setFilters],
+  );
   const [openId, setOpenId] = usePersistedState<string | null>('saverAdmin.openContact', null);
   const [search, setSearch] = useState(filters.search);
   const [exporting, setExporting] = useState(false);
@@ -84,11 +93,11 @@ export function PlatformContactsPage() {
       <Stack gap={3}>
         <PlatformContactsSummary
           state={summary}
-          onPickDdi={(ddi) => setFilters((prev) => ({ ...prev, ddi, ddd: '' }))}
-          onPickDdd={(ddd) => setFilters((prev) => ({ ...prev, ddd }))}
+          onPickDdi={(ddi) => updateFilters((prev) => ({ ...prev, ddi, ddd: '' }))}
+          onPickDdd={(ddd) => updateFilters((prev) => ({ ...prev, ddd }))}
         />
 
-        <PlatformContactsFilters value={filters} onChange={setFilters} periodInvalid={periodInvalid} />
+        <PlatformContactsFilters value={filters} onChange={updateFilters} periodInvalid={periodInvalid} />
 
         {list.restarted && <Alert severity="info">{s.error.cursorRestarted}</Alert>}
 
@@ -109,7 +118,7 @@ export function PlatformContactsPage() {
               icon={<AppIcon icon={SearchX} size="lg" />}
               title={s.empty.filteredTitle}
               description={s.empty.filteredDescription}
-              action={<Button onClick={() => setFilters(EMPTY_PLATFORM_FILTERS)}>{s.filters.clear}</Button>}
+              action={<Button onClick={() => updateFilters(() => EMPTY_PLATFORM_FILTERS)}>{s.filters.clear}</Button>}
             />
           ) : (
             <EmptyState icon={<AppIcon icon={Contact} size="lg" />} title={s.empty.title} description={s.empty.description} />
