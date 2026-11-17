@@ -97,6 +97,8 @@ export interface SaverExtractionItem {
   lockedUntil: Date | null;
   errorCode: string | null;
   finishedAt: Date | null;
+  /** Hora do pedido; base do teto de idade dos adiamentos. */
+  createdAt: Date;
 }
 
 /** Ritmo do Saver por sessão, no banco (sem estado operacional só em memória). */

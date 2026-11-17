@@ -14,6 +14,9 @@ import type { ProcessNextSaverItemDeps } from './ProcessNextSaverItemUseCase';
 
 /** Fakes em memória dos contratos do Saver para testes de use case (sem banco). */
 
+/** Hora padrão do pedido nos fakes (o `NOW` dos testes do passo). */
+export const FAKE_ITEM_CREATED_AT = new Date('2026-11-17T12:00:00.000Z');
+
 const PENDING = new Set<string>([SaverExtractionItemStatus.QUEUED, SaverExtractionItemStatus.RUNNING]);
 
 export class FakeSaverQueue implements ISaverExtractionQueue {
@@ -39,7 +42,7 @@ export class FakeSaverQueue implements ISaverExtractionQueue {
     }
     const item: SaverExtractionItem = {
       extractionId, status: SaverExtractionItemStatus.QUEUED, attempts: 0, nextAttemptAt: new Date(0),
-      lockedUntil: null, errorCode: null, finishedAt: null, ...partial,
+      lockedUntil: null, errorCode: null, finishedAt: null, createdAt: FAKE_ITEM_CREATED_AT, ...partial,
     };
     this.extractions.find((e) => e.id === extractionId)!.totalGroups += 1;
     this.items.push(item);

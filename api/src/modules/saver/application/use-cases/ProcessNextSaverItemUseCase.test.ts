@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ProcessNextSaverItemUseCase,
   SAVER_DISCONNECTED_RETRY_MS,
+  SAVER_ITEM_MAX_AGE_MS,
   SAVER_PAUSE_MS,
 } from './ProcessNextSaverItemUseCase';
 import { makeSaverStepHarness, member, type SaverStepHarness } from './saverTestFakes';
@@ -251,6 +252,42 @@ describe('ProcessNextSaverItemUseCase', () => {
     };
     await run(h);
     expect(item(h).status).toBe(I.CANCELLED);
+  });
+
+  describe('teto de idade dos adiamentos', () => {
+    const OLD = new Date(NOW.getTime() - SAVER_ITEM_MAX_AGE_MS);
+    const old = (h: SaverStepHarness) => { item(h).createdAt = OLD; };
+
+    it('sessão desconectada há mais de 24 h desde o pedido → FAILED com o código atual', async () => {
+      const h = setup();
+      old(h);
+      h.reads.set('g1@g.us', new SessionNotConnectedError(S));
+      expect((await run(h)).outcomes[0]!.outcome).toBe('FAILED');
+      expect(item(h)).toMatchObject({ status: I.FAILED, errorCode: 'SESSION_NOT_CONNECTED' });
+      expect(extraction(h).status).toBe(E.FAILED);
+    });
+
+    it('limite de taxa e conflito também param no teto', async () => {
+      const rate = setup();
+      old(rate);
+      rate.reads.set('g1@g.us', new EngineRateLimitedError());
+      await run(rate);
+      expect(item(rate)).toMatchObject({ status: I.FAILED, errorCode: 'ENGINE_RATE_LIMITED' });
+
+      const conflict = setup();
+      old(conflict);
+      conflict.store.applyError = new ConcurrentWriteConflictError('SaverContact');
+      await run(conflict);
+      expect(item(conflict)).toMatchObject({ status: I.FAILED, errorCode: 'CONCURRENT_WRITE_CONFLICT' });
+    });
+
+    it('dentro das 24 h segue adiando', async () => {
+      const h = setup();
+      item(h).createdAt = new Date(NOW.getTime() - SAVER_ITEM_MAX_AGE_MS + 1);
+      h.reads.set('g1@g.us', new SessionNotConnectedError(S));
+      await run(h);
+      expect(item(h).status).toBe(I.QUEUED);
+    });
   });
 
   it('fechamento: um DONE e um FAILED → PARTIAL', async () => {

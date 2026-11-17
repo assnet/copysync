@@ -28,11 +28,11 @@ describe('PrismaSaverMapper', () => {
     expect(ext).toMatchObject({ trigger: 'AUTO', status: 'PARTIAL', newContacts: 4 });
     const item = PrismaSaverMapper.item({
       id: 'i', extractionId: 'e', tenantId: 't', sessionId: 's', groupId: 'g', status: 'RUNNING', attempts: 1,
-      nextAttemptAt: at, lockedUntil: at, errorCode: null, finishedAt: null,
+      nextAttemptAt: at, lockedUntil: at, errorCode: null, finishedAt: null, createdAt: at,
     });
     expect(item).toEqual({
       id: 'i', extractionId: 'e', tenantId: 't', sessionId: 's', groupId: 'g', status: 'RUNNING', attempts: 1,
-      nextAttemptAt: at, lockedUntil: at, errorCode: null, finishedAt: null,
+      nextAttemptAt: at, lockedUntil: at, errorCode: null, finishedAt: null, createdAt: at,
     });
   });
 

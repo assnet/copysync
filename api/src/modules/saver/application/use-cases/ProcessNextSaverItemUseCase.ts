@@ -23,6 +23,11 @@ export const SAVER_PAUSE_MS = 15 * 60_000;
 /** Corrida perdida com outra gravação (outro tenant): repete logo, sem contar tentativa. */
 export const SAVER_CONFLICT_RETRY_MS = 5_000;
 export const SAVER_MAX_ATTEMPTS = 3;
+/**
+ * Teto de idade dos adiamentos sem tentativa (sessão desconectada, limite de taxa, conflito, leitura do
+ * acesso): item pedido há mais que isso vira FAILED com o código atual, para não prender o índice de pendente.
+ */
+export const SAVER_ITEM_MAX_AGE_MS = 24 * 60 * 60_000;
 export const SAVER_BACKOFF_BASE_MS = 30_000;
 
 /** Motivos gravados em `errorCode`/`pauseReason` (nunca texto cru do engine). */
@@ -125,8 +130,7 @@ export class ProcessNextSaverItemUseCase {
         (await queue.requestedBySuperAdmin(item.extractionId));
     } catch {
       // Leitura do acesso falhou: não decide nada, devolve sem contar tentativa.
-      await this.requeue(item, now, SAVER_DISCONNECTED_RETRY_MS, item.attempts, null);
-      return 'RETRY';
+      return this.requeue(item, now, SAVER_DISCONNECTED_RETRY_MS, item.attempts, null, 'RETRY', 'UNEXPECTED');
     }
     if (!active) {
       // Cancela os pendentes do tenant, menos pedidos de super admin (esses seguem pela regra acima).
@@ -204,8 +208,7 @@ export class ProcessNextSaverItemUseCase {
   private async handleError(item: SaverExtractionItem, now: Date, err: unknown): Promise<SaverItemOutcome> {
     const code = err instanceof AppError ? err.code : null;
     if (code && DISCONNECTED_CODES.has(code)) {
-      await this.requeue(item, now, SAVER_DISCONNECTED_RETRY_MS, item.attempts, null);
-      return 'DISCONNECTED';
+      return this.requeue(item, now, SAVER_DISCONNECTED_RETRY_MS, item.attempts, null, 'DISCONNECTED', code);
     }
     if (code === 'ENGINE_RATE_LIMITED' || code === 'ENGINE_TEMPORARILY_UNAVAILABLE') {
       const until = new Date(now.getTime() + SAVER_PAUSE_MS);
@@ -215,19 +218,16 @@ export class ProcessNextSaverItemUseCase {
       const rateLimited = code === 'ENGINE_RATE_LIMITED';
       const attempts = rateLimited ? item.attempts : item.attempts + 1;
       if (!rateLimited && attempts >= SAVER_MAX_ATTEMPTS) return this.fail(item, now, code, attempts);
-      await this.requeue(item, now, SAVER_PAUSE_MS, attempts, code);
-      return 'PAUSED';
+      return this.requeue(item, now, SAVER_PAUSE_MS, attempts, code, 'PAUSED');
     }
     if (code === 'CONCURRENT_WRITE_CONFLICT') {
-      await this.requeue(item, now, SAVER_CONFLICT_RETRY_MS, item.attempts, code);
-      return 'CONFLICT';
+      return this.requeue(item, now, SAVER_CONFLICT_RETRY_MS, item.attempts, code, 'CONFLICT');
     }
     const errorCode = code ?? 'UNEXPECTED';
     if (code && DEFINITIVE_CODES.has(code)) return this.fail(item, now, errorCode, item.attempts + 1);
     const attempts = item.attempts + 1;
     if (attempts >= SAVER_MAX_ATTEMPTS) return this.fail(item, now, errorCode, attempts);
-    await this.requeue(item, now, SAVER_BACKOFF_BASE_MS * 2 ** attempts, attempts, errorCode);
-    return 'RETRY';
+    return this.requeue(item, now, SAVER_BACKOFF_BASE_MS * 2 ** attempts, attempts, errorCode, 'RETRY');
   }
 
   private async fail(item: SaverExtractionItem, now: Date, errorCode: string, attempts: number): Promise<SaverItemOutcome> {
@@ -250,14 +250,25 @@ export class ProcessNextSaverItemUseCase {
     return this.release(item, { status, attempts, nextAttemptAt: now, errorCode, finishedAt: now });
   }
 
-  private requeue(item: SaverExtractionItem, now: Date, delayMs: number, attempts: number, errorCode: string | null): Promise<void> {
-    return this.release(item, {
+  /** Devolve o item à fila; passou do teto de idade = FAILED com o código atual (`expiredCode`). */
+  private async requeue(
+    item: SaverExtractionItem,
+    now: Date,
+    delayMs: number,
+    attempts: number,
+    errorCode: string | null,
+    outcome: SaverItemOutcome,
+    expiredCode: string = errorCode ?? 'UNEXPECTED',
+  ): Promise<SaverItemOutcome> {
+    if (now.getTime() - item.createdAt.getTime() >= SAVER_ITEM_MAX_AGE_MS) return this.fail(item, now, expiredCode, attempts);
+    await this.release(item, {
       status: SaverExtractionItemStatus.QUEUED,
       attempts,
       nextAttemptAt: new Date(now.getTime() + delayMs),
       errorCode,
       finishedAt: null,
     });
+    return outcome;
   }
 
   /** Desfecho só do dono do claim; cancelado no meio do caminho fica cancelado. */
