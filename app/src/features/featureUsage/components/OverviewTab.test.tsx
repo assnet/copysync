@@ -12,7 +12,6 @@ import type { UsageFeatureItem, UsageFeatureKey, UsageFilters, UsageSummary } fr
 import OverviewTab from './OverviewTab';
 
 // O x-charts não carrega no jsdom (ESM do @mui/material/styles): o gráfico vira um marcador; os números estão nos rótulos e nas tabelas.
-vi.mock('@mui/x-charts/BarChart', () => ({ BarChart: () => <div data-testid="bar-chart" /> }));
 vi.mock('@mui/x-charts/LineChart', () => ({ LineChart: () => <div data-testid="line-chart" /> }));
 vi.mock('@/services/adminUsage.service', () => ({
   adminUsageService: { getSummary: vi.fn(), getDetail: vi.fn(), getTenants: vi.fn() },
@@ -122,6 +121,10 @@ describe('OverviewTab', () => {
     renderTab(summary);
     const region = await ranking();
     expect(within(region).getAllByRole('listitem')).toHaveLength(12);
+    // Barra proporcional ao maior valor da ordenação (contas): 14 → 100%, 7 → 50%.
+    const bars = within(region).getAllByTestId('ranking-bar');
+    expect(getComputedStyle(bars[0]).width).toBe('100%');
+    expect(getComputedStyle(bars[7]).width).toBe('50%');
     await user.click(within(region).getByRole('button', { name: S.actions.seeAll(14) }));
     expect(within(within(region).getByRole('table')).getAllByRole('row')).toHaveLength(15);
   });

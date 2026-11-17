@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   Box, Button, Card, Chip, Divider, Link, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   ToggleButton, ToggleButtonGroup, Tooltip, Typography, useTheme,
 } from '@mui/material';
-import { BarChart } from '@mui/x-charts/BarChart';
 import { ChartBarBig, Minus, Table2, TrendingDown, TrendingUp } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { usePersistedState } from '@/hooks/usePersistedState';
@@ -19,8 +18,6 @@ import type { UsageFeatureItem, UsageSort } from '../types';
 import { CoverageChip } from './CoverageChip';
 
 const r = S.ranking;
-/** Altura de cada linha do ranking: o rótulo (HTML) e a barra (svg) dividem a mesma faixa. */
-const ROW_HEIGHT = 52;
 type RankingView = 'chart' | 'table';
 const parseView = (raw: unknown): RankingView => (raw === 'table' ? 'table' : 'chart');
 
@@ -62,7 +59,8 @@ function TrendText({ feature }: { feature: Pick<UsageFeatureItem, 'uses' | 'uses
   );
 }
 
-function FeatureLink({ feature, children }: { feature: Pick<UsageFeatureItem, 'key'>; children: ReactNode }) {
+/** `wrap`: o nome quebra linha em vez de cortar com reticências (ranking no celular). */
+function FeatureLink({ feature, children, wrap = false }: { feature: Pick<UsageFeatureItem, 'key'>; children: ReactNode; wrap?: boolean }) {
   return (
     <Link
       component={RouterLink}
@@ -70,25 +68,26 @@ function FeatureLink({ feature, children }: { feature: Pick<UsageFeatureItem, 'k
       underline="hover"
       color="text.primary"
       aria-label={S.actions.openDetail(featureLabel(feature.key))}
-      sx={{ fontWeight: 600, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+      sx={wrap ? { fontWeight: 600, minWidth: 0, overflowWrap: 'anywhere' }
+        : { fontWeight: 600, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
     >
       {children}
     </Link>
   );
 }
 
-/** Rótulo de uma barra: nome (abre o detalhe), tipos, aviso de parcial; abaixo, contas · usos e tendência. */
+/** Rótulo de uma barra: nome (abre o detalhe), aviso de parcial; abaixo, contas · usos, tendência e tipos. Quebra linha. */
 function RankingLabel({ feature }: { feature: UsageFeatureItem }) {
   return (
-    <Stack sx={{ height: ROW_HEIGHT, justifyContent: 'center', minWidth: 0, pr: 1 }}>
-      <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', minWidth: 0 }}>
-        <FeatureLink feature={feature}>{featureLabel(feature.key)}</FeatureLink>
+    <Stack spacing={0.25} sx={{ minWidth: 0 }}>
+      <Stack direction="row" useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap', columnGap: 0.5, rowGap: 0.25, minWidth: 0 }}>
+        <FeatureLink feature={feature} wrap>{featureLabel(feature.key)}</FeatureLink>
         <CoverageChip feature={feature} />
       </Stack>
       <Stack
         direction="row"
-        spacing={0.75}
-        sx={{ alignItems: 'center', minWidth: 0, overflow: 'hidden', color: 'text.secondary', typography: 'caption' }}
+        useFlexGap
+        sx={{ alignItems: 'center', flexWrap: 'wrap', columnGap: 0.75, rowGap: 0.25, minWidth: 0, color: 'text.secondary', typography: 'caption' }}
       >
         <Box component="span" sx={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
           {r.barValue(formatCount(feature.activeTenants), formatCount(feature.uses))}
@@ -100,46 +99,47 @@ function RankingLabel({ feature }: { feature: UsageFeatureItem }) {
   );
 }
 
-/** Barras horizontais alinhadas às linhas do rótulo. Só visual: os números estão nos rótulos e na tabela. */
-function RankingBars({ features, sort }: { features: UsageFeatureItem[]; sort: UsageSort }) {
-  const theme = useTheme();
+/**
+ * Barra horizontal de uma linha (CSS, não svg: a linha cresce quando o rótulo quebra e a barra acompanha). Só visual:
+ * os números estão no rótulo e na tabela; o caminho por teclado é o nome do recurso.
+ */
+function RankingBar({ feature, value, max, color }: { feature: UsageFeatureItem; value: number; max: number; color: string }) {
   const navigate = useNavigate();
-  const plotRef = useRef<HTMLDivElement>(null);
-  const color = chartColors(theme.palette.mode).ordered[0];
-  const values = features.map((f) => (sort === 'tenants' ? f.activeTenants : f.uses));
-  // O svg do gráfico entraria na ordem do Tab; o caminho por teclado é o nome do recurso ao lado.
-  useEffect(() => {
-    plotRef.current?.querySelectorAll('svg').forEach((svg) => svg.setAttribute('tabindex', '-1'));
-  });
+  const pct = max > 0 ? (value / max) * 100 : 0;
   return (
-    <Box ref={plotRef} aria-hidden sx={{ minWidth: 0 }}>
-      <BarChart
-        height={features.length * ROW_HEIGHT}
-        layout="horizontal"
-        skipAnimation
-        borderRadius={4}
-        hideLegend
-        series={[{
-          id: 'ranking',
-          data: values,
-          color,
-          label: sort === 'tenants' ? r.tenantsAxis : r.usesAxis,
-          valueFormatter: (v: number | null) => (v == null ? null : formatInteger(v)),
-        }]}
-        yAxis={[{
-          scaleType: 'band',
-          data: features.map((f) => featureLabel(f.key)),
-          position: 'none',
-          categoryGapRatio: 0.45,
-        }]}
-        xAxis={[{ position: 'none', min: 0 }]}
-        margin={{ top: 0, right: 8, bottom: 0, left: 0 }}
-        onItemClick={(_, item) => {
-          const f = features[item.dataIndex];
-          if (f) navigate(usageFeaturePath(f.key));
+    <Box aria-hidden sx={{ minWidth: 0, py: { xs: 0, sm: 0.5 } }}>
+      <Box
+        data-testid="ranking-bar"
+        onClick={() => navigate(usageFeaturePath(feature.key))}
+        sx={{
+          width: `${pct}%`,
+          minWidth: value > 0 ? 3 : 0,
+          height: { xs: 10, sm: 22 },
+          bgcolor: color,
+          borderRadius: 1,
+          cursor: 'pointer',
         }}
-        sx={{ '& .MuiBarElement-root': { cursor: 'pointer' } }}
       />
+    </Box>
+  );
+}
+
+/** Linha do ranking: no celular o rótulo fica acima da barra; da tablet em diante, lado a lado. */
+function RankingRow({ feature, value, max, color }: { feature: UsageFeatureItem; value: number; max: number; color: string }) {
+  return (
+    <Box
+      component="li"
+      sx={{
+        display: 'grid',
+        gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'minmax(0, 260px) minmax(0, 1fr)' },
+        alignItems: 'center',
+        columnGap: 1.5,
+        rowGap: 0.75,
+        py: 0.75,
+      }}
+    >
+      <RankingLabel feature={feature} />
+      <RankingBar feature={feature} value={value} max={max} color={color} />
     </Box>
   );
 }
@@ -208,6 +208,10 @@ export default function FeatureRankingChart({
   const sorted = useMemo(() => sortFeatures(features, sort), [features, sort]);
   const { visible, hidden } = rankingSlice(sorted);
   const asTable = view === 'table';
+  const theme = useTheme();
+  const color = chartColors(theme.palette.mode).ordered[0];
+  const barValue = (f: UsageFeatureItem) => (sort === 'tenants' ? f.activeTenants : f.uses);
+  const max = Math.max(0, ...visible.map(barValue));
 
   let body: ReactNode;
   if (sorted.length === 0) {
@@ -220,20 +224,10 @@ export default function FeatureRankingChart({
         <Typography variant="caption" color="text.secondary" component="p" sx={{ mb: 0.5 }}>
           {sort === 'tenants' ? r.tenantsAxis : r.usesAxis}
         </Typography>
-        <Box
-          component="figure"
-          aria-label={r.aria}
-          sx={{
-            m: 0,
-            display: 'grid',
-            gridTemplateColumns: { xs: 'minmax(0, 1.4fr) minmax(0, 1fr)', sm: 'minmax(0, 260px) minmax(0, 1fr)' },
-            alignItems: 'start',
-          }}
-        >
+        <Box component="figure" aria-label={r.aria} sx={{ m: 0 }}>
           <Box component="ol" sx={{ listStyle: 'none', p: 0, m: 0, minWidth: 0 }}>
-            {visible.map((f) => <li key={f.key}><RankingLabel feature={f} /></li>)}
+            {visible.map((f) => <RankingRow key={f.key} feature={f} value={barValue(f)} max={max} color={color} />)}
           </Box>
-          <RankingBars features={visible} sort={sort} />
         </Box>
         {hidden > 0 && (
           <Button size="small" onClick={() => setView('table')} sx={{ mt: 1, minHeight: 36 }}>

@@ -82,7 +82,8 @@ function SeriesChart({ detail, tableId }: { detail: UsageFeatureDetail; tableId:
         yAxis={[{ width: 48, min: 0, valueFormatter: (v: number) => formatCount(v) }]}
         grid={{ horizontal: true }}
         slotProps={{ legend: { position: { vertical: 'top', horizontal: 'start' } }, tooltip: { trigger: 'axis' } }}
-        margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
+        // Margem à direita: o último rótulo do eixo X ("17/11") é centrado no ponto e seria cortado ("1…").
+        margin={{ top: 8, right: 28, bottom: 0, left: 0 }}
         sx={{ '& .MuiChartsGrid-line': { stroke: theme.palette.divider } }}
       />
       </Suspense>

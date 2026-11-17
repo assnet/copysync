@@ -157,7 +157,8 @@ export default function UsageTrendChart({ granularity, data, error, slow, onRetr
             grid={{ horizontal: true }}
             slotProps={{ legend: { position: { vertical: 'top', horizontal: 'start' } }, tooltip: { trigger: 'axis' } }}
             hideLegend={model.lines.length < 2}
-            margin={{ top: 8, right: hasRight ? 0 : 16, bottom: 0, left: 0 }}
+            // Margem à direita: o último rótulo do eixo X ("17/11") é centrado no ponto e seria cortado ("1…").
+            margin={{ top: 8, right: hasRight ? 0 : 28, bottom: 0, left: 0 }}
             sx={{
               '& .MuiChartsGrid-line': { stroke: theme.palette.divider },
               '& .MuiLineElement-root': { strokeWidth: 2 },

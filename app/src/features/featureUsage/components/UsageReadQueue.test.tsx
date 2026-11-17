@@ -19,7 +19,6 @@ vi.mock('@/services/serverClock', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/serverClock')>()),
   serverNow: () => Date.UTC(2026, 10, 18, 1, 0, 0),
 }));
-vi.mock('@mui/x-charts/BarChart', () => ({ BarChart: () => <div data-testid="bar-chart" /> }));
 vi.mock('@mui/x-charts/LineChart', () => ({ LineChart: () => <div data-testid="line-chart" /> }));
 vi.mock('@/services/apiClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/apiClient')>()),
