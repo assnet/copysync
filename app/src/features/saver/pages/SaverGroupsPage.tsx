@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, AlertTitle, Box, Button, CircularProgress, Stack, Tooltip, Typography } from '@mui/material';
-import { EyeOff, MessageCircleOff, Plus, RefreshCw, Save, UsersRound, WifiOff } from 'lucide-react';
+import { Download, EyeOff, MessageCircleOff, Plus, RefreshCw, Save, UsersRound, WifiOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { AppIcon, ConfirmDialog, EmptyState, PageHeader, SectionCard } from '@/components';
 import { channelOf } from '@/features/sessions/utils';
@@ -16,6 +16,7 @@ import { SavedGroupsTable } from '../components/groups/SavedGroupsTable';
 import { SaverLimitBanner, limitBannerMessage } from '../components/groups/SaverLimitBanner';
 import { SaverUsageStrip } from '../components/groups/SaverUsageStrip';
 import { SessionPicker } from '../components/groups/SessionPicker';
+import { ExportDialog } from '../components/export/ExportDialog';
 
 /** Teto de grupos por pedido (API: `SAVER_MAX_GROUPS_PER_REQUEST`). */
 export const SAVER_MAX_GROUPS_PER_REQUEST = 50;
@@ -41,6 +42,9 @@ export function SaverGroupsPage() {
   const [requestError, setRequestError] = useState<SaverError | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [removing, setRemoving] = useState<SaverGroup | null>(null);
+  const [exportIds, setExportIds, clearExportIds] = usePersistedState<string[]>(`${KEY}.exportSelection`, []);
+  const [exportOpen, setExportOpen, clearExportOpen] = usePersistedState(`${KEY}.exportOpen`, false);
+  const [exported, setExported] = useState<string | null>(null);
 
   const progress = useSaverExtraction(extractionId, seed);
   const session = sessions.data?.find((x) => x.id === sessionId) ?? null;
@@ -112,12 +116,30 @@ export function SaverGroupsPage() {
   const confirmRemove = async () => {
     const target = removing;
     setRemoving(null);
-    if (target && (await saved.remove(target.id))) void reloadOverview();
+    if (target && (await saved.remove(target.id))) {
+      setExportIds((ids) => ids.filter((x) => x !== target.id));
+      void reloadOverview();
+    }
+  };
+
+  const finishExport = (filename: string) => {
+    clearExportOpen();
+    clearExportIds();
+    setExported(filename);
   };
 
   const submitDisabled = !canExtract || requesting || selection.length === 0 || tooMany || overScans;
   const submitHint = !canExtract ? g.table.noExtractPermission : tooMany ? g.table.tooMany(SAVER_MAX_GROUPS_PER_REQUEST) : '';
   const hiddenTotal = (saved.data ?? []).reduce((n, x) => n + x.lidOnlyCount, 0);
+  const canExport = ov?.permissions.export ?? false;
+  const savedList = saved.data ?? [];
+  const exportGroups = savedList.filter((x) => exportIds.includes(x.id));
+  const exportAll = exportGroups.length === 0;
+  const exportButton = canExport && savedList.length > 0 && (
+    <Button variant="outlined" startIcon={<AppIcon icon={Download} size="sm" />} onClick={() => { setExported(null); setExportOpen(true); }}>
+      {exportAll ? g.saved.exportAll : g.saved.exportSelected(exportGroups.length)}
+    </Button>
+  );
 
   const sessionBody = () => {
     if (sessions.loading) return <Box sx={{ py: 3, textAlign: 'center' }}><CircularProgress size={28} /></Box>;
@@ -212,7 +234,8 @@ export function SaverGroupsPage() {
 
         <SectionCard title={g.session.title}>{sessionBody()}</SectionCard>
 
-        <SectionCard title={g.saved.title} subtitle={g.saved.subtitle}>
+        <SectionCard title={g.saved.title} subtitle={g.saved.subtitle} action={exportButton || undefined}>
+          {exported && <Alert severity="success" onClose={() => setExported(null)} sx={{ mb: 1.5 }}>{s.exportDialog.done(exported)}</Alert>}
           {saved.loading && !saved.data && <Box sx={{ py: 3, textAlign: 'center' }}><CircularProgress size={28} /></Box>}
           {saved.error && <Alert severity="error">{g.saved.loadFailed}</Alert>}
           {saved.actionError && <Alert severity="error" onClose={saved.clearActionError} sx={{ mb: 1.5 }}>{saved.actionError.message}</Alert>}
@@ -224,15 +247,26 @@ export function SaverGroupsPage() {
               {hiddenTotal > 0 && <Alert severity="info" icon={<AppIcon icon={EyeOff} size="md" />}>{g.saved.hiddenNotice(hiddenTotal)}</Alert>}
               <SavedGroupsTable
                 groups={saved.data}
-                selected={[]}
-                onSelectedChange={() => undefined}
-                selectable={false}
+                selected={exportIds}
+                onSelectedChange={setExportIds}
+                selectable={canExport}
                 onRemove={canConfigure ? setRemoving : undefined}
               />
             </Stack>
           )}
         </SectionCard>
       </Stack>
+
+      {exportOpen && ov && (
+        <ExportDialog
+          open
+          groups={exportAll ? savedList : exportGroups}
+          all={exportAll}
+          defaults={ov.config}
+          onClose={clearExportOpen}
+          onDone={finishExport}
+        />
+      )}
 
       <ConfirmDialog
         open={removing !== null}

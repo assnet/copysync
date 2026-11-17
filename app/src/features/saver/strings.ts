@@ -134,6 +134,47 @@ export const saverStrings = {
     dateTime: (iso: string) => new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso)),
   },
 
+  /** Diálogo de exportação (T24). */
+  exportDialog: {
+    title: 'Exportar contatos',
+    scopeAll: (n: number) => (n === 1 ? 'Todos os grupos salvos (1)' : `Todos os grupos salvos (${n})`),
+    scopeSelected: (n: number) => (n === 1 ? '1 grupo marcado' : `${n} grupos marcados`),
+    format: 'Formato',
+    formats: {
+      CSV: 'Planilha (CSV)',
+      VCARD: 'Agenda (vCard)',
+    } as Record<string, string>,
+    formatHints: {
+      CSV: 'Abre no Excel e no Google Planilhas. Colunas: nome, telefone, LID e data da leitura.',
+      VCARD: 'Importa direto na agenda do celular. Só entra quem tem número.',
+    } as Record<string, string>,
+    prefix: 'Prefixo do nome',
+    prefixHelp: (max: number) => `Vem antes do nome de cada contato, para achá-los fácil na agenda. Até ${max} caracteres.`,
+    prefixPlaceholder: 'Ex.: Cliente',
+    excludeAdmins: 'Remover administradores',
+    excludeAdminsHint: 'Deixa de fora quem é administrador do grupo.',
+    onlyActive: 'Só quem ainda está no grupo',
+    onlyActiveHint: 'Deixa de fora quem saiu depois da última leitura.',
+    onlyWithPhone: 'Só contatos com número',
+    onlyWithPhoneHint: 'Deixa de fora quem escondeu o número.',
+    onePerGroup: 'Uma linha por grupo',
+    onePerGroupHint: 'Quem está em vários grupos aparece uma vez em cada um, com a coluna Grupo. Desligado, cada contato aparece uma vez.',
+    summaryTitle: 'Resumo',
+    summaryIncluded: (n: number) => (n === 1 ? 'Até 1 contato no arquivo' : `Até ${n.toLocaleString('pt-BR')} contatos no arquivo`),
+    summaryHint: 'Estimativa pelas contagens dos grupos. Contato em mais de um grupo e os filtros acima podem reduzir o total.',
+    summaryVcardSkipped: (n: number) =>
+      n === 1
+        ? '1 membro com número oculto fica fora do vCard. Para incluí-lo, exporte em CSV.'
+        : `${n.toLocaleString('pt-BR')} membros com número oculto ficam fora do vCard. Para incluí-los, exporte em CSV.`,
+    cancel: 'Cancelar',
+    download: 'Baixar arquivo',
+    downloading: 'Gerando o arquivo',
+    done: (name: string) => `Arquivo ${name} baixado.`,
+    forbidden: 'Você não tem permissão para exportar. Peça ao administrador da conta.',
+    empty: 'Nenhum contato nos grupos e filtros escolhidos. Ajuste as opções e tente de novo.',
+    noPermission: 'Só o administrador ou quem ele liberar pode exportar.',
+  },
+
   /** Mensagem por código de erro da API (design.md §7). */
   errors: {
     PRODUCT_UNAVAILABLE: 'O Saver não está no plano da sua conta. Veja os planos para liberar.',

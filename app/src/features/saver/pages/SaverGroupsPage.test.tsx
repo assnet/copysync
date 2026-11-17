@@ -222,4 +222,22 @@ describe('SaverGroupsPage', () => {
     await pickSession(user, 'Atendimento');
     expect((await screen.findByText('Vendas')).closest('[data-blurred="true"]')).not.toBeNull();
   });
+
+  it('botão Exportar segue permissions.export do resumo', async () => {
+    svc.listGroups.mockResolvedValue([savedGroup('x')]);
+    svc.getOverview.mockResolvedValue(overview({ permissions: { view: true, extract: true, export: false, configure: false } }));
+    const first = page();
+    expect(await screen.findByText('Salvo x')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: g.saved.exportAll })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: g.saved.selectAll })).not.toBeInTheDocument();
+    first.unmount();
+
+    svc.getOverview.mockResolvedValue(overview({ permissions: { view: true, extract: true, export: true, configure: false } }));
+    const user = userEvent.setup();
+    page();
+    await user.click(await screen.findByRole('checkbox', { name: `${g.saved.selectGroup}: Salvo x` }));
+    await user.click(screen.getByRole('button', { name: g.saved.exportSelected(1) }));
+    expect(await screen.findByRole('dialog', { name: s.exportDialog.title })).toBeInTheDocument();
+    expect(screen.getByText(s.exportDialog.scopeSelected(1))).toBeInTheDocument();
+  });
 });
