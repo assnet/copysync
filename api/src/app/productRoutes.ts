@@ -41,6 +41,7 @@ export const ROUTE_PRODUCT_MAP: Readonly<Record<string, RouteProductClass>> = {
   workerAdminRoutes: 'TENANT',
   opsMetricsRoutes: 'TENANT',
   infraCostsRoutes: 'TENANT',
+  featureUsageRoutes: 'TENANT',
   planEntitlementAdminRoutes: 'TENANT',
   redirectLinkAdminRoutes: 'TENANT',
   publicRedirectRoutes: 'TENANT',
