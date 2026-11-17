@@ -84,10 +84,8 @@ export function PlatformContactsPage() {
       <Stack gap={3}>
         <PlatformContactsSummary
           state={summary}
-          filters={applied}
-          filtered={filtered}
-          onPickDdi={(ddi) => setFilters({ ...filters, ddi, ddd: '' })}
-          onPickDdd={(ddd) => setFilters({ ...filters, ddd })}
+          onPickDdi={(ddi) => setFilters((prev) => ({ ...prev, ddi, ddd: '' }))}
+          onPickDdd={(ddd) => setFilters((prev) => ({ ...prev, ddd }))}
         />
 
         <PlatformContactsFilters value={filters} onChange={setFilters} periodInvalid={periodInvalid} />
@@ -128,7 +126,7 @@ export function PlatformContactsPage() {
             )}
             <PlatformContactsFooter
               shown={list.items.length}
-              total={summary.loading ? null : summary.data?.filtered ?? null}
+              total={summary.current ? summary.data?.filtered ?? null : null}
               hasMore={Boolean(list.nextCursor)}
               loadingMore={list.loadingMore}
               onLoadMore={list.loadMore}

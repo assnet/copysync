@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { ChevronRight, Info } from 'lucide-react';
 import {
   Box, ButtonBase, Chip, IconButton, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography,
@@ -16,16 +17,22 @@ interface Props {
   onOpen: (contact: PlatformContact) => void;
 }
 
+/**
+ * Cabeçalho com dica: a dica é texto oculto ligado à coluna por `aria-describedby`; o ícone é só o alvo do
+ * Tooltip (mouse e teclado) e fica fora da árvore de acessibilidade.
+ */
 function HeadWithHint({ label, hint, align }: { label: string; hint: string; align?: 'right' }) {
+  const hintId = useId();
   return (
-    <TableCell align={align}>
+    <TableCell align={align} aria-describedby={hintId}>
       <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
         {label}
-        <Tooltip title={hint} arrow>
-          <Box component="span" tabIndex={0} aria-label={hint} sx={{ display: 'inline-flex', color: 'text.secondary', cursor: 'help' }}>
+        <Tooltip title={hint} arrow describeChild>
+          <Box component="span" tabIndex={0} role="img" aria-labelledby={hintId} sx={{ display: 'inline-flex', color: 'text.secondary', cursor: 'help', borderRadius: '4px' }}>
             <AppIcon icon={Info} size="inline" />
           </Box>
         </Tooltip>
+        <Box component="span" id={hintId} sx={VISUALLY_HIDDEN}>{hint}</Box>
       </Box>
     </TableCell>
   );

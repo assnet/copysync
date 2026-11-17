@@ -1,3 +1,4 @@
+import type { Dispatch, SetStateAction } from 'react';
 import { Eraser, Search } from 'lucide-react';
 import { Box, Button, InputAdornment, MenuItem, TextField, Tooltip } from '@mui/material';
 import { AppIcon } from '@/components';
@@ -9,7 +10,8 @@ import { usePlatformTenants } from './usePlatformTenants';
 
 interface Props {
   value: PlatformContactFilters;
-  onChange: (next: PlatformContactFilters) => void;
+  /** Setter do estado dos filtros (aceita função): cada campo altera só o seu pedaço do valor MAIS RECENTE. */
+  onChange: Dispatch<SetStateAction<PlatformContactFilters>>;
   periodInvalid: boolean;
 }
 
@@ -24,7 +26,8 @@ const RETRY = '__retry__';
 export function PlatformContactsFilters({ value, onChange, periodInvalid }: Props) {
   const { tenants: options, hasMore, loading, failed, loadMore, reload } = usePlatformTenants();
   const blurTenant = useBlur('saverAdmin.tenantNames');
-  const set = (patch: Partial<PlatformContactFilters>) => onChange({ ...value, ...patch });
+  // Atualização funcional: o DDI digitado é aplicado por timer e não pode desfazer o que mudou nesse meio-tempo.
+  const set = (patch: Partial<PlatformContactFilters>) => onChange((prev) => ({ ...prev, ...patch }));
   const dirty = JSON.stringify(value) !== JSON.stringify(EMPTY_PLATFORM_FILTERS);
   const tenantLabel = (id: string) => options.find((t) => t.id === id)?.name ?? s.detail.unknownTenant(id);
   const pickTenant = (v: string) => {
@@ -70,7 +73,7 @@ export function PlatformContactsFilters({ value, onChange, periodInvalid }: Prop
           {!loading && !failed && hasMore && <MenuItem value={MORE} sx={{ color: 'primary.main' }}>{s.filters.tenantsMore}</MenuItem>}
         </TextField>
       </Tooltip>
-      <PlatformPhoneFilters ddi={value.ddi} ddd={value.ddd} onChange={(phone) => set(phone)} />
+      <PlatformPhoneFilters ddi={value.ddi} ddd={value.ddd} onChange={set} />
       <TextField
         size="small"
         type="date"

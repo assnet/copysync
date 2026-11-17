@@ -1,6 +1,7 @@
 import { apiClient } from './apiClient';
 import { filenameFromDisposition } from './saver.service';
 import type { ApiSuccess } from '@/types/api.types';
+import { BRAZIL_DDI, isCountryCode } from '@/features/saverAdmin/phoneRegions';
 import type {
   PlatformContactDetail, PlatformContactFilters, PlatformContactsFile, PlatformContactsPage, PlatformContactsSummary,
   PlatformTenantsPage,
@@ -25,10 +26,11 @@ export function toPlatformFilterParams(f: PlatformContactFilters): Record<string
   const to = dayToIso(f.to, true);
   if (from) out.from = from;
   if (to) out.to = to;
-  if (/^\d{1,3}$/.test(f.ddi)) {
+  // Só código de país inteiro (valor velho ou adulterado no navegador não pode virar 400 da API).
+  if (isCountryCode(f.ddi)) {
     out.ddi = f.ddi;
     // DDD só existe no Brasil: a API recusa DDD com outro DDI.
-    if (f.ddi === '55' && /^\d{2}$/.test(f.ddd)) out.ddd = f.ddd;
+    if (f.ddi === BRAZIL_DDI && /^\d{2}$/.test(f.ddd)) out.ddd = f.ddd;
   }
   return out;
 }
