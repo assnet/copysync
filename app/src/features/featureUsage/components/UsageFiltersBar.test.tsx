@@ -38,6 +38,22 @@ describe('UsageFiltersBar', () => {
     expect(onChange).toHaveBeenCalledWith({ ...filters, tenantId: null });
   });
 
+  it('modo personalizado acompanha o preset: fecha quando ele volta a 30 dias', async () => {
+    const user = userEvent.setup();
+    const custom = { ...DEFAULT_USAGE_FILTERS, preset: 'custom' as const, from: '2026-11-01', to: '2026-11-10' };
+    const view = renderWithTheme(<UsageFiltersBar filters={custom} onChange={() => {}} maxDays={90} />);
+    expect(screen.getByLabelText(S.filters.customFrom)).toBeInTheDocument();
+    view.rerender(<UsageFiltersBar filters={DEFAULT_USAGE_FILTERS} onChange={() => {}} maxDays={90} />);
+    expect(screen.queryByLabelText(S.filters.customFrom)).toBeNull();
+
+    const seven = { ...DEFAULT_USAGE_FILTERS, preset: '7d' as const };
+    view.rerender(<UsageFiltersBar filters={seven} onChange={() => {}} maxDays={90} />);
+    await user.click(screen.getByRole('button', { name: S.filters.presets.custom }));
+    expect(screen.getByLabelText(S.filters.customFrom)).toBeInTheDocument();
+    view.rerender(<UsageFiltersBar filters={DEFAULT_USAGE_FILTERS} onChange={() => {}} maxDays={90} />);
+    expect(screen.queryByLabelText(S.filters.customFrom)).toBeNull();
+  });
+
   it('presets acima do teto não aparecem', () => {
     renderWithTheme(<UsageFiltersBar filters={DEFAULT_USAGE_FILTERS} onChange={() => {}} maxDays={30} />);
     expect(screen.queryByRole('button', { name: S.filters.presets['90d'] })).toBeNull();

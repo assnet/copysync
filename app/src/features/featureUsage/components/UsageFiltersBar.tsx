@@ -35,17 +35,21 @@ function PeriodControl({ filters, onChange, maxDays }: Omit<UsageFiltersBarProps
   const [draft, setDraft] = usePersistedState<CustomDraft>('usage.customDraft', {
     from: filters.from ?? '', to: filters.to ?? '',
   }, { scope: 'tab' });
-  const [customOpen, setCustomOpen] = useState(filters.preset === 'custom');
+  /**
+   * Preset em vigor quando "Personalizado" foi aberto sem aplicar. Derivado do preset: se ele muda (outro botão,
+   * "Limpar filtros", volta aos 30 dias após 400), o modo personalizado fecha sozinho.
+   */
+  const [customOpenFor, setCustomOpenFor] = useState<UsagePeriodPreset | null>(null);
   const [error, setError] = useState<UsageRangeError | null>(null);
-  const showCustom = customOpen || filters.preset === 'custom';
+  const showCustom = filters.preset === 'custom' || customOpenFor === filters.preset;
 
   const choose = (preset: UsagePeriodPreset | null) => {
     if (!preset) return;
     if (preset === 'custom') {
-      setCustomOpen(true);
+      setCustomOpenFor(filters.preset);
       return;
     }
-    setCustomOpen(false);
+    setCustomOpenFor(null);
     setError(null);
     onChange(withPeriod(filters, { preset }, serverNow()));
   };
