@@ -35,6 +35,7 @@ import {
   ExportPlatformSaverContactsUseCase,
   GetPlatformSaverContactUseCase,
   ListPlatformSaverContactsUseCase,
+  ListPlatformSaverTenantsUseCase,
 } from '../application/use-cases/PlatformSaverContactsUseCases';
 import { ExportSavedContactsUseCase } from '../application/use-cases/ExportSavedContactsUseCase';
 import {
@@ -130,12 +131,14 @@ const listGroups       = lazy(() => new ListSaverGroupsUseCase({ groups: groups(
 const audit = lazy(() => new PrismaAuditLogRepository());
 const listPlatformContacts   = lazy(() => new ListPlatformSaverContactsUseCase(platformContacts(), audit()));
 const getPlatformContact     = lazy(() => new GetPlatformSaverContactUseCase(platformContacts(), audit()));
+const listPlatformTenants    = lazy(() => new ListPlatformSaverTenantsUseCase(platformContacts()));
 const exportPlatformContacts = lazy(() => new ExportPlatformSaverContactsUseCase(platformContacts(), audit()));
 
 export const saverPlatformUseCases = {
   get listContacts(): ListPlatformSaverContactsUseCase { return listPlatformContacts(); },
   get getContact(): GetPlatformSaverContactUseCase { return getPlatformContact(); },
   get exportContacts(): ExportPlatformSaverContactsUseCase { return exportPlatformContacts(); },
+  get listTenants(): ListPlatformSaverTenantsUseCase { return listPlatformTenants(); },
 };
 
 // ── Exportação e configuração do tenant (T17, T18) ──

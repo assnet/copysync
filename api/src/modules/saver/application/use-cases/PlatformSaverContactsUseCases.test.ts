@@ -6,12 +6,15 @@ import type {
   PlatformSaverContactKey,
   PlatformSaverContactLink,
   PlatformSaverContactRow,
+  PlatformSaverTenant,
 } from '../../domain/contracts/IPlatformSaverContactRepository';
 import {
   ExportPlatformSaverContactsUseCase,
   GetPlatformSaverContactUseCase,
   ListPlatformSaverContactsUseCase,
+  ListPlatformSaverTenantsUseCase,
   PLATFORM_SAVER_PAGE_SIZE,
+  PLATFORM_SAVER_TENANT_PAGE_SIZE,
 } from './PlatformSaverContactsUseCases';
 
 const SUPER = { userId: 'su', isSuperAdmin: true };
@@ -33,12 +36,16 @@ function rowsOf(n: number): PlatformSaverContactRow[] {
 }
 
 /** Repositório falso com keyset sobre `all` (lastSeenAt desc, id). */
-function repo(all: PlatformSaverContactRow[], links: PlatformSaverContactLink[] = []) {
+function repo(all: PlatformSaverContactRow[], links: PlatformSaverContactLink[] = [], tenants: PlatformSaverTenant[] = []) {
   const calls: { filter: PlatformSaverContactFilter; after: PlatformSaverContactKey | null; limit: number }[] = [];
   const r: IPlatformSaverContactRepository = {
     findByKeys: vi.fn(),
     applyGroupRead: vi.fn(),
     findLinks: vi.fn(async () => links),
+    listTenants: vi.fn(async (after, limit) => {
+      const start = after ? tenants.findIndex((t) => t.id === after.id) + 1 : 0;
+      return tenants.slice(start, start + limit);
+    }),
     list: vi.fn(async (filter, after, limit) => {
       calls.push({ filter, after, limit });
       const start = after ? all.findIndex((c) => c.id === after.id) + 1 : 0;
@@ -110,7 +117,7 @@ describe('ListPlatformSaverContactsUseCase', () => {
 
 describe('GetPlatformSaverContactUseCase', () => {
   const link: PlatformSaverContactLink = {
-    tenantId: 't1', groupId: 'g1', groupName: 'Grupo', name: 'Pessoa 1', isAdmin: false,
+    tenantId: 't1', tenantName: 'Loja 1', groupId: 'g1', groupName: 'Grupo', name: 'Pessoa 1', isAdmin: false,
     firstExtractedAt: new Date('2026-11-01T12:00:00Z'), lastExtractedAt: new Date('2026-11-17T12:00:00Z'), leftAt: null,
   };
 
@@ -118,7 +125,7 @@ describe('GetPlatformSaverContactUseCase', () => {
     const { r } = repo([], [link]);
     const { a, entries } = auditRepo();
     const out = await new GetPlatformSaverContactUseCase(r, a).execute({ actor: SUPER, contactId: 'c1' });
-    expect(out.links[0]).toMatchObject({ tenantId: 't1', groupId: 'g1', lastExtractedAt: link.lastExtractedAt });
+    expect(out.links[0]).toMatchObject({ tenantId: 't1', tenantName: 'Loja 1', groupId: 'g1', lastExtractedAt: link.lastExtractedAt });
     expect(entries[0]).toMatchObject({ action: 'SAVER_PLATFORM_VIEWED', meta: { kind: 'detail', contactId: 'c1' } });
     noPersonalData(entries);
   });
@@ -127,6 +134,40 @@ describe('GetPlatformSaverContactUseCase', () => {
     const { a } = auditRepo();
     await expect(new GetPlatformSaverContactUseCase(repo([]).r, a).execute({ actor: SUPER, contactId: 'x' })).rejects.toMatchObject({ statusCode: 404 });
     await expect(new GetPlatformSaverContactUseCase(repo([], [link]).r, a).execute({ actor: TENANT_ADMIN, contactId: 'c1' })).rejects.toMatchObject({ statusCode: 403 });
+  });
+});
+
+describe('ListPlatformSaverTenantsUseCase', () => {
+  const tenants = Array.from({ length: PLATFORM_SAVER_TENANT_PAGE_SIZE + 5 }, (_, i) => ({ id: `t${i}`, name: `Loja ${String(i).padStart(3, '0')}` }));
+
+  it('não super admin → 403, sem tocar a base', async () => {
+    const { r } = repo([], [], tenants);
+    await expect(new ListPlatformSaverTenantsUseCase(r).execute({ actor: TENANT_ADMIN })).rejects.toMatchObject({ statusCode: 403 });
+    expect(r.listTenants).not.toHaveBeenCalled();
+  });
+
+  it('pagina por cursor keyset assinado (id e nome), sem auditoria', async () => {
+    const { r } = repo([], [], tenants);
+    const uc = new ListPlatformSaverTenantsUseCase(r);
+    const first = await uc.execute({ actor: SUPER });
+    expect(first.items).toHaveLength(PLATFORM_SAVER_TENANT_PAGE_SIZE);
+    expect(first.items[0]).toEqual({ id: 't0', name: 'Loja 000' });
+    expect(first.nextCursor).toEqual(expect.any(String));
+    const second = await uc.execute({ actor: SUPER, cursor: first.nextCursor });
+    expect(r.listTenants).toHaveBeenLastCalledWith({ name: 'Loja 099', id: 't99' }, PLATFORM_SAVER_TENANT_PAGE_SIZE + 1);
+    expect(second.items.map((t) => t.id)).toEqual(['t100', 't101', 't102', 't103', 't104']);
+    expect(second.nextCursor).toBeNull();
+  });
+
+  it('cursor adulterado ou da lista de contatos → 400', async () => {
+    const { r } = repo(rowsOf(PLATFORM_SAVER_PAGE_SIZE + 1), [], tenants);
+    const { a } = auditRepo();
+    const contactsPage = await new ListPlatformSaverContactsUseCase(r, a).execute({ actor: SUPER });
+    const uc = new ListPlatformSaverTenantsUseCase(r);
+    await expect(uc.execute({ actor: SUPER, cursor: contactsPage.nextCursor })).rejects.toMatchObject({ statusCode: 400 });
+    const first = await uc.execute({ actor: SUPER });
+    const forged = `${Buffer.from(JSON.stringify({ n: 'A', i: 'x' })).toString('base64url')}${first.nextCursor!.slice(first.nextCursor!.indexOf('~'))}`;
+    await expect(uc.execute({ actor: SUPER, cursor: forged })).rejects.toMatchObject({ statusCode: 400 });
   });
 });
 

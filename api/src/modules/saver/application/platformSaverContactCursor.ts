@@ -3,6 +3,7 @@ import { createCursor, readCursor } from '../../../shared/http/pagination/Opaque
 import type {
   PlatformSaverContactFilter,
   PlatformSaverContactKey,
+  PlatformSaverTenantKey,
 } from '../domain/contracts/IPlatformSaverContactRepository';
 
 /**
@@ -38,6 +39,28 @@ export function readPlatformSaverContactCursor(cursor: string, scope: string): P
     if (typeof parsed.s !== 'string' || typeof parsed.i !== 'string' || !parsed.i) return null;
     const lastSeenAt = new Date(parsed.s);
     return Number.isNaN(lastSeenAt.getTime()) ? null : { lastSeenAt, id: parsed.i };
+  } catch {
+    return null;
+  }
+}
+
+/** Cursor das contas do seletor (`name`, `id`): mesmo formato, escopo próprio e sem filtro. */
+const TENANT_SCOPE = 'saver-platform-tenants';
+
+export function createPlatformSaverTenantCursor(key: PlatformSaverTenantKey): string {
+  const raw = JSON.stringify({ n: key.name, i: key.id });
+  return `${Buffer.from(raw).toString('base64url')}${SEPARATOR}${createCursor(`${TENANT_SCOPE}|${digest(raw)}`, 0)}`;
+}
+
+export function readPlatformSaverTenantCursor(cursor: string): PlatformSaverTenantKey | null {
+  const at = cursor.indexOf(SEPARATOR);
+  if (at <= 0) return null;
+  const raw = Buffer.from(cursor.slice(0, at), 'base64url').toString();
+  if (readCursor(cursor.slice(at + 1), `${TENANT_SCOPE}|${digest(raw)}`) !== 0) return null;
+  try {
+    const parsed = JSON.parse(raw) as { n?: unknown; i?: unknown };
+    if (typeof parsed.n !== 'string' || typeof parsed.i !== 'string' || !parsed.i) return null;
+    return { name: parsed.n, id: parsed.i };
   } catch {
     return null;
   }

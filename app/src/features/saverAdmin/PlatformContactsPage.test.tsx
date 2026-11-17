@@ -7,12 +7,11 @@ import { PrivacyProvider } from '@/features/privacy';
 import { LEGACY_PRODUCTS } from '@/features/products/productAccess';
 import { buildNavigation, SAVER_ADMIN_PATH } from '@/features/navigation/model';
 
-const svc = vi.hoisted(() => ({ listContacts: vi.fn(), getContact: vi.fn(), exportContacts: vi.fn() }));
+const svc = vi.hoisted(() => ({ listContacts: vi.fn(), getContact: vi.fn(), exportContacts: vi.fn(), listTenants: vi.fn() }));
 const auth = vi.hoisted(() => ({ user: { isSuperAdmin: true } as { isSuperAdmin: boolean } | null }));
 vi.mock('@/services/saverAdmin.service', () => ({ saverAdminService: svc }));
-vi.mock('@/contexts/TenantContext', () => ({
-  useTenant: () => ({ tenants: [{ id: 't1', name: 'Loja Azul' }, { id: 't2', name: 'Loja Verde' }] }),
-}));
+const useTenant = vi.hoisted(() => vi.fn(() => ({ tenants: [] })));
+vi.mock('@/contexts/TenantContext', () => ({ useTenant }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => auth }));
 
 import { PlatformContactsPage } from './PlatformContactsPage';
@@ -35,6 +34,7 @@ beforeEach(() => {
   window.sessionStorage.clear();
   window.localStorage.clear();
   auth.user = { isSuperAdmin: true };
+  svc.listTenants.mockResolvedValue({ items: [{ id: 't1', name: 'Loja Azul' }, { id: 't2', name: 'Loja Verde' }], nextCursor: null });
 });
 
 describe('PlatformContactsPage', () => {
@@ -115,8 +115,8 @@ describe('PlatformContactsPage', () => {
     svc.getContact.mockResolvedValue({
       contactId: '1',
       links: [
-        { tenantId: 't1', groupId: 'g1', groupName: 'Promoções', name: null, isAdmin: true, firstExtractedAt: '2026-11-02T09:00:00.000Z', lastExtractedAt: '2026-11-09T18:15:00.000Z', leftAt: null },
-        { tenantId: 'desconhecido-123', groupId: 'g2', groupName: 'Vendas', name: null, isAdmin: false, firstExtractedAt: '2026-11-03T09:00:00.000Z', lastExtractedAt: '2026-11-03T09:00:00.000Z', leftAt: null },
+        { tenantId: 't1', tenantName: 'Loja Azul', groupId: 'g1', groupName: 'Promoções', name: null, isAdmin: true, firstExtractedAt: '2026-11-02T09:00:00.000Z', lastExtractedAt: '2026-11-09T18:15:00.000Z', leftAt: null },
+        { tenantId: 'desconhecido-123', tenantName: '', groupId: 'g2', groupName: 'Vendas', name: null, isAdmin: false, firstExtractedAt: '2026-11-03T09:00:00.000Z', lastExtractedAt: '2026-11-03T09:00:00.000Z', leftAt: null },
       ],
     });
     const user = userEvent.setup();
@@ -128,6 +128,41 @@ describe('PlatformContactsPage', () => {
     expect(within(items[0]!).getByText('Promoções')).toBeInTheDocument();
     expect(within(items[0]!).getByText(formatDateTime('2026-11-09T18:15:00.000Z')!)).toBeInTheDocument();
     expect(within(items[1]!).getByText(s.detail.unknownTenant('desconhecido-123'))).toBeInTheDocument();
+  });
+
+  it.each(['light', 'dark'] as const)('contas do filtro vêm da API por cursor, sem as contas do usuário (%s)', async (mode) => {
+    svc.listContacts.mockResolvedValue({ items: [contact('1')], nextCursor: null });
+    svc.listTenants
+      .mockResolvedValueOnce({ items: [{ id: 'tx', name: 'Conta Externa' }], nextCursor: 'tc-1' })
+      .mockResolvedValueOnce({ items: [{ id: 'ty', name: 'Outra Conta' }], nextCursor: null });
+    window.localStorage.setItem('privacy.blur', JSON.stringify(['saverAdmin.tenantNames']));
+    const user = userEvent.setup();
+    page(mode);
+    await waitFor(() => expect(rows()).toHaveLength(1));
+    await user.click(screen.getByRole('combobox', { name: s.filters.tenant }));
+    const ext = await screen.findByRole('option', { name: 'Conta Externa' });
+    expect(within(ext).getByText('Conta Externa').closest('[data-blurred="true"]')).not.toBeNull();
+    await user.click(screen.getByRole('option', { name: s.filters.tenantsMore }));
+    expect(svc.listTenants).toHaveBeenLastCalledWith('tc-1');
+    expect(svc.listContacts).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole('combobox', { name: s.filters.tenant }));
+    await user.click(await screen.findByRole('option', { name: 'Outra Conta' }));
+    await waitFor(() => expect(svc.listContacts).toHaveBeenLastCalledWith({ ...EMPTY_PLATFORM_FILTERS, tenantId: 'ty' }, null));
+    expect(screen.queryByRole('option', { name: s.filters.tenantsMore })).not.toBeInTheDocument();
+    expect(useTenant).not.toHaveBeenCalled();
+  });
+
+  it('erro ao carregar as contas: item de tentar de novo', async () => {
+    svc.listContacts.mockResolvedValue({ items: [contact('1')], nextCursor: null });
+    svc.listTenants.mockRejectedValueOnce({ status: 500 }).mockResolvedValueOnce({ items: [{ id: 't9', name: 'Loja Nova' }], nextCursor: null });
+    const user = userEvent.setup();
+    page();
+    await waitFor(() => expect(svc.listTenants).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole('combobox', { name: s.filters.tenant }));
+    await user.click(await screen.findByRole('option', { name: s.filters.tenantsError }));
+    await user.click(screen.getByRole('combobox', { name: s.filters.tenant }));
+    expect(await screen.findByRole('option', { name: 'Loja Nova' })).toBeInTheDocument();
+    expect(svc.listTenants).toHaveBeenLastCalledWith(null);
   });
 
   it('estado vazio sem filtros e com filtros', async () => {

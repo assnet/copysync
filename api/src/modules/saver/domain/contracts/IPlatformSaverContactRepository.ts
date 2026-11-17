@@ -22,6 +22,7 @@ export interface PlatformSaverContactRow extends PlatformSaverContact {
 
 export interface PlatformSaverContactLink {
   tenantId: string;
+  tenantName: string;
   groupId: string;
   groupName: string;
   name: string | null;
@@ -29,6 +30,18 @@ export interface PlatformSaverContactLink {
   firstExtractedAt: Date;
   lastExtractedAt: Date;
   leftAt: Date | null;
+}
+
+/** Conta com vínculo no Saver (seletor do filtro do super admin). */
+export interface PlatformSaverTenant {
+  id: string;
+  name: string;
+}
+
+/** Posição de keyset das contas (`name`, `id` asc). */
+export interface PlatformSaverTenantKey {
+  name: string;
+  id: string;
 }
 
 /** Posição de keyset (`lastSeenAt` desc, `id`); o cursor assinado é da aplicação. */
@@ -46,6 +59,8 @@ export interface IPlatformSaverContactRepository {
     limit: number,
   ): Promise<PlatformSaverContactRow[]>;
   findLinks(contactId: string): Promise<PlatformSaverContactLink[]>;
+  /** Contas com ao menos um vínculo (`name`, `id` asc), por keyset. */
+  listTenants(after: PlatformSaverTenantKey | null, limit: number): Promise<PlatformSaverTenant[]>;
   /**
    * Aplica o resultado de `mergeGroupRead` numa transação (lotes de 500, ordenados por chave; fusão sob
    * advisory lock). Insert que bate na unicidade (outro tenant gravou antes) vira update. Devolve os ids

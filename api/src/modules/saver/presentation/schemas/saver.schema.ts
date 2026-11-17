@@ -99,6 +99,12 @@ export const platformListQuerySchema = {
   properties: { ...platformFilterProps, cursor: { type: 'string', maxLength: 1024 } },
 } as const;
 
+export const platformTenantsQuerySchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: { cursor: { type: 'string', maxLength: 1024 } },
+} as const;
+
 export const platformExportBodySchema = { type: 'object', additionalProperties: false, properties: platformFilterProps } as const;
 
 // ── Respostas ────────────────────────────────────────────────────────────────
@@ -209,6 +215,7 @@ export const platformContactResponse = envelope(obj({
     type: 'array',
     items: obj({
       tenantId: { type: 'string' },
+      tenantName: { type: 'string' },
       groupId: { type: 'string' },
       groupName: { type: 'string' },
       name: nullableString,
@@ -218,4 +225,9 @@ export const platformContactResponse = envelope(obj({
       leftAt: nullableDate,
     }),
   },
+}));
+
+export const platformTenantsResponse = envelope(obj({
+  items: { type: 'array', items: obj({ id: { type: 'string' }, name: { type: 'string' } }) },
+  nextCursor: nullableString,
 }));

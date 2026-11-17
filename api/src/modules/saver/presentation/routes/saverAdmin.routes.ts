@@ -11,6 +11,8 @@ import {
   platformContactsResponse,
   platformExportBodySchema,
   platformListQuerySchema,
+  platformTenantsQuerySchema,
+  platformTenantsResponse,
 } from '../schemas/saver.schema';
 
 /*
@@ -49,10 +51,18 @@ export async function saverAdminRoutes(app: FastifyInstance): Promise<void> {
 
   app.get<{ Params: { id: string } }>('/contacts/:id', {
     preHandler,
-    schema: { tags, summary: 'Extrações do contato: tenant, grupo, data e hora', params: idParamSchema, response: { 200: platformContactResponse } },
+    schema: { tags, summary: 'Extrações do contato: conta (id e nome), grupo, data e hora', params: idParamSchema, response: { 200: platformContactResponse } },
   }, async (request, reply) => {
     const out = await saverPlatformUseCases.getContact.execute({ actor: actorOf(request), contactId: request.params.id });
     return reply.status(200).send({ success: true, data: { contactId: out.contactId, links: out.links.map(SaverPresenter.platformContactLink) } });
+  });
+
+  app.get<{ Querystring: { cursor?: string } }>('/tenants', {
+    preHandler,
+    schema: { tags, summary: 'Contas com vínculo no Saver, para o filtro (cursor assinado)', querystring: platformTenantsQuerySchema, response: { 200: platformTenantsResponse } },
+  }, async (request, reply) => {
+    const out = await saverPlatformUseCases.listTenants.execute({ actor: actorOf(request), cursor: request.query.cursor ?? null });
+    return reply.status(200).send({ success: true, data: SaverPresenter.platformTenants(out) });
   });
 
   app.post<{ Body: Filters }>('/exports', {

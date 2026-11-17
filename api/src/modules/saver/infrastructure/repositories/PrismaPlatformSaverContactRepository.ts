@@ -9,6 +9,8 @@ import type {
   PlatformSaverContactKey,
   PlatformSaverContactLink,
   PlatformSaverContactRow,
+  PlatformSaverTenant,
+  PlatformSaverTenantKey,
 } from '../../domain/contracts/IPlatformSaverContactRepository';
 import type { ContactMerge, ContactUpdate, MergeGroupReadResult } from '../../domain/services/mergeGroupRead';
 import { ConcurrentWriteConflictError, NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
@@ -93,10 +95,21 @@ export class PrismaPlatformSaverContactRepository implements IPlatformSaverConta
       select: {
         tenantId: true, groupId: true, name: true, isAdmin: true, firstExtractedAt: true, lastExtractedAt: true, leftAt: true,
         group: { select: { name: true } },
+        tenant: { select: { name: true } },
       },
       orderBy: [{ lastExtractedAt: 'desc' }, { id: 'asc' }],
     });
-    return rows.map(({ group, ...r }) => ({ ...r, groupName: group.name }));
+    return rows.map(({ group, tenant, ...r }) => ({ ...r, tenantName: tenant.name, groupName: group.name }));
+  }
+
+  async listTenants(after: PlatformSaverTenantKey | null, limit: number): Promise<PlatformSaverTenant[]> {
+    // Mesma collation no WHERE e no ORDER BY (keyset estável); `EXISTS` usa `@@index([tenantId, contactId])`.
+    return this.prisma.$queryRaw<PlatformSaverTenant[]>`
+      SELECT t."id", t."name" FROM "tenants" t
+      WHERE EXISTS (SELECT 1 FROM "saver_group_memberships" m WHERE m."tenantId" = t."id")
+        ${after ? Prisma.sql`AND (t."name", t."id") > (${after.name}, ${after.id})` : Prisma.empty}
+      ORDER BY t."name", t."id"
+      LIMIT ${limit}`;
   }
 
   applyGroupRead(

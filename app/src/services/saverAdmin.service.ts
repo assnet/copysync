@@ -2,7 +2,7 @@ import { apiClient } from './apiClient';
 import { filenameFromDisposition } from './saver.service';
 import type { ApiSuccess } from '@/types/api.types';
 import type {
-  PlatformContactDetail, PlatformContactFilters, PlatformContactsFile, PlatformContactsPage,
+  PlatformContactDetail, PlatformContactFilters, PlatformContactsFile, PlatformContactsPage, PlatformTenantsPage,
 } from '@/features/saverAdmin/types';
 
 const BASE = '/admin/saver';
@@ -41,6 +41,12 @@ export const saverAdminService = {
 
   async getContact(id: string): Promise<PlatformContactDetail> {
     const res = await apiClient.get<ApiSuccess<PlatformContactDetail>>(`${BASE}/contacts/${encodeURIComponent(id)}`);
+    return res.data.data;
+  },
+
+  /** Contas com vínculo na base, para o filtro. Só o cursor recebido; nunca `limit`. */
+  async listTenants(cursor: string | null): Promise<PlatformTenantsPage> {
+    const res = await apiClient.get<ApiSuccess<PlatformTenantsPage>>(`${BASE}/tenants`, { params: cursor ? { cursor } : {} });
     return res.data.data;
   },
 
