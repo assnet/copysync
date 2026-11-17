@@ -92,6 +92,31 @@ já em cache: `memberCount = size ?? participants.length`; `kind` por `isCommuni
   `GET /contacts` (busca, tenant, período; **cursor keyset assinado**, escopo = hash dos filtros; inválido = 400,
   nunca offset), `GET /contacts/:id` (vínculos: tenant, grupo, data e hora), `POST /exports` (CSV por stream).
   Toda consulta grava `SAVER_PLATFORM_VIEWED`; exportação grava `SAVER_PLATFORM_EXPORTED` com filtros e contagem.
+- **Filtro por país e DDD** (`ddi`, `ddd`), igual na lista, na exportação e nos indicadores: é o começo do telefone
+  (`phone` guarda só dígitos com DDI, então `phone LIKE '<ddi><ddd>%'`). `ddi` precisa ser um código de país inteiro
+  (1 a 3 dígitos: `5` e `551` são recusados); `ddd` tem 2 dígitos e só vale com `ddi = 55`. Fora disso, 400. Contato só
+  com LID nunca casa quando há DDI. Os dois entram no escopo do cursor assinado (cursor de outro DDI/DDD = 400) e na
+  auditoria (não são dado pessoal). Índice `saver_contacts_phone_pattern_idx` (`text_pattern_ops`, migration
+  `20261117140000`): o índice único de `phone` não atende prefixo fora da collation C. O padrão entra no SQL como
+  literal conferido (`^\d{1,5}$`), porque `LIKE` com parâmetro não usa índice no plano genérico.
+- **Indicadores** `GET /admin/saver/contacts/summary` (mesmos filtros, sem cursor) →
+  `{ total, filtered, withPhone, lidOnly, topDdi[≤5], topDdd[≤8], ddiBase, dddBase }`. `total` = base inteira;
+  `filtered` = casa com os filtros, partido em `withPhone`/`lidOnly`. Os rankings ignoram o próprio filtro de DDI/DDD
+  (a tela destaca a barra filtrada sem as outras sumirem); `topDdd` só vem com `ddi = 55`; `ddiBase`/`dddBase` são o
+  total de cada ranking (base das porcentagens). Uma contagem por prefixo de 4 dígitos (`GROUP BY LEFT(phone, 4)`)
+  dobrada por `domain/services/phoneRegions.ts`: DDI tem 1 a 3 dígitos e os códigos não são prefixo um do outro, então
+  a função conhece os de 1 e 2 dígitos e o resto tem 3. Leitura com `statement_timeout` de 3 s; estourou = 503
+  `SAVER_SUMMARY_UNAVAILABLE`.
+  **Sem auditoria** (decisão 2026-11-17): é só contagem agregada, nenhum contato é lido, e a lista (auditada) roda
+  com os mesmos filtros na mesma tela.
+- Painel (`features/saverAdmin/`): faixa de indicadores com as barras de país/DDD (clicar filtra, clicar na ativa
+  remove), filtros País (DDI) com "Outro código…" e DDD (só com o Brasil), telefone com DDI/DDD destacados, selo
+  "Só LID", lista em cartões abaixo de `md` e rodapé "Mostrando X de Y" (Y = `filtered`). Os indicadores carregam à
+  parte (`usePlatformContactsSummary`): se falharem, aviso discreto com "Tentar de novo" e a lista segue, com o
+  rodapé só na quantidade exibida. Nomes de país e região de DDD ficam em `strings.ts`.
+- Não fazer: `substring(phone, 1, 2)` para achar o DDI; `limit`/`offset` vindo do painel; borrar ou auditar os
+  indicadores como se fossem contato; devolver contato no resumo; aceitar DDD com outro país; salvar lista ou
+  indicadores no navegador (só os filtros, `usePersistedState` versão 1).
 
 ## Exportação do tenant
 
