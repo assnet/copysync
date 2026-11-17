@@ -88,6 +88,7 @@ enum AuditAction {
   SAVER_PERMISSION_CHANGED
   SAVER_PLATFORM_VIEWED
   SAVER_PLATFORM_EXPORTED
+  USAGE_METRICS_VIEWED
 }
 
 enum ExtensionInstallationStatus {

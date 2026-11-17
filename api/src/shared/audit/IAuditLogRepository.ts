@@ -40,7 +40,8 @@ export type AuditAction =
   | 'SAVER_EXPORTED'
   | 'SAVER_PERMISSION_CHANGED'
   | 'SAVER_PLATFORM_VIEWED'
-  | 'SAVER_PLATFORM_EXPORTED';
+  | 'SAVER_PLATFORM_EXPORTED'
+  | 'USAGE_METRICS_VIEWED';
 
 export interface CreateAuditLogInput {
   tenantId?: string;
