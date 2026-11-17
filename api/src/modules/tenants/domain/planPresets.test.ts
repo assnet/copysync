@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { PLAN_PRESETS, planPresetRows, resolveEffectivePlanSlug, resolvePlanSlug } from './planPresets';
+import { PLAN_PRESETS, PLAN_SLUGS, SAVER_PLAN_PRESETS, SAVER_PLAN_SLUGS, planPresetRows, presetOf, resolveEffectivePlanSlug, resolvePlanSlug } from './planPresets';
+import { ALL_PLAN_SLUGS, resolvePlan } from './planCatalog';
+import { ADMIN_EDITABLE_ENTITLEMENT_KEYS } from './adminEditableEntitlements';
 import { ENTITLEMENT_KEYS as K } from './entitlementKeys';
 
 /** Mesmos números da vitrine (`app/src/features/plans/catalog.ts` → `limits`) e do roadmap. Mudou lá, muda aqui. */
@@ -64,7 +66,8 @@ describe('PLAN_PRESETS', () => {
       ['COPYSYNC_PRO', 0],
       ['COPYSYNC_MAX', 10],
     ]);
-    expect(new Set(rows.map((r) => r.planSlug)).size).toBe(3);
+    // 3 de Afiliados + 3 do Saver
+    expect(new Set(rows.map((r) => r.planSlug)).size).toBe(6);
   });
 
   it('gerações de oferta por dia: LITE 5, PRO 20, MAX ilimitado (null explícito, não ausente)', () => {
@@ -145,5 +148,69 @@ describe('resolveEffectivePlanSlug', () => {
   });
   it('caracterização: oferta DEV com permissão menor = permissão vence', () => {
     expect(resolveEffectivePlanSlug('copysync-dev-anual', ['COPYSYNC_LITE'])).toBe('COPYSYNC_LITE');
+  });
+});
+
+/** Tabela de `.specs/features/saver/design.md` §2.1 (roadmap). `null` = ilimitado explícito. */
+const SAVER_TABLE = {
+  SAVER_LITE: { groups: 10, contacts: 10_000, scans: 20, autoRefresh: false, whatsapp: 1, telegram: 0 },
+  SAVER_PRO: { groups: 50, contacts: 50_000, scans: 100, autoRefresh: true, whatsapp: 1, telegram: 0 },
+  SAVER_MAX: { groups: null, contacts: null, scans: 500, autoRefresh: true, whatsapp: 2, telegram: 0 },
+} as const;
+
+describe('SAVER_PLAN_PRESETS', () => {
+  it.each(SAVER_PLAN_SLUGS)('%s bate com a tabela (e só tem essas chaves)', (slug) => {
+    const t = SAVER_TABLE[slug];
+    expect(SAVER_PLAN_PRESETS[slug]).toEqual({
+      [K.SAVER_GROUPS]: t.groups,
+      [K.SAVER_CONTACTS]: t.contacts,
+      [K.SAVER_GROUP_SCANS_PER_DAY]: t.scans,
+      [K.SAVER_AUTO_REFRESH_ENABLED]: t.autoRefresh,
+      [K.WHATSAPP_SESSIONS]: t.whatsapp,
+      [K.TELEGRAM_SESSIONS]: t.telegram,
+    });
+  });
+
+  it('nomes das chaves', () => {
+    expect([K.SAVER_GROUPS, K.SAVER_GROUP_SCANS_PER_DAY, K.SAVER_CONTACTS, K.SAVER_AUTO_REFRESH_ENABLED])
+      .toEqual(['saver_groups', 'saver_group_scans_per_day', 'saver_contacts', 'saver_auto_refresh_enabled']);
+  });
+
+  it('MAX grava null explícito em grupos e contatos (omitir valeria zero no Saver)', () => {
+    const max = planPresetRows().filter((r) => r.planSlug === 'SAVER_MAX');
+    for (const key of [K.SAVER_GROUPS, K.SAVER_CONTACTS]) {
+      expect(max.find((r) => r.key === key)).toEqual({ planSlug: 'SAVER_MAX', key, value: null });
+    }
+  });
+
+  it('telegram_sessions 0 em todos; whatsapp_sessions 1/1/2', () => {
+    const rows = planPresetRows().filter((r) => r.planSlug.startsWith('SAVER_'));
+    expect(rows.filter((r) => r.key === K.TELEGRAM_SESSIONS).map((r) => [r.planSlug, r.value]))
+      .toEqual([['SAVER_LITE', 0], ['SAVER_PRO', 0], ['SAVER_MAX', 0]]);
+    expect(rows.filter((r) => r.key === K.WHATSAPP_SESSIONS).map((r) => [r.planSlug, r.value]))
+      .toEqual([['SAVER_LITE', 1], ['SAVER_PRO', 1], ['SAVER_MAX', 2]]);
+  });
+
+  it('slugs Saver em ALL_PLAN_SLUGS e fora de PLAN_SLUGS; nenhuma chave saver_* editável pelo admin', () => {
+    for (const slug of SAVER_PLAN_SLUGS) {
+      expect(ALL_PLAN_SLUGS).toContain(slug);
+      expect(PLAN_SLUGS as readonly string[]).not.toContain(slug);
+    }
+    expect(ADMIN_EDITABLE_ENTITLEMENT_KEYS.filter((k) => k.startsWith('saver_'))).toEqual([]);
+  });
+
+  it('copysync-saver-{tier}-{mensal|anual} resolve produto SAVER; só permissão SAVER_PRO também', () => {
+    for (const tier of ['lite', 'pro', 'max'] as const) {
+      for (const period of ['mensal', 'anual']) {
+        expect(resolvePlan(`copysync-saver-${tier}-${period}`, [])).toEqual({ product: 'SAVER', planSlug: `SAVER_${tier.toUpperCase()}` });
+      }
+    }
+    expect(resolvePlan(null, ['SAVER_PRO'])).toEqual({ product: 'SAVER', planSlug: 'SAVER_PRO' });
+  });
+
+  it('presetOf cobre os dois produtos', () => {
+    expect(presetOf('SAVER_PRO')).toBe(SAVER_PLAN_PRESETS.SAVER_PRO);
+    expect(presetOf('COPYSYNC_LITE')).toBe(PLAN_PRESETS.COPYSYNC_LITE);
+    expect(presetOf('X')).toBeUndefined();
   });
 });

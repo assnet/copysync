@@ -78,6 +78,8 @@ describe('pickGrantingSubscription', () => {
     expect(unknownPlanPermissions(null)).toEqual([]);
     // Caixa e espaços: só trim; minúscula é desconhecida; ordem e duplicatas preservadas
     expect(unknownPlanPermissions(['copysync_pro', 'X', 'X', ' COPYSYNC_LITE'])).toEqual(['copysync_pro', 'X', 'X']);
+    // Permissão de produto conhecido (Saver) não gera aviso
+    expect(unknownPlanPermissions(['SAVER_PRO', ' SAVER_MAX ', 'SAVER_GOLD', 'saver_lite'])).toEqual(['SAVER_GOLD', 'saver_lite']);
   });
 
   it('acesso só com plano desconhecido → planSlug null', () => {

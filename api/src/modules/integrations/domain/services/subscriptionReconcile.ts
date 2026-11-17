@@ -1,4 +1,5 @@
 import { PLAN_SLUGS, resolveEffectivePlanSlug, type PlanSlug } from '../../../tenants/domain/planPresets';
+import { ALL_PLAN_SLUGS } from '../../../tenants/domain/planCatalog';
 
 /**
  * Regras puras da reconciliação de assinaturas com a central (sem banco, sem HTTP).
@@ -97,9 +98,12 @@ export function subscriptionGrantsAccess(sub: HubSubscription, now: Date, graceM
   return Number.isFinite(exp) && exp + graceMs >= now.getTime();
 }
 
-/** Permissões recebidas que não são nível do CopySync (só para log; nunca derrubam o evento). */
+/**
+ * Permissões recebidas que não são nível de nenhum produto conhecido (`ALL_PLAN_SLUGS`: Afiliados e
+ * produtos novos, como `SAVER_*`). Só para log; nunca derrubam o evento.
+ */
 export function unknownPlanPermissions(permissions: readonly string[] | null | undefined): string[] {
-  return (permissions ?? []).filter((p) => !(PLAN_SLUGS as readonly string[]).includes(p.trim()));
+  return (permissions ?? []).filter((p) => !(ALL_PLAN_SLUGS as readonly string[]).includes(p.trim()));
 }
 
 const TIER = new Map<string, number>(PLAN_SLUGS.map((slug, i) => [slug, i]));
