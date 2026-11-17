@@ -44,6 +44,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - **`features/products/*`**, menu por produto com cadeado, `ProductRoute`/`ProductHomeRedirect`, 403 `PRODUCT_UNAVAILABLE` leva à vitrine, assinatura com um cartão por produto.
 - **`features/saver/*`**, **`features/saverAdmin/*`** — Saver no menu (só com audiência), Grupos, Exportar, Configurações, Planos (`/saver/plans`) e Base de contatos (`/admin/saver`), com privacidade, i18n e claro/escuro.
 
+### Fixed
+
+- **`PrismaTenantUsageReader.ts`** — `GET /subscription` passa a trazer o uso das chaves `saver_*` (grupos, contatos, leituras em 24 h).
+- **`SubscriptionPlanCard.tsx`**, **`SubscriptionLimitsTable.tsx`** — plano ativo mostra "Trocar de plano"; tenant só-Saver não vê aba Telegram; limite sem contador mostra "—".
+- **`SaverGroupsPage.tsx`**, **`SaverPlansPage.tsx`** — conta sem plano Saver vê "plano não inclui" (modo piloto para super admin) em vez de "0 de 0"; exportação nunca vira "todos" por marcação obsoleta; super admin troca plano na vitrine.
+- **`productAccess.ts`** — super admin vê todos os produtos destravados no painel (a API já o deixava passar).
+
 ### Changed
 
 - **`BaileysErrorTranslator.ts`** — `translateGroupReadError` traduz limite de taxa para 429 só na leitura de grupo; envio e pareamento seguem 503.
