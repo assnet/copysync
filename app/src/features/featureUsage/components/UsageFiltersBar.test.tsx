@@ -54,6 +54,26 @@ describe('UsageFiltersBar', () => {
     expect(screen.queryByLabelText(S.filters.customFrom)).toBeNull();
   });
 
+  it('personalizado abre com as datas do período atual; acima do teto desabilita "Aplicar período"', async () => {
+    window.sessionStorage.clear();
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    renderWithTheme(<UsageFiltersBar filters={{ ...DEFAULT_USAGE_FILTERS, preset: '7d' }} onChange={onChange} maxDays={90} />);
+    await user.click(screen.getByRole('button', { name: S.filters.presets.custom }));
+    const from = screen.getByLabelText(S.filters.customFrom) as HTMLInputElement;
+    const to = screen.getByLabelText(S.filters.customTo) as HTMLInputElement;
+    expect(from.value).toBe('2026-11-11');
+    expect(to.value).toBe('2026-11-17');
+    const applyButton = screen.getByRole('button', { name: S.filters.customApply });
+    expect(applyButton).toBeEnabled();
+
+    await user.clear(from);
+    await user.type(from, '2026-01-01');
+    expect(applyButton).toBeDisabled();
+    expect(screen.getByText(S.periodErrors.tooLong(90))).toBeInTheDocument();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it('presets acima do teto não aparecem', () => {
     renderWithTheme(<UsageFiltersBar filters={DEFAULT_USAGE_FILTERS} onChange={() => {}} maxDays={30} />);
     expect(screen.queryByRole('button', { name: S.filters.presets['90d'] })).toBeNull();

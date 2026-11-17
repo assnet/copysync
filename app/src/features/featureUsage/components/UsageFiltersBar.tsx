@@ -40,26 +40,26 @@ function PeriodControl({ filters, onChange, maxDays }: Omit<UsageFiltersBarProps
    * "Limpar filtros", volta aos 30 dias após 400), o modo personalizado fecha sozinho.
    */
   const [customOpenFor, setCustomOpenFor] = useState<UsagePeriodPreset | null>(null);
-  const [error, setError] = useState<UsageRangeError | null>(null);
   const showCustom = filters.preset === 'custom' || customOpenFor === filters.preset;
 
   const choose = (preset: UsagePeriodPreset | null) => {
     if (!preset) return;
     if (preset === 'custom') {
+      // Abre com as datas do período atual, prontas para ajustar.
+      const { from, to } = resolvePeriod(filters, serverNow());
+      setDraft({ from, to });
       setCustomOpenFor(filters.preset);
       return;
     }
     setCustomOpenFor(null);
-    setError(null);
     onChange(withPeriod(filters, { preset }, serverNow()));
   };
 
+  /** Validado enquanto edita: fora do teto (ou datas inválidas) o botão fica desabilitado e a mensagem aparece no campo. */
+  const error: UsageRangeError | null = showCustom ? validateCustomRange(draft.from, draft.to, maxDays, serverNow()) : null;
   const apply = () => {
-    const now = serverNow();
-    const problem = validateCustomRange(draft.from, draft.to, maxDays, now);
-    setError(problem);
-    if (problem) return;
-    onChange(withPeriod(filters, { preset: 'custom', from: draft.from, to: draft.to }, now));
+    if (error) return;
+    onChange(withPeriod(filters, { preset: 'custom', from: draft.from, to: draft.to }, serverNow()));
   };
 
   return (
@@ -98,7 +98,7 @@ function PeriodControl({ filters, onChange, maxDays }: Omit<UsageFiltersBarProps
             error={error !== null}
             helperText={error ? rangeErrorText(error, maxDays) : f.customHint(maxDays)}
           />
-          <Button variant="outlined" onClick={apply} sx={{ minHeight: 40, whiteSpace: 'nowrap' }}>{f.customApply}</Button>
+          <Button variant="outlined" onClick={apply} disabled={error !== null} sx={{ minHeight: 40, whiteSpace: 'nowrap' }}>{f.customApply}</Button>
         </Stack>
       )}
     </Stack>

@@ -158,9 +158,9 @@ describe('AdminUsagePage', () => {
     await screen.findByText(S.kpis.activeTenants.value('9', '15'));
     getSummary.mockClear();
     await user.click(screen.getByRole('button', { name: S.filters.presets.custom }));
+    await user.clear(screen.getByLabelText(S.filters.customFrom));
     await user.type(screen.getByLabelText(S.filters.customFrom), '2026-01-01');
-    await user.type(screen.getByLabelText(S.filters.customTo), '2026-11-01');
-    await user.click(screen.getByRole('button', { name: S.filters.customApply }));
+    expect(screen.getByRole('button', { name: S.filters.customApply })).toBeDisabled();
     expect(screen.getByText(S.periodErrors.tooLong(90))).toBeInTheDocument();
     expect(getSummary).not.toHaveBeenCalled();
   });
