@@ -249,6 +249,7 @@ export class FakeSaverStore {
     findByKeys: async (phones, lids) =>
       this.contacts.filter((c) => (c.phone && phones.includes(c.phone)) || (c.lid && lids.includes(c.lid))),
     list: async () => [],
+    countByPhonePrefix: async () => ({ total: 0, prefixes: [] }),
     findLinks: async () => [],
     listTenants: async () => [],
     applyGroupRead: async (

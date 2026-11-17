@@ -91,6 +91,8 @@ const platformFilterProps = {
   tenantId: id,
   from: isoInput,
   to: isoInput,
+  ddi: { type: 'string', pattern: '^[0-9]{1,3}$' },
+  ddd: { type: 'string', pattern: '^[0-9]{2}$' },
 } as const;
 
 export const platformListQuerySchema = {
@@ -98,6 +100,9 @@ export const platformListQuerySchema = {
   additionalProperties: false,
   properties: { ...platformFilterProps, cursor: { type: 'string', maxLength: 1024 } },
 } as const;
+
+/** Indicadores: mesmos filtros da lista, sem cursor. */
+export const platformSummaryQuerySchema = { type: 'object', additionalProperties: false, properties: platformFilterProps } as const;
 
 export const platformTenantsQuerySchema = {
   type: 'object',
@@ -213,6 +218,16 @@ export const platformContactsResponse = envelope(obj({
     }),
   },
   nextCursor: nullableString,
+}));
+
+const count = { type: 'integer' } as const;
+export const platformSummaryResponse = envelope(obj({
+  total: count,
+  filtered: count,
+  withPhone: count,
+  lidOnly: count,
+  topDdi: { type: 'array', items: obj({ ddi: { type: 'string' }, count }) },
+  topDdd: { type: 'array', items: obj({ ddd: { type: 'string' }, count }) },
 }));
 
 export const platformContactResponse = envelope(obj({

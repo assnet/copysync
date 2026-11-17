@@ -5,6 +5,7 @@ import type {
   ApplyGroupReadOutcome,
   IPlatformSaverContactRepository,
   SaverContactUsage,
+  PlatformSaverContactCounts,
   PlatformSaverContactFilter,
   PlatformSaverContactKey,
   PlatformSaverContactLink,
@@ -14,6 +15,7 @@ import type {
 } from '../../domain/contracts/IPlatformSaverContactRepository';
 import type { ContactMerge, ContactUpdate, MergeGroupReadResult } from '../../domain/services/mergeGroupRead';
 import { ConcurrentWriteConflictError, NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
+import { SaverSummaryUnavailableError } from '../../../../shared/errors/internal/SaverExportErrors';
 import type { SaverItemClaim } from '../../domain/contracts/ISaverExtractionQueue';
 import { lockSaverTenant } from './saverTenantLock';
 import { PrismaSaverMapper } from '../mappers/PrismaSaverMapper';
@@ -23,6 +25,8 @@ type Tx = Prisma.TransactionClient;
 /** Lote das escritas em SQL cru (design.md §3). */
 export const SAVER_WRITE_BATCH = 500;
 const APPLY_TIMEOUT_MS = 60_000;
+/** Tempo máximo da contagem dos indicadores (a tela não espera mais que isso). */
+export const SAVER_SUMMARY_STATEMENT_TIMEOUT = '3s';
 
 const chunk = <T>(list: readonly T[], size = SAVER_WRITE_BATCH): T[][] => {
   const out: T[][] = [];
@@ -71,7 +75,7 @@ export class PrismaPlatformSaverContactRepository implements IPlatformSaverConta
           MIN(m."firstExtractedAt") AS first_ext, MAX(m."lastExtractedAt") AS last_ext
         FROM "saver_group_memberships" m WHERE m."contactId" = c."id"
       ) agg ON true
-      WHERE true ${searchSql(filter.search)} ${linkFilterSql(filter)}
+      WHERE true ${searchSql(filter.search)} ${phonePrefixSql(filter)} ${linkFilterSql(filter)}
         ${after ? Prisma.sql`AND (c."lastSeenAt" < ${after.lastSeenAt} OR (c."lastSeenAt" = ${after.lastSeenAt} AND c."id" COLLATE "C" < ${after.id}))` : Prisma.empty}
       ORDER BY c."lastSeenAt" DESC, c."id" COLLATE "C" DESC
       LIMIT ${limit}`;
@@ -87,6 +91,29 @@ export class PrismaPlatformSaverContactRepository implements IPlatformSaverConta
       firstExtractedAt: r.first_ext,
       lastExtractedAt: r.last_ext,
     }));
+  }
+
+  async countByPhonePrefix(filter: PlatformSaverContactFilter, prefixLength: number): Promise<PlatformSaverContactCounts> {
+    const length = Math.min(Math.max(Math.trunc(prefixLength), 1), 6);
+    try {
+      // Transação curta: `SET LOCAL` vale só para as duas contagens.
+      const [, totals, groups] = await this.prisma.$transaction([
+        this.prisma.$executeRawUnsafe(`SET LOCAL statement_timeout = '${SAVER_SUMMARY_STATEMENT_TIMEOUT}'`),
+        this.prisma.$queryRaw<{ total: bigint }[]>`SELECT COUNT(*) AS total FROM "saver_contacts"`,
+        this.prisma.$queryRaw<{ prefix: string | null; count: bigint }[]>`
+          SELECT LEFT(c."phone", ${Prisma.raw(String(length))}) AS prefix, COUNT(*) AS count
+          FROM "saver_contacts" c
+          WHERE true ${searchSql(filter.search)} ${phonePrefixSql(filter)} ${linkFilterSql(filter)}
+          GROUP BY 1`,
+      ]);
+      return {
+        total: Number(totals[0]?.total ?? 0),
+        prefixes: groups.map((g) => ({ prefix: g.prefix, count: Number(g.count) })),
+      };
+    } catch (err) {
+      if (isStatementTimeout(err)) throw new SaverSummaryUnavailableError();
+      throw err;
+    }
   }
 
   async findLinks(contactId: string): Promise<PlatformSaverContactLink[]> {
@@ -218,6 +245,24 @@ function searchSql(search: string | null): Prisma.Sql {
   const digits = /^[\d\s().+-]+$/.test(term) ? term.replace(/\D+/g, '') : '';
   return Prisma.sql`AND (c."name" ILIKE ${like} OR c."lid" ILIKE ${like}
     ${digits ? Prisma.sql`OR c."phone" LIKE ${`%${digits}%`}` : Prisma.empty})`;
+}
+
+/**
+ * DDI (+ DDD) = começo do telefone. O padrão entra como literal (só dígitos, conferido aqui) para o
+ * planejador usar o índice `saver_contacts_phone_pattern_idx` (`text_pattern_ops`); com parâmetro, o plano
+ * genérico do prepared statement não usa índice em `LIKE`. `NULL LIKE …` = contato só com LID nunca casa.
+ */
+function phonePrefixSql(f: PlatformSaverContactFilter): Prisma.Sql {
+  if (!f.ddi) return Prisma.empty;
+  const prefix = `${f.ddi}${f.ddd ?? ''}`;
+  if (!/^\d{1,5}$/.test(prefix)) throw new Error('Invalid phone prefix filter');
+  return Prisma.sql`AND c."phone" LIKE ${Prisma.raw(`'${prefix}%'`)}`;
+}
+
+/** `statement_timeout` estourado: `P2010` com SQLSTATE 57014 no `$queryRaw`; fora disso, só a mensagem do Postgres. */
+function isStatementTimeout(err: unknown): boolean {
+  if (err instanceof Prisma.PrismaClientKnownRequestError && (err.meta as { code?: unknown } | undefined)?.code === '57014') return true;
+  return err instanceof Error && /57014|canceling statement due to statement timeout/i.test(err.message);
 }
 
 /** Tenant e período filtram pelos vínculos (data e hora da extração), não pelo contato global. */

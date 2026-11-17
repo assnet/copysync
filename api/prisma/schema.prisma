@@ -2187,6 +2187,8 @@ model SaverContact {
   memberships SaverGroupMembership[]
 
   @@index([lastSeenAt])
+  // Filtro por DDI/DDD = `phone LIKE '55…%'`: o índice único não serve a prefixo fora da collation C.
+  @@index([phone(ops: raw("text_pattern_ops"))], map: "saver_contacts_phone_pattern_idx")
   @@map("saver_contacts")
 }
 

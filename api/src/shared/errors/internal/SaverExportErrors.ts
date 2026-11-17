@@ -16,6 +16,13 @@ export class SaverCursorInvalidError extends AppError {
   }
 }
 
+/** Indicadores da base da plataforma demoraram demais (tempo máximo da leitura): 503, a lista segue e o painel oferece "tentar de novo". */
+export class SaverSummaryUnavailableError extends AppError {
+  constructor() {
+    super('SAVER_SUMMARY_UNAVAILABLE', 'Contact base summary is temporarily unavailable, try again', 503);
+  }
+}
+
 /** Audiência do Saver (flag "Só super admin", `SAVER_AUDIENCE` só valor inicial): fora da prévia. Depois do gate de produto. */
 export class SaverUnavailableError extends AppError {
   constructor() {

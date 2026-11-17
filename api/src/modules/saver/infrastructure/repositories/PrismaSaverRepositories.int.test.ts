@@ -378,7 +378,7 @@ describe('base da plataforma', () => {
     const t = await makeTenant('list');
     const g = await makeGroup(t, await makeSession(t), `list-${stamp}@g.us`);
     await readGroup(t, g, Array.from({ length: 5 }, (_, i) => ({ phone: `${phoneBase}7${i}`, lid: null, name: `L${i}`, isAdmin: false })), now);
-    const filter = { search: null, tenantId: t, from: null, to: null };
+    const filter = { search: null, tenantId: t, from: null, to: null, ddi: null, ddd: null };
     const page1 = await platform.list(filter, null, 3);
     expect(page1).toHaveLength(3);
     const last = page1[2]!;
@@ -388,6 +388,35 @@ describe('base da plataforma', () => {
     expect(page1[0]).toMatchObject({ tenantCount: 1, groupCount: 1 });
     expect(await platform.list({ ...filter, search: 'L3' }, null, 10)).toHaveLength(1);
     expect(await platform.list({ ...filter, search: `+${phoneBase}74` }, null, 10)).toHaveLength(1);
+  });
+
+  it('filtro por DDI/DDD = prefixo do telefone; só LID nunca casa; contagem por prefixo', async () => {
+    const t = await makeTenant('ddi');
+    const g = await makeGroup(t, await makeSession(t), `ddi-${stamp}@g.us`);
+    const tail = String(stamp).slice(-7);
+    const phones = [`5511${tail}1`, `5511${tail}2`, `5521${tail}3`, `351${tail}4`, `5531${tail}5`];
+    await readGroup(t, g, [
+      ...phones.map((phone, i) => ({ phone, lid: null, name: `D${i}`, isAdmin: false })),
+      { phone: null, lid: `lid${stamp}ddi`, name: 'Só LID', isAdmin: false },
+    ], now);
+    const filter = { search: null, tenantId: t, from: null, to: null, ddi: null, ddd: null };
+    const listed = async (ddi: string | null, ddd: string | null = null) =>
+      (await platform.list({ ...filter, ddi, ddd }, null, 50)).map((r) => r.phone).sort();
+
+    expect(await listed(null)).toHaveLength(6);
+    expect(await listed('55')).toEqual([phones[0], phones[1], phones[2], phones[4]].sort());
+    expect(await listed('55', '11')).toEqual([phones[0], phones[1]]);
+    expect(await listed('351')).toEqual([phones[3]]);
+    expect(await listed('44')).toEqual([]);
+
+    const all = await platform.countByPhonePrefix(filter, 3);
+    expect(all.total).toBeGreaterThanOrEqual(6);
+    const of = (rows: typeof all.prefixes) => Object.fromEntries(rows.map((r) => [String(r.prefix), r.count]));
+    expect(of(all.prefixes)).toEqual({ '551': 2, '552': 1, '553': 1, '351': 1, null: 1 });
+    const br = await platform.countByPhonePrefix({ ...filter, ddi: '55' }, 4);
+    expect(of(br.prefixes)).toEqual({ '5511': 2, '5521': 1, '5531': 1 });
+    expect(of((await platform.countByPhonePrefix({ ...filter, ddi: '55', ddd: '21' }, 4)).prefixes)).toEqual({ '5521': 1 });
+    await expect(platform.list({ ...filter, ddi: "5' OR 1=1 --" }, null, 5)).rejects.toThrow('Invalid phone prefix filter');
   });
 });
 

@@ -11,6 +11,7 @@ import type {
 import {
   ExportPlatformSaverContactsUseCase,
   GetPlatformSaverContactUseCase,
+  GetPlatformSaverContactsSummaryUseCase,
   ListPlatformSaverContactsUseCase,
   ListPlatformSaverTenantsUseCase,
   PLATFORM_SAVER_PAGE_SIZE,
@@ -42,6 +43,7 @@ function repo(all: PlatformSaverContactRow[], links: PlatformSaverContactLink[] 
     findByKeys: vi.fn(),
     applyGroupRead: vi.fn(),
     findLinks: vi.fn(async () => links),
+    countByPhonePrefix: vi.fn(async () => ({ total: all.length, prefixes: [] })),
     listTenants: vi.fn(async (after, limit) => {
       const start = after ? tenants.findIndex((t) => t.id === after.id) + 1 : 0;
       return tenants.slice(start, start + limit);
@@ -112,6 +114,76 @@ describe('ListPlatformSaverContactsUseCase', () => {
     await expect(
       new ListPlatformSaverContactsUseCase(r, a).execute({ actor: SUPER, from: new Date('2026-11-10'), to: new Date('2026-11-01') }),
     ).rejects.toMatchObject({ statusCode: 400 });
+  });
+});
+
+describe('filtros por DDI e DDD', () => {
+  it('DDI e DDD chegam ao repositório, entram no escopo do cursor e na auditoria', async () => {
+    const { r, calls } = repo(rowsOf(PLATFORM_SAVER_PAGE_SIZE + 1));
+    const { a, entries } = auditRepo();
+    const uc = new ListPlatformSaverContactsUseCase(r, a);
+    const { nextCursor } = await uc.execute({ actor: SUPER, ddi: ' 55 ', ddd: '11' });
+    expect(calls[0]?.filter).toMatchObject({ ddi: '55', ddd: '11' });
+    expect(entries[0]?.meta).toMatchObject({ filters: { ddi: '55', ddd: '11' } });
+    await expect(uc.execute({ actor: SUPER, ddi: '55', ddd: '11', cursor: nextCursor })).resolves.toBeTruthy();
+    for (const other of [{ ddi: '55', ddd: '21' }, { ddi: '55' }, { ddi: '351' }, {}]) {
+      await expect(uc.execute({ actor: SUPER, ...other, cursor: nextCursor })).rejects.toMatchObject({ code: 'SAVER_CURSOR_INVALID' });
+    }
+  });
+
+  it('DDI que não é código inteiro, DDD fora de 2 dígitos ou DDD sem DDI 55 → 400, sem consultar', async () => {
+    const { r } = repo(rowsOf(1));
+    const { a } = auditRepo();
+    const uc = new ListPlatformSaverContactsUseCase(r, a);
+    const bad = [{ ddi: '5' }, { ddi: '551' }, { ddi: '5a' }, { ddi: '5511' }, { ddi: '55', ddd: '1' }, { ddi: '55', ddd: '119' }, { ddi: '351', ddd: '11' }, { ddd: '11' }];
+    for (const q of bad) {
+      await expect(uc.execute({ actor: SUPER, ...q }), JSON.stringify(q)).rejects.toMatchObject({ statusCode: 400, code: 'VALIDATION_ERROR' });
+    }
+    expect(r.list).not.toHaveBeenCalled();
+    await expect(new ExportPlatformSaverContactsUseCase(r, a).execute({ actor: SUPER, ddi: '351', ddd: '11' })).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('exportação usa os mesmos filtros e audita DDI/DDD', async () => {
+    const { r, calls } = repo(rowsOf(2));
+    const { a, entries } = auditRepo();
+    const file = await new ExportPlatformSaverContactsUseCase(r, a).execute({ actor: SUPER, ddi: '55', ddd: '21' });
+    for await (const _ of file.lines) void _;
+    expect(calls[0]?.filter).toMatchObject({ ddi: '55', ddd: '21' });
+    expect(entries[0]).toMatchObject({ action: 'SAVER_PLATFORM_EXPORTED', meta: { filters: { ddi: '55', ddd: '21' }, count: 2 } });
+  });
+});
+
+describe('GetPlatformSaverContactsSummaryUseCase', () => {
+  const prefixes = [{ prefix: '5511', count: 6 }, { prefix: '5521', count: 3 }, { prefix: null, count: 2 }];
+
+  it('não super admin → 403, sem tocar a base', async () => {
+    const { r } = repo([]);
+    await expect(new GetPlatformSaverContactsSummaryUseCase(r).execute({ actor: TENANT_ADMIN })).rejects.toMatchObject({ statusCode: 403 });
+    expect(r.countByPhonePrefix).not.toHaveBeenCalled();
+  });
+
+  it('sem DDI: prefixo de 3 dígitos, ranking de DDI e nenhum DDD', async () => {
+    const { r } = repo([]);
+    vi.mocked(r.countByPhonePrefix).mockResolvedValue({ total: 40, prefixes: [{ prefix: '551', count: 9 }, { prefix: '351', count: 4 }, { prefix: null, count: 2 }] });
+    const out = await new GetPlatformSaverContactsSummaryUseCase(r).execute({ actor: SUPER, search: ' ana ' });
+    expect(r.countByPhonePrefix).toHaveBeenCalledWith(expect.objectContaining({ search: 'ana', ddi: null, ddd: null }), 3);
+    expect(out).toEqual({ total: 40, filtered: 15, withPhone: 13, lidOnly: 2, topDdi: [{ ddi: '55', count: 9 }, { ddi: '351', count: 4 }], topDdd: [] });
+  });
+
+  it('DDI 55: prefixo de 4 dígitos e ranking de DDD', async () => {
+    const { r } = repo([]);
+    vi.mocked(r.countByPhonePrefix).mockResolvedValue({ total: 40, prefixes });
+    const out = await new GetPlatformSaverContactsSummaryUseCase(r).execute({ actor: SUPER, ddi: '55' });
+    expect(r.countByPhonePrefix).toHaveBeenCalledWith(expect.objectContaining({ ddi: '55' }), 4);
+    expect(out).toMatchObject({ total: 40, filtered: 11, withPhone: 9, lidOnly: 2, topDdd: [{ ddd: '11', count: 6 }, { ddd: '21', count: 3 }] });
+  });
+
+  it('mesma validação da lista: filtro inválido → 400', async () => {
+    const { r } = repo([]);
+    const uc = new GetPlatformSaverContactsSummaryUseCase(r);
+    await expect(uc.execute({ actor: SUPER, ddi: '351', ddd: '11' })).rejects.toMatchObject({ statusCode: 400 });
+    await expect(uc.execute({ actor: SUPER, from: new Date('2026-11-10'), to: new Date('2026-11-01') })).rejects.toMatchObject({ statusCode: 400 });
+    expect(r.countByPhonePrefix).not.toHaveBeenCalled();
   });
 });
 

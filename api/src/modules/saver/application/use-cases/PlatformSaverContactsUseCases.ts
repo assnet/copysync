@@ -11,6 +11,7 @@ import type {
   PlatformSaverTenant,
   PlatformSaverTenantKey,
 } from '../../domain/contracts/IPlatformSaverContactRepository';
+import { BRAZIL_DDI, isCountryCode, summarizePhonePrefixes, type PhoneRegionSummary } from '../../domain/services/phoneRegions';
 import { platformCsvHeader, toPlatformCsvLine } from '../../domain/services/exportFormatters';
 import {
   createPlatformSaverContactCursor,
@@ -24,6 +25,7 @@ import {
  * Base de contatos da PLATAFORMA (SAVER-45). Só `SUPER_ADMIN`, checado aqui (a rota também checa).
  * Lista por cursor keyset assinado (inválido/de outro filtro = 400, nunca offset; tamanho de página fixo).
  * Toda consulta e exportação grava `AuditLog` sem nome, número, LID nem texto da busca.
+ * Filtros `ddi`/`ddd` valem igual para lista, exportação e indicadores (prefixo do telefone).
  */
 
 export const PLATFORM_SAVER_PAGE_SIZE = 50;
@@ -41,6 +43,10 @@ export interface PlatformSaverContactQuery {
   tenantId?: string | null;
   from?: Date | null;
   to?: Date | null;
+  /** Código do país: só dígitos, um código inteiro (1 a 3 dígitos). */
+  ddi?: string | null;
+  /** Código de área do Brasil: 2 dígitos, só com `ddi = 55`. */
+  ddd?: string | null;
 }
 
 export interface ListPlatformSaverContactsInput extends PlatformSaverContactQuery {
@@ -66,7 +72,12 @@ function toFilter(q: PlatformSaverContactQuery): PlatformSaverContactFilter {
     if (d && Number.isNaN(d.getTime())) throw new ValidationError('Invalid date', { field });
   }
   if (from && to && from > to) throw new ValidationError('Start date must be before end date', { field: 'from' });
-  return { search, tenantId: q.tenantId?.trim() || null, from, to };
+  const ddi = q.ddi?.trim() || null;
+  const ddd = q.ddd?.trim() || null;
+  if (ddi && !isCountryCode(ddi)) throw new ValidationError('Country code must be a whole calling code (1 to 3 digits)', { field: 'ddi' });
+  if (ddd && !/^\d{2}$/.test(ddd)) throw new ValidationError('Area code must have exactly 2 digits', { field: 'ddd' });
+  if (ddd && ddi !== BRAZIL_DDI) throw new ValidationError('Area code is only accepted with country code 55', { field: 'ddd' });
+  return { search, tenantId: q.tenantId?.trim() || null, from, to, ddi, ddd };
 }
 
 /** Filtros para o `AuditLog`: nunca o texto da busca (pode ser nome ou número). */
@@ -76,6 +87,8 @@ function auditFilters(f: PlatformSaverContactFilter): Record<string, unknown> {
     tenantId: f.tenantId,
     from: f.from?.toISOString() ?? null,
     to: f.to?.toISOString() ?? null,
+    ddi: f.ddi,
+    ddd: f.ddd,
   };
 }
 
@@ -109,6 +122,30 @@ export class ListPlatformSaverContactsUseCase {
       meta: { kind: 'list', filters: auditFilters(filter), page: after ? 'next' : 'first', count: items.length },
     });
     return { items, nextCursor };
+  }
+}
+
+export interface PlatformSaverContactsSummary extends PhoneRegionSummary {
+  /** Contatos da base inteira, sem filtro. */
+  total: number;
+}
+
+/**
+ * Indicadores da tela: total da base, quantos casam com os filtros (com telefone × só LID), DDIs mais
+ * comuns e, com `ddi = 55`, DDDs mais comuns. Mesmos filtros da lista, sem cursor.
+ * Sem auditoria de propósito: só contagem agregada, nenhum contato é lido, e a lista (auditada) roda com
+ * os mesmos filtros na mesma tela.
+ */
+export class GetPlatformSaverContactsSummaryUseCase {
+  constructor(private readonly contacts: IPlatformSaverContactRepository) {}
+
+  async execute(input: PlatformSaverContactQuery & { actor: PlatformSaverActor }): Promise<PlatformSaverContactsSummary> {
+    assertSuperAdmin(input.actor);
+    const filter = toFilter(input);
+    const withDdd = filter.ddi === BRAZIL_DDI;
+    // 4 dígitos alcançam o DDD do Brasil; 3 bastam para o DDI (1 a 3 dígitos).
+    const { total, prefixes } = await this.contacts.countByPhonePrefix(filter, withDdd ? 4 : 3);
+    return { total, ...summarizePhonePrefixes(prefixes, { withDdd }) };
   }
 }
 

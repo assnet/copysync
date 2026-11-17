@@ -1,5 +1,6 @@
 import type { PlatformSaverContact } from '../entities/SaverEntities';
 import type { MergeGroupReadResult } from '../services/mergeGroupRead';
+import type { PhonePrefixCount } from '../services/phoneRegions';
 import type { SaverItemClaim } from './ISaverExtractionQueue';
 
 /**
@@ -11,6 +12,18 @@ export interface PlatformSaverContactFilter {
   tenantId: string | null;
   from: Date | null;
   to: Date | null;
+  /** Código do país (só dígitos). Filtra pelo começo do telefone; contato sem telefone nunca casa. */
+  ddi: string | null;
+  /** Código de área do Brasil (2 dígitos); só com `ddi = 55`. */
+  ddd: string | null;
+}
+
+/** Contagem para os indicadores da tela: base inteira e, nos filtros, por prefixo do telefone. */
+export interface PlatformSaverContactCounts {
+  /** Contatos da base, sem filtro. */
+  total: number;
+  /** Os que casam com os filtros, agrupados pelos primeiros dígitos do telefone. */
+  prefixes: PhonePrefixCount[];
 }
 
 export interface PlatformSaverContactRow extends PlatformSaverContact {
@@ -58,6 +71,11 @@ export interface IPlatformSaverContactRepository {
     after: PlatformSaverContactKey | null,
     limit: number,
   ): Promise<PlatformSaverContactRow[]>;
+  /**
+   * Total da base + contagem dos filtrados por prefixo do telefone (`prefixLength` primeiros dígitos).
+   * Leitura com tempo máximo: estourou = `SaverSummaryUnavailableError` (503), nunca trava a tela.
+   */
+  countByPhonePrefix(filter: PlatformSaverContactFilter, prefixLength: number): Promise<PlatformSaverContactCounts>;
   findLinks(contactId: string): Promise<PlatformSaverContactLink[]>;
   /** Contas com ao menos um vínculo (`name`, `id` asc), por keyset. */
   listTenants(after: PlatformSaverTenantKey | null, limit: number): Promise<PlatformSaverTenant[]>;

@@ -5,7 +5,7 @@ import {
   readPlatformSaverContactCursor,
 } from './platformSaverContactCursor';
 
-const filter = { search: 'ana', tenantId: null, from: null, to: null };
+const filter = { search: 'ana', tenantId: null, from: null, to: null, ddi: null, ddd: null };
 const key = { lastSeenAt: new Date('2026-11-17T03:00:00.000Z'), id: 'c1' };
 
 describe('platformSaverContactCursor', () => {
@@ -18,6 +18,9 @@ describe('platformSaverContactCursor', () => {
     const scope = platformSaverContactScope(filter);
     const cursor = createPlatformSaverContactCursor(scope, key);
     expect(readPlatformSaverContactCursor(cursor, platformSaverContactScope({ ...filter, tenantId: 't2' }))).toBeNull();
+    expect(readPlatformSaverContactCursor(cursor, platformSaverContactScope({ ...filter, ddi: '55' }))).toBeNull();
+    const br = platformSaverContactScope({ ...filter, ddi: '55' });
+    expect(readPlatformSaverContactCursor(createPlatformSaverContactCursor(br, key), platformSaverContactScope({ ...filter, ddi: '55', ddd: '11' }))).toBeNull();
     const forged = Buffer.from(JSON.stringify({ s: key.lastSeenAt.toISOString(), i: 'c0' })).toString('base64url');
     expect(readPlatformSaverContactCursor(`${forged}${cursor.slice(cursor.indexOf('~'))}`, scope)).toBeNull();
     expect(readPlatformSaverContactCursor('lixo', scope)).toBeNull();

@@ -4,7 +4,7 @@ import type { SaverExtractionDTO } from '../../application/use-cases/saverExtrac
 import type { CancelSaverExtractionOutput } from '../../application/use-cases/CancelSaverExtractionUseCase';
 import type { SaverGroupDTO } from '../../application/use-cases/ListSaverGroupsUseCase';
 import type { SaverConfigDTO, SaverExportGrantDTO } from '../../application/use-cases/SaverConfigUseCases';
-import type { ListPlatformSaverContactsOutput, ListPlatformSaverTenantsOutput } from '../../application/use-cases/PlatformSaverContactsUseCases';
+import type { ListPlatformSaverContactsOutput, ListPlatformSaverTenantsOutput, PlatformSaverContactsSummary } from '../../application/use-cases/PlatformSaverContactsUseCases';
 import type { PlatformSaverContactLink, PlatformSaverContactRow } from '../../domain/contracts/IPlatformSaverContactRepository';
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
@@ -112,6 +112,18 @@ export const SaverPresenter = {
 
   platformContacts(out: ListPlatformSaverContactsOutput) {
     return { items: out.items.map(SaverPresenter.platformContact), nextCursor: out.nextCursor };
+  },
+
+  /** Indicadores agregados: só contagens, nenhum dado de contato. */
+  platformSummary(s: PlatformSaverContactsSummary) {
+    return {
+      total: s.total,
+      filtered: s.filtered,
+      withPhone: s.withPhone,
+      lidOnly: s.lidOnly,
+      topDdi: s.topDdi.map((d) => ({ ddi: d.ddi, count: d.count })),
+      topDdd: s.topDdd.map((d) => ({ ddd: d.ddd, count: d.count })),
+    };
   },
 
   platformTenants(out: ListPlatformSaverTenantsOutput) {

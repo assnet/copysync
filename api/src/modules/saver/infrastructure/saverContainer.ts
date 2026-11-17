@@ -37,6 +37,7 @@ import { PrismaAuditLogRepository } from '../../../shared/audit/PrismaAuditLogRe
 import {
   ExportPlatformSaverContactsUseCase,
   GetPlatformSaverContactUseCase,
+  GetPlatformSaverContactsSummaryUseCase,
   ListPlatformSaverContactsUseCase,
   ListPlatformSaverTenantsUseCase,
 } from '../application/use-cases/PlatformSaverContactsUseCases';
@@ -138,12 +139,14 @@ const listGroups       = lazy(() => new ListSaverGroupsUseCase({ groups: groups(
 const audit = lazy(() => new PrismaAuditLogRepository());
 const listPlatformContacts   = lazy(() => new ListPlatformSaverContactsUseCase(platformContacts(), audit()));
 const getPlatformContact     = lazy(() => new GetPlatformSaverContactUseCase(platformContacts(), audit()));
+const platformContactsSummary = lazy(() => new GetPlatformSaverContactsSummaryUseCase(platformContacts()));
 const listPlatformTenants    = lazy(() => new ListPlatformSaverTenantsUseCase(platformContacts()));
 const exportPlatformContacts = lazy(() => new ExportPlatformSaverContactsUseCase(platformContacts(), audit()));
 
 export const saverPlatformUseCases = {
   get listContacts(): ListPlatformSaverContactsUseCase { return listPlatformContacts(); },
   get getContact(): GetPlatformSaverContactUseCase { return getPlatformContact(); },
+  get contactsSummary(): GetPlatformSaverContactsSummaryUseCase { return platformContactsSummary(); },
   get exportContacts(): ExportPlatformSaverContactsUseCase { return exportPlatformContacts(); },
   get listTenants(): ListPlatformSaverTenantsUseCase { return listPlatformTenants(); },
 };

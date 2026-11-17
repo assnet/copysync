@@ -93,6 +93,7 @@ const fake = vi.hoisted(() => {
         links: [{ tenantId: 'tenant-a', tenantName: 'Loja A', groupId: 'sg1', groupName: 'Grupo', name: 'Ana', isAdmin: false, firstExtractedAt: NOW, lastExtractedAt: NOW, leftAt: null }],
       })),
       listTenants: uc(() => ({ items: [{ id: 'tenant-a', name: 'Loja A' }], nextCursor: 'next' })),
+      contactsSummary: uc(() => ({ total: 90, filtered: 12, withPhone: 10, lidOnly: 2, topDdi: [{ ddi: '55', count: 10 }], topDdd: [{ ddd: '11', count: 7 }] })),
       exportContacts: uc(() => ({ fileName: 'base-de-contatos-2026-11-17.csv', contentType: 'text/csv; charset=utf-8', lines: lines(['h\r\n', 'l\r\n']) })),
     },
   };
@@ -292,7 +293,7 @@ describe('privacidade das respostas JSON de /saver/*', () => {
 describe('/admin/saver/* (base da plataforma)', () => {
   it('fora do gate: ADMIN de tenant → 403; super admin sem produto → 200', async () => {
     st.products = new Set();
-    for (const [m, p, body] of [['GET', '/contacts'], ['GET', '/contacts/c1'], ['GET', '/tenants'], ['POST', '/exports', {}]] as [string, string, object?][]) {
+    for (const [m, p, body] of [['GET', '/contacts'], ['GET', '/contacts/summary'], ['GET', '/contacts/c1'], ['GET', '/tenants'], ['POST', '/exports', {}]] as [string, string, object?][]) {
       const res = await call(m, `/api/admin/saver${p}`, body);
       expect(res.statusCode, `${m} ${p}`).toBe(403);
     }
@@ -314,6 +315,27 @@ describe('/admin/saver/* (base da plataforma)', () => {
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-disposition']).toContain('base-de-contatos-2026-11-17.csv');
     expect(res.body).toBe('h\r\nl\r\n');
+  });
+
+  it('indicadores: rota própria (não cai em /contacts/:id), mesmos filtros, sem cursor', async () => {
+    st.isSuperAdmin = true;
+    const res = await call('GET', '/api/admin/saver/contacts/summary?ddi=55&ddd=11&search=ana&cursor=abc&limit=9');
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toEqual({ total: 90, filtered: 12, withPhone: 10, lidOnly: 2, topDdi: [{ ddi: '55', count: 10 }], topDdd: [{ ddd: '11', count: 7 }] });
+    expect(fake.platform.contactsSummary.execute).toHaveBeenLastCalledWith({
+      actor: { userId: 'user-a', isSuperAdmin: true }, search: 'ana', tenantId: null, from: null, to: null, ddi: '55', ddd: '11',
+    });
+    expect(fake.platform.getContact.execute).not.toHaveBeenCalled();
+  });
+
+  it('DDI/DDD chegam à lista e à exportação; formato inválido → 400 no schema', async () => {
+    st.isSuperAdmin = true;
+    await call('GET', '/api/admin/saver/contacts?ddi=55&ddd=21');
+    expect(fake.platform.listContacts.execute).toHaveBeenLastCalledWith(expect.objectContaining({ ddi: '55', ddd: '21' }));
+    await call('POST', '/api/admin/saver/exports', { ddi: '351' });
+    expect(fake.platform.exportContacts.execute).toHaveBeenLastCalledWith(expect.objectContaining({ ddi: '351', ddd: null }));
+    expect((await call('GET', '/api/admin/saver/contacts?ddi=55x')).statusCode).toBe(400);
+    expect((await call('GET', '/api/admin/saver/contacts/summary?ddd=1')).statusCode).toBe(400);
   });
 
   it('contas do filtro: id e nome por cursor; `limit` descartado', async () => {

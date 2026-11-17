@@ -20,6 +20,8 @@ export function platformSaverContactScope(filter: PlatformSaverContactFilter): s
     filter.tenantId,
     filter.from?.toISOString() ?? null,
     filter.to?.toISOString() ?? null,
+    filter.ddi,
+    filter.ddd,
   ]);
   return `saver-platform-contacts|${digest(raw)}`;
 }
