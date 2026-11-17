@@ -114,13 +114,16 @@ export const saverStrings = {
       reached: (what: string) => `Você usou todo o limite de ${what} do seu plano.`,
       cta: 'Ver planos',
     },
-    /** Conta sem plano do Saver (todos os limites 0). Super admin vê o modo piloto. */
+    /** Conta sem plano do Saver (todos os limites 0). */
     noPlan: {
       title: 'Seu plano ainda não inclui o Saver',
       body: 'Escolha um plano para salvar grupos, guardar os contatos e baixar a lista quando quiser.',
-      pilotTitle: 'Modo piloto do super admin',
-      pilotBody: 'Esta conta não tem plano do Saver, então os limites ficam zerados. Você vê a tela para conferir, mas a leitura de grupos só é liberada quando a conta tiver um plano.',
       cta: 'Ver planos',
+    },
+    /** Super admin numa conta sem o Saver (`overview.pilot`): limites do plano MAX para testar. */
+    pilot: {
+      title: 'Modo piloto do super admin',
+      body: 'Esta conta não tem plano do Saver. Para você testar, valem os limites do plano MAX: leia grupos e guarde contatos normalmente.',
     },
     queueStopped: 'A leitura de grupos está pausada no momento. Seu pedido entra na fila e começa assim que ela voltar.',
     session: {

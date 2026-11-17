@@ -49,6 +49,8 @@ export interface SaverOverview {
   config: SaverConfig;
   /** `false` = fila parada neste ambiente. */
   queueRunning: boolean;
+  /** Super admin numa conta sem o Saver: a API aplica os limites do plano MAX para testar. */
+  pilot: boolean;
 }
 
 /** `GET /saver/sessions/:sessionId/groups`: grupos ao vivo da sessão. */

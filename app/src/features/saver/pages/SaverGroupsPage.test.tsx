@@ -28,7 +28,7 @@ const overview = (over: Partial<SaverOverview> = {}): SaverOverview => ({
   groups: usage(1, 10), contacts: usage(3, 1000), groupScansPerDay: usage(0, 20), autoRefreshEnabled: false,
   permissions: { view: true, extract: true, export: true, configure: true },
   config: { namePrefix: null, excludeAdminsByDefault: false, defaultFormat: 'CSV', autoRefresh: false },
-  queueRunning: true, ...over,
+  queueRunning: true, pilot: false, ...over,
 });
 const session = (over: Partial<SessionItem> = {}): SessionItem => ({
   id: 's1', tenantId: 't1', name: 'Atendimento', engine: 'baileys', phone: null, externalRef: null, status: 'CONNECTED',
@@ -188,25 +188,30 @@ describe('SaverGroupsPage', () => {
     expect(await screen.findByText(g.noPlan.title)).toBeInTheDocument();
     expect(screen.queryByText('0 de 0')).toBeNull();
     expect(screen.queryByText(g.limitBanner.title)).toBeNull();
-    expect(screen.queryByText(g.noPlan.pilotTitle)).toBeNull();
+    expect(screen.queryByText(g.pilot.title)).toBeNull();
     await user.click(screen.getByRole('button', { name: g.noPlan.cta }));
     expect(screen.getByTestId('where')).toHaveTextContent('/saver/plans');
   });
 
-  it('super admin sem plano vê o modo piloto; sem "Restam 0" nem aviso de excesso, envio desligado', async () => {
-    auth.user.isSuperAdmin = true;
-    svc.getOverview.mockResolvedValue(overview({ groups: usage(0, 0), contacts: usage(0, 0), groupScansPerDay: usage(0, 0) }));
+  it.each(['light', 'dark'] as const)('modo piloto (%s): limites do MAX, contagens e envio funcionam, sem "0 de 0"', async (mode) => {
+    svc.getOverview.mockResolvedValue(overview({
+      pilot: true, groups: usage(0, null), contacts: usage(0, null), groupScansPerDay: usage(2, 500),
+    }));
     svc.listSessionGroups.mockResolvedValue([live('a@g.us', 'Vendas')]);
+    svc.requestExtraction.mockResolvedValue(extraction('QUEUED'));
     const user = userEvent.setup();
-    page();
-    expect(await screen.findByText(g.noPlan.pilotTitle)).toBeInTheDocument();
-    expect(screen.getByText(g.noPlan.pilotBody)).toBeInTheDocument();
+    page(mode);
+    expect(await screen.findByText(g.pilot.title)).toBeInTheDocument();
+    expect(screen.getByText(g.pilot.body)).toBeInTheDocument();
     expect(screen.queryByText(g.noPlan.title)).toBeNull();
+    expect(screen.queryByText('0 de 0')).toBeNull();
+    expect(screen.queryByText(g.limitBanner.title)).toBeNull();
     await pickSession(user, 'Atendimento');
     await user.click(await screen.findByText('Vendas'));
-    expect(screen.queryByText(g.table.scansLeft(0))).toBeNull();
-    expect(screen.queryByText(g.table.overScans(0))).toBeNull();
-    expect(screen.getByRole('button', { name: g.table.submit(1) })).toBeDisabled();
+    const submit = screen.getByRole('button', { name: g.table.submit(1) });
+    expect(submit).toBeEnabled();
+    await user.click(submit);
+    expect(svc.requestExtraction).toHaveBeenCalled();
   });
 
   it('um limite 0 com os outros no plano: "não incluso" no item, sem faixa de esgotado', async () => {

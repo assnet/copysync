@@ -1,4 +1,3 @@
-import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/contexts/TenantContext';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, AlertTitle, Box, Button, CircularProgress, Stack, Tooltip, Typography } from '@mui/material';
@@ -15,7 +14,7 @@ import type { SaverExtraction, SaverGroup } from '../types';
 import { ExtractionProgress } from '../components/groups/ExtractionProgress';
 import { GroupSelectionTable } from '../components/groups/GroupSelectionTable';
 import { SavedGroupsTable } from '../components/groups/SavedGroupsTable';
-import { SaverLimitBanner, SaverNoPlanNotice, limitBannerMessage, saverWithoutPlan } from '../components/groups/SaverLimitBanner';
+import { SaverLimitBanner, SaverNoPlanNotice, SaverPilotNotice, limitBannerMessage, saverWithoutPlan } from '../components/groups/SaverLimitBanner';
 import { SaverUsageStrip } from '../components/groups/SaverUsageStrip';
 import { SessionPicker } from '../components/groups/SessionPicker';
 import { ExportDialog } from '../components/export/ExportDialog';
@@ -33,7 +32,6 @@ export function SaverGroupsPage() {
   const navigate = useNavigate();
   // Estado de trabalho por conta: sessão, seleção e extração de uma conta nunca valem em outra.
   const { activeTenantId } = useTenant();
-  const isSuperAdmin = useAuth().user?.isSuperAdmin === true;
   const KEY = `${KEY_BASE}.${activeTenantId ?? 'none'}`;
   const overview = useSaverOverview();
   const sessions = useSaverSessions();
@@ -237,7 +235,8 @@ export function SaverGroupsPage() {
       <PageHeader title={s.pages.groups.title} subtitle={s.pages.groups.subtitle} />
       <Stack spacing={2.5}>
         {overview.error && <Alert severity="error">{overview.error.message}</Alert>}
-        {noPlan ? <SaverNoPlanNotice pilot={isSuperAdmin} /> : ov && <SaverUsageStrip overview={ov} />}
+        {ov?.pilot && <SaverPilotNotice />}
+        {noPlan ? <SaverNoPlanNotice /> : ov && <SaverUsageStrip overview={ov} />}
         {limitMessage && !noPlan && <SaverLimitBanner message={limitMessage} />}
         {ov && !ov.queueRunning && <Alert severity="info">{g.queueStopped}</Alert>}
 

@@ -27,22 +27,30 @@ export function limitBannerMessage(overview: SaverOverview | null, errorMessage:
   return null;
 }
 
-/**
- * Conta sem plano do Saver: em vez de "0 de 0" e "limite esgotado", diz que o plano não inclui. Super admin
- * (passa o portão do produto para conferir a tela) vê o modo piloto; a API segue com os limites zerados.
- */
-export function SaverNoPlanNotice({ pilot }: { pilot: boolean }) {
+/** Conta sem plano do Saver: em vez de "0 de 0" e "limite esgotado", diz que o plano não inclui. */
+export function SaverNoPlanNotice() {
   const navigate = useNavigate();
   const n = saverStrings.groups.noPlan;
   return (
     <Alert
       severity="info"
-      icon={<AppIcon icon={pilot ? FlaskConical : Lock} size="md" />}
+      icon={<AppIcon icon={Lock} size="md" />}
       action={<Button color="inherit" size="small" onClick={() => navigate(SAVER_PLANS_PATH)}>{n.cta}</Button>}
       sx={{ alignItems: 'center' }}
     >
-      <AlertTitle>{pilot ? n.pilotTitle : n.title}</AlertTitle>
-      {pilot ? n.pilotBody : n.body}
+      <AlertTitle>{n.title}</AlertTitle>
+      {n.body}
+    </Alert>
+  );
+}
+
+/** SAVER-47: super admin numa conta sem o Saver; a API aplica os limites do plano MAX (`overview.pilot`). */
+export function SaverPilotNotice() {
+  const p = saverStrings.groups.pilot;
+  return (
+    <Alert severity="info" icon={<AppIcon icon={FlaskConical} size="md" />} sx={{ alignItems: 'center' }}>
+      <AlertTitle>{p.title}</AlertTitle>
+      {p.body}
     </Alert>
   );
 }
