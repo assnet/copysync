@@ -102,20 +102,30 @@ já em cache: `memberCount = size ?? participants.length`; `kind` por `isCommuni
 - **Indicadores** `GET /admin/saver/contacts/summary` (mesmos filtros, sem cursor) →
   `{ total, filtered, withPhone, lidOnly, topDdi[≤5], topDdd[≤8], ddiBase, dddBase }`. `total` = base inteira;
   `filtered` = casa com os filtros, partido em `withPhone`/`lidOnly`. Os rankings ignoram o próprio filtro de DDI/DDD
-  (a tela destaca a barra filtrada sem as outras sumirem); `topDdd` só vem com `ddi = 55`; `ddiBase`/`dddBase` são o
-  total de cada ranking (base das porcentagens). Uma contagem por prefixo de 4 dígitos (`GROUP BY LEFT(phone, 4)`)
-  dobrada por `domain/services/phoneRegions.ts`: DDI tem 1 a 3 dígitos e os códigos não são prefixo um do outro, então
-  a função conhece os de 1 e 2 dígitos e o resto tem 3. Leitura com `statement_timeout` de 3 s; estourou = 503
-  `SAVER_SUMMARY_UNAVAILABLE`.
-  **Sem auditoria** (decisão 2026-11-17): é só contagem agregada, nenhum contato é lido, e a lista (auditada) roda
-  com os mesmos filtros na mesma tela.
+  (a tela destaca a barra filtrada sem as outras sumirem); `topDdd` só vem com `ddi = 55` e só com DDD em uso;
+  `ddiBase`/`dddBase` são o total de cada ranking (base das porcentagens; `dddBase` soma só o que o ranking soma,
+  DDD inexistente fica fora). Uma contagem por prefixo de 4 dígitos (`GROUP BY LEFT(phone, 4)`) dobrada por
+  `domain/services/phoneRegions.ts`: DDI tem 1 a 3 dígitos e os códigos não são prefixo um do outro, então a função
+  conhece os de 1 e 2 dígitos e o resto tem 3. `SET LOCAL statement_timeout` de 3 s na mesma transação das duas
+  contagens; estourou = 503 `SAVER_SUMMARY_UNAVAILABLE`.
+  **Auditado** como a lista: `SAVER_PLATFORM_VIEWED` com `kind: 'summary'`, filtros (nunca o texto da busca) e
+  `count`. Com `search`, a contagem responde se um nome ou LID existe na base, então é consulta a dado pessoal.
+- **Custo conhecido** (medido em 2026-11-17: produção tem cerca de 2 mil contatos): o resumo conta a base inteira a
+  cada chamada (`COUNT(*)` + agrupamento por prefixo) e o índice `saver_contacts_phone_pattern_idx` é criado sem
+  `CONCURRENTLY` (o migrate roda em transação; trava escrita na tabela durante a criação). Aceitável neste tamanho.
+  Rever quando a base passar de ~500 mil contatos: contador agregado ou cache para o resumo, e índice novo criado
+  à mão com `CONCURRENTLY` antes do deploy.
 - Painel (`features/saverAdmin/`): faixa de indicadores com as barras de país/DDD (clicar filtra, clicar na ativa
   remove), filtros País (DDI) com "Outro código…" e DDD (só com o Brasil), telefone com DDI/DDD destacados, selo
   "Só LID", lista em cartões abaixo de `md` e rodapé "Mostrando X de Y" (Y = `filtered`). Os indicadores carregam à
   parte (`usePlatformContactsSummary`): se falharem, aviso discreto com "Tentar de novo" e a lista segue, com o
-  rodapé só na quantidade exibida. Nomes de país e região de DDD ficam em `strings.ts`.
-- Não fazer: `substring(phone, 1, 2)` para achar o DDI; `limit`/`offset` vindo do painel; borrar ou auditar os
-  indicadores como se fossem contato; devolver contato no resumo; aceitar DDD com outro país; salvar lista ou
+  rodapé só na quantidade exibida. A contagem fica guardada com os filtros a que responde: durante a troca de
+  filtro a tela mostra o resumo anterior inteiro (esmaecido) e o rodapé só usa o total quando ele é dos filtros da
+  lista. Campos de filtro alteram o estado por atualização funcional (o DDI digitado é aplicado por timer de 400 ms
+  e não pode desfazer outra escolha). Nomes de país e região de DDD ficam em `strings.ts`.
+- Não fazer: `substring(phone, 1, 2)` para achar o DDI; `limit`/`offset` vindo do painel; borrar os indicadores
+  como se fossem contato; tirar a auditoria do resumo; devolver contato no resumo; `trim` em `ddi`/`ddd` (o schema
+  da rota já exige só dígitos); aceitar DDD com outro país; salvar lista ou
   indicadores no navegador (só os filtros, `usePersistedState` versão 1).
 
 ## Exportação do tenant
