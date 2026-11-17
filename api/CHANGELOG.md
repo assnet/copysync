@@ -17,6 +17,25 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.101.0] — 2026-11-17 — Saver: indicadores e filtro por DDI/DDD na base de contatos da plataforma (app 0.124.0)
+
+### Added
+
+#### Backend — saver ([`docs/saver.md`](../docs/saver.md), "Base de contatos da plataforma")
+
+- **`saver/domain/services/phoneRegions.ts`** (novo) — função pura de DDI (1 a 3 dígitos, nunca começa por 0) e DDD do Brasil; dobra a contagem por prefixo em totais e rankings.
+- **`PlatformSaverContactsUseCases.ts`**, **`saverAdmin.routes.ts`**, **`SaverPresenter.ts`** — `GET /admin/saver/contacts/summary` (só super admin): total da base, encontrados com os filtros, com telefone, só LID, ranking de países e, com Brasil, de DDDs. Auditado como `SAVER_PLATFORM_VIEWED` (`kind: summary`, sem o texto da busca). Leitura acima de 3 s = 503 `SAVER_SUMMARY_UNAVAILABLE`; a lista segue funcionando.
+- **`PrismaPlatformSaverContactRepository.ts`**, **`platformSaverContactCursor.ts`**, **`saver.schema.ts`** — filtros `ddi` e `ddd` (prefixo do telefone; `ddd` só com `ddi = 55`) em lista, exportação CSV e resumo; entram no escopo do cursor assinado.
+- **`prisma/migrations/20261117140000_add_saver_contacts_phone_pattern_index`** — índice `text_pattern_ops` em `saver_contacts.phone` para a busca por prefixo. Migration aditiva.
+
+#### Frontend — saverAdmin
+
+- **`PlatformContactsSummary.tsx`**, **`usePlatformContactsSummary.ts`** (novos) — faixa de indicadores e distribuição por país/DDD; clicar numa barra aplica o filtro.
+- **`PlatformPhoneFilters.tsx`** (novo), **`PlatformContactsFilters.tsx`**, **`types.ts`** — filtro de país (lista + outro código) e de DDD; "DDD só com Brasil" garantido em `normalizePlatformFilters`, na escrita e na leitura do estado persistido.
+- **`PlatformContactsFooter.tsx`** (novo), **`PlatformContactsTable.tsx`** — rodapé "Mostrando X de Y" e tabela redesenhada (telefone com DDI/DDD em destaque, selo "Só LID", cartões no celular).
+
+---
+
 ## [0.100.4] — 2026-11-17 — Saver: número oculto (fontes locais, aviso de sessão não admin) e tela Grupos (app 0.123.5)
 
 ### Fixed

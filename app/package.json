@@ -1,7 +1,7 @@
 {
   "name": "copysync-app",
   "private": true,
-  "version": "0.123.6",
+  "version": "0.124.0",
   "type": "module",
   "scripts": {
     "dev": "vite --mode dev --host",
