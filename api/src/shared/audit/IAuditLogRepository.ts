@@ -35,7 +35,8 @@ export type AuditAction =
   | 'WORKER_SCALING_SETTINGS_CHANGED'
   | 'WORKER_SCALE_REQUESTED'
   | 'INFRA_COST_SETTINGS_CHANGED'
-  | 'STOREFRONT_DELETED';
+  | 'STOREFRONT_DELETED'
+  | 'TENANT_PRODUCT_CHANGED';
 
 export interface CreateAuditLogInput {
   tenantId?: string;

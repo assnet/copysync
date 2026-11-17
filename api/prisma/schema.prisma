@@ -83,6 +83,7 @@ enum AuditAction {
   WORKER_SCALE_REQUESTED
   INFRA_COST_SETTINGS_CHANGED
   STOREFRONT_DELETED
+  TENANT_PRODUCT_CHANGED
 }
 
 enum ExtensionInstallationStatus {
@@ -200,6 +201,7 @@ model Tenant {
   offerHuntFinds             OfferHuntFind[]
   offerHunterSettings        OfferHunterSettings?
   offerHuntAiSuggestions     OfferHuntAiSuggestion[]
+  tenantProducts             TenantProduct[]
 
   @@index([slug])
   @@map("tenants")
@@ -1482,6 +1484,26 @@ model TenantEntitlement {
 
   @@unique([tenantId, key])
   @@map("tenant_entitlements")
+}
+
+// Acesso por produto (docs/acesso-por-produto.md). Sem linha: produto legado (AFFILIATES/CHAT) = ativo,
+// produto novo = inativo. Sem backfill. `product`/`status`/`source` são String para produto novo não exigir ALTER TYPE.
+model TenantProduct {
+  id            String    @id @default(cuid())
+  tenantId      String
+  product       String // ProductKey
+  status        String // ACTIVE | INACTIVE
+  planSlug      String? // plano do produto; null em produto legado desligado
+  expiresAt     DateTime?
+  source        String // BILLING | ADMIN
+  inactiveSince DateTime? // preenchido ao virar INACTIVE, limpo ao voltar
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, product])
+  @@map("tenant_products")
 }
 
 model PlanEntitlementPreset {
