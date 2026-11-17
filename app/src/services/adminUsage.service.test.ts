@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { adminUsageService, resetUsageReadQueue } from './adminUsage.service';
+import { USAGE_READ_TIMEOUT_MS, adminUsageService, resetUsageReadQueue } from './adminUsage.service';
 import { apiClient } from './apiClient';
 
 vi.mock('./apiClient', () => ({ apiClient: { get: vi.fn() } }));
@@ -109,5 +109,22 @@ describe('fila de leituras de uso', () => {
     pending[1].resolve('det');
     await expect(b).resolves.toBe('det');
     expect(get).toHaveBeenCalledTimes(2);
+  });
+
+  it('as quatro leituras levam timeout de 8 s; timeout é falha comum e a fila anda', async () => {
+    const a = adminUsageService.getSummary({ from: '1' });
+    const b = adminUsageService.getDetail('x', { from: '1' }, 'trend');
+    const c = adminUsageService.getDetail('x', { from: '1' });
+    const d = adminUsageService.getTenants('x', { from: '1' });
+    pending[0].reject({ code: 'ECONNABORTED', message: 'timeout of 8000ms exceeded' });
+    await expect(a).rejects.toMatchObject({ code: 'ECONNABORTED' });
+    for (const value of ['t', 'd', 'l']) {
+      await flush();
+      pending[pending.length - 1].resolve(value);
+    }
+    await expect(Promise.all([b, c, d])).resolves.toEqual(['t', 'd', 'l']);
+    expect(USAGE_READ_TIMEOUT_MS).toBe(8000);
+    expect(get).toHaveBeenCalledTimes(4);
+    for (const call of get.mock.calls) expect(call[1]).toMatchObject({ timeout: 8000 });
   });
 });

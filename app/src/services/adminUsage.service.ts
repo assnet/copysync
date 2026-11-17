@@ -88,9 +88,15 @@ export function resetUsageReadQueue(): void {
 const readKey = (path: string, params: UsageQuery) =>
   `${path}?${Object.keys(params).sort().map((k) => `${k}=${params[k]}`).join('&')}`;
 
+/**
+ * Teto de cada leitura na rede. Sem ele um GET que nunca responde prenderia a fila da aba; o timeout vira falha
+ * comum (alerta "Tentar de novo") e a fila anda. A API corta em 2 s; o resto é rede e fila do servidor.
+ */
+export const USAGE_READ_TIMEOUT_MS = 8_000;
+
 function read<T>(channel: UsageReadChannel, path: string, params: UsageQuery): Promise<T> {
   return enqueueRead(channel, readKey(path, params), async () => {
-    const res = await apiClient.get<ApiSuccess<T>>(path, { params });
+    const res = await apiClient.get<ApiSuccess<T>>(path, { params, timeout: USAGE_READ_TIMEOUT_MS });
     return res.data.data;
   });
 }
