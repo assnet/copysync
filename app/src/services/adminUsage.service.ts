@@ -79,7 +79,7 @@ function enqueueRead<T>(channel: UsageReadChannel, key: string, run: () => Promi
   return promise as Promise<T>;
 }
 
-/** Só para testes: esvazia a fila entre casos (pedidos na fila são descartados). */
+/** Esvazia a fila (pedidos na fila são descartados): no logout (`AuthContext`) e entre casos de teste. */
 export function resetUsageReadQueue(): void {
   inFlight = null;
   for (const read of waiting.splice(0)) read.reject(new UsageReadSupersededError());
