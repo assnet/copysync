@@ -4,6 +4,8 @@
  * Limites espelham `SAVER_PLAN_PRESETS` da API (`api/src/modules/tenants/domain/planPresets.ts`);
  * o teste ao lado trava os dois.
  */
+import { REDIRECT_PUBLIC_PATH } from '@/features/redirectLinks/strings';
+
 export type SaverPlanTier = 'lite' | 'pro' | 'max';
 export type SaverBillingPeriod = 'monthly' | 'annual';
 
@@ -66,6 +68,15 @@ export const SAVER_PLAN_CATALOG: readonly SaverPlanCatalogItem[] = [
 ];
 
 /** R$/mês exibido no período. */
+/**
+ * Link de compra do plano×período: link de redirecionamento da plataforma (`/redirect/saver-<tier>-<mensal|anual>`,
+ * migration `add_saver_checkout_redirect_links`). O super admin troca o destino em Plataforma → Links de
+ * redirecionamento sem deploy (docs/redirect-links.md).
+ */
+export function saverCheckoutPath(tier: SaverPlanTier, period: SaverBillingPeriod): string {
+  return `${REDIRECT_PUBLIC_PATH}/saver-${tier}-${period === 'annual' ? 'anual' : 'mensal'}`;
+}
+
 export function saverPriceFor(plan: SaverPlanCatalogItem, period: SaverBillingPeriod): number {
   return period === 'annual' ? plan.priceAnnualMonthly : plan.price;
 }

@@ -83,6 +83,13 @@ StrictMode do dev rodaria o efeito duas vezes e contaria 2 cliques).
 rewrite quando não existe arquivo no caminho, então `/redirect/<slug>` (inclusive com pontos, ex.
 `v5.235.2`) cai no SPA. Nenhuma regra nova. Validado também no Vite local.
 
+## Links criados por migration
+
+Só `INSERT … ON CONFLICT ("slug") DO NOTHING` (nunca altera destino, contagem ou status de slug existente):
+
+- `saver-{lite|pro|max}-{mensal|anual}` — checkouts do Saver, usados pela vitrine `/saver/plans`
+  (`20261117130000_add_saver_checkout_redirect_links`).
+
 ## Privacidade
 
 Os dados da tela são da própria plataforma (URLs de suporte/marketing), não de cliente/grupo/produto

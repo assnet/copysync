@@ -59,7 +59,15 @@ describe('SaverPlansPage', () => {
     page();
     await waitFor(() => expect(document.querySelector('[data-current="true"]')?.getAttribute('data-plan')).toBe('SAVER_PRO'));
     expect(screen.getByText(t.card.current)).toBeInTheDocument();
-    expect(screen.getAllByRole('link', { name: t.card.cta })).toHaveLength(2);
+    expect(screen.getAllByRole('link', { name: /^Assinar / })).toHaveLength(2);
+  });
+
+  it('botão de assinar usa o link de redirecionamento do plano e do período', async () => {
+    sub.getSubscription.mockResolvedValue(withSaver(null));
+    page();
+    const lite = await screen.findByRole('link', { name: t.card.cta('LITE') });
+    expect(lite.getAttribute('href')).toMatch(/^\/redirect\/saver-lite-(anual|mensal)$/);
+    expect(lite.getAttribute('target')).toBe('_blank');
   });
 
   it('operador vê a orientação no lugar do botão; falha da assinatura não quebra', async () => {
@@ -67,7 +75,7 @@ describe('SaverPlansPage', () => {
     sub.getSubscription.mockRejectedValue(new Error('x'));
     page();
     expect(screen.getAllByText(t.card.operatorHint)).toHaveLength(3);
-    expect(screen.queryByRole('link', { name: t.card.cta })).toBeNull();
+    expect(screen.queryByRole('link', { name: /^Assinar / })).toBeNull();
   });
 
   it('super admin sem papel na conta vê os botões, não a orientação do operador', async () => {
@@ -76,6 +84,6 @@ describe('SaverPlansPage', () => {
     sub.getSubscription.mockResolvedValue(withSaver(null));
     page();
     expect(screen.queryByText(t.card.operatorHint)).toBeNull();
-    expect(screen.getAllByRole('link', { name: t.card.cta })).toHaveLength(3);
+    expect(screen.getAllByRole('link', { name: /^Assinar / })).toHaveLength(3);
   });
 });
