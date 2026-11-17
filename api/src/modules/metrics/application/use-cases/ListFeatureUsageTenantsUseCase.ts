@@ -14,6 +14,9 @@ import { resolveUsageFeature } from './GetFeatureUsageDetailUseCase';
 import { type FeatureUsageDeps, type FeatureUsageQueryInput, USAGE_LIVE_MAX_DAYS, toUsageFilters } from './GetFeatureUsageSummaryUseCase';
 import { createFeatureUsageTenantCursor, featureUsageTenantScope, readFeatureUsageTenantCursor } from './featureUsageTenantCursor';
 
+/** Teto da espera pela gravação da auditoria; estouro = log `warn` e a resposta segue. */
+export const FEATURE_USAGE_AUDIT_TIMEOUT_MS = 500;
+
 /** Tamanho da página: decisão do servidor (o painel só devolve o cursor). */
 export const FEATURE_USAGE_TENANTS_PAGE_SIZE = 25;
 
@@ -85,7 +88,7 @@ function scopeFilters(input: ListFeatureUsageTenantsInput, period: Pick<UsagePer
 /**
  * Contas que mais usam um recurso (super admin), ordem `(uses desc, tenantId asc)`, página de 25 por cursor
  * keyset assinado (escopo = recurso + recorte). Nome só dos ids da página. Primeira página audita
- * `USAGE_METRICS_VIEWED`; falha da auditoria não derruba a leitura.
+ * `USAGE_METRICS_VIEWED`, esperando no máximo 500 ms; falha ou demora da auditoria não derruba a leitura.
  */
 export class ListFeatureUsageTenantsUseCase {
   constructor(private readonly deps: ListFeatureUsageTenantsDeps) {}
@@ -149,14 +152,28 @@ export class ListFeatureUsageTenantsUseCase {
     });
 
     if (!after) {
-      try {
-        await this.deps.audit.create({
+      const warn = this.deps.log ?? log;
+      const write = this.deps.audit
+        .create({
           userId: input.actorUserId,
           action: 'USAGE_METRICS_VIEWED',
           meta: { kind: 'tenants', featureKey: feature.key, filters: auditFilters, count: out.items.length },
-        });
+        })
+        .then(() => 'done' as const);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<'timeout'>((resolve) => {
+        timer = setTimeout(() => resolve('timeout'), FEATURE_USAGE_AUDIT_TIMEOUT_MS);
+      });
+      try {
+        if ((await Promise.race([write, timeout])) === 'timeout') {
+          warn.warn({ featureKey: feature.key }, 'usage metrics audit timed out');
+          // A gravação segue sozinha; falha tardia só vira log.
+          write.catch((err: unknown) => warn.warn({ err, featureKey: feature.key }, 'usage metrics audit failed'));
+        }
       } catch (err) {
-        (this.deps.log ?? log).warn({ err, featureKey: feature.key }, 'usage metrics audit failed');
+        warn.warn({ err, featureKey: feature.key }, 'usage metrics audit failed');
+      } finally {
+        clearTimeout(timer);
       }
     }
     return out;

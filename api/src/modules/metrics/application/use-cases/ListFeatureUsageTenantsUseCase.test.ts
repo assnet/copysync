@@ -171,6 +171,33 @@ describe('ListFeatureUsageTenantsUseCase', () => {
     expect(warn).toHaveBeenCalledWith(expect.objectContaining({ featureKey: 'offer_generator' }), 'usage metrics audit failed');
   });
 
+  it('auditoria lenta: resposta sai em 500 ms com log warn, sem temporizador pendente', async () => {
+    const { deps } = setup();
+    let finish!: () => void;
+    const slow: IAuditLogRepository = { create: () => new Promise<void>((r) => (finish = r)) };
+    const warn = vi.fn();
+    const useCase = new ListFeatureUsageTenantsUseCase({ ...deps, audit: slow, log: { warn } });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const pending = useCase.execute(BASE);
+    let done = false;
+    void pending.then(() => (done = true));
+    await vi.advanceTimersByTimeAsync(499);
+    expect(done).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect((await pending).items).toHaveLength(25);
+    expect(warn).toHaveBeenCalledWith(expect.objectContaining({ featureKey: 'offer_generator' }), 'usage metrics audit timed out');
+    expect(vi.getTimerCount()).toBe(0);
+    finish();
+  });
+
+  it('auditoria rápida não deixa temporizador pendente', async () => {
+    const { useCase, audit } = setup();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    await useCase.execute(BASE);
+    expect(audit.entries).toHaveLength(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('roda numa vaga do gate: pedido simultâneo espera a vaga', async () => {
     const { useCase, reader, gate } = setup();
     let release!: () => void;
