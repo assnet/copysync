@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isServiceUnavailable } from '@/services/apiClient';
 import { adminUsageService } from '@/services/adminUsage.service';
-import { USAGE_ERROR_CODES, usageErrorCode, isUsageReadSuperseded } from '../rules';
+import { USAGE_ERROR_CODES, usageErrorCode, isUsageReadSuperseded, rangeInvalidMaxDays } from '../rules';
 import type { UsageQuery, UsageSummary } from '../types';
 
 export interface UsageSummaryState {
@@ -31,7 +31,7 @@ export interface UsageSummaryState {
  */
 export function useUsageSummary(
   query: UsageQuery,
-  options: { enabled?: boolean; refreshKey?: number; onRangeInvalid?: () => void } = {},
+  options: { enabled?: boolean; refreshKey?: number; onRangeInvalid?: (maxDays: number | null) => void } = {},
 ): UsageSummaryState {
   const { enabled = true, refreshKey = 0, onRangeInvalid } = options;
   const queryKey = JSON.stringify(query);
@@ -67,7 +67,7 @@ export function useUsageSummary(
         if (id !== request.current || isUsageReadSuperseded(err)) return;
         const code = usageErrorCode(err);
         if (code === USAGE_ERROR_CODES.rangeInvalid) {
-          rangeInvalid.current?.();
+          rangeInvalid.current?.(rangeInvalidMaxDays(err));
           return;
         }
         const isSlow = code === USAGE_ERROR_CODES.readUnavailable;

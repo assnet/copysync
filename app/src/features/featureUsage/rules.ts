@@ -579,6 +579,12 @@ export const USAGE_ERROR_CODES = {
   readSuperseded: 'USAGE_READ_SUPERSEDED',
 } as const;
 
+/** Teto informado no 400 `USAGE_METRICS_RANGE_INVALID` (`meta.maxDays`), ou `null` quando a API não mandou. */
+export function rangeInvalidMaxDays(err: unknown): number | null {
+  const max = (err as { meta?: { maxDays?: unknown } } | null)?.meta?.maxDays;
+  return typeof max === 'number' && Number.isInteger(max) && max > 0 ? max : null;
+}
+
 /** Pedido substituído na fila por um mais novo do mesmo canal: não é erro de tela. */
 export const isUsageReadSuperseded = (err: unknown): boolean => usageErrorCode(err) === USAGE_ERROR_CODES.readSuperseded;
 

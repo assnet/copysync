@@ -223,6 +223,8 @@ export const featureUsageStrings = {
   },
   /** A API recusou o período (400 `USAGE_METRICS_RANGE_INVALID`): a tela voltou ao preset padrão. */
   rangeReset: (max: number) => `O período passou do limite de ${max} dias. Voltamos para os últimos 30 dias.`,
+  /** Mesmo caso, sem o teto na resposta (`meta.maxDays` ausente). */
+  rangeResetNeutral: 'O período passou do limite permitido. Voltamos para os últimos 30 dias.',
 
   context: {
     aria: 'Sobre os dados',

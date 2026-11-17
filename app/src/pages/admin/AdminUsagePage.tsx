@@ -8,14 +8,14 @@ import { serverNow } from '@/services/serverClock';
 import { featureUsageStrings as S } from '@/features/featureUsage/strings';
 import { activeUsageTab, featureKeyFromPath, USAGE_TABS } from '@/features/featureUsage/paths';
 import {
-  DEFAULT_USAGE_FILTERS, parseUsageFilters, toUsageQuery, USAGE_FILTERS_KEY, USAGE_FILTERS_VERSION, USAGE_MAX_DAYS,
-  withPeriod,
+  DEFAULT_USAGE_FILTERS, parseUsageFilters, toUsageQuery, USAGE_FILTERS_KEY, USAGE_FILTERS_VERSION, withPeriod,
 } from '@/features/featureUsage/rules';
 import type { UsageFilters } from '@/features/featureUsage/types';
 import { useUsageSummary } from '@/features/featureUsage/hooks/useUsageSummary';
 import { useLoadedAccountNames } from '@/features/featureUsage/hooks/useLoadedAccountNames';
 import { UsagePageContext, type UsagePageValue } from '@/features/featureUsage/hooks/useUsagePage';
 import { UsageFiltersBar } from '@/features/featureUsage/components/UsageFiltersBar';
+import { knownUsageMaxDays, rememberUsageMaxDays } from '@/features/featureUsage/usageMaxDays';
 import { ExportSummaryButton } from '@/features/featureUsage/components/ExportSummaryButton';
 
 /** Cada aba em chunk próprio (gráficos e tabelas carregam à parte). */
@@ -39,27 +39,33 @@ export function AdminUsagePage() {
   const [filters, setFilters] = usePersistedState<UsageFilters>(USAGE_FILTERS_KEY, DEFAULT_USAGE_FILTERS, {
     scope: 'tab',
     version: USAGE_FILTERS_VERSION,
-    deserialize: (raw) => parseUsageFilters(raw, serverNow()),
+    deserialize: (raw) => parseUsageFilters(raw, serverNow(), knownUsageMaxDays()),
   });
-  const [maxDays, setMaxDays] = useState(USAGE_MAX_DAYS);
+  const [maxDays, setMaxDaysState] = useState(knownUsageMaxDays);
+  /** Teto informado por qualquer resposta: vale na tela e na próxima releitura dos filtros salvos. */
+  const setMaxDays = useCallback((n: number) => {
+    rememberUsageMaxDays(n);
+    setMaxDaysState(n);
+  }, []);
   const [refreshKey, setRefreshKey] = useState(0);
-  /** Teto do período que a API recusou (400): aviso até a próxima troca de filtro. */
-  const [rangeResetMax, setRangeResetMax] = useState<number | null>(null);
+  /** Período recusado pela API (400): aviso até a próxima troca de filtro; `max` = `meta.maxDays` ou `null`. */
+  const [rangeReset, setRangeReset] = useState<{ max: number | null } | null>(null);
   const accountNames = useLoadedAccountNames();
 
   // "Hoje" dos presets vem do relógio do servidor; muda o dia, muda a query.
   const query = toUsageQuery(filters, serverNow());
 
   const changeFilters = useCallback((next: UsageFilters) => {
-    setRangeResetMax(null);
+    setRangeReset(null);
     setFilters(next);
   }, [setFilters]);
 
   const summary = useUsageSummary(query, {
     enabled: featureKey === null,
     refreshKey,
-    onRangeInvalid: () => {
-      setRangeResetMax(maxDays);
+    onRangeInvalid: (max) => {
+      if (max !== null) setMaxDays(max);
+      setRangeReset({ max });
       setFilters(withPeriod(filters, { preset: DEFAULT_USAGE_FILTERS.preset }, serverNow()));
     },
   });
@@ -68,7 +74,7 @@ export function AdminUsagePage() {
   const reportedMax = summary.data?.range.maxDays;
   useEffect(() => {
     if (reportedMax !== undefined) setMaxDays(reportedMax);
-  }, [reportedMax]);
+  }, [reportedMax, setMaxDays]);
 
   // Sem memo: a página re-renderiza a cada filtro e as abas leem o valor novo de qualquer forma.
   const value: UsagePageValue = {
@@ -130,7 +136,9 @@ export function AdminUsagePage() {
             maxDays={maxDays}
             accountName={accountNames.nameOf(filters.tenantId)}
           />
-          {rangeResetMax !== null && <Alert severity="info">{S.rangeReset(rangeResetMax)}</Alert>}
+          {rangeReset !== null && (
+            <Alert severity="info">{rangeReset.max !== null ? S.rangeReset(rangeReset.max) : S.rangeResetNeutral}</Alert>
+          )}
 
           <Suspense fallback={loading}>
             {featureKey !== null ? <FeatureDetailTab key={featureKey} />

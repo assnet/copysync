@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isServiceUnavailable } from '@/services/apiClient';
 import { adminUsageService } from '@/services/adminUsage.service';
-import { USAGE_ERROR_CODES, usageErrorCode, isUsageReadSuperseded } from '../rules';
+import { USAGE_ERROR_CODES, usageErrorCode, isUsageReadSuperseded, rangeInvalidMaxDays } from '../rules';
 import type { UsageFeatureDetail, UsageQuery } from '../types';
 
 export interface UsageDetailState {
@@ -26,7 +26,7 @@ export interface UsageDetailState {
 export function useUsageDetail(
   featureKey: string,
   query: UsageQuery,
-  options: { refreshKey: number; reportMaxDays: (n: number) => void; onRangeInvalid?: () => void },
+  options: { refreshKey: number; reportMaxDays: (n: number) => void; onRangeInvalid?: (maxDays: number | null) => void },
 ): UsageDetailState {
   const { refreshKey } = options;
   const queryKey = JSON.stringify(query);
@@ -58,7 +58,7 @@ export function useUsageDetail(
         if (id !== request.current || isUsageReadSuperseded(err)) return;
         const code = usageErrorCode(err);
         if (code === USAGE_ERROR_CODES.rangeInvalid) {
-          callbacks.current.onRangeInvalid?.();
+          callbacks.current.onRangeInvalid?.(rangeInvalidMaxDays(err));
           return;
         }
         if (code === USAGE_ERROR_CODES.featureNotFound) {

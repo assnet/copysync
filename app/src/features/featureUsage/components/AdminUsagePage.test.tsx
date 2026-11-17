@@ -10,6 +10,7 @@ import { USAGE_FEATURE_ROUTE, USAGE_PATH, USAGE_PLANS_PATH } from '../paths';
 import { featureUsageStrings as S } from '../strings';
 import { summaryFixture } from '../testFixtures';
 import type { UsageSummary } from '../types';
+import { forgetUsageMaxDays, rememberUsageMaxDays } from '../usageMaxDays';
 
 // 22:00 de 17/11/2026 em Brasília: "hoje" é 17/11 mesmo já sendo 18/11 em UTC.
 vi.mock('@/services/serverClock', async (importOriginal) => ({
@@ -55,6 +56,7 @@ beforeEach(() => {
 
 afterEach(() => {
   window.sessionStorage.clear();
+  forgetUsageMaxDays();
 });
 
 describe('AdminUsagePage', () => {
@@ -127,13 +129,28 @@ describe('AdminUsagePage', () => {
     expect(await screen.findByText(serviceUpdatingStrings.title)).toBeInTheDocument();
   });
 
-  it('400 de período mostra o aviso e volta ao preset padrão', async () => {
+  it('400 de período mostra o aviso com o teto de meta.maxDays e volta ao preset padrão', async () => {
     window.sessionStorage.setItem('ui.usage.filters', JSON.stringify({ v: 1, d: { preset: '90d' } }));
-    getSummary.mockRejectedValueOnce({ code: 'USAGE_METRICS_RANGE_INVALID', status: 400 });
+    getSummary.mockRejectedValueOnce({ code: 'USAGE_METRICS_RANGE_INVALID', status: 400, meta: { field: 'range', maxDays: 60 } });
     renderAt(USAGE_PATH);
-    expect(await screen.findByText(S.rangeReset(90))).toBeInTheDocument();
+    expect(await screen.findByText(S.rangeReset(60))).toBeInTheDocument();
     await waitFor(() => expect(getSummary).toHaveBeenLastCalledWith(expect.objectContaining({ from: '2026-10-19' })));
     expect(screen.queryByText(S.errors.loadFailed)).toBeNull();
+  });
+
+  it('400 de período sem meta.maxDays usa o texto neutro', async () => {
+    window.sessionStorage.setItem('ui.usage.filters', JSON.stringify({ v: 1, d: { preset: '90d' } }));
+    getSummary.mockRejectedValueOnce({ code: 'USAGE_METRICS_RANGE_INVALID', status: 400, meta: { field: 'range' } });
+    renderAt(USAGE_PATH);
+    expect(await screen.findByText(S.rangeResetNeutral)).toBeInTheDocument();
+  });
+
+  it('filtros salvos são relidos contra o teto da última resposta quando conhecido', async () => {
+    const custom = { preset: 'custom', from: '2026-06-01', to: '2026-11-10' };
+    window.sessionStorage.setItem('ui.usage.filters', JSON.stringify({ v: 1, d: custom }));
+    rememberUsageMaxDays(400);
+    renderAt(USAGE_PATH);
+    await waitFor(() => expect(getSummary).toHaveBeenCalledWith(expect.objectContaining({ from: '2026-06-01', to: '2026-11-10' })));
   });
 
   it('personalizado acima do teto mostra a mensagem ao lado do campo e não chama a API', async () => {

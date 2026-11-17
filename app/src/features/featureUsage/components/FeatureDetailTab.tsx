@@ -21,16 +21,17 @@ import { UsageContextLine, UsageRetryAlert } from './UsageSummaryGate';
  * resposta do detalhe.
  */
 export default function FeatureDetailTab() {
-  const { featureKey, query, refreshKey, reportMaxDays, filters, setFilters, maxDays, accountNames } = useUsagePage();
+  const { featureKey, query, refreshKey, reportMaxDays, filters, setFilters, accountNames } = useUsagePage();
   const key = featureKey ?? '';
-  /** Teto que a API recusou no detalhe (400): aviso local até a próxima resposta. */
-  const [rangeResetMax, setRangeResetMax] = useState<number | null>(null);
+  /** Período recusado no detalhe (400): aviso local; `max` = `meta.maxDays` ou `null` (texto neutro). */
+  const [rangeReset, setRangeReset] = useState<{ max: number | null } | null>(null);
 
   const detail = useUsageDetail(key, query, {
     refreshKey,
     reportMaxDays,
-    onRangeInvalid: () => {
-      setRangeResetMax(maxDays);
+    onRangeInvalid: (max) => {
+      if (max !== null) reportMaxDays(max);
+      setRangeReset({ max });
       setFilters(withPeriod(filters, { preset: DEFAULT_USAGE_FILTERS.preset }, serverNow()));
     },
   });
@@ -91,7 +92,11 @@ export default function FeatureDetailTab() {
           <Typography variant="body2" color="text.secondary">{featureDescription(key)}</Typography>
         )}
       </div>
-      {rangeResetMax !== null && <Alert severity="info" onClose={() => setRangeResetMax(null)}>{S.rangeReset(rangeResetMax)}</Alert>}
+      {rangeReset !== null && (
+        <Alert severity="info" onClose={() => setRangeReset(null)}>
+          {rangeReset.max !== null ? S.rangeReset(rangeReset.max) : S.rangeResetNeutral}
+        </Alert>
+      )}
       {body}
     </Stack>
   );
