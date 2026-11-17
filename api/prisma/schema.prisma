@@ -1032,6 +1032,8 @@ model Offer {
   // Varredura do worker: ofertas SENDING sem envio aberto
   @@index([status])
   @@index([monitorConfigId])
+  // Uso dos recursos: ofertas por período, sem tenantId
+  @@index([createdAt])
   @@map("offers")
 }
 
@@ -1223,6 +1225,8 @@ model OfferDispatch {
   // Fila de envio: concluídos do dia por tenant
   @@index([tenantId, updatedAt])
   @@index([tenantId, offerId])
+  // Uso dos recursos: envios SENT por período, sem tenantId
+  @@index([status, updatedAt])
   @@map("offer_dispatches")
 }
 
