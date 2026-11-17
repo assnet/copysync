@@ -14,6 +14,7 @@ import { infraCostsStrings } from '@/features/infraCosts/strings';
 import { redirectLinksStrings } from '@/features/redirectLinks/strings';
 import { tutorialsStrings } from '@/features/tutorials/strings';
 import { navigationStrings as s } from './strings';
+import { AFFILIATE_PLANS_PATH } from '@/features/products/productAccess';
 
 /**
  * Modelo puro do menu lateral: só dados (ícone como componente Lucide, nunca JSX).
@@ -82,10 +83,10 @@ export function linkMatches(link: NavLink, pathname: string): boolean {
 
 /** Credenciais de afiliado moram no produto Afiliados (antes em Configurações; rota antiga redireciona). */
 export const AFFILIATE_CREDENTIALS_PATH = '/affiliates/credentials';
-/** Planos são por produto: a vitrine atual é a do Afiliados (rota antiga `/plans` redireciona). */
 /** Central de tutoriais em vídeo (docs/tutoriais.md). */
 export const AFFILIATE_TUTORIALS_PATH = '/affiliates/tutorials';
-export const AFFILIATE_PLANS_PATH = '/affiliates/plans';
+/** Planos são por produto: a vitrine de Afiliados mora em `features/products` (fonte única). */
+export { AFFILIATE_PLANS_PATH };
 
 export function buildNavigation({ isSuperAdmin, offerHunterVisible }: BuildNavigationInput): NavigationModel {
   const onlyAllowed = (links: NavLink[]) => links.filter((l) => !l.superAdminOnly || isSuperAdmin);
