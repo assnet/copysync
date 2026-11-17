@@ -17,7 +17,7 @@ import { SaverExtractionStatus, SaverExtractionTrigger } from '../../domain/enum
 const NOW = new Date('2026-11-17T12:00:00Z');
 
 /** Grupos e fila em memória, só com o que os use cases usam. */
-function world(snapshot: Record<string, unknown>, opts: { scansUsed?: number } = {}) {
+function world(snapshot: Record<string, unknown>, opts: { scansUsed?: number; hasProduct?: boolean } = {}) {
   const groups: SaverGroup[] = [];
   const pending = new Set<string>();
   let seq = 0;
@@ -82,6 +82,7 @@ function world(snapshot: Record<string, unknown>, opts: { scansUsed?: number } =
   const request = new RequestSaverExtractionUseCase({
     sessions: { findById: async (t) => (t === 't1' ? sessionRef() : null) },
     entitlements: { readAll: async () => snapshot },
+    products: { has: async () => opts.hasProduct ?? true },
     queue,
     engine: () => engine,
     now: () => NOW,
@@ -92,6 +93,29 @@ function world(snapshot: Record<string, unknown>, opts: { scansUsed?: number } =
 
 const ADMIN = actorOf('ADMIN');
 const OPERATOR = actorOf('OPERATOR');
+const ROOT = actorOf('SUPER_ADMIN');
+
+describe('RequestSaverExtractionUseCase — SAVER-47 (piloto do super admin)', () => {
+  it('super admin sem o produto pede leitura com os limites do SAVER_MAX', async () => {
+    const w = world({}, { hasProduct: false, scansUsed: 499 });
+    const r = await w.request.execute(ROOT, { sessionId: 's1', groupJids: ['111'] });
+    expect(r.totalGroups).toBe(1);
+    // teto diário do MAX (500) segue valendo no piloto
+    await expect(world({}, { hasProduct: false, scansUsed: 500 }).request.execute(ROOT, { sessionId: 's1', groupJids: ['111'] }))
+      .rejects.toMatchObject({ code: 'PLAN_LIMIT_REACHED', meta: { key: 'saver_group_scans_per_day', limit: 500 } });
+  });
+
+  it('super admin com o produto LITE respeita o LITE', async () => {
+    const w = world({ saver_groups: 1, saver_group_scans_per_day: 20 }, { hasProduct: true });
+    await expect(w.request.execute(ROOT, { sessionId: 's1', groupJids: ['111', '222'] }))
+      .rejects.toMatchObject({ code: 'PLAN_LIMIT_REACHED', meta: { key: 'saver_groups', limit: 1 } });
+  });
+
+  it('ADMIN sem plano continua com limite 0', async () => {
+    const w = world({}, { hasProduct: false });
+    await expect(w.request.execute(ADMIN, { sessionId: 's1', groupJids: ['111'] })).rejects.toMatchObject({ code: 'PLAN_LIMIT_REACHED' });
+  });
+});
 
 describe('RequestSaverExtractionUseCase', () => {
   it('salva grupos (JID sem @g.us, nome do engine) e enfileira MANUAL', async () => {

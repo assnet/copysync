@@ -1,4 +1,5 @@
 import type { IEntitlementSnapshotReader } from '../../../tenants/domain/contracts/IEntitlementSnapshotReader';
+import type { IProductAccessReader } from '../../../tenants/domain/contracts/IProductAccessReader';
 import type { ISaverConfigRepository } from '../../domain/contracts/ISaverConfigRepository';
 import type { ISaverExportGrantRepository } from '../../domain/contracts/ISaverExportGrantRepository';
 import type { ISaverExtractionQueue } from '../../domain/contracts/ISaverExtractionQueue';
@@ -6,9 +7,10 @@ import type { ISaverGroupRepository } from '../../domain/contracts/ISaverGroupRe
 import type { ISaverMembershipRepository } from '../../domain/contracts/ISaverMembershipRepository';
 import type { SaverConfig } from '../../domain/entities/SaverEntities';
 import { SaverExportFormat } from '../../domain/enums/SaverEnums';
-import { readSaverLimits, remainingSaverLimit, type SaverLimit } from '../../domain/services/saverLimits';
+import { remainingSaverLimit, type SaverLimit } from '../../domain/services/saverLimits';
 import { saverPermissionSet, type SaverPermissionSet } from '../../domain/services/saverPermissions';
 import { assertCanSaver, loadSaverGrants, type SaverActor } from './saverActor';
+import { loadSaverLimits } from './saverEffectiveLimits';
 
 export const SAVER_SCAN_WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -37,6 +39,8 @@ export interface SaverOverviewDTO {
   config: SaverConfigDTO;
   /** `false` = job de extração desligado neste ambiente (fila parada). */
   queueRunning: boolean;
+  /** SAVER-47: super admin num tenant sem o produto; limites = preset `SAVER_MAX`. */
+  pilot: boolean;
 }
 
 /** Tenant sem linha em `saver_configs`. */
@@ -49,6 +53,7 @@ export const SAVER_CONFIG_DEFAULTS: SaverConfigDTO = Object.freeze({
 
 export interface GetSaverOverviewDeps {
   entitlements: IEntitlementSnapshotReader;
+  products: Pick<IProductAccessReader, 'has'>;
   groups: Pick<ISaverGroupRepository, 'countActive'>;
   memberships: Pick<ISaverMembershipRepository, 'countDistinctContacts'>;
   queue: Pick<ISaverExtractionQueue, 'countScansSince'>;
@@ -74,15 +79,14 @@ export class GetSaverOverviewUseCase {
     assertCanSaver(actor, 'view');
     const { tenantId } = actor;
     const now = this.deps.now?.() ?? new Date();
-    const [snapshot, groupsUsed, contactsUsed, scansUsed, config, grants] = await Promise.all([
-      this.deps.entitlements.readAll(tenantId),
+    const [{ limits, pilot }, groupsUsed, contactsUsed, scansUsed, config, grants] = await Promise.all([
+      loadSaverLimits(this.deps, actor),
       this.deps.groups.countActive(tenantId),
       this.deps.memberships.countDistinctContacts(tenantId),
       this.deps.queue.countScansSince(tenantId, new Date(now.getTime() - SAVER_SCAN_WINDOW_MS)),
       this.deps.configs.findByTenant(tenantId),
       loadSaverGrants(this.deps.exportGrants, actor),
     ]);
-    const limits = readSaverLimits(snapshot);
     return {
       groups: usage(limits.groups, groupsUsed),
       contacts: usage(limits.contacts, contactsUsed),
@@ -91,6 +95,7 @@ export class GetSaverOverviewUseCase {
       permissions: saverPermissionSet(actor.role, grants),
       config: toConfigDTO(config),
       queueRunning: this.deps.queueRunning(),
+      pilot,
     };
   }
 }

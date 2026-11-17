@@ -204,6 +204,28 @@ describe('ProcessNextSaverItemUseCase', () => {
     expect(h.engineCalls).toEqual([{ sessionId: S, groupJid: 'g2@g.us' }]);
   });
 
+  it('SAVER-47: pedido de super admin no tenant sem produto não tem teto de contatos (preset SAVER_MAX)', async () => {
+    const h = makeSaverStepHarness();
+    h.entitlements.set(T, {}); // sem plano: ausente = 0
+    h.groups.add('g1', T);
+    h.queue.superAdmins.add('root');
+    h.queue.addItem({ id: 'i1', sessionId: S, tenantId: T, groupId: 'g1', extractionId: 'ext-root' }, 'root');
+    h.reads.set('g1@g.us', [member('551100001'), member('551100002'), member('551100003')]);
+    await run(h);
+    expect(item(h).status).toBe(I.DONE);
+    expect(h.store.contacts).toHaveLength(3);
+  });
+
+  it('SAVER-47: pedido de super admin no tenant COM produto respeita o teto do tenant', async () => {
+    const h = setup();
+    h.entitlements.set(T, { saver_contacts: 2 });
+    h.queue.superAdmins.add('root');
+    h.queue.extractions[0]!.requestedByUserId = 'root';
+    h.reads.set('g1@g.us', [member('551100001'), member('551100002'), member('551100003')]);
+    await run(h);
+    expect(item(h)).toMatchObject({ status: I.FAILED, errorCode: 'PLAN_LIMIT_REACHED' });
+  });
+
   it('SAVER-47: tenant comum sem produto e sem super admin continua sem extrair', async () => {
     const h = setup();
     h.activeTenants.clear();

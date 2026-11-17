@@ -33,10 +33,13 @@ function configRepo(initial: SaverConfig | null = null) {
   return r;
 }
 const snapshot = (s: Record<string, unknown>) => ({ readAll: vi.fn(async () => s) });
+const NO_PRODUCT = { has: vi.fn(async () => false) };
+const WITH_PRODUCT = { has: vi.fn(async () => true) };
+const ROOT: SaverActor = { tenantId: 't1', userId: 'r1', role: 'SUPER_ADMIN' };
 
 describe('GetSaverConfigUseCase / UpdateSaverConfigUseCase', () => {
   it('tenant sem linha devolve os padrões', async () => {
-    const out = await new GetSaverConfigUseCase(configRepo(), snapshot({})).execute(ADMIN);
+    const out = await new GetSaverConfigUseCase(configRepo(), snapshot({}), NO_PRODUCT).execute(ADMIN);
     expect(out).toEqual({
       namePrefix: null, excludeAdminsByDefault: false, defaultFormat: 'CSV', autoRefresh: false,
       autoRefreshAvailable: false, configured: false, updatedAt: null,
@@ -45,17 +48,17 @@ describe('GetSaverConfigUseCase / UpdateSaverConfigUseCase', () => {
 
   it('OPERATOR → 403 ao salvar, sem gravar', async () => {
     const repo = configRepo();
-    await expect(new UpdateSaverConfigUseCase(repo, snapshot({})).execute({ actor: OPERATOR, namePrefix: 'x' })).rejects.toMatchObject({ statusCode: 403 });
+    await expect(new UpdateSaverConfigUseCase(repo, snapshot({}), NO_PRODUCT).execute({ actor: OPERATOR, namePrefix: 'x' })).rejects.toMatchObject({ statusCode: 403 });
     expect(repo.upsert).not.toHaveBeenCalled();
   });
 
   it('autoRefresh sem entitlement → PLAN_FEATURE_UNAVAILABLE; com entitlement salva', async () => {
     const repo = configRepo();
-    await expect(new UpdateSaverConfigUseCase(repo, snapshot({})).execute({ actor: ADMIN, autoRefresh: true })).rejects.toMatchObject({
+    await expect(new UpdateSaverConfigUseCase(repo, snapshot({}), NO_PRODUCT).execute({ actor: ADMIN, autoRefresh: true })).rejects.toMatchObject({
       code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: 'saver_auto_refresh_enabled' },
     });
     expect(repo.upsert).not.toHaveBeenCalled();
-    const out = await new UpdateSaverConfigUseCase(repo, snapshot({ saver_auto_refresh_enabled: true })).execute({
+    const out = await new UpdateSaverConfigUseCase(repo, snapshot({ saver_auto_refresh_enabled: true }), NO_PRODUCT).execute({
       actor: ADMIN, autoRefresh: true, namePrefix: '  Cliente ', defaultFormat: SaverExportFormat.VCARD,
     });
     expect(out).toMatchObject({ autoRefresh: true, namePrefix: 'Cliente', defaultFormat: 'VCARD', configured: true, autoRefreshAvailable: true });
@@ -63,8 +66,22 @@ describe('GetSaverConfigUseCase / UpdateSaverConfigUseCase', () => {
 
   it('desligar autoRefresh sem entitlement é permitido; formato inválido → 400', async () => {
     const repo = configRepo();
-    await expect(new UpdateSaverConfigUseCase(repo, snapshot({})).execute({ actor: ADMIN, autoRefresh: false })).resolves.toMatchObject({ autoRefresh: false });
-    await expect(new UpdateSaverConfigUseCase(repo, snapshot({})).execute({ actor: ADMIN, defaultFormat: 'PDF' as SaverExportFormat })).rejects.toMatchObject({ statusCode: 400 });
+    await expect(new UpdateSaverConfigUseCase(repo, snapshot({}), NO_PRODUCT).execute({ actor: ADMIN, autoRefresh: false })).resolves.toMatchObject({ autoRefresh: false });
+    await expect(new UpdateSaverConfigUseCase(repo, snapshot({}), NO_PRODUCT).execute({ actor: ADMIN, defaultFormat: 'PDF' as SaverExportFormat })).rejects.toMatchObject({ statusCode: 400 });
+  });
+});
+
+describe('SAVER-47: atualização automática no piloto do super admin', () => {
+  it('super admin sem o produto: liberada pelo preset SAVER_MAX', async () => {
+    const repo = configRepo();
+    expect((await new GetSaverConfigUseCase(repo, snapshot({}), NO_PRODUCT).execute(ROOT)).autoRefreshAvailable).toBe(true);
+    await expect(new UpdateSaverConfigUseCase(repo, snapshot({}), NO_PRODUCT).execute({ actor: ROOT, autoRefresh: true }))
+      .resolves.toMatchObject({ autoRefresh: true });
+  });
+
+  it('super admin com o produto LITE segue o entitlement', async () => {
+    await expect(new UpdateSaverConfigUseCase(configRepo(), snapshot({ saver_auto_refresh_enabled: false }), WITH_PRODUCT)
+      .execute({ actor: ROOT, autoRefresh: true })).rejects.toMatchObject({ code: 'PLAN_FEATURE_UNAVAILABLE' });
   });
 });
 

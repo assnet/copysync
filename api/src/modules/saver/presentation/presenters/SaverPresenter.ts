@@ -23,6 +23,7 @@ export const SaverPresenter = {
       permissions: o.permissions,
       config: o.config,
       queueRunning: o.queueRunning,
+      pilot: o.pilot,
     };
   },
 

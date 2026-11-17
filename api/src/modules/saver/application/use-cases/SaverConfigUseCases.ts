@@ -2,11 +2,13 @@ import type { IAuditLogRepository } from '../../../../shared/audit/IAuditLogRepo
 import { PlanFeatureUnavailableError } from '../../../../shared/errors/internal/PlanErrors';
 import { NotFoundError, ValidationError } from '../../../../shared/errors/internal/ResourceErrors';
 import type { IEntitlementSnapshotReader } from '../../../tenants/domain/contracts/IEntitlementSnapshotReader';
+import type { IProductAccessReader } from '../../../tenants/domain/contracts/IProductAccessReader';
 import type { ISaverConfigRepository, SaverConfigUpdate } from '../../domain/contracts/ISaverConfigRepository';
 import type { ISaverExportGrantRepository } from '../../domain/contracts/ISaverExportGrantRepository';
 import type { ISaverTeamReader } from '../../domain/contracts/ISaverTeamReader';
 import { SaverExportFormat } from '../../domain/enums/SaverEnums';
-import { readSaverFlag, SAVER_LIMIT_KEYS } from '../../domain/services/saverLimits';
+import { SAVER_LIMIT_KEYS } from '../../domain/services/saverLimits';
+import { loadSaverLimits } from './saverEffectiveLimits';
 import { assertSaverPermission, type SaverActor } from './saverActor';
 import { SAVER_PREFIX_MAX } from './ExportSavedContactsUseCase';
 
@@ -38,15 +40,16 @@ export class GetSaverConfigUseCase {
   constructor(
     private readonly configs: ISaverConfigRepository,
     private readonly entitlements: IEntitlementSnapshotReader,
+    private readonly products: Pick<IProductAccessReader, 'has'>,
   ) {}
 
   async execute(actor: SaverActor): Promise<SaverConfigDTO> {
     await assertSaverPermission(actor, 'configure');
-    const [config, snapshot] = await Promise.all([
+    const [config, { limits }] = await Promise.all([
       this.configs.findByTenant(actor.tenantId),
-      this.entitlements.readAll(actor.tenantId),
+      loadSaverLimits({ entitlements: this.entitlements, products: this.products }, actor),
     ]);
-    const autoRefreshAvailable = readSaverFlag(snapshot, SAVER_LIMIT_KEYS.AUTO_REFRESH_ENABLED);
+    const autoRefreshAvailable = limits.autoRefreshEnabled;
     if (!config) return { ...SAVER_CONFIG_DEFAULTS, autoRefreshAvailable, configured: false, updatedAt: null };
     return {
       namePrefix: config.namePrefix,
@@ -72,6 +75,7 @@ export class UpdateSaverConfigUseCase {
   constructor(
     private readonly configs: ISaverConfigRepository,
     private readonly entitlements: IEntitlementSnapshotReader,
+    private readonly products: Pick<IProductAccessReader, 'has'>,
   ) {}
 
   async execute(input: UpdateSaverConfigInput): Promise<SaverConfigDTO> {
@@ -90,8 +94,7 @@ export class UpdateSaverConfigUseCase {
       }
       update.defaultFormat = input.defaultFormat;
     }
-    const snapshot = await this.entitlements.readAll(actor.tenantId);
-    const autoRefreshAvailable = readSaverFlag(snapshot, SAVER_LIMIT_KEYS.AUTO_REFRESH_ENABLED);
+    const autoRefreshAvailable = (await loadSaverLimits({ entitlements: this.entitlements, products: this.products }, actor)).limits.autoRefreshEnabled;
     if (input.autoRefresh !== undefined) {
       if (input.autoRefresh === true && !autoRefreshAvailable) {
         throw new PlanFeatureUnavailableError(SAVER_LIMIT_KEYS.AUTO_REFRESH_ENABLED);

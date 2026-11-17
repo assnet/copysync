@@ -6,6 +6,8 @@ import {
   readSaverLimits,
   remainingSaverLimit,
   SAVER_LIMIT_KEYS,
+  effectiveSaverLimits,
+  isSaverPilot,
 } from './saverLimits';
 
 describe('readSaverLimit', () => {
@@ -54,5 +56,24 @@ describe('fitsSaverLimit / remainingSaverLimit', () => {
     expect(fitsSaverLimit(null, 1_000_000, 1)).toBe(true);
     expect(remainingSaverLimit(10, 12)).toBe(0);
     expect(remainingSaverLimit(null, 5)).toBeNull();
+  });
+});
+
+describe('SAVER-47: piloto do super admin', () => {
+  it('só super admin em tenant sem o produto é piloto', () => {
+    expect(isSaverPilot(true, false)).toBe(true);
+    expect(isSaverPilot(true, true)).toBe(false);
+    expect(isSaverPilot(false, false)).toBe(false);
+    expect(isSaverPilot(false, true)).toBe(false);
+  });
+
+  it('piloto usa o preset SAVER_MAX, ignorando o snapshot', () => {
+    expect(effectiveSaverLimits({ saver_groups: 1 }, true)).toEqual({
+      groups: null, groupScansPerDay: 500, contacts: null, autoRefreshEnabled: true,
+    });
+  });
+
+  it('fora do piloto vale o snapshot (ausente = 0)', () => {
+    expect(effectiveSaverLimits({}, false)).toEqual({ groups: 0, groupScansPerDay: 0, contacts: 0, autoRefreshEnabled: false });
   });
 });
