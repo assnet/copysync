@@ -9,6 +9,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — app 0.127.0 / api 0.104.0 — Uso dos recursos (P3, super admin)
+
+#### app / api ([`docs/uso-dos-recursos.md`](docs/uso-dos-recursos.md))
+
+- **`metrics`** (`featureEligibility.ts`, `featureUsageRetention.ts`, `screenViewCatalog.ts`, `RecordPageViewUseCase.ts`, `GetFeatureUsageScreensUseCase.ts`) — adoção (contas com direito pelo produto fonte + entitlement), recorrência (`recurringDays` 2/3/5) e retenção no resumo; `POST /usage/page-views` (15 telas, 60/min por conta, idempotente por dia × conta × tela, super admin não grava) e `GET /admin/usage/screens`. Sem migration. Detalhes em `api/CHANGELOG.md` [0.104.0].
+- **`/admin/usage`** (`ScreensTab.tsx`, `usePageViewReporter.ts`, `PlanMatrixTable.tsx`) — aba Telas (abriu × usou), adoção e recorrência no ranking e na matriz; envio da visita no layout.
+
 ### Added — app 0.126.0 / api 0.103.0 — Uso dos recursos (P2, super admin)
 
 #### app / api ([`docs/uso-dos-recursos.md`](docs/uso-dos-recursos.md))

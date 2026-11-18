@@ -18,6 +18,13 @@ nunca usados no período e, por recurso, as contas que mais usam. Plano completo
 - **Só liga pela flag `FEATURE_USAGE_ROLLUP_ENABLED`** (default `false`). Sem ela nada muda: leitura sob demanda,
   teto de 90 dias. O contador grava desde o deploy, com ou sem a flag.
 
+## P3 — adoção, recorrência, retenção e telas (api 0.104.0 · app 0.127.0)
+
+- Por recurso no resumo: **adoção** (contas que usaram ÷ contas com direito hoje), **recorrência** (contas que usaram
+  em ≥ N dias distintos, `recurringDays` 2/3/5, padrão 3) e **retenção** (contas do período anterior que voltaram).
+- **Visitas de tela:** a conta registra que abriu uma tela do menu no dia; aba **Telas** em `/admin/usage`.
+- Sem migration: visitas vão para `feature_usage_daily` (tipo `ACCESS`, chave `view:*`).
+
 ## Arquivos-chave
 
 | Camada | Arquivo | Papel |
@@ -37,6 +44,8 @@ nunca usados no período e, por recurso, as contas que mais usam. Plano completo
 | P2 domain | `.../domain/contracts/IFeatureUsageDailyRepository.ts`, `IFeatureUsageRollupStateRepository.ts`, `IFeatureUsageRecorder.ts` | Agregado, marco/corte, contador fail-open |
 | P2 application | `.../application/use-cases/RollupFeatureUsageUseCase.ts`, `RecordFeatureUsageUseCase.ts` | Consolidação e contador |
 | P2 infra | `.../infrastructure/repositories/PrismaFeatureUsageDailyRepository.ts`, `PrismaDailyFeatureUsageReader.ts`, `PrismaFeatureUsageRollupStateRepository.ts`, `jobs/FeatureUsageRollupJob.ts`, `featureUsageRollupStart.ts` | `replaceDay`/`increment`/`markOnce`, leitura do agregado, `platform_settings`, job |
+| P3 | `.../domain/services/featureEligibility.ts`, `featureUsageRetention.ts`, `screenViewCatalog.ts`; `.../application/use-cases/GetFeatureUsageScreensUseCase.ts`, `RecordPageViewUseCase.ts`; `.../infrastructure/repositories/PrismaFeatureEligibilityReader.ts`, `PrismaPageViewReader.ts`; `.../presentation/routes/usagePageViews.routes.ts` | Direito, adoção/recorrência/retenção, telas |
+| P3 painel | `featureUsage/screenViews.ts`, `hooks/usePageViewReporter.ts`, `hooks/useUsageScreens.ts`, `components/ScreensTab.tsx`, `RatioValue.tsx`, `app/src/services/usagePageViews.service.ts` | Envio de visita, aba Telas, adoção na matriz/ranking |
 | contrato | `contracts/feature-usage/` | Fixtures lidas pelos testes dos dois lados (abaixo) |
 
 ## Rotas (só super admin; outro usuário = 401 `UNAUTHORIZED`)
@@ -46,6 +55,8 @@ nunca usados no período e, por recurso, as contas que mais usam. Plano completo
 | `GET /admin/usage/summary` | `range` (com `maxDays`), `source`, `freshAt`, `population`, `totals`, `features[]`, `series` |
 | `GET /admin/usage/features/:featureKey` | Item do recurso + série dele (`uses`, `activeTenants` por bucket) + `inScope` |
 | `GET /admin/usage/features/:featureKey/tenants?cursor=` | Contas que mais usam, 25 por página (servidor decide), ordem `(uses desc, tenantId)` |
+| `GET /admin/usage/screens` (P3) | `range`, `firstDataDay`, `population.tenants`, `screens[]` (`key`, `product`, `planFamily`, `tenants`, `tenantDays`) |
+| `POST /usage/page-views` (P3, rota da **conta**) | 204; marca a tela do dia (ver "Visitas de tela") |
 
 Query comum: `from`, `to` (`YYYY-MM-DD`, inclusivos, Brasília), `granularity`, `product`, `kind` (lista), `plan`,
 `tenantStatus`, `includeInternal`, `tenantId`. Padrões no schema (pedido sem query): últimos 30 dias, `day` até 31 dias
@@ -221,6 +232,36 @@ Cobre mas está velho (job desligado ou falhando): até 90 dias lê a fonte viva
 5. Acompanhar o backfill (`backfillCursor` andando 7 dias por tick) até o log `feature usage backfill completed` e o
    marco (`backfilledFrom`, `backfillStopReason`). Só então a tela passa a `source: daily` e a 400 dias.
 
+## Adoção, recorrência e retenção (P3)
+
+- **Direito ao recurso** (`domain/services/featureEligibility.ts`, leitura `PrismaFeatureEligibilityReader.ts`: uma
+  instrução para todas as contas, sem nome): produto ativo hoje pela linha do **produto fonte** (`accessSourceOf` +
+  `resolveProductAccess`; `CHAT` segue `AFFILIATES`; `SESSION`/`ACCESS` sem produto) e, quando houver, o entitlement
+  de `FEATURE_ENTITLEMENT_KEYS` (vitrine, Story e Caçador só `true`; `ai_rewrite` só `false` explícito bloqueia;
+  `telegram_session` ausente/`null` = ilimitado, número > 0 libera). Conta sem a chave usa o preset do plano.
+- `featureUsageRetention.ts` (puro): adoção limitada a 1 e `null` com 0 contas com direito; quem usou sem direito hoje
+  entra no numerador (`usedWithoutEligibility`, interno); retenção `null` sem período anterior completo (mesma regra
+  da tendência). Item do resumo: `eligibleTenants`, `adoption`, `recurringTenants`, `retainedTenants` (no detalhe
+  saem `null`). A leitura do direito é mais uma instrução, em sequência, no mesmo orçamento e na mesma vaga.
+- `GET /admin/usage/summary?recurringDays=2|3|5` (outro valor = 400 de validação). Fora do cursor da lista.
+
+## Visitas de tela (P3)
+
+- Lista fechada `screenViewCatalog.ts` (**15 telas**, chave `view:<chave do item do menu>` de `buildNavigation`; telas
+  do super admin e o Chat ficam de fora). Fora de `FEATURE_USAGE_CATALOG`: nunca entra no resumo nem no rollup; conta
+  desde a primeira escrita (sem corte); primeiro dado = `MIN(day)`. Painel espelha em `featureUsage/screenViews.ts`.
+- `POST /usage/page-views` `{ key }` (rota da conta, `authHook` + `tenantHook`, classe `TENANT`, fora do gate de
+  produto): chave fora da lista = 400; **60/min por conta**; sempre 204. `RecordPageViewUseCase` → `markOnce`:
+  **idempotente por dia × conta × tela** (repetir não soma), tipo `ACCESS`, fail-open. **Super admin não grava.**
+  Nada de usuário, URL ou IP.
+- Painel: `usePageViewReporter` no `AppLayout`, no máximo uma chamada por dia (Brasília, `serverNow()`) × conta × tela
+  por aba (marcas em `sessionStorage`), não envia para super admin; 429/rede ignorados.
+- `GET /admin/usage/screens` (super admin): uma linha por tela (`tenants`, `tenantDays`), sem conta; consulta própria
+  agregada no banco, sempre do agregado (teto 400 dias), mesmo portão/orçamento; recorte de contas igual ao resumo e
+  filtro de produto (o de tipo não vale). Aba **Telas** (`ScreensTab.tsx`, `useUsageScreens.ts`) ordena por contas que
+  abriram e cruza "abriu × usou" pelo `SCREEN_FEATURE` (`rules.ts`; telas sem recurso único ficam de fora), com aviso
+  de coleta ("coleta desde"/parcial).
+
 ## Auditoria e privacidade
 
 - A 1ª página da lista de contas grava `USAGE_METRICS_VIEWED` com `{ kind: 'tenants', featureKey, filters, count }`
@@ -233,7 +274,8 @@ Cobre mas está velho (job desligado ou falhando): até 90 dias lê a fonte viva
 ## Contrato (`contracts/feature-usage/`)
 
 `summary.response.json`, `feature-detail.response.json`, `feature-tenants.response.json`, `summary.daily.response.json` e
-`feature-detail.daily.response.json` (P2, `source: daily` com `freshAt`), `catalog.json` e `README.md`.
+`feature-detail.daily.response.json` (P2, `source: daily` com `freshAt`), `screens.response.json` (P3), `catalog.json`
+(com `screenKeys`) e `README.md`.
 O teste do catálogo da API compara `catalog.json` com `FEATURE_USAGE_CATALOG`; o teste do presenter compara as respostas
 com os exemplos; os testes do painel exigem texto para cada chave e código e validam os exemplos contra `types.ts`.
 Leitura por caminho (`fs`), sem import entre `api/` e `app/`, fora de build e imagem. **Mudou o contrato, muda a
@@ -283,3 +325,6 @@ fixture no mesmo commit.**
 - P2: ligar `FEATURE_USAGE_ROLLUP_ENABLED` no `http`; gravar recurso do contador pelo rollup (ou dia ≥ corte); servir
   agregado com mais de 45 min; `await` no contador ou deixá-lo falhar o envio; contar envio de automação ou não aceito
   em `chat_send`; editar/apagar o corte em `platform_settings`; rodar a API local contra produção (grava o corte).
+- P3: tela fora de `screenViewCatalog.ts` (painel e API mudam juntos, com `catalog.json`); gravar visita de super admin,
+  usuário, URL ou IP; somar visitas repetidas do dia; tela `view:*` no resumo ou no rollup; adoção por plano em vez do
+  produto fonte + entitlement; reescrever `resolveProductAccess`.

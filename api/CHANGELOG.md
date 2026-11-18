@@ -17,6 +17,30 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.104.0] — 2026-11-17 — Uso dos recursos (P3): adoção, recorrência, retenção e visitas de tela (app 0.127.0)
+
+### Added
+
+#### Backend — metrics ([`docs/uso-dos-recursos.md`](../docs/uso-dos-recursos.md))
+
+- **`featureEligibility.ts`**, **`PrismaFeatureEligibilityReader.ts`**, **`IFeatureEligibilityReader.ts`** (novos) — contas com direito a cada recurso hoje: produto ativo pela linha do produto fonte (`accessSourceOf` + `resolveProductAccess`) e entitlement de `FEATURE_ENTITLEMENT_KEYS` (vitrine/Story/Caçador só `true`, IA só `false` bloqueia, Telegram ausente = ilimitado), preset do plano quando a conta não tem a chave. Uma instrução, sem nome.
+- **`featureUsageRetention.ts`** (novo), **`aggregateFeatureUsage.ts`**, **`GetFeatureUsageSummaryUseCase.ts`**, **`featureUsage.schema.ts`**, **`featureUsagePresenter.ts`** — no resumo, por recurso: `eligibleTenants`, `adoption` (≤ 1, `null` sem contas com direito), `recurringTenants` (≥ N dias distintos, `recurringDays` 2/3/5, padrão 3) e `retainedTenants` (`null` sem período anterior completo). No detalhe saem `null`.
+- **`screenViewCatalog.ts`**, **`RecordPageViewUseCase.ts`**, **`usagePageViews.routes.ts`** (novos), **`rateLimitPresets.ts`**, **`app/routes.ts`**, **`app/productRoutes.ts`** — `POST /usage/page-views` (rota da conta, classe `TENANT`, 60/min por conta, sempre 204): lista fechada de 15 telas `view:*`, `markOnce` idempotente por dia × conta × tela no `feature_usage_daily` (`ACCESS`), fail-open; super admin não grava; sem usuário, URL ou IP.
+- **`GetFeatureUsageScreensUseCase.ts`**, **`PrismaPageViewReader.ts`**, **`IPageViewReader.ts`** (novos), **`featureUsage.routes.ts`** — `GET /admin/usage/screens` (super admin): uma linha por tela (`tenants`, `tenantDays`), agregada no banco, sempre do agregado (teto 400 dias), mesmo portão e orçamento.
+- **`contracts/feature-usage/screens.response.json`** (novo), **`catalog.json`** (`screenKeys`), **`summary*.response.json`**, **`README.md`** — campos novos.
+
+#### Frontend — featureUsage (app 0.127.0)
+
+- **`hooks/usePageViewReporter.ts`**, **`screenViews.ts`**, **`services/usagePageViews.service.ts`** (novos), **`app/AppLayout.tsx`** — envio da visita da tela ativa, no máximo 1 por dia (Brasília, `serverNow()`) × conta × tela por aba, nunca para super admin; erro ignorado.
+- **`components/ScreensTab.tsx`**, **`hooks/useUsageScreens.ts`**, **`RatioValue.tsx`** (novos), **`PlanMatrixTable.tsx`**, **`FeatureRankingChart.tsx`**, **`UsageFiltersBar.tsx`**, **`rules.ts`** (`SCREEN_FEATURE`), **`strings.ts`**, **`AdminUsagePage.tsx`**, **`AppRoutes.tsx`** — aba Telas (abriu × usou), adoção e recorrência no ranking e na matriz, seletor de recorrência.
+
+### Notas
+
+- Sem migration: visitas usam `feature_usage_daily` (P2). A aba Telas só tem dado depois do deploy (coleta desde a primeira visita).
+- Contrato HTTP novo e aditivo (campos no resumo, duas rotas); fixtures atualizadas.
+
+---
+
 ## [0.103.0] — 2026-11-17 — Uso dos recursos (P2): agregado diário, contador de Story e chat e períodos até 400 dias (app 0.126.0)
 
 ### Added
