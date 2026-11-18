@@ -16,12 +16,20 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - **`metrics`** (`featureEligibility.ts`, `featureUsageRetention.ts`, `screenViewCatalog.ts`, `RecordPageViewUseCase.ts`, `GetFeatureUsageScreensUseCase.ts`) — adoção (contas com direito pelo produto fonte + entitlement), recorrência (`recurringDays` 2/3/5) e retenção no resumo; `POST /usage/page-views` (15 telas, 60/min por conta, idempotente por dia × conta × tela, super admin não grava) e `GET /admin/usage/screens`. Sem migration. Detalhes em `api/CHANGELOG.md` [0.104.0].
 - **`/admin/usage`** (`ScreensTab.tsx`, `usePageViewReporter.ts`, `PlanMatrixTable.tsx`) — aba Telas (abriu × usou), adoção e recorrência no ranking e na matriz; envio da visita no layout.
 
+#### Correções da revisão
+
+- Direito com audiência "Só super admin", teto do Caçador > 0 e `chat_send` só de conta interna (`internalOnlyFeatures` no contrato, conferido pela api e pelo teste do menu); `population.byFamily` nas telas; aba Telas com teto próprio de 400 dias; "Usar 90 dias" na leitura lenta. Detalhes em `api/CHANGELOG.md` [0.104.0].
+
 ### Added — app 0.126.0 / api 0.103.0 — Uso dos recursos (P2, super admin)
 
 #### app / api ([`docs/uso-dos-recursos.md`](docs/uso-dos-recursos.md))
 
-- **`metrics`** (`RollupFeatureUsageUseCase.ts`, `FeatureUsageRollupJob.ts`, `RecordFeatureUsageUseCase.ts`, repositórios `feature_usage_daily`) — agregado diário consolidado no `worker` sob `FEATURE_USAGE_ROLLUP_ENABLED` (default `false`), backfill e retenção de 400 dias, leitura pelo agregado quando fresco (< 45 min) com teto de 400 dias; contador fail-open para `chat_send` (só envio do painel aceito) e Story (corte em `platform_settings`). Migrations `20261117170000_create_feature_usage_daily` e `20261117173000_add_feature_usage_daily_tenant_index`. Detalhes em `api/CHANGELOG.md` [0.103.0].
+- **`metrics`** (`RollupFeatureUsageUseCase.ts`, `FeatureUsageRollupJob.ts`, `RecordFeatureUsageUseCase.ts`, repositórios `feature_usage_daily`) — agregado diário consolidado no `worker` sob `FEATURE_USAGE_ROLLUP_ENABLED` (default `false`), backfill e retenção de 400 dias, leitura pelo agregado quando fresco (< 45 min) com teto de 400 dias; contador fail-open para `chat_send` (só envio do painel aceito pela engine com id externo; mídia no despacho `PENDING → SENT`) e Story (corte em `platform_settings`). Migrations `20261117170000_create_feature_usage_daily` e `20261117173000_add_feature_usage_daily_tenant_index`. Detalhes em `api/CHANGELOG.md` [0.103.0].
 - **`/admin/usage`** (`UsageSummaryGate.tsx`, `rules.ts`) — fonte e frescor do dado, aviso de dado antigo, presets 180/365 dias.
+
+#### Correções da revisão
+
+- Consolidação por grupo de fonte (frescor por grupo, sem item pendente no reprocesso), reprocesso ≤ 30 com piso `reprocessFrom` ao descartar, revisita 1 dia/tick, backfill por grupo com `backfillPendingKeys` (cursor legado só no estado sem grupos); `replaceDay` cria e trava a linha de cortes desde o 1º corte; descartes `DROPPED` gravados 1×/min; mídia do chat conta só no `SENT` com id externo. Detalhes em `api/CHANGELOG.md` [0.103.0].
 
 ### Added — app 0.125.0 / api 0.102.0 — Uso dos recursos (P1, super admin)
 

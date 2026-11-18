@@ -39,6 +39,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - Sem migration: visitas usam `feature_usage_daily` (P2). A aba Telas só tem dado depois do deploy (coleta desde a primeira visita).
 - Contrato HTTP novo e aditivo (campos no resumo, duas rotas); fixtures atualizadas.
 
+
+### Correções da revisão
+
+- **`featureEligibility.ts`** — direito respeita a audiência "Só super admin" (Caçador, Saver: só conta interna), Caçador exige `offer_hunter_finds_per_day > 0` e `INTERNAL_ONLY_FEATURES` (`chat_send`: só conta interna enquanto o menu do Chat for só de super admin). A amarração com o menu saiu do teste da api (lia `app/`): `contracts/feature-usage/catalog.json` ganhou `internalOnlyFeatures`, conferido pela api e pelo teste do menu no painel.
+- **`GetFeatureUsageScreensUseCase.ts`**, schema e presenter — `population.byFamily` em `/admin/usage/screens`; o "Do recorte" divide pela família da tela.
+- Painel (app 0.127.0) — aba Telas com teto próprio de 400 dias e resumo da coluna cruzada com estado próprio; leitura lenta acima de 90 dias oferece "Usar 90 dias"; aviso de dado antigo com relógio a cada 60 s.
 ---
 
 ## [0.103.0] — 2026-11-17 — Uso dos recursos (P2): agregado diário, contador de Story e chat e períodos até 400 dias (app 0.126.0)
@@ -48,11 +54,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 #### Backend — metrics ([`docs/uso-dos-recursos.md`](../docs/uso-dos-recursos.md))
 
 - **`prisma/migrations/20261117170000_create_feature_usage_daily`**, **`20261117173000_add_feature_usage_daily_tenant_index`** — tabela `feature_usage_daily` (PK dia × conta × recurso × tipo, `uses`), índices `(featureKey, day)` e `(tenantId)`, FK com cascade. Aditivas, tabela nova.
-- **`RollupFeatureUsageUseCase.ts`**, **`jobs/FeatureUsageRollupJob.ts`**, **`featureUsageRollupStart.ts`** (novos) — consolidação a cada 15 min só no `worker`/`all` com `FEATURE_USAGE_ROLLUP_ENABLED` (default `false`; 1º tick 15 min após o boot). Lease `feature-usage-rollup` renovado antes de cada leitura e gravação (recusado = tick abortado); janela de `finalizedThrough + 1` até hoje (≤ 7 dias por tick; `finalizedThrough` nunca passa de anteontem, ontem sempre revisitado); `failureStreak` ≥ 3 = log `error` e leitura dia a dia; backfill ≤ 7 dias por tick com `backfillCursor` até `FIRST_DATA` ou `RETENTION` (400 dias), marco `backfilledFrom`/`backfillStopReason`; retenção de 400 dias 1×/24 h. Estado em `platform_settings["feature_usage_rollup"]`.
+- **`RollupFeatureUsageUseCase.ts`**, **`jobs/FeatureUsageRollupJob.ts`**, **`featureUsageRollupStart.ts`** (novos) — consolidação a cada 15 min só no `worker`/`all` com `FEATURE_USAGE_ROLLUP_ENABLED` (default `false`; 1º tick 15 min após o boot). Lease `feature-usage-rollup` renovado antes de cada leitura e gravação (recusado = tick abortado); grupos de fonte independentes; janela de `finalizedThrough + 1` até hoje (≤ 7 dias por tick; `finalizedThrough` anda se algum grupo deu certo e nunca passa de anteontem); reprocesso (dia, grupo) ≤ 30; revisita 1 dia/tick de hoje − 2 a hoje − 30; backfill por grupo ≤ 7 dias por tick até `FIRST_DATA` ou `RETENTION` (400 dias), marco `backfilledFrom`/`backfillStopReason` com `backfillPendingKeys`; retenção de 400 dias 1×/24 h. Estado inteiro em `platform_settings["feature_usage_rollup"]`.
 - **`PrismaFeatureUsageDailyRepository.ts`**, **`PrismaDailyFeatureUsageReader.ts`**, **`PrismaFeatureUsageRollupStateRepository.ts`** (novos) — `replaceDay` (só chaves `LIVE` do dia, por `unnest`, numa transação), `increment`, leitura do agregado, marco e corte em `platform_settings`.
-- **`GetFeatureUsageSummaryUseCase.ts`** (`chooseUsageSource`), detalhe e lista — agregado quando cobre o período e `lastSuccessAt` < 45 min (`source: daily`, teto 400 dias); velho: fonte viva até 90 dias com log `warn`, acima 503. Resposta com `source`, `freshAt` e `range.maxDays`.
+- **`GetFeatureUsageSummaryUseCase.ts`** (`chooseUsageSource`), detalhe e lista — agregado quando cobre o período, sem recurso pedido em `backfillPendingKeys`, e o menor frescor dos grupos pedidos < 45 min (`source: daily`, teto 400 dias); velho ou pendente: fonte viva até 90 dias com log `warn`, acima 503. Resposta com `source`, `freshAt` e `range.maxDays`.
 - **`IFeatureUsageRecorder.ts`**, **`RecordFeatureUsageUseCase.ts`** (novos) — contador fail-open (sem `await`, erro = log `warn`, teto de 20 gravações em voo por processo com aviso amostrado). Recurso novo `chat_send` (`RECORDED`); `offer_story` passa a `CUTOVER`: corte gravado uma vez em `platform_settings["feature_usage_cutover"]` na primeira escrita (dia seguinte a ela).
-- **`SendMessageUseCase.ts`**, **`SendMediaMessageUseCase.ts`**, **`chat.routes.ts`** — `origin` obrigatório (`PANEL` × `AUTOMATION`); `chat_send` só conta envio do painel aceito pela engine (texto com id externo) ou pela fila (mídia).
+- **`SendMessageUseCase.ts`**, **`SendMediaMessageUseCase.ts`**, **`chat.routes.ts`** — `origin` obrigatório (`PANEL` × `AUTOMATION`); `chat_send` só conta envio do painel aceito pela engine com id externo (texto no envio; mídia no despacho, na transição `PENDING → SENT`).
 - **`RenderOfferStoryUseCase.ts`** — arte gerada = 1 uso de `offer_story`, com ou sem título da IA.
 - **`IJobLease.ts`**, **`PrismaJobLease.ts`** — renovação do lease pelo dono (`IJobLeaseRenewal`).
 - **`contracts/feature-usage/summary.daily.response.json`**, **`feature-detail.daily.response.json`** (novos), **`catalog.json`** — `chat_send` e exemplos com `source: daily`/`freshAt`.
@@ -67,6 +73,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - O contador grava desde o deploy, com ou sem a flag. Qualquer processo que escreva no banco de produção grava o corte do Story: nunca rodar a API local contra produção.
 - Mudança de contrato interno: `origin` obrigatório nos use cases de envio do chat (emissores atualizados no mesmo conjunto).
 
+
+### Correções da revisão
+
+- **`RollupFeatureUsageUseCase.ts`**, **`IFeatureUsageRollupStateRepository.ts`**, **`PrismaFeatureUsageRollupStateRepository.ts`** — grupos de fonte independentes (erro num grupo não trava marca, frescor nem backfill dos outros); reprocesso (dia, grupo) ≤ 30 em `platform_settings`, revisita 1 dia/tick com `revisitCursor`; frescor do grupo só sem falha na janela e **sem item pendente no reprocesso**; reprocesso cheio grava o piso `groups[].reprocessFrom` (log `error`) e o recalcula 1 dia/tick até a faixa da revisita (o dia descartado podia ficar abaixo de hoje − 30 e nunca ser revisto); cursor legado `backfillCursor` só no estado sem `groups` (grupo novo começa de anteontem) e o grupo com falha guarda o início.
+- **`PrismaFeatureUsageDailyRepository.ts`** — `replaceDay` confere o corte no SQL e agora cria a linha de cortes (`ON CONFLICT DO NOTHING`, `"updatedAt"` explícito) antes do `FOR SHARE`: sem a linha a trava não valia no primeiro corte. Ordem fixa (cortes → agregado), sem deadlock com `claimCutover`. Teste de integração.
+- **`IFeatureUsageRecorder.ts`**, **`PrismaFeatureUsageRollupStateRepository.ts`** (`addDrops`), **`aggregateFeatureUsage.ts`** — descartes do teto gravados em `platform_settings["feature_usage_dropped"]` no máximo 1×/min por processo; motivo `DROPPED` só com descarte dentro do período.
+- **`DispatchOutboundMediaUseCase.ts`** — mídia do painel conta no despacho (`PENDING → SENT`, `origin = PANEL`), não na fila, e só com id externo não vazio da engine (mesmo critério do texto).
+- **`docs/uso-dos-recursos.md`**, **`docs/arquitetura-escala.md`** — reescritos conforme o código.
 ---
 
 ## [0.102.0] — 2026-11-17 — Uso dos recursos (P1): ranking dos recursos mais usados para o super admin (app 0.125.0)

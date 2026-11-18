@@ -173,31 +173,59 @@ número: nada de usuário, conteúdo ou destino.
 
 **Job `FeatureUsageRollupJob`** (`infrastructure/jobs/`, use case `RollupFeatureUsageUseCase`), só `worker`/`all` com
 `FEATURE_USAGE_ROLLUP_ENABLED=true` (`featureUsageRollupStart.ts`; papel `http` nunca monta). `start()` só arma o timer:
-**o 1º tick roda 15 min depois do boot**, nada no boot. Tick de 15 min, não reentra, nunca lança. Em cada tick:
+**o 1º tick roda 15 min depois do boot**, nada no boot. Tick de 15 min, não reentra, nunca lança.
+
+**Grupos de fonte:** recursos lidos numa mesma instrução formam um grupo (id = chaves unidas por `+`). Cada grupo anda
+sozinho: erro persistente num grupo não trava a marca, o frescor nem o backfill dos outros. Em cada tick:
 
 1. Lease `feature-usage-rollup` (TTL 10 min, solto ao terminar). **Renovado** antes de cada leitura de fonte e de
    cada gravação de dia; renovação recusada = log `feature usage rollup lost lease, tick aborted` e nada mais é gravado.
-2. **Janela recente** (`recentWindow`): de `finalizedThrough + 1` (sem marca: ontem) até hoje, **no máximo 7 dias por
-   tick** (job parado por dias alcança hoje em vários ticks), nunca antes da retenção. `replaceDay` regrava, numa
-   transação por dia, só as chaves `LIVE` do dia (as do contador nunca são tocadas). Sem falha: grava `lastSuccessAt`
-   (quando a janela chega a hoje) e avança `finalizedThrough`, **nunca além de anteontem** (ontem é sempre revisitado).
-3. **`failureStreak`:** falhas seguidas. A partir de **3**, log `error` `feature usage rollup failing repeatedly` e a
-   janela é lida **dia a dia** para isolar o dia ruim; `finalizedThrough` só anda até o último dia bom contíguo.
-4. **Backfill** (lease `feature-usage-backfill`, TTL 10 min, solto): ≤ 7 dias por tick, para trás a partir de
-   `backfillCursor` (começa anteontem). Falha numa fonte = o cursor não anda (o passo se repete, idempotente). Termina
-   ao passar do primeiro dado das fontes (`backfillStopReason = FIRST_DATA`) ou do teto de 400 dias (`RETENTION`);
-   grava `backfillCompletedAt`, `backfilledFrom` e o motivo, com log `feature usage backfill completed`.
-5. **Retenção:** apaga `day < hoje − 400`, 1×/24 h (lease `feature-usage-retention` de 24 h, não solto).
+2. **Reprocesso** (`retryQueue`, itens dia × grupo que falharam e ficaram atrás da marca): cada item é relido sozinho
+   (isola o dia ruim); deu certo, sai. **No máximo 30 itens**; cheia, os mais antigos saem com log `error`
+   `feature usage rollup retry queue full, oldest dropped` e o menor dia descartado vira o **piso de reprocesso** do
+   grupo (`groups[].reprocessFrom`).
+3. **Janela recente** (`recentWindow`): de `finalizedThrough + 1` (sem marca: ontem) até hoje, **no máximo 7 dias por
+   tick** (job parado por dias alcança hoje em vários ticks), nunca antes da retenção, grupo a grupo. `replaceDay`
+   regrava, numa transação por dia, só as chaves `LIVE` do dia (as do contador nunca são tocadas).
+   `finalizedThrough` avança **se algum grupo deu certo** (todos falhando = nada anda), **nunca além de anteontem**
+   (ontem é sempre recalculado); o (dia, grupo) que falhou e ficou atrás da marca entra no reprocesso.
+4. **Revisita leve:** **1 dia por tick**, em rodízio para trás de hoje − 2 até hoje − 30 (`revisitCursor`), só dia já
+   finalizado; recalcula cada grupo e loga `warn` `feature usage rollup revisit changed a finalized day` se a soma
+   mudou (dado que chegou depois de D+2). **Piso de reprocesso:** grupo com `reprocessFrom` recalcula **1 dia por
+   tick** do piso para frente; ao entrar na faixa da revisita (≥ hoje − 30) ou passar da marca, o piso some.
+5. **Backfill por grupo** (lease `feature-usage-backfill`, TTL 10 min, solto): ≤ 7 dias por tick, para trás a partir
+   do `groups[].backfillCursor` (começa anteontem; o cursor único legado `backfillCursor` só vale no estado antigo, sem
+   `groups`; grupo novo começa de anteontem). Falha = o cursor não anda (o passo se repete, idempotente). O grupo
+   termina ao passar do seu primeiro dado (`FIRST_DATA`) ou do teto de 400 dias (`RETENTION`). O **marco**
+   (`backfillCompletedAt`, `backfilledFrom`, `backfillStopReason`) é gravado uma vez quando todos os grupos terminaram
+   ou os que faltam falharam **3+ passos seguidos**: esses ficam em `backfillPendingKeys` e continuam tentando (saem
+   ao concluir). A leitura trata recurso pendente como **não coberto** pelo agregado.
+6. **Retenção:** apaga `day < hoje − 400`, 1×/24 h (lease `feature-usage-retention` de 24 h, não solto).
 
-Estado (cursor, marco, `finalizedThrough`, `failureStreak`, `lastSuccessAt`) em `platform_settings["feature_usage_rollup"]`,
-nunca em memória. Orçamento de 20 s por leitura de fonte no job (fora do portão do `http`).
+**Falhas e frescor:** `groups[].failureStreak` por grupo (janela, reprocesso ou piso) e `failureStreak` do tick; a
+partir de **3**, log `error` (`feature usage rollup group failing repeatedly` / `feature usage rollup failing
+repeatedly`). Frescor do grupo (`groups[].lastSuccessAt`) só quando a janela chegou a hoje **sem falha do grupo na
+janela**, **sem item do grupo pendente no reprocesso** e sem falha no backfill dele (o piso de reprocesso não tira o
+frescor). `lastSuccessAt` global só quando o tick inteiro concluiu; é o frescor do estado antigo, sem grupos.
 
-**Escolha da fonte (`chooseUsageSource`):** o agregado cobre o período quando o backfill terminou e (`FIRST_DATA`) ou
-o período começa em `backfilledFrom` ou depois (`RETENTION`). Só vale **fresco**: `lastSuccessAt` há menos de **45 min**.
-Cobre mas está velho (job desligado ou falhando): até 90 dias lê a fonte viva com log `warn`
-`feature usage daily aggregate stale, reading live sources`; acima de 90 dias, 503 `USAGE_METRICS_READ_UNAVAILABLE`
-(nunca agregado velho em silêncio). A resposta traz `source` (`daily`/`live`), `freshAt` (`lastSuccessAt` ou agora) e
-`range.maxDays` (400 ou 90). Granularidade `day` segue limitada a 90 dias.
+**Estado completo** (marca, `failureStreak`, `lastSuccessAt`, `groups` com cursor/marco/falhas/frescor/piso por grupo,
+`retryQueue`, `revisitCursor`, marco e `backfillPendingKeys`) em `platform_settings["feature_usage_rollup"]`, nunca em
+memória. Orçamento de 20 s por leitura de fonte no job (fora do portão do `http`).
+
+**Escolha da fonte (`chooseUsageSource`):** o agregado cobre o período quando o marco existe e (`FIRST_DATA`) ou o
+período começa em `backfilledFrom` ou depois (`RETENTION`), e nenhum recurso `LIVE` pedido está em
+`backfillPendingKeys`. Só vale **fresco**: o **menor frescor dos grupos dos recursos pedidos** (`usageFreshAt`;
+recurso sem grupo no estado usa o `lastSuccessAt` global; só recurso do contador = tick mais recente) há menos de
+**45 min**. Cobre mas está velho ou pendente: até 90 dias lê a fonte viva com log `warn`
+(`feature usage daily aggregate stale, reading live sources` / `... pending backfill, ...`); acima de 90 dias, 503
+`USAGE_METRICS_READ_UNAVAILABLE` (nunca agregado velho ou incompleto em silêncio). A resposta traz `source`
+(`daily`/`live`), `freshAt` e `range.maxDays` (400 ou 90). Granularidade `day` segue limitada a 90 dias.
+
+**Corte no SQL:** `replaceDay` cria a linha `platform_settings["feature_usage_cutover"]` vazia se ainda não existe
+(`ON CONFLICT DO NOTHING`, `"updatedAt"` explícito) e a trava com `FOR SHARE` na mesma transação, antes de tocar
+`feature_usage_daily`; `DELETE`/`INSERT` ainda pulam a chave cujo corte já vale no dia. Assim o `claimCutover` espera a
+transação em curso desde o **primeiro** corte. Sem deadlock: a transação trava sempre a linha dos cortes antes do
+agregado e o `claimCutover` (instrução única) só trava a linha dos cortes.
 
 ## Contador (P2)
 
@@ -205,8 +233,14 @@ Cobre mas está velho (job desligado ou falhando): até 90 dias lê a fonte viva
   usa `recordFeatureUsage(...)`: **fail-open**, sem `await`, erro vira log `warn` (sem conta nem conteúdo). Teto de
   **20 gravações em voo por processo**; acima o uso é descartado, com aviso amostrado 1×/min com a contagem.
 - **`chat_send`** (novo, `RECORDED`, `FIRST_WRITE`, produto Chat): só envio com `origin = PANEL` (pessoa no painel) e
-  **aceito** (texto com id externo da engine; mídia aceita pela engine ou pela fila). `AUTOMATION` (oferta) não conta;
-  `origin` é obrigatório em `SendMessageUseCase`/`SendMediaMessageUseCase`. Conta desde a primeira escrita.
+  **aceito pela engine com id externo**: texto em `SendMessageUseCase`; mídia no despacho (`DispatchOutboundMediaUseCase`),
+  na transição `PENDING → SENT` que de fato ocorreu (retry duplicado não soma) e só com id externo não vazio devolvido
+  pela engine. Enfileirar a mídia não conta. `AUTOMATION` (oferta) não conta; `origin` é obrigatório em
+  `SendMessageUseCase`/`SendMediaMessageUseCase` e segue no job da mídia. Conta desde a primeira escrita.
+- **Descartes (`DROPPED`):** uso descartado pelo teto de 20 em voo é somado por dia × recurso e gravado em
+  `platform_settings["feature_usage_dropped"]` em lote, **no máximo 1×/min por processo** (`addDrops`, soma no SQL;
+  dia com mais de 400 dias sai). O motivo de cobertura `DROPPED` só aparece quando houve descarte **dentro do período**
+  pedido, em dia do contador.
 - **`offer_story`** (`LIVE` com `recordedFrom: CUTOVER`): arte gerada = 1 uso, com ou sem título da IA.
 - **Corte** em `platform_settings["feature_usage_cutover"]` (`{ "<chave>": "YYYY-MM-DD" }`), gravado uma vez e de forma
   atômica na **primeira escrita** do contador: corte = **dia seguinte** (Brasília) a ela. Antes do corte o Story vem da
@@ -220,6 +254,8 @@ Cobre mas está velho (job desligado ou falhando): até 90 dias lê a fonte viva
 - Linha de contexto com a fonte: `live` sempre indicada; `daily` mostra "atualizado há X" e aviso de dado antigo
   acima de **30 min** (`USAGE_DAILY_STALE_MS`, antes do corte de 45 min da API). Hora pelo `serverNow()`.
 - Presets `180d` e `365d` aparecem quando `range.maxDays` permite (`usageMaxDays.ts`).
+- Leitura lenta (503) com período acima de 90 dias: o aviso oferece **"Usar 90 dias"** (volta ao preset `90d`, que a
+  leitura sob demanda atende) além de "Tentar de novo".
 
 ## Ligar na Render (checklist)
 
@@ -227,10 +263,12 @@ Cobre mas está velho (job desligado ou falhando): até 90 dias lê a fonte viva
    `20261117173000_add_feature_usage_daily_tenant_index` (boot do container).
 2. `DATABASE_URL` com `socket_timeout` (portão de leitura e job).
 3. `FEATURE_USAGE_ROLLUP_ENABLED=true` **só no `worker`** (nunca no `http`).
-4. Depois de ~15 min, conferir o 1º tick (sem `lost lease`/`failing repeatedly`), `lastSuccessAt` e
-   `finalizedThrough` em `platform_settings["feature_usage_rollup"]`.
-5. Acompanhar o backfill (`backfillCursor` andando 7 dias por tick) até o log `feature usage backfill completed` e o
-   marco (`backfilledFrom`, `backfillStopReason`). Só então a tela passa a `source: daily` e a 400 dias.
+4. Depois de ~15 min, conferir o 1º tick (sem `lost lease`/`failing repeatedly`/`group failing repeatedly`),
+   `finalizedThrough` e `groups[].lastSuccessAt` em `platform_settings["feature_usage_rollup"]`; `retryQueue` vazia ou
+   curta.
+5. Acompanhar o backfill (`groups[].backfillCursor` andando 7 dias por tick) até o log
+   `feature usage backfill completed` e o marco (`backfilledFrom`, `backfillStopReason`, `backfillPendingKeys` vazio).
+   Só então a tela passa a `source: daily` e a 400 dias (recurso em `backfillPendingKeys` segue sob demanda).
 
 ## Adoção, recorrência e retenção (P3)
 
@@ -239,6 +277,10 @@ Cobre mas está velho (job desligado ou falhando): até 90 dias lê a fonte viva
   `resolveProductAccess`; `CHAT` segue `AFFILIATES`; `SESSION`/`ACCESS` sem produto) e, quando houver, o entitlement
   de `FEATURE_ENTITLEMENT_KEYS` (vitrine, Story e Caçador só `true`; `ai_rewrite` só `false` explícito bloqueia;
   `telegram_session` ausente/`null` = ilimitado, número > 0 libera). Conta sem a chave usa o preset do plano.
+  Caçador exige também `offer_hunter_finds_per_day > 0` (ausente = 0). Audiência **"Só super admin"**
+  (`platform_settings["feature_audience"]`, Caçador e Saver): só conta interna tem direito. `INTERNAL_ONLY_FEATURES`
+  (hoje `chat_send`, menu do Chat só de super admin): só conta interna; a lista está no contrato
+  (`internalOnlyFeatures`) e o teste do menu no painel confere o `superAdminOnly` do Chat.
 - `featureUsageRetention.ts` (puro): adoção limitada a 1 e `null` com 0 contas com direito; quem usou sem direito hoje
   entra no numerador (`usedWithoutEligibility`, interno); retenção `null` sem período anterior completo (mesma regra
   da tendência). Item do resumo: `eligibleTenants`, `adoption`, `recurringTenants`, `retainedTenants` (no detalhe
@@ -258,9 +300,12 @@ Cobre mas está velho (job desligado ou falhando): até 90 dias lê a fonte viva
   por aba (marcas em `sessionStorage`), não envia para super admin; 429/rede ignorados.
 - `GET /admin/usage/screens` (super admin): uma linha por tela (`tenants`, `tenantDays`), sem conta; consulta própria
   agregada no banco, sempre do agregado (teto 400 dias), mesmo portão/orçamento; recorte de contas igual ao resumo e
-  filtro de produto (o de tipo não vale). Aba **Telas** (`ScreensTab.tsx`, `useUsageScreens.ts`) ordena por contas que
-  abriram e cruza "abriu × usou" pelo `SCREEN_FEATURE` (`rules.ts`; telas sem recurso único ficam de fora), com aviso
-  de coleta ("coleta desde"/parcial).
+  filtro de produto (o de tipo não vale). `population.tenants` = contas do recorte; `population.byFamily` = contas do
+  recorte por família de plano: o "Do recorte" de tela Saver divide pela família Saver, as demais pela de Afiliados.
+- Aba **Telas** (`ScreensTab.tsx`, `useUsageScreens.ts`) ordena por contas que abriram e cruza "abriu × usou" pelo
+  `SCREEN_FEATURE` (`rules.ts`; telas sem recurso único ficam de fora), com aviso de coleta ("coleta desde"/parcial).
+  **Teto próprio de 400 dias** nos presets (o da rota), sem herdar o teto nem o reset de período do resumo; o resumo
+  da coluna cruzada é lido só com a tabela aberta e tem estado próprio (carregando/falhou).
 
 ## Auditoria e privacidade
 
@@ -275,8 +320,9 @@ Cobre mas está velho (job desligado ou falhando): até 90 dias lê a fonte viva
 
 `summary.response.json`, `feature-detail.response.json`, `feature-tenants.response.json`, `summary.daily.response.json` e
 `feature-detail.daily.response.json` (P2, `source: daily` com `freshAt`), `screens.response.json` (P3), `catalog.json`
-(com `screenKeys`) e `README.md`.
-O teste do catálogo da API compara `catalog.json` com `FEATURE_USAGE_CATALOG`; o teste do presenter compara as respostas
+(com `screenKeys` e `internalOnlyFeatures`) e `README.md`.
+O teste do catálogo da API compara `catalog.json` com `FEATURE_USAGE_CATALOG` (e o de elegibilidade,
+`internalOnlyFeatures` com `INTERNAL_ONLY_FEATURES`); o teste do menu do painel amarra o Chat `superAdminOnly` a ela; o teste do presenter compara as respostas
 com os exemplos; os testes do painel exigem texto para cada chave e código e validam os exemplos contra `types.ts`.
 Leitura por caminho (`fs`), sem import entre `api/` e `app/`, fora de build e imagem. **Mudou o contrato, muda a
 fixture no mesmo commit.**
@@ -324,7 +370,10 @@ fixture no mesmo commit.**
 - Editar migration aplicada; rodar `prisma migrate deploy` fora da Render.
 - P2: ligar `FEATURE_USAGE_ROLLUP_ENABLED` no `http`; gravar recurso do contador pelo rollup (ou dia ≥ corte); servir
   agregado com mais de 45 min; `await` no contador ou deixá-lo falhar o envio; contar envio de automação ou não aceito
-  em `chat_send`; editar/apagar o corte em `platform_settings`; rodar a API local contra produção (grava o corte).
+  em `chat_send` (mídia: nunca no enfileiramento, só no `SENT` com id externo); editar/apagar o corte em
+  `platform_settings`; rodar a API local contra produção (grava o corte); tirar a criação da linha de cortes ou o
+  `FOR SHARE` do `replaceDay`; travar `feature_usage_daily` antes da linha de cortes; dar frescor a grupo com item no
+  reprocesso; descartar item do reprocesso sem gravar o piso (`reprocessFrom`).
 - P3: tela fora de `screenViewCatalog.ts` (painel e API mudam juntos, com `catalog.json`); gravar visita de super admin,
   usuário, URL ou IP; somar visitas repetidas do dia; tela `view:*` no resumo ou no rollup; adoção por plano em vez do
   produto fonte + entitlement; reescrever `resolveProductAccess`.
