@@ -1,5 +1,6 @@
 import type { FeatureUsageCutovers } from '../services/featureUsageCatalog';
 import type { UsageReadBudget } from './IUsageReadGate';
+import type { FeatureUsageDropCounts } from './IFeatureUsageRecorder';
 
 /**
  * Por que o backfill parou: `FIRST_DATA` = chegou ao primeiro dado das fontes (nada antes existe, o agregado vale
@@ -30,6 +31,8 @@ export interface FeatureUsageRollupState {
   failureStreak: number;
   /** Cortes gravados pelo contador (recurso `CUTOVER` → primeiro dia do contador). */
   cutovers: FeatureUsageCutovers;
+  /** Usos descartados pelo teto do contador, por dia × recurso (`platform_settings["feature_usage_dropped"]`). */
+  dropped?: FeatureUsageDropCounts;
 }
 
 /** Resultado de um tick para o estado: o que não vier não muda. */
@@ -48,6 +51,11 @@ export interface IFeatureUsageRollupStateRepository {
   markBackfillCompleted(marker: { completedAt: Date; backfilledFrom: string; stopReason: FeatureUsageBackfillStopReason }): Promise<boolean>;
   /** Grava o resultado do tick (merge; não toca no marco nem no cursor). */
   recordTick(patch: FeatureUsageTickPatch): Promise<void>;
+}
+
+/** Destino dos descartes do contador (soma por dia × recurso, uma instrução, sem lease: soma comutativa). */
+export interface IFeatureUsageDropStore {
+  addDrops(counts: FeatureUsageDropCounts): Promise<void>;
 }
 
 /**

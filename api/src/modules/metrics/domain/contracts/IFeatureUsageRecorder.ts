@@ -1,4 +1,5 @@
 import type { FeatureUsageKind } from '../services/featureUsageCatalog';
+import { dayInZone } from '../services/featureUsagePeriod';
 
 /** Um uso: só conta, chave, tipo e instante (nada de usuário, conteúdo ou destino). */
 export interface FeatureUsageEvent {
@@ -33,7 +34,78 @@ export class FeatureUsageDroppedError extends Error {
   }
 }
 
+/** Descartes por dia (Brasília) × recurso: `{ "YYYY-MM-DD": { "<featureKey>": n } }`. */
+export type FeatureUsageDropCounts = Record<string, Record<string, number>>;
+/** Grava (soma) os descartes; implementação na infra (`platform_settings["feature_usage_dropped"]`). */
+export type FeatureUsageDropSink = (counts: FeatureUsageDropCounts) => Promise<void>;
+/** No máximo uma gravação de descartes por minuto por processo (lote amostrado). */
+export const FEATURE_USAGE_DROP_FLUSH_EVERY_MS = 60_000;
+
 let pending = 0;
+let dropSink: FeatureUsageDropSink | null = null;
+let dropBuffer: FeatureUsageDropCounts = {};
+let lastDropFlushAt = Number.NEGATIVE_INFINITY;
+let dropFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Liga a gravação dos descartes (o container do contador chama uma vez). Sem destino, o descarte só vai ao log.
+ * `null` desliga e zera o lote (teste).
+ */
+export function setFeatureUsageDropSink(sink: FeatureUsageDropSink | null): void {
+  dropSink = sink;
+  if (!sink) {
+    dropBuffer = {};
+    lastDropFlushAt = Number.NEGATIVE_INFINITY;
+    if (dropFlushTimer) clearTimeout(dropFlushTimer);
+    dropFlushTimer = null;
+  }
+}
+
+function addDrops(into: FeatureUsageDropCounts, from: FeatureUsageDropCounts): void {
+  for (const [day, keys] of Object.entries(from)) {
+    const d = (into[day] ??= {});
+    for (const [key, n] of Object.entries(keys)) d[key] = (d[key] ?? 0) + n;
+  }
+}
+
+function scheduleDropFlush(): void {
+  if (!dropSink || dropFlushTimer) return;
+  const wait = Math.max(0, lastDropFlushAt + FEATURE_USAGE_DROP_FLUSH_EVERY_MS - Date.now());
+  dropFlushTimer = setTimeout(() => void flushFeatureUsageDrops(), wait);
+  dropFlushTimer.unref?.();
+}
+
+/**
+ * Grava o lote de descartes acumulado (uma instrução). Fail-open: falha devolve o lote ao acúmulo e tenta de novo
+ * no minuto seguinte; nunca lança.
+ */
+export async function flushFeatureUsageDrops(): Promise<void> {
+  if (dropFlushTimer) clearTimeout(dropFlushTimer);
+  dropFlushTimer = null;
+  const sink = dropSink;
+  const counts = dropBuffer;
+  if (!sink || Object.keys(counts).length === 0) return;
+  dropBuffer = {};
+  lastDropFlushAt = Date.now();
+  try {
+    await sink(counts);
+  } catch {
+    addDrops(dropBuffer, counts);
+    scheduleDropFlush();
+  }
+}
+
+function noteDrop(event: FeatureUsageEvent): void {
+  if (!dropSink) return;
+  let day: string;
+  try {
+    day = dayInZone(event.at);
+  } catch {
+    return;
+  }
+  addDrops(dropBuffer, { [day]: { [event.featureKey]: 1 } });
+  scheduleDropFlush();
+}
 let droppedSinceLog = 0;
 let lastDropLogAt = Number.NEGATIVE_INFINITY;
 
@@ -46,7 +118,8 @@ export function featureUsagePending(): number {
  * Dispara o contador sem segurar quem chama (fail-open): não espera a promessa e engole erro síncrono ou
  * assíncrono, entregando-o a `onError` (log). Contador lento ou quebrado não muda resultado nem tempo do envio.
  * Com 20 gravações em voo no processo, descarta o uso e avisa `onError` com `FeatureUsageDroppedError` no máximo
- * uma vez por minuto (amostrado, com quantos caíram).
+ * uma vez por minuto (amostrado, com quantos caíram). O descarte é somado por dia × recurso e gravado em lote no
+ * máximo 1×/min (`setFeatureUsageDropSink`): a leitura mostra o motivo de cobertura `DROPPED` no período.
  */
 export function recordFeatureUsage(
   recorder: IFeatureUsageRecorder | null | undefined,
@@ -64,6 +137,7 @@ export function recordFeatureUsage(
   };
   if (pending >= FEATURE_USAGE_MAX_PENDING) {
     droppedSinceLog++;
+    noteDrop(event);
     const now = Date.now();
     if (now - lastDropLogAt >= FEATURE_USAGE_DROP_LOG_EVERY_MS) {
       lastDropLogAt = now;

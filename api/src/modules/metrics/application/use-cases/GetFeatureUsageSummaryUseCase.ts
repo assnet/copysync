@@ -2,6 +2,7 @@ import { UsageMetricsRangeInvalidError, UsageMetricsReadUnavailableError } from 
 import { logger } from '../../../../shared/logger/logger';
 import type { IFeatureEligibilityReader } from '../../domain/contracts/IFeatureEligibilityReader';
 import type { IFeatureUsageReader } from '../../domain/contracts/IFeatureUsageReader';
+import type { FeatureUsageDropCounts } from '../../domain/contracts/IFeatureUsageRecorder';
 import type { IFeatureUsageRollupStateRepository } from '../../domain/contracts/IFeatureUsageRollupStateRepository';
 import type { IUsageReadGate, UsageReadBudget } from '../../domain/contracts/IUsageReadGate';
 import type { IUsageTenantDirectory, UsageTenantDirectoryEntry } from '../../domain/contracts/IUsageTenantDirectory';
@@ -141,6 +142,8 @@ export interface FeatureUsageRead {
   cutovers: FeatureUsageCutovers;
   /** Cobertura do agregado (do marco), só com `source = daily`. */
   coverage: FeatureUsageDailyCoverage | null;
+  /** Descartes do contador por dia × recurso (lidos com o marco). */
+  dropped: FeatureUsageDropCounts;
   /** P3: direito ao recurso hoje, quando pedido. */
   eligibility?: Map<string, Set<string>>;
 }
@@ -177,6 +180,7 @@ export async function chooseUsageSource(
   freshAt: Date;
   cutovers: FeatureUsageCutovers;
   coverage: FeatureUsageDailyCoverage | null;
+  dropped: FeatureUsageDropCounts;
 }> {
   const state = deps.dailyReader && deps.rollupState ? await deps.rollupState.get(budget) : null;
   const cutovers = state?.cutovers ?? {};
@@ -200,7 +204,7 @@ export async function chooseUsageSource(
     throw new UsageMetricsRangeInvalidError(`granularity day allows at most ${USAGE_DAY_ROWS_MAX_DAYS} days`, maxDays);
   }
   const coverage = daily ? { backfilledFrom: state!.backfilledFrom!, completedAt: state!.backfillCompletedAt! } : null;
-  return { source: daily ? 'daily' : 'live', maxDays, freshAt: daily ? lastSuccessAt! : now, cutovers, coverage };
+  return { source: daily ? 'daily' : 'live', maxDays, freshAt: daily ? lastSuccessAt! : now, cutovers, coverage, dropped: state?.dropped ?? {} };
 }
 
 /** Menor dia não nulo. */
@@ -303,6 +307,7 @@ export async function readFeatureUsage(
       maxDays: chosen.maxDays,
       cutovers: chosen.cutovers,
       coverage: chosen.coverage,
+      dropped: chosen.dropped,
     };
   });
 }
@@ -329,6 +334,7 @@ export class GetFeatureUsageSummaryUseCase {
       source: read.source,
       cutovers: read.cutovers,
       coverage: read.coverage,
+      dropped: read.dropped,
     });
     return {
       range: rangeOf(read.period, read.maxDays),

@@ -44,7 +44,7 @@ describe('catálogo de recursos medidos', () => {
       link_rotation: ['EXISTING_ONLY'],
       link_rotation_click: ['EXISTING_ONLY', 'RETENTION'],
       storefront: ['EXISTING_ONLY'],
-      offer_story: ['AI_HEADLINE_ONLY'],
+      offer_story: ['AI_HEADLINE_ONLY', 'DROPPED'],
       affiliate_credentials: ['MIXED_EVENTS'],
       extension_sync: ['TOKEN_CHANGE_ONLY'],
       whatsapp_session: [],
@@ -52,7 +52,7 @@ describe('catálogo de recursos medidos', () => {
       saver_extraction: [],
       saver_export: [],
       panel_login: ['RETENTION'],
-      chat_send: [],
+      chat_send: ['DROPPED'],
     });
   });
 

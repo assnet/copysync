@@ -6,6 +6,8 @@ import {
   FEATURE_USAGE_DROP_LOG_EVERY_MS,
   FEATURE_USAGE_MAX_PENDING,
   FeatureUsageDroppedError,
+  FEATURE_USAGE_DROP_FLUSH_EVERY_MS,
+  setFeatureUsageDropSink,
   featureUsagePending,
   recordFeatureUsage,
 } from '../../domain/contracts/IFeatureUsageRecorder';
@@ -148,6 +150,45 @@ describe('RecordFeatureUsageUseCase', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('descartes somados por dia × recurso e gravados em lote no máximo 1×/min (fail-open)', async () => {
+    vi.useFakeTimers();
+    const releases: Array<() => void> = [];
+    const base = featureUsagePending();
+    try {
+      vi.setSystemTime(new Date('2026-11-20T12:00:00Z'));
+      const writes: unknown[] = [];
+      let fail = true;
+      setFeatureUsageDropSink(async (counts) => {
+        writes.push(structuredClone(counts));
+        if (fail) throw new Error('down');
+      });
+      const slow = { increment: vi.fn(() => new Promise<void>((r) => releases.push(r))), markOnce: vi.fn() };
+      const ev = (featureKey: string, at: string) => ({ tenantId: 't1', featureKey, kind: 'ACTION' as const, at: new Date(at) });
+      for (let i = 0; i < FEATURE_USAGE_MAX_PENDING - base; i++) recordFeatureUsage(slow, ev('chat_send', '2026-11-20T12:00:00Z'), () => {});
+      recordFeatureUsage(slow, ev('chat_send', '2026-11-20T12:00:00Z'), () => {});
+      recordFeatureUsage(slow, ev('chat_send', '2026-11-20T12:00:00Z'), () => {});
+      // 01:30 UTC = 22:30 do dia anterior em Brasília
+      recordFeatureUsage(slow, ev('view:offers', '2026-11-20T01:30:00Z'), () => {});
+      await vi.advanceTimersByTimeAsync(0);
+      expect(writes).toEqual([{ '2026-11-20': { chat_send: 2 }, '2026-11-19': { 'view:offers': 1 } }]);
+      // Falhou: o lote volta e só sai de novo depois de 1 min, somado ao que caiu no meio
+      recordFeatureUsage(slow, ev('chat_send', '2026-11-20T12:00:00Z'), () => {});
+      fail = false;
+      await vi.advanceTimersByTimeAsync(FEATURE_USAGE_DROP_FLUSH_EVERY_MS - 1_000);
+      expect(writes).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(writes).toHaveLength(2);
+      expect(writes[1]).toEqual({ '2026-11-20': { chat_send: 3 }, '2026-11-19': { 'view:offers': 1 } });
+      await vi.advanceTimersByTimeAsync(5 * FEATURE_USAGE_DROP_FLUSH_EVERY_MS);
+      expect(writes).toHaveLength(2); // nada novo, nada gravado
+    } finally {
+      for (const r of releases) r();
+      setFeatureUsageDropSink(null);
+      vi.useRealTimers();
+    }
+    await vi.waitFor(() => expect(featureUsagePending()).toBe(base));
   });
 
   it('chat e Story dependem só do contrato do contador', () => {

@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '../../../../shared/database/prisma.client';
 import {
   FEATURE_USAGE_CUTOVER_SETTINGS_KEY,
+  FEATURE_USAGE_DROPPED_SETTINGS_KEY,
   FEATURE_USAGE_ROLLUP_SETTINGS_KEY,
   PrismaFeatureUsageRollupStateRepository,
 } from './PrismaFeatureUsageRollupStateRepository';
@@ -9,7 +10,7 @@ import { createReadBudget } from './featureUsageReadTimeout';
 
 /** Marco do backfill em `platform_settings` contra o Postgres descartável. */
 const clean = () =>
-  prisma.platformSetting.deleteMany({ where: { key: { in: [FEATURE_USAGE_ROLLUP_SETTINGS_KEY, FEATURE_USAGE_CUTOVER_SETTINGS_KEY] } } });
+  prisma.platformSetting.deleteMany({ where: { key: { in: [FEATURE_USAGE_ROLLUP_SETTINGS_KEY, FEATURE_USAGE_CUTOVER_SETTINGS_KEY, FEATURE_USAGE_DROPPED_SETTINGS_KEY] } } });
 
 beforeEach(clean);
 afterAll(async () => {
@@ -28,6 +29,7 @@ describe('PrismaFeatureUsageRollupStateRepository', () => {
       lastSuccessAt: null,
       finalizedThrough: null,
       failureStreak: 0,
+      dropped: {},
     });
   });
 
@@ -43,6 +45,7 @@ describe('PrismaFeatureUsageRollupStateRepository', () => {
       lastSuccessAt: null,
       finalizedThrough: null,
       failureStreak: 0,
+      dropped: {},
     });
 
     const done = new Date('2026-11-17T10:15:00.123Z');
@@ -50,9 +53,9 @@ describe('PrismaFeatureUsageRollupStateRepository', () => {
     expect(await writer.markBackfillCompleted({ completedAt: new Date('2026-11-18T00:00:00Z'), backfilledFrom: '2026-01-01', stopReason: 'RETENTION' })).toBe(false);
 
     const other = new PrismaFeatureUsageRollupStateRepository(prisma);
-    expect(await other.get()).toEqual({ backfillCompletedAt: done, backfilledFrom: '2026-10-26', backfillStopReason: 'FIRST_DATA', backfillCursor: '2026-11-08', cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 });
+    expect(await other.get()).toEqual({ backfillCompletedAt: done, backfilledFrom: '2026-10-26', backfillStopReason: 'FIRST_DATA', backfillCursor: '2026-11-08', cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0, dropped: {} });
     // Leitura do painel: mesma resposta, dentro do orçamento do pedido
-    expect(await other.get(createReadBudget())).toEqual({ backfillCompletedAt: done, backfilledFrom: '2026-10-26', backfillStopReason: 'FIRST_DATA', backfillCursor: '2026-11-08', cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 });
+    expect(await other.get(createReadBudget())).toEqual({ backfillCompletedAt: done, backfilledFrom: '2026-10-26', backfillStopReason: 'FIRST_DATA', backfillCursor: '2026-11-08', cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0, dropped: {} });
     const row = await prisma.platformSetting.findUnique({ where: { key: FEATURE_USAGE_ROLLUP_SETTINGS_KEY } });
     expect(row?.updatedById).toBeNull();
     expect(row?.updatedAt.toISOString()).toBe('2026-11-17T10:00:00.000Z');
@@ -86,6 +89,17 @@ describe('PrismaFeatureUsageRollupStateRepository', () => {
     await repo.saveBackfillCursor('2026-11-01');
     expect((await repo.get(createReadBudget())).cutovers).toEqual({ offer_story: winner, 'view:home': '2026-12-01' });
     expect((await repo.get()).backfillCursor).toBe('2026-11-01');
+  });
+
+  it('descartes: soma por dia × chave entre gravações (corrida de 10), poda > 400 dias, lidos com o estado', async () => {
+    const repo = new PrismaFeatureUsageRollupStateRepository(prisma, () => new Date('2026-11-17T15:00:00Z'));
+    await prisma.platformSetting.create({
+      data: { key: FEATURE_USAGE_DROPPED_SETTINGS_KEY, value: { '2025-01-01': { chat_send: 9 }, '2026-11-10': { chat_send: 1, lixo: 'x' } } },
+    });
+    await Promise.all(Array.from({ length: 10 }, () => repo.addDrops({ '2026-11-10': { chat_send: 2 }, '2026-11-17': { 'view:offers': 1 } })));
+    await repo.addDrops({ '2026-11-17': { chat_send: 1 }, 'não-é-dia': { chat_send: 5 } });
+    const st = await repo.get(createReadBudget());
+    expect(st.dropped).toEqual({ '2026-11-10': { chat_send: 21 }, '2026-11-17': { 'view:offers': 10, chat_send: 1 } });
   });
 
   it('recordTick: merge sem tocar no marco nem no cursor; campo ausente não muda', async () => {

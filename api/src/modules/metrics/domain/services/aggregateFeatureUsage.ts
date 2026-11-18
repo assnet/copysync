@@ -7,6 +7,7 @@ import {
   type FeatureUsagePlanFamily,
   type FeatureUsageProduct,
   featuresFor,
+  sourceOn,
 } from './featureUsageCatalog';
 import { type UsagePeriod, addDays, bucketOf, dataFromOf, dayInZone } from './featureUsagePeriod';
 import { type RecurringDays, featureRetentionStats } from './featureUsageRetention';
@@ -144,6 +145,8 @@ export interface AggregateFeatureUsageInput {
    * não com o primeiro dia com uso. Ausente com `daily` = cobertura desde o primeiro dia agregado.
    */
   coverage?: FeatureUsageDailyCoverage | null;
+  /** Descartes do contador por dia × recurso (`DROPPED` quando houver no período atual). Ausente = nenhum. */
+  dropped?: Readonly<Record<string, Readonly<Record<string, number>>>>;
   /**
    * P3: contas com direito a cada recurso hoje (todas as contas; aqui entra só o recorte da família). Ausente =
    * adoção `null`.
@@ -232,6 +235,7 @@ function coverageReasonsFor(
   cutover: string | undefined,
   coverage: FeatureUsageDailyCoverage | null | undefined,
   coveredFrom: string | null,
+  dropped: AggregateFeatureUsageInput['dropped'],
 ): FeatureUsageCoverageReason[] {
   // Agregado: compara com o início da cobertura (do marco), não com o primeiro dia com uso. Sem marco informado,
   // o primeiro dia agregado (comportamento anterior)
@@ -253,6 +257,12 @@ function coverageReasonsFor(
       case 'MIXED_TRIGGERS':
       case 'TOKEN_CHANGE_ONLY':
         return true;
+      case 'DROPPED':
+        // Só dia do contador (antes do corte a fonte viva conta tudo) dentro do período atual
+        return Object.entries(dropped ?? {}).some(
+          ([day, keys]) =>
+            day >= period.from && day <= period.to && (keys[feature.key] ?? 0) > 0 && sourceOn(feature, day, cutover ? { [feature.key]: cutover } : {}) === 'RECORDED',
+        );
     }
   });
 }
@@ -363,7 +373,7 @@ export function aggregateFeatureUsage(input: AggregateFeatureUsageInput): Featur
     // Recurso que nunca teve dado não tira a base do total (ex.: Telegram sem nenhuma conta); só tira quem começou a
     // ter dado dentro do período anterior ou foi cortado pela retenção.
     if (!hasBase && first !== null) everyHasBase = false;
-    const reasons = coverageReasonsFor(feature, period, today, source, first, input.cutovers?.[feature.key], input.coverage, coveredFrom);
+    const reasons = coverageReasonsFor(feature, period, today, source, first, input.cutovers?.[feature.key], input.coverage, coveredFrom, input.dropped);
 
     const eligibleAll = input.eligibility?.get(feature.key);
     const eligible = eligibleAll ? new Set([...familyTenants.keys()].filter((id) => eligibleAll.has(id))) : null;

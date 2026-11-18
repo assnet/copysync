@@ -263,6 +263,19 @@ describe('motivos de cobertura do período', () => {
     expect(feature(run([], { cutovers: { offer_story: '2026-11-01' } }), 'offer_story').coverageReasons).toEqual(['AI_HEADLINE_ONLY']);
   });
 
+  it('DROPPED: descarte do contador no período atual, só em dia do contador', () => {
+    const dropped = { '2026-11-10': { chat_send: 3, offer_story: 2 }, '2026-10-01': { offer_generator: 5 } };
+    expect(feature(run([], { dropped }), 'chat_send').coverageReasons).toEqual(['DROPPED']);
+    expect(feature(run([], { dropped }), 'chat_send').coverage).toBe('PARTIAL');
+    // Fora do período atual não conta
+    expect(feature(run([], { dropped: { '2026-10-18': { chat_send: 1 } } }), 'chat_send').coverageReasons).toEqual([]);
+    // Story: antes do corte (fonte viva) o descarte não perde nada; a partir dele, sim
+    expect(feature(run([], { dropped, cutovers: { offer_story: '2026-11-11' } }), 'offer_story').coverageReasons).toEqual(['AI_HEADLINE_ONLY']);
+    expect(feature(run([], { dropped, cutovers: { offer_story: '2026-10-01' } }), 'offer_story').coverageReasons).toEqual(['DROPPED']);
+    // Recurso fora do contador nunca recebe DROPPED
+    expect(feature(run([], { dropped, filters: { kinds: [] } }), 'offer_generator').coverageReasons).toEqual([]);
+  });
+
   it('recurso só do contador: dataFrom = primeiro dia gravado (sem data fixa)', () => {
     const out = run([], { firstDataDay: { ...FIRST, chat_send: '2026-10-20' } });
     expect(feature(out, 'chat_send')).toMatchObject({ firstDataDay: '2026-10-20', dataFrom: '2026-10-20' });

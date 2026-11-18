@@ -9,7 +9,7 @@ import { RecordPageViewUseCase } from '../application/use-cases/RecordPageViewUs
 import { ListFeatureUsageTenantsUseCase } from '../application/use-cases/ListFeatureUsageTenantsUseCase';
 import { RollupFeatureUsageUseCase } from '../application/use-cases/RollupFeatureUsageUseCase';
 import { RecordFeatureUsageUseCase } from '../application/use-cases/RecordFeatureUsageUseCase';
-import type { IFeatureUsageRecorder } from '../domain/contracts/IFeatureUsageRecorder';
+import { type IFeatureUsageRecorder, setFeatureUsageDropSink } from '../domain/contracts/IFeatureUsageRecorder';
 import { FEATURE_USAGE_ROLLUP_READ_BUDGET_MS, FeatureUsageRollupJob } from './jobs/FeatureUsageRollupJob';
 import { PrismaDailyFeatureUsageReader } from './repositories/PrismaDailyFeatureUsageReader';
 import { PrismaFeatureUsageDailyRepository } from './repositories/PrismaFeatureUsageDailyRepository';
@@ -59,10 +59,13 @@ export function listFeatureUsageTenantsUseCase(): ListFeatureUsageTenantsUseCase
 
 /** Contador de uso (Story, chat): grava em `feature_usage_daily` desde a primeira escrita (ou do corte gravado, recurso `CUTOVER`). */
 export function featureUsageRecorder(): IFeatureUsageRecorder {
-  return (recorder ??= new RecordFeatureUsageUseCase({
-    daily: new PrismaFeatureUsageDailyRepository(prisma),
-    cutovers: new PrismaFeatureUsageRollupStateRepository(prisma),
-  }));
+  if (!recorder) {
+    const store = new PrismaFeatureUsageRollupStateRepository(prisma);
+    // Descartes do teto de gravações em voo: somados em lote, no máximo 1×/min por processo (fail-open)
+    setFeatureUsageDropSink((counts) => store.addDrops(counts));
+    recorder = new RecordFeatureUsageUseCase({ daily: new PrismaFeatureUsageDailyRepository(prisma), cutovers: store });
+  }
+  return recorder;
 }
 
 /** Aba Telas (P3): consulta própria agregada no SQL, no mesmo portão e orçamento das leituras de uso. */

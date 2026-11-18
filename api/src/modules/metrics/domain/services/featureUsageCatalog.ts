@@ -29,7 +29,9 @@ export type FeatureUsageCoverageReason =
   | 'AI_HEADLINE_ONLY'
   | 'MIXED_EVENTS'
   | 'MIXED_TRIGGERS'
-  | 'TOKEN_CHANGE_ONLY';
+  | 'TOKEN_CHANGE_ONLY'
+  /** Contador descartou usos no período (teto de gravações em voo): o número real é maior. */
+  | 'DROPPED';
 
 export const FEATURE_USAGE_COVERAGE_REASONS: readonly FeatureUsageCoverageReason[] = [
   'EXISTING_ONLY',
@@ -38,6 +40,7 @@ export const FEATURE_USAGE_COVERAGE_REASONS: readonly FeatureUsageCoverageReason
   'MIXED_EVENTS',
   'MIXED_TRIGGERS',
   'TOKEN_CHANGE_ONLY',
+  'DROPPED',
 ];
 
 export const FEATURE_USAGE_KINDS: readonly FeatureUsageKind[] = ['ACTION', 'AUTOMATIC', 'AUDIENCE', 'ACCESS'];
@@ -121,7 +124,7 @@ export const FEATURE_USAGE_CATALOG: readonly FeatureUsageDefinition[] = [
     product: 'AFFILIATES',
     planFamily: 'AFFILIATES',
     kinds: ['ACTION'],
-    possibleCoverageReasons: ['AI_HEADLINE_ONLY'],
+    possibleCoverageReasons: ['AI_HEADLINE_ONLY', 'DROPPED'],
     recordedFrom: 'CUTOVER',
   }),
   live({ key: 'affiliate_credentials', product: 'AFFILIATES', planFamily: 'AFFILIATES', kinds: ['ACTION'], possibleCoverageReasons: ['MIXED_EVENTS'] }),
@@ -132,7 +135,7 @@ export const FEATURE_USAGE_CATALOG: readonly FeatureUsageDefinition[] = [
   live({ key: 'saver_export', product: 'SAVER', planFamily: 'SAVER', kinds: ['ACTION'] }),
   live({ key: 'panel_login', product: 'ACCESS', planFamily: 'AFFILIATES', kinds: ['ACCESS'], possibleCoverageReasons: ['RETENTION'], retentionDays: 30 }),
   // Só envio feito no painel (`origin = PANEL`); oferta automática fica em `offer_dispatch`.
-  recorded({ key: 'chat_send', product: 'CHAT', planFamily: 'AFFILIATES', kinds: ['ACTION'] }),
+  recorded({ key: 'chat_send', product: 'CHAT', planFamily: 'AFFILIATES', kinds: ['ACTION'], possibleCoverageReasons: ['DROPPED'] }),
 ];
 
 export function findFeature(
