@@ -633,6 +633,15 @@ describe('SendMediaMessageUseCase — uso do chat', () => {
     expect(usage.increment).toHaveBeenCalledTimes(1);
   });
 
+  it('mídia recusada pela fila (vira FAILED) não soma; o contador só é chamado depois do enqueue aceito', async () => {
+    const usage = usageOf(async () => undefined);
+    await enviar(makeDeps({ usage, enqueued: false }));
+    expect(usage.increment).not.toHaveBeenCalled();
+    const d = makeDeps({ usage });
+    await enviar(d);
+    expect(vi.mocked(d.queue.enqueue).mock.invocationCallOrder[0]!).toBeLessThan(usage.increment.mock.invocationCallOrder[0]!);
+  });
+
   it('contador que rejeita ou trava não muda o resultado', async () => {
     const reference = await enviar(makeDeps({ usage: usageOf(async () => undefined) }));
     await expect(enviar(makeDeps({ usage: usageOf(async () => { throw new Error('down'); }) }))).resolves.toEqual(reference);

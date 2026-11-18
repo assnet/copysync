@@ -247,14 +247,14 @@ describe('SendMessageUseCase — prévia de link', () => {
 describe('SendMessageUseCase — uso do chat', () => {
   const AT = new Date('2026-11-19T00:30:00.000Z');
   const usageOf = (impl: () => Promise<void>) => ({ increment: vi.fn(impl), markOnce: vi.fn(async () => undefined) });
-  const build = (usage: ReturnType<typeof usageOf>) => {
+  const build = (usage: ReturnType<typeof usageOf>, withEngine = true) => {
     const d = makeDeps({ files: null });
     const deps = d.useCase as unknown as Record<string, unknown>;
     const useCase = new SendMessageUseCase(
       deps.messageRepo as IChatMessageRepository,
       deps.conversationRepo as IChatConversationRepository,
       deps.contactRepo as IChatContactRepository,
-      d.engine,
+      withEngine ? d.engine : null,
       null,
       usage,
       () => AT,
@@ -269,6 +269,16 @@ describe('SendMessageUseCase — uso do chat', () => {
     await build(usage).useCase.execute(input('PANEL'));
     expect(usage.increment).toHaveBeenCalledTimes(1);
     expect(usage.increment).toHaveBeenCalledWith({ tenantId: TENANT, featureKey: 'chat_send', kind: 'ACTION', at: AT });
+  });
+
+  it('mensagem gravada sem envio real (sem engine) e envio recusado pela engine não somam', async () => {
+    const usage = usageOf(async () => undefined);
+    await build(usage, false).useCase.execute(input('PANEL'));
+    expect(usage.increment).not.toHaveBeenCalled();
+    const refused = build(usage);
+    vi.mocked(refused.d.engine!.sendTextMessage).mockRejectedValueOnce(new Error('engine down'));
+    await expect(refused.useCase.execute(input('PANEL'))).rejects.toThrow('engine down');
+    expect(usage.increment).not.toHaveBeenCalled();
   });
 
   it('envio automático não soma', async () => {

@@ -119,8 +119,9 @@ export class SendMessageUseCase {
       ...(linkPreview ? { linkPreview } : {}),
     });
 
-    // Uso do chat: só envio feito por pessoa no painel; sem esperar e sem falhar o envio
-    if (input.origin === 'PANEL') {
+    // Uso do chat: só envio feito por pessoa no painel e aceito pela engine (com id externo; "sem envio real" não
+    // conta); sem esperar e sem falhar o envio
+    if (input.origin === 'PANEL' && externalMessageId) {
       recordFeatureUsage(
         this.usage,
         { tenantId: input.tenantId, featureKey: CHAT_SEND_USAGE_KEY, kind: 'ACTION', at: this.now() },

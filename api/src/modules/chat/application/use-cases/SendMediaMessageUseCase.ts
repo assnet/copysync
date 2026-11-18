@@ -181,19 +181,19 @@ export class SendMediaMessageUseCase {
       }),
     );
 
-    // Uso do chat: mídia gravada pelo painel conta (confirmação repetida já voltou acima); sem esperar
-    if (input.origin === 'PANEL') {
+    // 10. Enfileira; recusa (fila cheia ou em drain) vira FAILED reenviável
+    const accepted = queue.enqueue({
+      messageId: message.id, tenantId, sessionId: prepared.sessionId, conversationId,
+    });
+    // Uso do chat: só mídia do painel aceita pela fila (recusa vira FAILED e não conta; confirmação repetida já
+    // voltou acima); sem esperar e sem falhar o envio
+    if (accepted && input.origin === 'PANEL') {
       recordFeatureUsage(
         this.deps.usage,
         { tenantId, featureKey: CHAT_SEND_USAGE_KEY, kind: 'ACTION', at: (this.deps.now ?? (() => new Date()))() },
         (err) => logger.warn({ err: (err as Error)?.name }, 'chat media send usage not counted'),
       );
     }
-
-    // 10. Enfileira; recusa (fila cheia ou em drain) vira FAILED reenviável
-    const accepted = queue.enqueue({
-      messageId: message.id, tenantId, sessionId: prepared.sessionId, conversationId,
-    });
     if (!accepted) {
       logger.warn({ messageId: message.id, sessionId: prepared.sessionId }, 'Fila de mídia recusou o envio');
       const failed = await messageRepo.transitionStatus(
