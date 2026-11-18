@@ -6,6 +6,7 @@ import type {
 } from '../../domain/contracts/IFeatureUsageDailyRepository';
 import { dayInZone } from '../../domain/services/featureUsagePeriod';
 import { utcInstant } from './featureUsagePeriodSql';
+import { FEATURE_USAGE_CUTOVER_SETTINGS_KEY } from './PrismaFeatureUsageRollupStateRepository';
 
 /** Lote da retenção (molde `INFRA_SNAPSHOT_RETENTION_*`): curto, sem lock longo. */
 export const FEATURE_USAGE_RETENTION_BATCH_SIZE = 5_000;
@@ -25,6 +26,16 @@ export interface PrismaFeatureUsageDailyRepositoryOptions {
 type Db = Pick<PrismaClient, '$transaction' | '$executeRaw' | '$executeRawUnsafe' | '$queryRaw'>;
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Guarda do corte no SQL: verdadeiro quando a chave `keyColumn` não tem corte gravado em dia ≤ `day` (o dia ainda é
+ * da fonte viva). Lida dentro da transação do `replaceDay`: corte gravado no meio do tick não deixa o job gravar dia
+ * do contador (contagem em dobro).
+ */
+const beforeCutover = (keyColumn: Prisma.Sql, day: Prisma.Sql): Prisma.Sql => Prisma.sql`NOT EXISTS (
+  SELECT 1 FROM "platform_settings" c
+  WHERE c."key" = ${FEATURE_USAGE_CUTOVER_SETTINGS_KEY} AND jsonb_typeof(c."value") = 'object'
+    AND CASE WHEN (c."value" ->> ${keyColumn}) ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' THEN (c."value" ->> ${keyColumn})::date <= ${day} ELSE false END)`;
 const asDay = (day: string): Prisma.Sql => {
   if (!DAY_RE.test(day)) throw new Error(`invalid usage day: ${day}`);
   return Prisma.sql`${day}::date`;
@@ -65,12 +76,16 @@ export class PrismaFeatureUsageDailyRepository implements IFeatureUsageDailyRepo
     const kinds = kept.map((r) => r.kind);
     const uses = kept.map((r) => Math.trunc(r.uses));
 
-    // DELETE e INSERT na mesma transação: falha no meio desfaz tudo e o dia fica como estava
+    // DELETE e INSERT na mesma transação: falha no meio desfaz tudo e o dia fica como estava. A linha dos cortes é
+    // travada (FOR SHARE) antes: quem grava um corte espera o fim desta transação, e as duas instruções seguintes
+    // pulam a chave cujo corte já vale no dia (nunca grava dia do contador)
     await this.prisma.$transaction([
       this.prisma.$executeRawUnsafe(`SET LOCAL statement_timeout = '${FEATURE_USAGE_REPLACE_STATEMENT_TIMEOUT}'`),
+      this.prisma.$queryRaw`SELECT 1 FROM "platform_settings" WHERE "key" = ${FEATURE_USAGE_CUTOVER_SETTINGS_KEY} FOR SHARE`,
       this.prisma.$executeRaw`
         DELETE FROM "feature_usage_daily" d
         WHERE d."day" = ${d} AND d."featureKey" IN (${keyList})
+          AND ${beforeCutover(Prisma.sql`d."featureKey"`, d)}
           AND NOT EXISTS (
             SELECT 1 FROM unnest(${tenants}::text[], ${features}::text[], ${kinds}::text[]) AS v(t, f, k)
             WHERE v.t = d."tenantId" AND v.f = d."featureKey" AND v.k = d."kind")`,
@@ -78,6 +93,7 @@ export class PrismaFeatureUsageDailyRepository implements IFeatureUsageDailyRepo
         INSERT INTO "feature_usage_daily" ("day", "tenantId", "featureKey", "kind", "uses", "updatedAt")
         SELECT ${d}, v.t, v.f, v.k, v.u, ${stamp}
         FROM unnest(${tenants}::text[], ${features}::text[], ${kinds}::text[], ${uses}::int[]) AS v(t, f, k, u)
+        WHERE ${beforeCutover(Prisma.sql`v.f`, d)}
         ON CONFLICT ("day", "tenantId", "featureKey", "kind") DO UPDATE SET
           "uses" = EXCLUDED."uses", "updatedAt" = EXCLUDED."updatedAt"`,
     ]);

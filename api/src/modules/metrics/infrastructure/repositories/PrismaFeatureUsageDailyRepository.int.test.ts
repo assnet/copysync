@@ -4,6 +4,7 @@ import { UsageMetricsReadUnavailableError } from '../../../../shared/errors/inte
 import type { FeatureUsageKey } from '../../domain/services/featureUsageCatalog';
 import { PrismaDailyFeatureUsageReader } from './PrismaDailyFeatureUsageReader';
 import { PrismaFeatureUsageDailyRepository } from './PrismaFeatureUsageDailyRepository';
+import { PrismaFeatureUsageRollupStateRepository } from './PrismaFeatureUsageRollupStateRepository';
 import { createReadBudget } from './featureUsageReadTimeout';
 
 /**
@@ -38,6 +39,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await prisma.$executeRawUnsafe(`DELETE FROM platform_settings WHERE key = 'feature_usage_cutover'`);
   await prisma.$executeRawUnsafe(`DELETE FROM tenants WHERE id LIKE '${s}-%'`);
   await prisma.$executeRawUnsafe(`ALTER DATABASE "${dbName}" SET timezone = 'UTC'`);
   await prisma.$disconnect();
@@ -86,6 +88,25 @@ describe('PrismaFeatureUsageDailyRepository', () => {
     await repo.replaceDay('2026-11-02', [live], [{ tenantId: A, featureKey: live, kind: 'ACTION', uses: 2 }]);
     await repo.replaceDay('2026-11-02', [live], []);
     expect(strip(await rowsOf(live, counted))).toEqual([{ day: '2026-11-02', tenantId: A, featureKey: counted, kind: 'ACTION', uses: 1 }]);
+  });
+
+  it('replaceDay nunca grava nem apaga chave em dia ≥ corte gravado (corte chegou depois de o job ler o estado)', async () => {
+    const story = key('cut');
+    const other = key('nocut');
+    // O job leu o estado sem corte; o contador grava o corte e conta no dia do corte antes do replaceDay
+    await new PrismaFeatureUsageRollupStateRepository(prisma).claimCutover(story, '2026-11-05');
+    await repo.increment({ tenantId: A, featureKey: story, kind: 'ACTION', at: new Date('2026-11-05T15:00:00Z') });
+    await repo.replaceDay('2026-11-05', [story, other], [
+      { tenantId: A, featureKey: story, kind: 'ACTION', uses: 4 },
+      { tenantId: B, featureKey: story, kind: 'ACTION', uses: 2 },
+      { tenantId: A, featureKey: other, kind: 'ACTION', uses: 3 },
+    ]);
+    await repo.replaceDay('2026-11-04', [story], [{ tenantId: B, featureKey: story, kind: 'ACTION', uses: 5 }]);
+    expect(strip(await rowsOf(story, other))).toEqual([
+      { day: '2026-11-04', tenantId: B, featureKey: story, kind: 'ACTION', uses: 5 },
+      { day: '2026-11-05', tenantId: A, featureKey: story, kind: 'ACTION', uses: 1 },
+      { day: '2026-11-05', tenantId: A, featureKey: other, kind: 'ACTION', uses: 3 },
+    ]);
   });
 
   it('replaceDay com falha depois do DELETE deixa o dia exatamente como estava', async () => {
