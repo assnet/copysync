@@ -28,10 +28,11 @@ export interface UsageSummaryState {
  * A leitura passa pela fila do serviço (uma por vez por aba; o duplo efeito do StrictMode reaproveita o pedido em
  * voo). `enabled = false` (detalhe aberto) não pede o resumo.
  * 400 `USAGE_METRICS_RANGE_INVALID` chama `onRangeInvalid` (a tela volta ao preset padrão), sem virar erro genérico.
+ * Se `onRangeInvalid` devolver `false` (não tratou: aba Telas, que não herda o reset), vira erro comum.
  */
 export function useUsageSummary(
   query: UsageQuery,
-  options: { enabled?: boolean; refreshKey?: number; onRangeInvalid?: (maxDays: number | null) => void } = {},
+  options: { enabled?: boolean; refreshKey?: number; onRangeInvalid?: (maxDays: number | null) => boolean | void } = {},
 ): UsageSummaryState {
   const { enabled = true, refreshKey = 0, onRangeInvalid } = options;
   const queryKey = JSON.stringify(query);
@@ -67,7 +68,8 @@ export function useUsageSummary(
         if (id !== request.current || isUsageReadSuperseded(err)) return;
         const code = usageErrorCode(err);
         if (code === USAGE_ERROR_CODES.rangeInvalid) {
-          rangeInvalid.current?.(rangeInvalidMaxDays(err));
+          if (rangeInvalid.current?.(rangeInvalidMaxDays(err)) !== false) return;
+          setError(true);
           return;
         }
         const isSlow = code === USAGE_ERROR_CODES.readUnavailable;

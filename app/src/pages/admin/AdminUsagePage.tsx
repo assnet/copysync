@@ -13,7 +13,9 @@ import {
 import type { UsageFilters } from '@/features/featureUsage/types';
 import { useUsageSummary } from '@/features/featureUsage/hooks/useUsageSummary';
 import { useLoadedAccountNames } from '@/features/featureUsage/hooks/useLoadedAccountNames';
-import { UsagePageContext, type UsagePageValue } from '@/features/featureUsage/hooks/useUsagePage';
+import {
+  parseScreensView, UsagePageContext, type ScreensView, type UsagePageValue,
+} from '@/features/featureUsage/hooks/useUsagePage';
 import { UsageFiltersBar } from '@/features/featureUsage/components/UsageFiltersBar';
 import { knownUsageMaxDays, rememberUsageMaxDays } from '@/features/featureUsage/usageMaxDays';
 import { ExportSummaryButton } from '@/features/featureUsage/components/ExportSummaryButton';
@@ -44,6 +46,10 @@ export function AdminUsagePage() {
     // válido. Quem decide é a API: período recusado (400) volta ao padrão com o aviso de `rangeReset`.
     deserialize: (raw) => parseUsageFilters(raw, serverNow(), USAGE_MAX_DAYS),
   });
+  const [screensView, setScreensView] = usePersistedState<ScreensView>('usage.screensView', 'chart', {
+    scope: 'tab', version: 1, deserialize: parseScreensView,
+  });
+  const onScreens = featureKey === null && activeTab === 'screens';
   const [maxDays, setMaxDaysState] = useState(knownUsageMaxDays);
   /** Teto informado por qualquer resposta: vale na tela e na próxima releitura dos filtros salvos. */
   const setMaxDays = useCallback((n: number) => {
@@ -56,7 +62,8 @@ export function AdminUsagePage() {
   const accountNames = useLoadedAccountNames();
   /** Teto da barra: o em vigor, sem esconder o período salvo mais longo (a API confirma ou recusa). */
   const currentDays = presetDays(filters.preset, filters.from, filters.to) ?? 0;
-  const barMaxDays = Math.min(USAGE_MAX_DAYS, Math.max(maxDays, currentDays));
+  // A aba Telas tem teto próprio (400, o da rota de telas) e não herda o do resumo.
+  const barMaxDays = onScreens ? USAGE_MAX_DAYS : Math.min(USAGE_MAX_DAYS, Math.max(maxDays, currentDays));
 
   // "Hoje" dos presets vem do relógio do servidor; muda o dia, muda a query.
   const query = toUsageQuery(filters, serverNow());
@@ -68,11 +75,13 @@ export function AdminUsagePage() {
     setFilters(next);
   }, [setFilters]);
 
-  // Na aba Telas o resumo também é lido (fila: um pedido por vez), para o cruzamento "abriu × usou".
+  // Na aba Telas o resumo só é lido com a tabela alternativa aberta (fila: um pedido por vez), para o cruzamento
+  // "abriu × usou". Lá o período recusado pelo resumo não reseta os filtros: a coluna cruzada mostra a falha.
   const summary = useUsageSummary(summaryQuery, {
-    enabled: featureKey === null,
+    enabled: featureKey === null && (!onScreens || screensView === 'table'),
     refreshKey,
     onRangeInvalid: (max) => {
+      if (onScreens) return false;
       if (max !== null) setMaxDays(max);
       setRangeReset({ max });
       setFilters(withPeriod(filters, { preset: DEFAULT_USAGE_FILTERS.preset }, serverNow()));
@@ -96,6 +105,8 @@ export function AdminUsagePage() {
     reportMaxDays: setMaxDays,
     featureKey,
     accountNames,
+    screensView,
+    setScreensView,
   };
 
   const refresh = (

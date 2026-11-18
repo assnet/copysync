@@ -32,6 +32,8 @@ function renderTab(summary: UsageSummary, opts: { filters?: UsageFilters; mode?:
     reportMaxDays: vi.fn(),
     featureKey: null,
     accountNames: { remember: vi.fn(), nameOf: () => undefined },
+    screensView: 'chart',
+    setScreensView: vi.fn(),
   };
   return renderWithTheme(
     <MemoryRouter>

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -7,7 +8,7 @@ import { adminUsageService } from '@/services/adminUsage.service';
 import { DEFAULT_USAGE_FILTERS } from '../rules';
 import { featureUsageStrings as S } from '../strings';
 import { screensFixture, summaryFixture } from '../testFixtures';
-import { UsagePageContext, type UsagePageValue } from '../hooks/useUsagePage';
+import { UsagePageContext, type ScreensView, type UsagePageValue } from '../hooks/useUsagePage';
 import type { UsageFilters, UsageScreensResponse } from '../types';
 import ScreensTab from './ScreensTab';
 
@@ -17,13 +18,29 @@ vi.mock('@/services/adminUsage.service', () => ({
 const getScreens = vi.mocked(adminUsageService.getScreens);
 const t = S.screens;
 
-function renderTab(opts: { filters?: UsageFilters; mode?: 'light' | 'dark'; setFilters?: (f: UsageFilters) => void } = {}) {
-  const value: UsagePageValue = {
+type SummaryState = UsagePageValue['summary'];
+const readySummary = (): SummaryState => ({
+  data: summaryFixture(), loading: false, error: false, slow: false, unavailable: false, ready: true, reload: vi.fn(),
+});
+
+function Harness({ base, initialView }: { base: Omit<UsagePageValue, 'screensView' | 'setScreensView'>; initialView: ScreensView }) {
+  const [view, setView] = useState<ScreensView>(initialView);
+  return (
+    <UsagePageContext.Provider value={{ ...base, screensView: view, setScreensView: setView }}>
+      <ScreensTab />
+    </UsagePageContext.Provider>
+  );
+}
+
+function renderTab(opts: {
+  filters?: UsageFilters; mode?: 'light' | 'dark'; setFilters?: (f: UsageFilters) => void; summary?: SummaryState; view?: ScreensView;
+} = {}) {
+  const base = {
     filters: opts.filters ?? DEFAULT_USAGE_FILTERS,
     setFilters: opts.setFilters ?? vi.fn(),
     query: { from: '2026-10-19', to: '2026-11-17' },
     maxDays: 90,
-    summary: { data: summaryFixture(), loading: false, error: false, slow: false, unavailable: false, ready: true, reload: vi.fn() },
+    summary: opts.summary ?? readySummary(),
     refreshKey: 0,
     reportMaxDays: vi.fn(),
     featureKey: null,
@@ -31,9 +48,7 @@ function renderTab(opts: { filters?: UsageFilters; mode?: 'light' | 'dark'; setF
   };
   return renderWithTheme(
     <MemoryRouter>
-      <UsagePageContext.Provider value={value}>
-        <ScreensTab />
-      </UsagePageContext.Provider>
+      <Harness base={base} initialView={opts.view ?? 'chart'} />
     </MemoryRouter>,
     opts.mode,
   );
@@ -76,6 +91,26 @@ describe('ScreensTab', () => {
     const dashboard = within(table).getByRole('row', { name: /Dashboard/ });
     const cells = within(dashboard).getAllByRole('cell');
     expect(cells[cells.length - 1].textContent).toBe(S.measures.noValue);
+  });
+
+  it('coluna "Usaram o recurso": esqueleto enquanto o resumo carrega, sem tooltip de recurso único', async () => {
+    getScreens.mockResolvedValue(screensFixture());
+    renderTab({ view: 'table', summary: { ...readySummary(), data: null, loading: true, ready: false } });
+    const table = await screen.findByRole('table', { name: t.tableAria });
+    expect(within(table).getAllByLabelText(t.usedLoading).length).toBeGreaterThan(0);
+    expect(within(table).queryByText(S.measures.noValue)).toBeNull();
+  });
+
+  it.each([
+    ['erro', { error: true }],
+    ['leitura lenta', { slow: true }],
+  ])('coluna "Usaram o recurso" com o resumo falhando (%s): "não foi possível cruzar"', async (_n, state) => {
+    getScreens.mockResolvedValue(screensFixture());
+    renderTab({ view: 'table', summary: { ...readySummary(), data: null, ready: false, ...state } });
+    const table = await screen.findByRole('table', { name: t.tableAria });
+    expect(within(table).getAllByText(t.usedFailed).length).toBeGreaterThan(0);
+    expect(within(table).queryByText(S.measures.noValue)).toBeNull();
+    expect(within(table).queryByLabelText(t.usedLoading)).toBeNull();
   });
 
   it('sem nenhuma tela aberta mostra o estado vazio com limpar filtros', async () => {

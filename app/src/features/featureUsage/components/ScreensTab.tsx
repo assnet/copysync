@@ -5,7 +5,6 @@ import {
 } from '@mui/material';
 import { ChartBarBig, MonitorSmartphone, Table2 } from 'lucide-react';
 import { AppIcon, EmptyState, ServiceUpdatingState } from '@/components';
-import { usePersistedState } from '@/hooks/usePersistedState';
 import { chartColors } from '@/features/opsMetrics/chartColors';
 import { HeaderHint, StickyFirstColumn } from '@/features/infraCosts/components/costParts';
 import {
@@ -19,8 +18,6 @@ import { useUsageScreens } from '../hooks/useUsageScreens';
 import { UsageRetryAlert } from './UsageSummaryGate';
 
 const t = S.screens;
-type ScreensView = 'chart' | 'table';
-const parseView = (raw: unknown): ScreensView => (raw === 'table' ? 'table' : 'chart');
 
 /** Linha do ranking: rótulo (tela, produto, números) e barra proporcional às contas que abriram. */
 function ScreenRow({ screen, max, color }: { screen: UsageScreenItem; max: number; color: string }) {
@@ -60,9 +57,32 @@ function ScreenRow({ screen, max, color }: { screen: UsageScreenItem; max: numbe
   );
 }
 
+/** Estado do resumo para a coluna cruzada: pronto (com recursos), carregando ou falhou. */
+type CrossState = { status: 'ready'; features: readonly UsageFeatureItem[] } | { status: 'loading' } | { status: 'failed' };
+
+function UsedCell({ screenKey, cross }: { screenKey: string; cross: CrossState }) {
+  if (cross.status === 'loading') {
+    return <Skeleton variant="text" width={32} sx={{ display: 'inline-block' }} aria-label={t.usedLoading} />;
+  }
+  if (cross.status === 'failed') {
+    return (
+      <Tooltip title={t.usedFailedHint} arrow enterTouchDelay={0} describeChild>
+        <Box component="span" tabIndex={0} sx={{ color: 'text.secondary', cursor: 'help', typography: 'caption' }}>{t.usedFailed}</Box>
+      </Tooltip>
+    );
+  }
+  const used = screenFeatureUse(screenKey, cross.features);
+  if (used) return <>{formatInteger(used.activeTenants)}</>;
+  return (
+    <Tooltip title={t.usedNone} arrow enterTouchDelay={0} describeChild>
+      <Box component="span" tabIndex={0} sx={{ color: 'text.disabled', cursor: 'help' }}>{S.measures.noValue}</Box>
+    </Tooltip>
+  );
+}
+
 /** Tabela alternativa (acessibilidade): mesmos números do ranking + parte do recorte e o cruzamento "usaram". */
-function ScreensTable({ screens, population, features }: {
-  screens: UsageScreenItem[]; population: number; features: readonly UsageFeatureItem[] | null;
+function ScreensTable({ screens, population, cross }: {
+  screens: UsageScreenItem[]; population: number; cross: CrossState;
 }) {
   const c = t.columns;
   const num = { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } as const;
@@ -81,7 +101,6 @@ function ScreensTable({ screens, population, features }: {
         </TableHead>
         <TableBody>
           {screens.map((sc) => {
-            const used = screenFeatureUse(sc.key, features);
             return (
               <TableRow key={sc.key} hover>
                 <TableCell component="th" scope="row" sx={{ fontWeight: 500, minWidth: 140 }}>{screenLabel(sc.key)}</TableCell>
@@ -89,13 +108,7 @@ function ScreensTable({ screens, population, features }: {
                 <TableCell align="right" sx={num}>{formatInteger(sc.tenants)}</TableCell>
                 <TableCell align="right" sx={num}>{formatReach(population > 0 ? sc.tenants / population : null)}</TableCell>
                 <TableCell align="right" sx={num}>{formatInteger(sc.tenantDays)}</TableCell>
-                <TableCell align="right" sx={num}>
-                  {used ? formatInteger(used.activeTenants) : (
-                    <Tooltip title={t.usedNone} arrow enterTouchDelay={0} describeChild>
-                      <Box component="span" tabIndex={0} sx={{ color: 'text.disabled', cursor: 'help' }}>{S.measures.noValue}</Box>
-                    </Tooltip>
-                  )}
-                </TableCell>
+                <TableCell align="right" sx={num}><UsedCell screenKey={sc.key} cross={cross} /></TableCell>
               </TableRow>
             );
           })}
@@ -112,14 +125,16 @@ function ScreensTable({ screens, population, features }: {
  * não vale aqui; produto, plano, status e internas valem.
  */
 export default function ScreensTab() {
-  const { filters, setFilters, query, refreshKey, summary } = useUsagePage();
+  const { filters, setFilters, query, refreshKey, summary, screensView: view, setScreensView: setView } = useUsagePage();
   const q = useUsageScreens(query, refreshKey);
-  const [view, setView] = usePersistedState<ScreensView>('usage.screensView', 'chart', { scope: 'tab', version: 1, deserialize: parseView });
   const theme = useTheme();
   const color = chartColors(theme.palette.mode).ordered[0];
   const { data } = q;
   const screens = useMemo(() => (data ? visibleScreens(data.screens, filters) : []), [data, filters]);
-  const features = summary.data ? visibleFeatures(summary.data.features, filters) : null;
+  // Coluna cruzada: só com o resumo pronto; sem ele, carregando (esqueleto) ou falhou (nunca "sem recurso único").
+  const cross: CrossState = summary.data
+    ? { status: 'ready', features: visibleFeatures(summary.data.features, filters) }
+    : summary.error || summary.slow || summary.unavailable ? { status: 'failed' } : { status: 'loading' };
 
   if (q.unavailable && !data) return <ServiceUpdatingState onRetry={q.reload} />;
   if ((q.error || q.slow) && !data && !q.loading) return <UsageRetryAlert slow={q.slow} onRetry={q.reload} message={t.loadFailed} />;
@@ -140,7 +155,7 @@ export default function ScreensTab() {
 
   let body: ReactNode;
   if (asTable) {
-    body = <ScreensTable screens={screens} population={data.population.tenants} features={features} />;
+    body = <ScreensTable screens={screens} population={data.population.tenants} cross={cross} />;
   } else {
     body = (
       <>

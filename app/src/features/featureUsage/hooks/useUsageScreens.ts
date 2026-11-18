@@ -17,8 +17,8 @@ export interface UsageScreensState {
 
 /**
  * Telas abertas (`GET /admin/usage/screens`, P3), pelo canal `screens` da fila de leituras da aba. Resposta de recorte
- * antigo é descartada pelo id do pedido. O teto da rota (400 dias) não é informado à página: os presets seguem o teto
- * do resumo. Período recusado (400) vira erro comum.
+ * antigo é descartada pelo id do pedido. A aba Telas tem teto próprio de 400 dias nos presets (o da rota), sem herdar o
+ * teto nem o reset de período do resumo. Período recusado (400) vira erro comum.
  */
 export function useUsageScreens(query: UsageQuery, refreshKey: number): UsageScreensState {
   const queryKey = JSON.stringify(query);

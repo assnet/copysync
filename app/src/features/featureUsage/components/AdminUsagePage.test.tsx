@@ -74,6 +74,30 @@ describe('AdminUsagePage', () => {
     expect(screen.queryByRole('button', { name: S.csv.button })).toBeNull();
   });
 
+  it('aba Telas: resumo só é lido com a tabela alternativa aberta', async () => {
+    const user = userEvent.setup();
+    renderAt(USAGE_SCREENS_PATH);
+    await screen.findByRole('figure', { name: S.screens.aria });
+    expect(getSummary).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: S.actions.showTable }));
+    await waitFor(() => expect(getSummary).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(window.sessionStorage.getItem('ui.usage.screensView') ?? '{}').d).toBe('table');
+  });
+
+  it('aba Telas: presets até 400 dias e o 400 do resumo não reseta o período', async () => {
+    const user = userEvent.setup();
+    window.sessionStorage.setItem('ui.usage.screensView', JSON.stringify({ v: 1, d: 'table' }));
+    renderAt(USAGE_SCREENS_PATH);
+    await screen.findByRole('table', { name: S.screens.tableAria });
+    getSummary.mockRejectedValue({ code: 'USAGE_METRICS_RANGE_INVALID', status: 400, meta: { field: 'range', maxDays: 90 } });
+    await user.click(screen.getByRole('button', { name: S.filters.presets['365d'] }));
+    await waitFor(() => expect(getScreens).toHaveBeenLastCalledWith(expect.objectContaining({ from: '2025-11-18' })));
+    await waitFor(() => expect(getSummary).toHaveBeenLastCalledWith(expect.objectContaining({ from: '2025-11-18' })));
+    expect(await screen.findAllByText(S.screens.usedFailed)).not.toHaveLength(0);
+    expect(screen.queryByText(S.rangeReset(90))).toBeNull();
+    expect(screen.getByRole('button', { name: S.filters.presets['365d'] })).toHaveAttribute('aria-pressed', 'true');
+  });
+
   it('o N da recorrência vai só ao resumo e fica salvo com os filtros', async () => {
     const user = userEvent.setup();
     renderAt(USAGE_PATH);
