@@ -1,7 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { type EligibilitySnapshot, eligibleTenantsByFeature, entitlementAllows, entitlementKeysOf, isEligible } from './featureEligibility';
+import {
+  type EligibilitySnapshot,
+  INTERNAL_ONLY_FEATURES,
+  eligibleTenantsByFeature,
+  entitlementAllows,
+  entitlementKeysOf,
+  isEligible,
+} from './featureEligibility';
 import { FEATURE_USAGE_CATALOG, findFeature } from './featureUsageCatalog';
 
 const snap = (over: Partial<EligibilitySnapshot> = {}): EligibilitySnapshot => ({
@@ -57,9 +64,11 @@ describe('direito ao recurso', () => {
   it('chat só para conta interna enquanto o menu do Chat for só de super admin', () => {
     expect(isEligible(snap(), f('chat_send'))).toBe(false);
     expect(isEligible(snap({ internal: true }), f('chat_send'))).toBe(true);
-    const menu = readFileSync(resolve(__dirname, '../../../../../../app/src/features/navigation/model.ts'), 'utf8');
-    // Se o item do Chat deixar de ser `superAdminOnly`, tirar `chat_send` de INTERNAL_ONLY_FEATURES
-    expect(menu).toMatch(/key: 'chat',[^}]*superAdminOnly: true/);
+    // Amarração com o menu do painel pelo contrato: o teste do menu (app) confere o `superAdminOnly` do Chat
+    const contract = JSON.parse(
+      readFileSync(resolve(__dirname, '../../../../../../contracts/feature-usage/catalog.json'), 'utf8'),
+    ) as { internalOnlyFeatures: string[] };
+    expect([...INTERNAL_ONLY_FEATURES].sort()).toEqual([...contract.internalOnlyFeatures].sort());
   });
 
   it('audiência "Só super admin": conta comum fora, conta interna dentro; liberada = todo tenant com direito', () => {

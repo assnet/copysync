@@ -43,5 +43,8 @@
     "view:saver-settings",
     "view:saver-plans",
     "view:settings"
+  ],
+  "internalOnlyFeatures": [
+    "chat_send"
   ]
 }

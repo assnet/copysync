@@ -1,3 +1,4 @@
+import { catalogFixture } from '@/features/featureUsage/testFixtures';
 import { LEGACY_PRODUCTS as LEGACY } from '@/features/products/productAccess';
 import { describe, expect, it } from 'vitest';
 import { buildNavigation, findActiveEntry, linkMatches } from './model';
@@ -31,6 +32,13 @@ describe('buildNavigation', () => {
     expect(crm.status).toBe('soon');
     expect(crm.children).toEqual([]);
     expect(model.platform).toEqual([]);
+  });
+
+  it('Chat só de super admin enquanto o uso do chat contar só conta interna (contrato `internalOnlyFeatures`)', () => {
+    const model = buildNavigation({ isSuperAdmin: true, offerHunterVisible: false, saverVisible: false, products: LEGACY });
+    const chat = model.products.flatMap((p) => p.children).find((c) => c.key === 'chat')!;
+    // Chat aberto aos planos: tirar `chat_send` de INTERNAL_ONLY_FEATURES (api) e de `internalOnlyFeatures` no contrato
+    expect(chat.superAdminOnly === true).toBe(catalogFixture.internalOnlyFeatures.includes('chat_send'));
   });
 
   it('super admin: CRM & Automação disponível com Chat e seção Plataforma', () => {

@@ -10,7 +10,13 @@ import screensRaw from '../../../../contracts/feature-usage/screens.response.jso
 import type { UsageFeatureDetail, UsageScreensResponse, UsageSummary } from './types';
 
 export const summaryFixtureRaw: string = summaryRaw;
-export const catalogFixture = JSON.parse(catalogRaw) as { featureKeys: string[]; coverageReasonCodes: string[]; screenKeys: string[] };
+export const catalogFixture = JSON.parse(catalogRaw) as {
+  featureKeys: string[];
+  coverageReasonCodes: string[];
+  screenKeys: string[];
+  /** Recursos só de conta interna (`INTERNAL_ONLY_FEATURES` da api). */
+  internalOnlyFeatures: string[];
+};
 
 /** Cópia nova a cada chamada: um teste não altera o dado do outro. */
 export const summaryFixture = (): UsageSummary => JSON.parse(summaryRaw) as UsageSummary;
