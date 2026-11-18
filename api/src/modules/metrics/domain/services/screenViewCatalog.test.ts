@@ -6,11 +6,13 @@ import { SCREEN_VIEW_CATALOG, SCREEN_VIEW_KEYS, findScreenView, screenAsFeature 
 
 const contract = JSON.parse(
   readFileSync(resolve(__dirname, '../../../../../../contracts/feature-usage/catalog.json'), 'utf8'),
-) as { featureKeys: string[]; screenKeys: string[] };
+) as { featureKeys: string[]; screenKeys: string[]; screenProducts: Record<string, string> };
 
 describe('telas medidas por visita', () => {
   it('mesma lista do contrato, separada das chaves de recurso', () => {
     expect([...SCREEN_VIEW_KEYS]).toEqual(contract.screenKeys);
+    // Produto de cada tela: o painel o usa para distinguir telas de mesmo nome ("Configurações · Saver")
+    expect(Object.fromEntries(SCREEN_VIEW_CATALOG.map((s) => [s.key, s.product]))).toEqual(contract.screenProducts);
     for (const k of contract.screenKeys) expect(contract.featureKeys).not.toContain(k);
   });
 

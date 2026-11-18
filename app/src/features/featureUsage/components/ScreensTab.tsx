@@ -35,7 +35,7 @@ function ScreenRow({ screen, max, color }: { screen: UsageScreenItem; max: numbe
       }}
     >
       <Stack spacing={0.25} sx={{ minWidth: 0 }}>
-        <Typography variant="body2" sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>{screenLabel(screen.key)}</Typography>
+        <Typography variant="body2" sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>{screenLabel(screen.key, screen.product)}</Typography>
         <Stack
           direction="row"
           useFlexGap
@@ -112,7 +112,7 @@ function ScreensTable({ screens, population, cross }: {
             const total = familyPopulation(population, sc.planFamily === 'SAVER' ? 'SAVER' : 'AFFILIATES');
             return (
               <TableRow key={sc.key} hover>
-                <TableCell component="th" scope="row" sx={{ fontWeight: 500, minWidth: 140 }}>{screenLabel(sc.key)}</TableCell>
+                <TableCell component="th" scope="row" sx={{ fontWeight: 500, minWidth: 140 }}>{screenLabel(sc.key, sc.product)}</TableCell>
                 <TableCell sx={{ whiteSpace: 'nowrap' }}>{productLabel(sc.product)}</TableCell>
                 <TableCell align="right" sx={num}>{formatInteger(sc.tenants)}</TableCell>
                 <TableCell align="right" sx={num}>{formatReach(total > 0 ? sc.tenants / total : null)}</TableCell>

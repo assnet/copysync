@@ -769,8 +769,22 @@ export const SCREEN_FEATURE: Readonly<Record<string, UsageFeatureKey>> = {
 };
 
 /** Rótulo da tela (o mesmo do menu); chave desconhecida (API mais nova) aparece crua. */
-export function screenLabel(key: string): string {
-  return (S.screens.labels as Record<string, string>)[key] ?? key;
+const screenLabels = S.screens.labels as Record<string, string>;
+/** Nomes do menu usados por mais de uma tela (o nome do menu não muda; o rótulo da aba Telas ganha o produto). */
+const repeatedScreenLabels = (() => {
+  const seen = new Set<string>();
+  const repeated = new Set<string>();
+  for (const label of Object.values(screenLabels)) (seen.has(label) ? repeated : seen).add(label);
+  return repeated;
+})();
+
+/**
+ * Rótulo da tela = nome do item do menu. Com nome repetido entre telas ("Configurações" do Saver e da conta), leva o
+ * produto ("Configurações · Saver") quando ele vem. Chave desconhecida aparece crua.
+ */
+export function screenLabel(key: string, product?: UsageProduct): string {
+  const label = screenLabels[key] ?? key;
+  return product && repeatedScreenLabels.has(label) ? S.screens.labelWithProduct(label, productLabel(product)) : label;
 }
 
 /**
@@ -784,7 +798,7 @@ export function visibleScreens<T extends Pick<UsageScreenItem, 'key' | 'product'
   return screens
     .filter((sc) => (filters.product === 'all' || sc.product === filters.product) && featureMatchesPlan(sc, filters.plan))
     .sort((a, b) => b.tenants - a.tenants || b.tenantDays - a.tenantDays
-      || screenLabel(a.key).localeCompare(screenLabel(b.key), 'pt-BR'));
+      || screenLabel(a.key, a.product).localeCompare(screenLabel(b.key, b.product), 'pt-BR'));
 }
 
 /** Contas que usaram o recurso da tela no resumo carregado; `null` sem recurso ligado ou fora do recorte. */

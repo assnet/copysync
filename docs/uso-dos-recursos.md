@@ -315,6 +315,10 @@ agregado e o `claimCutover` (instrução única) só trava a linha dos cortes.
   agregada no banco, sempre do agregado (teto 400 dias), mesmo portão/orçamento; recorte de contas igual ao resumo e
   filtro de produto (o de tipo não vale). `population.tenants` = contas do recorte; `population.byFamily` = contas do
   recorte por família de plano: o "Do recorte" de tela Saver divide pela família Saver, as demais pela de Afiliados.
+- Rótulo da tela na aba Telas = nome do item do menu (nunca renomear o menu para caber). Nome repetido entre telas
+  ("Configurações" do Saver e da conta, "Planos" de Afiliados e do Saver) leva o produto: "Configurações · Saver"
+  (`screenLabel(key, product)`, `S.screens.labelWithProduct`). O produto de cada tela está no contrato
+  (`catalog.json` → `screenProducts`, conferido com `SCREEN_VIEW_CATALOG`); o teste do painel exige rótulos únicos.
 - Aba **Telas** (`ScreensTab.tsx`, `useUsageScreens.ts`) ordena por contas que abriram e cruza "abriu × usou" pelo
   `SCREEN_FEATURE` (`rules.ts`; telas sem recurso único ficam de fora), com aviso de coleta ("coleta desde"/parcial).
   **Teto próprio de 400 dias** nos presets (o da rota), sem herdar o teto nem o reset de período do resumo; o resumo

@@ -50,6 +50,23 @@
     "view:saver-plans",
     "view:settings"
   ],
+  "screenProducts": {
+    "view:dashboard": "ACCESS",
+    "view:offers": "AFFILIATES",
+    "view:monitoring": "AFFILIATES",
+    "view:broadcast-groups": "AFFILIATES",
+    "view:link-rotation": "AFFILIATES",
+    "view:storefront": "AFFILIATES",
+    "view:offer-story": "AFFILIATES",
+    "view:offer-hunter": "AFFILIATES",
+    "view:affiliate-credentials": "AFFILIATES",
+    "view:affiliate-tutorials": "AFFILIATES",
+    "view:affiliate-plans": "AFFILIATES",
+    "view:saver-groups": "SAVER",
+    "view:saver-settings": "SAVER",
+    "view:saver-plans": "SAVER",
+    "view:settings": "ACCESS"
+  },
   "internalOnlyFeatures": [
     "chat_send"
   ]

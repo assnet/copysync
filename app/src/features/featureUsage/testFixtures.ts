@@ -16,6 +16,8 @@ export const catalogFixture = JSON.parse(catalogRaw) as {
   /** Motivos da leitura direta (`liveReason`). */
   liveReasonCodes: string[];
   screenKeys: string[];
+  /** Produto de cada tela (`SCREEN_VIEW_CATALOG` da api). */
+  screenProducts: Record<string, string>;
   /** Recursos só de conta interna (`INTERNAL_ONLY_FEATURES` da api). */
   internalOnlyFeatures: string[];
 };

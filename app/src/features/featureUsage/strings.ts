@@ -437,6 +437,8 @@ export const featureUsageStrings = {
     emptyDescription: 'Amplie o período ou limpe os filtros. As visitas só são contadas desde o início da coleta.',
     loading: 'Carregando as telas abertas',
     loadFailed: 'Não foi possível carregar as telas abertas.',
+    /** Tela cujo nome do menu se repete em outro produto ("Configurações" do Saver e da conta). */
+    labelWithProduct: (label: string, product: string) => `${label} · ${product}`,
     labels: {
       'view:dashboard': navigationStrings.dashboard,
       'view:offers': nav.offers,

@@ -4,8 +4,8 @@ import {
   screenFeatureUse, screenLabel, screensCollectionNotice, toUsageQuery, toUsageSummaryQuery, visibleScreens,
 } from './rules';
 import { featureUsageStrings as S } from './strings';
-import { screensFixture, summaryFixture } from './testFixtures';
-import type { UsageFeatureItem } from './types';
+import { catalogFixture, screensFixture, summaryFixture } from './testFixtures';
+import type { UsageFeatureItem, UsageProduct } from './types';
 
 const NOW = Date.UTC(2026, 10, 18, 1, 0, 0);
 const feature = (key: UsageFeatureItem['key']) => summaryFixture().features.find((f) => f.key === key)!;
@@ -77,6 +77,15 @@ describe('telas (P3)', () => {
   it('rótulo igual ao do menu; chave desconhecida aparece crua', () => {
     expect(screenLabel('view:offers')).toBe('Gerador de ofertas');
     expect(screenLabel('view:nova')).toBe('view:nova');
+  });
+
+  it('nome repetido entre telas leva o produto; todos os rótulos da aba Telas são únicos', () => {
+    const products = catalogFixture.screenProducts as Record<string, UsageProduct>;
+    expect(screenLabel('view:saver-settings', 'SAVER')).toBe(S.screens.labelWithProduct(S.screens.labels['view:saver-settings'], S.products.SAVER));
+    expect(screenLabel('view:settings', 'ACCESS')).toBe(S.screens.labelWithProduct(S.screens.labels['view:settings'], S.products.ACCESS));
+    expect(screenLabel('view:offers', 'AFFILIATES')).toBe('Gerador de ofertas'); // nome único fica igual ao menu
+    const labels = catalogFixture.screenKeys.map((k) => screenLabel(k, products[k]));
+    expect(new Set(labels).size).toBe(labels.length);
   });
 
   it('cruzamento abriu × usou só para tela com recurso único no recorte', () => {
