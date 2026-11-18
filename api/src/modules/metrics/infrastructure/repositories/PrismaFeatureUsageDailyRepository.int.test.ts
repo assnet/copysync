@@ -109,6 +109,37 @@ describe('PrismaFeatureUsageDailyRepository', () => {
     ]);
   });
 
+  it('sem linha de cortes, o primeiro claimCutover espera o replaceDay em curso terminar (a trava vale desde o 1º corte)', async () => {
+    await prisma.$executeRawUnsafe(`DELETE FROM platform_settings WHERE key = 'feature_usage_cutover'`);
+    const k = key('firstcut');
+    await repo.replaceDay('2026-11-09', [k], [{ tenantId: A, featureKey: k, kind: 'ACTION', uses: 1 }]);
+    await prisma.$executeRawUnsafe(`DELETE FROM platform_settings WHERE key = 'feature_usage_cutover'`);
+    const order: string[] = [];
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    let locked!: () => void;
+    const isLocked = new Promise<void>((r) => (locked = r));
+    // Outra transação segura a linha do dia: o replaceDay fica parado depois de travar a linha dos cortes
+    const blocker = prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRawUnsafe(`SELECT 1 FROM feature_usage_daily WHERE "featureKey" = $1 FOR UPDATE`, k);
+        locked();
+        await held;
+      },
+      { timeout: 10_000 },
+    );
+    await isLocked;
+    const replace = repo.replaceDay('2026-11-09', [k], [{ tenantId: A, featureKey: k, kind: 'ACTION', uses: 2 }]).then(() => order.push('replace'));
+    await new Promise((r) => setTimeout(r, 300));
+    const claim = new PrismaFeatureUsageRollupStateRepository(prisma).claimCutover(k, '2026-11-09').then((d) => order.push(`claim:${d}`));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(order).toEqual([]);
+    release();
+    await Promise.all([blocker, replace, claim]);
+    expect(order).toEqual(['replace', 'claim:2026-11-09']);
+    expect(strip(await rowsOf(k))).toEqual([{ day: '2026-11-09', tenantId: A, featureKey: k, kind: 'ACTION', uses: 2 }]);
+  });
+
   it('dayTotals: soma do dia por chave; chave sem linha = 0', async () => {
     const k = key('tot');
     await repo.replaceDay('2026-11-07', [k], [

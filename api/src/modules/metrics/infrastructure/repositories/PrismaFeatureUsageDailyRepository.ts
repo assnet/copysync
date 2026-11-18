@@ -77,10 +77,17 @@ export class PrismaFeatureUsageDailyRepository implements IFeatureUsageDailyRepo
     const uses = kept.map((r) => Math.trunc(r.uses));
 
     // DELETE e INSERT na mesma transação: falha no meio desfaz tudo e o dia fica como estava. A linha dos cortes é
-    // travada (FOR SHARE) antes: quem grava um corte espera o fim desta transação, e as duas instruções seguintes
-    // pulam a chave cujo corte já vale no dia (nunca grava dia do contador)
+    // criada vazia se ainda não existe (senão o FOR SHARE não trava nada antes do primeiro corte) e travada (FOR
+    // SHARE) antes: quem grava um corte (`claimCutover`, instrução única fora de transação) espera o fim desta
+    // transação, e as duas instruções seguintes pulam a chave cujo corte já vale no dia (nunca grava dia do
+    // contador). Sem deadlock: esta transação trava sempre a linha dos cortes antes de `feature_usage_daily`, e o
+    // `claimCutover` só trava a linha dos cortes
     await this.prisma.$transaction([
       this.prisma.$executeRawUnsafe(`SET LOCAL statement_timeout = '${FEATURE_USAGE_REPLACE_STATEMENT_TIMEOUT}'`),
+      this.prisma.$executeRaw`
+        INSERT INTO "platform_settings" ("key", "value", "updatedById", "updatedAt")
+        VALUES (${FEATURE_USAGE_CUTOVER_SETTINGS_KEY}, '{}'::jsonb, NULL, ${stamp})
+        ON CONFLICT ("key") DO NOTHING`,
       this.prisma.$queryRaw`SELECT 1 FROM "platform_settings" WHERE "key" = ${FEATURE_USAGE_CUTOVER_SETTINGS_KEY} FOR SHARE`,
       this.prisma.$executeRaw`
         DELETE FROM "feature_usage_daily" d
