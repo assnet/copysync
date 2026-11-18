@@ -12,8 +12,8 @@ import { FakeClock, FakeFeatureUsageReader, FakeUsageReadGate, FakeUsageTenantDi
 
 const NOW = new Date('2026-12-20T15:00:00.000Z'); // 12:00 em Brasília
 const FRESH = new Date('2026-12-20T14:45:00.000Z');
-const MARKER: FeatureUsageRollupState = { backfillCompletedAt: new Date('2026-11-20T10:00:00Z'), backfilledFrom: '2025-10-26', backfillCursor: null, cutovers: {} };
-const NO_MARKER: FeatureUsageRollupState = { backfillCompletedAt: null, backfilledFrom: null, backfillCursor: null, cutovers: {} };
+const MARKER: FeatureUsageRollupState = { backfillCompletedAt: new Date('2026-11-20T10:00:00Z'), backfilledFrom: '2025-10-26', backfillCursor: null, cutovers: {}, lastSuccessAt: FRESH, finalizedThrough: null, failureStreak: 0 };
+const NO_MARKER: FeatureUsageRollupState = { backfillCompletedAt: null, backfilledFrom: null, backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
 const INPUT: FeatureUsageQueryInput = {
   from: '2026-11-21',
   to: '2026-12-20',
@@ -27,12 +27,13 @@ function setup(state: FeatureUsageRollupState, dailyRows: FeatureUsageRow[] = []
   const clock = new FakeClock();
   const live = new FakeFeatureUsageReader(liveRows, { offer_generator: '2026-01-01', link_rotation_click: '2026-09-25' }, clock);
   const daily = new FakeFeatureUsageReader(dailyRows, { offer_generator: '2025-10-26', link_rotation_click: '2026-09-01', chat_send: '2026-11-19' }, clock);
-  daily.latestUpdate = FRESH;
   const rollupState = { get: vi.fn(async () => state) };
   const directory = new FakeUsageTenantDirectory([usageTenant('t1', 'COPYSYNC_MAX'), usageTenant('t2', 'COPYSYNC_LITE')], new Map([['t1', 'Um']]));
   const gate = new FakeUsageReadGate(clock);
-  const deps = { reader: live, dailyReader: daily, rollupState, directory, gate, now: () => NOW };
+  const log = { warn: vi.fn() };
+  const deps = { reader: live, dailyReader: daily, rollupState, directory, gate, now: () => NOW, log };
   return {
+    log,
     live,
     daily,
     rollupState,
@@ -56,7 +57,23 @@ describe('escolha da fonte', () => {
     expect(out.features.find((f) => f.key === 'chat_send')).toMatchObject({ uses: 2, dataFrom: '2026-11-19', firstDataDay: '2026-11-19' });
   });
 
-  it('com marco cobrindo o período: uma leitura do agregado, freshAt = última atualização e teto 400', async () => {
+  it('agregado velho (último tick ≥ 45 min ou nunca): até 90 dias cai para live com warn; acima, 503', async () => {
+    for (const lastSuccessAt of [new Date(NOW.getTime() - 45 * 60_000), null]) {
+      const s = setup({ ...MARKER, lastSuccessAt }, [usageRow('2026-12-01', 't1', 'offer_generator', 'ACTION', 9)]);
+      const out = await s.summary.execute(INPUT);
+      expect(out).toMatchObject({ source: 'live', freshAt: NOW, range: { maxDays: 90 } });
+      expect(out.features.find((f) => f.key === 'offer_generator')!.uses).toBe(0);
+      expect(s.log.warn).toHaveBeenCalledWith(expect.objectContaining({ days: 30 }), 'feature usage daily aggregate stale, reading live sources');
+      const long = s.summary.execute({ ...INPUT, from: '2026-06-04', granularity: 'week' });
+      await expect(long).rejects.toBeInstanceOf(UsageMetricsReadUnavailableError);
+    }
+    // 44 min: ainda fresco
+    const fresh = setup({ ...MARKER, lastSuccessAt: new Date(NOW.getTime() - 44 * 60_000) });
+    expect((await fresh.summary.execute(INPUT)).source).toBe('daily');
+    expect(fresh.log.warn).not.toHaveBeenCalled();
+  });
+
+  it('com marco cobrindo o período: uma leitura do agregado, freshAt = último tick bem-sucedido e teto 400', async () => {
     const s = setup(MARKER, [usageRow('2026-12-01', 't1', 'offer_generator', 'ACTION', 9)]);
     const out = await s.summary.execute(INPUT);
     expect(out).toMatchObject({ source: 'daily', freshAt: FRESH, range: { maxDays: 400 } });

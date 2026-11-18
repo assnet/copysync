@@ -2,13 +2,14 @@ import { describe, expect, it, vi } from 'vitest';
 import type { IJobLease, IJobLeaseRenewal } from '../../../../shared/jobs/IJobLease';
 import type { FeatureUsageDayRow } from '../../domain/contracts/IFeatureUsageDailyRepository';
 import type { FeatureUsageReadInput, FeatureUsageReadResult } from '../../domain/contracts/IFeatureUsageReader';
-import type { FeatureUsageRollupState, IFeatureUsageRollupStateRepository } from '../../domain/contracts/IFeatureUsageRollupStateRepository';
+import type { FeatureUsageRollupState, FeatureUsageTickPatch, IFeatureUsageRollupStateRepository } from '../../domain/contracts/IFeatureUsageRollupStateRepository';
 import type { UsageReadBudget } from '../../domain/contracts/IUsageReadGate';
 import type { FeatureUsageRow } from '../../domain/services/aggregateFeatureUsage';
 import type { FeatureUsageDefinition } from '../../domain/services/featureUsageCatalog';
 import { addDays, dayInZone } from '../../domain/services/featureUsagePeriod';
 import {
   FEATURE_USAGE_BACKFILL_LEASE,
+  recentWindow,
   FEATURE_USAGE_RETENTION_LEASE,
   FEATURE_USAGE_ROLLUP_LEASE,
   RollupFeatureUsageUseCase,
@@ -42,7 +43,7 @@ class FakeLease implements IJobLease, IJobLeaseRenewal {
 }
 
 class FakeState implements IFeatureUsageRollupStateRepository {
-  value: FeatureUsageRollupState = { backfillCompletedAt: null, backfilledFrom: null, backfillCursor: null, cutovers: {} };
+  value: FeatureUsageRollupState = { backfillCompletedAt: null, backfilledFrom: null, backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
   marks = 0;
   async get() {
     return { ...this.value };
@@ -55,6 +56,16 @@ class FakeState implements IFeatureUsageRollupStateRepository {
     this.marks++;
     this.value = { ...this.value, backfillCompletedAt: m.completedAt, backfilledFrom: m.backfilledFrom };
     return true;
+  }
+  ticks: FeatureUsageTickPatch[] = [];
+  async recordTick(p: FeatureUsageTickPatch) {
+    this.ticks.push(p);
+    this.value = {
+      ...this.value,
+      failureStreak: p.failureStreak,
+      ...(p.lastSuccessAt ? { lastSuccessAt: p.lastSuccessAt } : {}),
+      ...(p.finalizedThrough ? { finalizedThrough: p.finalizedThrough } : {}),
+    };
   }
 }
 
@@ -158,7 +169,7 @@ describe('RollupFeatureUsageUseCase', () => {
       firstData: { a: '2026-11-16' },
       now: new Date('2026-11-18T02:30:00Z'), // 23:30 de 17/11 em Brasília
     });
-    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: {} };
+    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
     await t.useCase.execute();
     expect(t.replaced.map((r) => r.day)).toEqual(['2026-11-16', '2026-11-17']);
     expect(dayInZone(t.reads[0]!.from)).toBe('2026-11-16');
@@ -168,7 +179,7 @@ describe('RollupFeatureUsageUseCase', () => {
   it('grava as linhas do dia de cada recurso e solta o lease do rollup ao terminar', async () => {
     const rows = [row('2026-11-16', 'a', 2), row('2026-11-17', 'b', 3, 't2')];
     const t2 = setup({ catalog: [def('a'), def('b')], groups: [['a', 'b']], data: rows, now: NOW });
-    t2.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: {} };
+    t2.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
     await t2.useCase.execute();
     expect(t2.replaced).toEqual([
       { day: '2026-11-16', keys: ['a', 'b'], rows: [{ tenantId: 't1', featureKey: 'a', kind: 'ACTION', uses: 2 }] },
@@ -180,7 +191,7 @@ describe('RollupFeatureUsageUseCase', () => {
 
   it('erro numa fonte não impede as outras, é logado e a chave dela não entra em keys', async () => {
     const t = setup({ catalog: [def('a'), def('b')], groups: [['a'], ['b']], failKeys: ['a'], now: NOW });
-    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: {} };
+    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
     const r = await t.useCase.execute();
     expect(r).toMatchObject({ status: 'ran', failedGroups: 1 });
     expect(t.replaced.map((x) => x.keys)).toEqual([['b'], ['b']]);
@@ -237,7 +248,7 @@ describe('RollupFeatureUsageUseCase', () => {
   it('recurso CUTOVER sem corte gravado: todo dia é da fonte viva', async () => {
     const catalog = [def('a'), def('offer_story', { recordedFrom: 'CUTOVER' })];
     const t = setup({ catalog, groups: [['a', 'offer_story']], data: [row('2026-11-17', 'offer_story', 9)], now: NOW });
-    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: {} };
+    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
     await t.useCase.execute();
     expect(t.replaced.map((r) => [r.day, r.keys])).toEqual([
       ['2026-11-16', ['a', 'offer_story']],
@@ -253,7 +264,7 @@ describe('RollupFeatureUsageUseCase', () => {
       data: [row('2026-11-16', 'offer_story', 4), row('2026-11-17', 'offer_story', 9)],
       now: NOW,
     });
-    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: { offer_story: '2026-11-17' } };
+    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: { offer_story: '2026-11-17' }, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
     await t.useCase.execute();
     expect(t.replaced).toEqual([
       { day: '2026-11-16', keys: ['a', 'offer_story'], rows: [{ tenantId: 't1', featureKey: 'offer_story', kind: 'ACTION', uses: 4 }] },
@@ -263,7 +274,7 @@ describe('RollupFeatureUsageUseCase', () => {
 
   it('retenção apaga antes de hoje − 400 uma vez a cada 24 h', async () => {
     const t = setup({ catalog: [def('a')], now: NOW });
-    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: {} };
+    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
     await t.useCase.execute();
     await t.useCase.execute();
     expect(t.purged).toEqual([addDays('2026-11-17', -400)]);
@@ -282,13 +293,13 @@ describe('RollupFeatureUsageUseCase', () => {
 
   it('renova o lease antes de cada fonte e de cada gravação; a renovação falhando aborta o tick sem gravar mais', async () => {
     const t = setup({ catalog: [def('a'), def('b')], groups: [['a'], ['b']], now: NOW });
-    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: {} };
+    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
     await t.useCase.execute();
-    // 2 fontes + 2 dias
-    expect(t.lease.renewed.filter((n) => n === FEATURE_USAGE_ROLLUP_LEASE)).toHaveLength(4);
+    // 2 fontes + 2 dias + gravação do estado do tick
+    expect(t.lease.renewed.filter((n) => n === FEATURE_USAGE_ROLLUP_LEASE)).toHaveLength(5);
 
     const lost = setup({ catalog: [def('a'), def('b')], groups: [['a'], ['b']], now: NOW });
-    lost.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: {} };
+    lost.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
     const realRead = lost.reader.read.getMockImplementation()!;
     lost.reader.read.mockImplementation(async (input) => {
       lost.lease.stolen.add(FEATURE_USAGE_ROLLUP_LEASE);
@@ -305,5 +316,81 @@ describe('RollupFeatureUsageUseCase', () => {
     const t = setup({ catalog: [def('a')], firstData: { a: '2026-10-01' }, now: NOW });
     await t.useCase.execute();
     expect(t.lease.renewed).toContain(FEATURE_USAGE_BACKFILL_LEASE);
+  });
+
+  describe('janela recente, frescor e falhas seguidas', () => {
+    const DONE = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-01-01', backfillCursor: null };
+
+    it('recentWindow: sem marca ontem e hoje; com marca, de marca + 1 até hoje, no máximo 7 dias', () => {
+      expect(recentWindow(null, '2026-11-17')).toEqual(['2026-11-16', '2026-11-17']);
+      expect(recentWindow('2026-11-15', '2026-11-17')).toEqual(['2026-11-16', '2026-11-17']);
+      expect(recentWindow('2026-11-13', '2026-11-17')).toEqual(['2026-11-14', '2026-11-15', '2026-11-16', '2026-11-17']);
+      expect(recentWindow('2026-11-01', '2026-11-17')).toEqual(
+        ['2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05', '2026-11-06', '2026-11-07', '2026-11-08'],
+      );
+      // Marca no futuro (relógio) não pula ontem
+      expect(recentWindow('2026-11-20', '2026-11-17')).toEqual(['2026-11-16', '2026-11-17']);
+    });
+
+    it('tick sem falha grava lastSuccessAt e finalizedThrough = anteontem; ontem é revisitado no tick seguinte', async () => {
+      const t = setup({ catalog: [def('a')], now: NOW });
+      t.state.value = { ...t.state.value, ...DONE };
+      await t.useCase.execute();
+      expect(t.state.ticks).toEqual([{ failureStreak: 0, finalizedThrough: '2026-11-15', lastSuccessAt: NOW }]);
+      t.replaced.length = 0;
+      await t.useCase.execute();
+      expect(t.replaced.map((r) => r.day)).toEqual(['2026-11-16', '2026-11-17']);
+      expect(t.state.ticks[1]).toEqual({ failureStreak: 0, lastSuccessAt: NOW }); // marca não anda para trás nem repete
+    });
+
+    it('job parado 10 dias: alcança hoje em 7 + resto, e só fica fresco quando a janela chega a hoje', async () => {
+      const t = setup({ catalog: [def('a')], now: NOW });
+      t.state.value = { ...t.state.value, ...DONE, finalizedThrough: '2026-11-06' };
+      const r1 = await t.useCase.execute();
+      expect(r1).toMatchObject({ window: { from: '2026-11-07', to: '2026-11-13' } });
+      expect(t.state.ticks[0]).toEqual({ failureStreak: 0, finalizedThrough: '2026-11-13' });
+      const r2 = await t.useCase.execute();
+      expect(r2).toMatchObject({ window: { from: '2026-11-14', to: '2026-11-17' } });
+      expect(t.state.ticks[1]).toEqual({ failureStreak: 0, finalizedThrough: '2026-11-15', lastSuccessAt: NOW });
+    });
+
+    it('falha numa fonte: sem lastSuccessAt, marca parada e contador de falhas sobe; zera no primeiro tick bom', async () => {
+      const failKeys = ['a'];
+      const t = setup({ catalog: [def('a')], failKeys, now: NOW });
+      t.state.value = { ...t.state.value, ...DONE, finalizedThrough: '2026-11-10', lastSuccessAt: new Date(0) };
+      await t.useCase.execute();
+      expect(t.state.ticks[0]).toEqual({ failureStreak: 1 });
+      expect(t.state.value).toMatchObject({ finalizedThrough: '2026-11-10', lastSuccessAt: new Date(0) });
+      failKeys.length = 0;
+      await t.useCase.execute();
+      expect(t.state.value.failureStreak).toBe(0);
+    });
+
+    it('3 falhas seguidas: log error e janela lida dia a dia; o dia ruim fica isolado e a marca anda até ele', async () => {
+      const t = setup({ catalog: [def('a')], now: NOW });
+      const error = vi.fn();
+      const uc = new RollupFeatureUsageUseCase({ ...(t.useCase as unknown as { deps: RollupFeatureUsageDeps }).deps, log: { warn: t.warn, info: vi.fn(), error } });
+      t.state.value = { ...t.state.value, ...DONE, finalizedThrough: '2026-11-10', failureStreak: 2 };
+      // Só o dia 13 quebra (lido sozinho); lido em janela, quebra tudo
+      const realRead = t.reader.read.getMockImplementation()!;
+      t.reader.read.mockImplementation(async (input) => {
+        const from = dayInZone(input.from);
+        const to = dayInZone(input.toExclusive);
+        if (from <= '2026-11-13' && to > '2026-11-13') throw new Error('bad day');
+        return realRead(input);
+      });
+      // Tick 3 (streak 2 → 3): ainda em janela, falha e alerta
+      const r3 = await uc.execute();
+      expect(r3).toMatchObject({ failureStreak: 3, failedDays: [] });
+      expect(error).toHaveBeenCalledTimes(1);
+      expect(t.replaced).toEqual([]);
+      // Tick 4: dia a dia, 11 e 12 bons, 13 ruim, 14–17 gravados
+      const r4 = await uc.execute();
+      expect(r4).toMatchObject({ failureStreak: 4, failedDays: ['2026-11-13'] });
+      expect(t.replaced.map((r) => r.day)).toEqual(['2026-11-11', '2026-11-12', '2026-11-14', '2026-11-15', '2026-11-16', '2026-11-17']);
+      expect(t.state.value.finalizedThrough).toBe('2026-11-12');
+      expect(t.state.ticks[1]!.lastSuccessAt).toBeUndefined();
+      expect(error).toHaveBeenLastCalledWith(expect.objectContaining({ failureStreak: 4, failedDays: ['2026-11-13'] }), 'feature usage rollup failing repeatedly');
+    });
   });
 });

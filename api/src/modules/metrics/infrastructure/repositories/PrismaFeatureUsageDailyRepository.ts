@@ -112,13 +112,6 @@ export class PrismaFeatureUsageDailyRepository implements IFeatureUsageDailyRepo
     return row?.first ?? null;
   }
 
-  async latestUpdate(): Promise<Date | null> {
-    // `timestamp` sem fuso gravado em UTC: devolvido como texto ISO para não depender do `TimeZone` da sessão
-    const [row] = await this.prisma.$queryRaw<{ at: string | null }[]>`
-      SELECT to_char(MAX("updatedAt"), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at FROM "feature_usage_daily"`;
-    return row?.at ? new Date(row.at) : null;
-  }
-
   /** Lotes de `ctid` com `statement_timeout` por lote (`SET LOCAL` só vale na transação). */
   async purgeBefore(before: string): Promise<number> {
     const bound = asDay(before);

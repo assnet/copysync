@@ -135,16 +135,13 @@ describe('PrismaFeatureUsageDailyRepository', () => {
     ]);
   });
 
-  it('oldestDay e latestUpdate leem o agregado', async () => {
+  it('oldestDay lê o agregado', async () => {
     const k = key('old');
     await repo.replaceDay('2026-10-20', [k], [{ tenantId: A, featureKey: k, kind: 'ACTION', uses: 1 }]);
     await repo.replaceDay('2026-10-22', [k], [{ tenantId: A, featureKey: k, kind: 'ACTION', uses: 1 }]);
     expect(await repo.oldestDay([k])).toBe('2026-10-20');
     expect(await repo.oldestDay([key('nada')])).toBeNull();
     expect(await repo.oldestDay([])).toBeNull();
-    const stampedAt = tick;
-    const latest = await repo.latestUpdate();
-    expect(latest?.getTime()).toBe(stampedAt);
   });
 
   it('purgeBefore apaga em lotes de ctid, cada um com statement_timeout, e para no teto de lotes', async () => {

@@ -3,7 +3,10 @@ import type { IJobLease, IJobLeaseRenewal } from '../../../../shared/jobs/IJobLe
 import { logger } from '../../../../shared/logger/logger';
 import type { FeatureUsageDayRow, IFeatureUsageDailyRepository } from '../../domain/contracts/IFeatureUsageDailyRepository';
 import type { IFeatureUsageReader } from '../../domain/contracts/IFeatureUsageReader';
-import type { IFeatureUsageRollupStateRepository } from '../../domain/contracts/IFeatureUsageRollupStateRepository';
+import type {
+  FeatureUsageTickPatch,
+  IFeatureUsageRollupStateRepository,
+} from '../../domain/contracts/IFeatureUsageRollupStateRepository';
 import type { UsageReadBudget } from '../../domain/contracts/IUsageReadGate';
 import type { FeatureUsageRow } from '../../domain/services/aggregateFeatureUsage';
 import {
@@ -28,8 +31,31 @@ export const FEATURE_USAGE_RETENTION_LEASE_TTL_MS = 24 * 3_600_000;
 export const FEATURE_USAGE_RETENTION_DAYS = 400;
 /** Passo do backfill: no máximo 7 dias por execução (sem escrita em massa). */
 export const FEATURE_USAGE_BACKFILL_STEP_DAYS = 7;
+/** Janela recente: no máximo 7 dias por tick, de `finalizedThrough + 1` até hoje. */
+export const FEATURE_USAGE_RECENT_MAX_DAYS = 7;
+/** A partir de tantas falhas seguidas: log `error` e a janela recente é lida dia a dia (isola o dia ruim). */
+export const FEATURE_USAGE_FAILURE_STREAK_ALERT = 3;
 
-type RollupLogger = { warn: (obj: object, msg: string) => void; info: (obj: object, msg: string) => void };
+type RollupLogger = {
+  warn: (obj: object, msg: string) => void;
+  info: (obj: object, msg: string) => void;
+  error?: (obj: object, msg: string) => void;
+};
+
+/**
+ * Janela recente do tick: de `finalizedThrough + 1` (ou ontem, sem marca) até hoje, no máximo 7 dias; nunca começa
+ * depois de ontem nem antes da retenção. Job parado por dias alcança hoje em vários ticks.
+ */
+export function recentWindow(finalizedThrough: string | null, today: string): string[] {
+  const yesterday = addDays(today, -1);
+  let start = finalizedThrough ? addDays(finalizedThrough, 1) : yesterday;
+  if (start > yesterday) start = yesterday;
+  const floor = addDays(today, -FEATURE_USAGE_RETENTION_DAYS);
+  if (start < floor) start = floor;
+  const days: string[] = [];
+  for (let d = start; d <= today && days.length < FEATURE_USAGE_RECENT_MAX_DAYS; d = addDays(d, 1)) days.push(d);
+  return days;
+}
 
 export interface RollupFeatureUsageDeps {
   /** Leitor sob demanda das tabelas de domínio (mesmo SQL da P1). */
@@ -53,7 +79,17 @@ export type RollupFeatureUsageResult =
   | { status: 'skipped' }
   /** Renovação do lease falhou no meio: o tick parou sem gravar mais nada. */
   | { status: 'lost' }
-  | { status: 'ran'; failedGroups: number; backfill: FeatureUsageBackfillOutcome; purged: number | null };
+  | {
+      status: 'ran';
+      failedGroups: number;
+      backfill: FeatureUsageBackfillOutcome;
+      purged: number | null;
+      /** Janela recente lida neste tick. */
+      window: { from: string; to: string };
+      /** Dias da janela com falha (só na leitura dia a dia). */
+      failedDays: string[];
+      failureStreak: number;
+    };
 
 /** Perdeu o lease no meio do tick (renovação recusada): nada mais é lido nem gravado. */
 export class FeatureUsageRollupLeaseLostError extends Error {
@@ -68,7 +104,10 @@ type GroupRead = { keys: string[]; rows: FeatureUsageRow[]; firstDataDay: Record
 /**
  * Consolidação diária do uso (design §4.4, USAGE-18/20). Uma execução por tick do job, sob o lease
  * `feature-usage-rollup` (sem ele não lê nem grava):
- * 1. recalcula **hoje e ontem** (Brasília) dos recursos cuja fonte no dia é `LIVE`;
+ * 1. recalcula a janela recente (`recentWindow`: de `finalizedThrough + 1` até hoje, ≤ 7 dias) dos recursos cuja
+ *    fonte no dia é `LIVE`; sem falha, grava `lastSuccessAt` (quando a janela chega a hoje) e avança
+ *    `finalizedThrough` (nunca além de anteontem: ontem é sempre revisitado). Com 3+ falhas seguidas a janela é
+ *    lida dia a dia e o dia ruim vai ao log `error`; `finalizedThrough` anda só até o último dia bom contíguo;
  * 2. backfill (lease próprio): no máximo 7 dias para trás a partir do cursor salvo, até o primeiro dado das fontes
  *    (limitado à retenção). O cursor e o marco ficam em `platform_settings`; o marco só é gravado na execução que
  *    termina. Falha numa fonte = o cursor não anda (o passo se repete, idempotente);
@@ -137,12 +176,57 @@ export class RollupFeatureUsageUseCase {
   }
 
   private async run(now: Date): Promise<RollupFeatureUsageResult> {
-    this.cutovers = (await this.deps.state.get()).cutovers;
+    const st = await this.deps.state.get();
+    this.cutovers = st.cutovers;
     const today = dayInZone(now);
-    const recent = await this.consolidate([addDays(today, -1), today], null);
+    const window = recentWindow(st.finalizedThrough, today);
+    const split = st.failureStreak >= FEATURE_USAGE_FAILURE_STREAK_ALERT;
+
+    let failedGroups = 0;
+    const failedDays: string[] = [];
+    /** Último dia bom contíguo desde o início da janela. */
+    let goodThrough: string | null = null;
+    if (!split) {
+      failedGroups = (await this.consolidate(window, null)).failedGroups;
+      if (failedGroups === 0) goodThrough = window[window.length - 1]!;
+    } else {
+      for (const day of window) {
+        const r = await this.consolidate([day], null);
+        failedGroups += r.failedGroups;
+        if (r.failedGroups > 0) failedDays.push(day);
+        else if (failedDays.length === 0) goodThrough = day;
+      }
+    }
+
     const backfill = await this.backfillStep(today, now);
     const purged = await this.retention(today, now);
-    return { status: 'ran', failedGroups: recent.failedGroups, backfill, purged };
+
+    const failed = failedGroups > 0 || backfill === 'failed';
+    const failureStreak = failed ? st.failureStreak + 1 : 0;
+    if (failureStreak >= FEATURE_USAGE_FAILURE_STREAK_ALERT) {
+      const info = { failureStreak, failedDays, backfill, window: { from: window[0], to: window[window.length - 1] } };
+      if (this.log.error) this.log.error(info, 'feature usage rollup failing repeatedly');
+      else this.log.warn(info, 'feature usage rollup failing repeatedly');
+    }
+    const patch: FeatureUsageTickPatch = { failureStreak };
+    if (goodThrough !== null) {
+      const cap = addDays(today, -2);
+      const next = goodThrough < cap ? goodThrough : cap;
+      if (!st.finalizedThrough || next > st.finalizedThrough) patch.finalizedThrough = next;
+    }
+    // Fresco só quando a janela chegou a hoje sem falha nenhuma
+    if (failedGroups === 0 && window[window.length - 1] === today) patch.lastSuccessAt = now;
+    await this.keepAlive();
+    await this.deps.state.recordTick(patch);
+    return {
+      status: 'ran',
+      failedGroups,
+      backfill,
+      purged,
+      window: { from: window[0]!, to: window[window.length - 1]! },
+      failedDays,
+      failureStreak,
+    };
   }
 
   /**

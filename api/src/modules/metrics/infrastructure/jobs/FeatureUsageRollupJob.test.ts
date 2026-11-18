@@ -30,7 +30,7 @@ class FakeLease implements IJobLease, IJobLeaseRenewal {
   }
 }
 
-const done: FeatureUsageRollupState = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-01-01', backfillCursor: null, cutovers: {} };
+const done: FeatureUsageRollupState = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-01-01', backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
 const catalog = [
   { key: 'a', product: 'AFFILIATES', planFamily: 'AFFILIATES', kinds: ['ACTION'], source: 'LIVE', possibleCoverageReasons: [], phase: 1 },
 ] as unknown as FeatureUsageDefinition[];
@@ -95,7 +95,7 @@ describe('FeatureUsageRollupJob', () => {
       const rollup = new RollupFeatureUsageUseCase({
         reader,
         daily: { replaceDay: vi.fn(async () => undefined), purgeBefore: vi.fn(async () => 0) },
-        state: { get: async () => done, saveBackfillCursor: async () => undefined, markBackfillCompleted: async () => false },
+        state: { get: async () => done, saveBackfillCursor: async () => undefined, markBackfillCompleted: async () => false, recordTick: async () => undefined },
         lease,
         newBudget: () => ({ remainingMs: () => 1000, track: () => undefined, settled: async () => undefined }),
         catalog,

@@ -13,8 +13,21 @@ export interface FeatureUsageRollupState {
   backfilledFrom: string | null;
   /** Progresso: dia mais recente ainda a consolidar no backfill (anda para trás); `null` = não começou. */
   backfillCursor: string | null;
+  /** Último tick que consolidou a janela recente inteira até hoje sem falha (`freshAt` da leitura do agregado). */
+  lastSuccessAt: Date | null;
+  /** Dias até aqui (inclusive) não são mais recalculados; o tick recalcula de `finalizedThrough + 1` até hoje. */
+  finalizedThrough: string | null;
+  /** Ticks seguidos com falha (fonte ou gravação, janela recente ou backfill); zera no primeiro tick sem falha. */
+  failureStreak: number;
   /** Cortes gravados pelo contador (recurso `CUTOVER` → primeiro dia do contador). */
   cutovers: FeatureUsageCutovers;
+}
+
+/** Resultado de um tick para o estado: o que não vier não muda. */
+export interface FeatureUsageTickPatch {
+  lastSuccessAt?: Date;
+  finalizedThrough?: string;
+  failureStreak: number;
 }
 
 export interface IFeatureUsageRollupStateRepository {
@@ -24,6 +37,8 @@ export interface IFeatureUsageRollupStateRepository {
   saveBackfillCursor(day: string): Promise<void>;
   /** Grava o marco uma única vez; `false` se já existia (não muda). */
   markBackfillCompleted(marker: { completedAt: Date; backfilledFrom: string }): Promise<boolean>;
+  /** Grava o resultado do tick (merge; não toca no marco nem no cursor). */
+  recordTick(patch: FeatureUsageTickPatch): Promise<void>;
 }
 
 /**

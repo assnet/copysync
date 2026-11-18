@@ -58,8 +58,6 @@ export class FakeFeatureUsageReader implements IFeatureUsageReader {
   /** Segura a leitura até `release()` (pedido simultâneo). */
   hold: Promise<void> | null = null;
   fail: Error | null = null;
-  /** Só o agregado devolve. */
-  latestUpdate: Date | null | undefined = undefined;
 
   constructor(
     public rows: FeatureUsageRow[] = [],
@@ -72,11 +70,7 @@ export class FakeFeatureUsageReader implements IFeatureUsageReader {
     if (this.hold) await this.hold;
     this.clock.advance(this.spendMs);
     if (this.fail) throw this.fail;
-    return {
-      rows: this.rows,
-      firstDataDay: this.firstDataDay,
-      ...(this.latestUpdate !== undefined ? { latestUpdate: this.latestUpdate } : {}),
-    };
+    return { rows: this.rows, firstDataDay: this.firstDataDay };
   }
 }
 

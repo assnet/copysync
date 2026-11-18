@@ -32,7 +32,7 @@ export function toDailyFeatureUsageRow(raw: RawDailyRow): FeatureUsageRow {
  * granularidade `day`) devolve linha por dia; acima, com semana/mês, o SQL agrupa por `date_trunc` (segunda-feira,
  * como `bucketOf`) e devolve `activeDays`/`lastDay` da linha. Sempre filtra por período; uma instrução por vez no
  * orçamento do pedido; guarda de 300 mil linhas. Com `currentFrom`, o agrupamento separa o período anterior do
- * atual. Devolve também o maior `updatedAt` (`freshAt` da resposta).
+ * atual. O frescor não sai daqui (seria um full scan): é o `lastSuccessAt` do job, lido com o marco.
  */
 export class PrismaDailyFeatureUsageReader implements IFeatureUsageReader {
   constructor(
@@ -89,13 +89,6 @@ export class PrismaDailyFeatureUsageReader implements IFeatureUsageReader {
         GROUP BY "featureKey"`,
     );
     for (const r of first) if (r.key in firstDataDay) firstDataDay[r.key as FeatureUsageKey] = r.first;
-
-    // `timestamp` sem fuso gravado em UTC: texto ISO para não depender do `TimeZone` da sessão
-    const [fresh] = await runWithinBudget<{ at: string | null }>(
-      input.budget,
-      this.prisma,
-      Prisma.sql`SELECT to_char(MAX("updatedAt"), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at FROM "feature_usage_daily"`,
-    );
-    return { rows, firstDataDay, latestUpdate: fresh?.at ? new Date(fresh.at) : null };
+    return { rows, firstDataDay };
   }
 }

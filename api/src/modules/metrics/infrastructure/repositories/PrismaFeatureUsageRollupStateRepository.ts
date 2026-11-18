@@ -3,6 +3,7 @@ import type { UsageReadBudget } from '../../domain/contracts/IUsageReadGate';
 import { runWithinBudget } from './featureUsageReadTimeout';
 import type {
   FeatureUsageRollupState,
+  FeatureUsageTickPatch,
   IFeatureUsageCutoverStore,
   IFeatureUsageRollupStateRepository,
 } from '../../domain/contracts/IFeatureUsageRollupStateRepository';
@@ -29,6 +30,7 @@ export function parseFeatureUsageRollupState(value: unknown, cutoverValue?: unkn
   const backfillCompletedAt = asInstant(o['backfillCompletedAt']);
   const backfilledFrom = asDay(o['backfilledFrom']);
   const complete = backfillCompletedAt !== null && backfilledFrom !== null;
+  const streak = o['failureStreak'];
   const cutovers: Record<string, string> = {};
   for (const [k, v] of Object.entries(asObject(cutoverValue))) {
     const day = asDay(v);
@@ -38,6 +40,9 @@ export function parseFeatureUsageRollupState(value: unknown, cutoverValue?: unkn
     backfillCompletedAt: complete ? backfillCompletedAt : null,
     backfilledFrom: complete ? backfilledFrom : null,
     backfillCursor: asDay(o['backfillCursor']),
+    lastSuccessAt: asInstant(o['lastSuccessAt']),
+    finalizedThrough: asDay(o['finalizedThrough']),
+    failureStreak: typeof streak === 'number' && Number.isInteger(streak) && streak > 0 ? streak : 0,
     cutovers,
   };
 }
@@ -78,6 +83,16 @@ export class PrismaFeatureUsageRollupStateRepository implements IFeatureUsageRol
     if (!DAY_RE.test(marker.backfilledFrom)) throw new Error(`invalid backfilledFrom: ${marker.backfilledFrom}`);
     const patch = JSON.stringify({ backfillCompletedAt: marker.completedAt.toISOString(), backfilledFrom: marker.backfilledFrom });
     return (await this.merge(patch, true)) > 0;
+  }
+
+  async recordTick(patch: FeatureUsageTickPatch): Promise<void> {
+    if (patch.finalizedThrough !== undefined && !DAY_RE.test(patch.finalizedThrough)) {
+      throw new Error(`invalid finalizedThrough: ${patch.finalizedThrough}`);
+    }
+    const body: Record<string, unknown> = { failureStreak: Math.max(0, Math.trunc(patch.failureStreak)) };
+    if (patch.lastSuccessAt) body['lastSuccessAt'] = patch.lastSuccessAt.toISOString();
+    if (patch.finalizedThrough) body['finalizedThrough'] = patch.finalizedThrough;
+    await this.merge(JSON.stringify(body), false);
   }
 
   /**

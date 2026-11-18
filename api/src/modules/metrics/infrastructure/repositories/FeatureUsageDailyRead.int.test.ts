@@ -39,9 +39,9 @@ const session = (t: string, engine: string, at: string) =>
   run(`INSERT INTO sessions (id, "tenantId", name, engine, "createdAt", "updatedAt") VALUES ('${id('s')}', '${t}', 'x', '${engine}', '${at}', now())`);
 
 const clearMarker = () => prisma.platformSetting.deleteMany({ where: { key: FEATURE_USAGE_ROLLUP_SETTINGS_KEY } });
-const NO_MARKER: FeatureUsageRollupState = { backfillCompletedAt: null, backfilledFrom: null, backfillCursor: null, cutovers: {} };
+const NO_MARKER: FeatureUsageRollupState = { backfillCompletedAt: null, backfilledFrom: null, backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
 const marker = (backfilledFrom: string) => ({
-  get: async (): Promise<FeatureUsageRollupState> => ({ backfillCompletedAt: new Date('2026-01-01T00:00:00Z'), backfilledFrom, backfillCursor: null, cutovers: {} }),
+  get: async (): Promise<FeatureUsageRollupState> => ({ backfillCompletedAt: new Date('2026-01-01T00:00:00Z'), backfilledFrom, backfillCursor: null, cutovers: {}, lastSuccessAt: new Date(), finalizedThrough: null, failureStreak: 0 }),
 });
 
 function deps(now: Date, rollupState: FeatureUsageDeps['rollupState']): FeatureUsageDeps {

@@ -33,8 +33,6 @@ export interface IFeatureUsageDailyRepository {
   markOnce(count: FeatureUsageCount): Promise<void>;
   /** Menor dia gravado (das chaves informadas, ou de todas), `null` sem linha. */
   oldestDay(keys?: readonly string[]): Promise<string | null>;
-  /** Maior `updatedAt` gravado, `null` sem linha. */
-  latestUpdate(): Promise<Date | null>;
   /** Apaga `day < before` em lotes curtos; devolve quantas linhas saíram. */
   purgeBefore(before: string): Promise<number>;
 }

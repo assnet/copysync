@@ -1,4 +1,5 @@
-import { UsageMetricsRangeInvalidError } from '../../../../shared/errors/internal/UsageMetricsErrors';
+import { UsageMetricsRangeInvalidError, UsageMetricsReadUnavailableError } from '../../../../shared/errors/internal/UsageMetricsErrors';
+import { logger } from '../../../../shared/logger/logger';
 import type { IFeatureUsageReader } from '../../domain/contracts/IFeatureUsageReader';
 import type { IFeatureUsageRollupStateRepository } from '../../domain/contracts/IFeatureUsageRollupStateRepository';
 import type { IUsageReadGate, UsageReadBudget } from '../../domain/contracts/IUsageReadGate';
@@ -30,6 +31,8 @@ export const USAGE_LIVE_MAX_DAYS = 90;
 export const USAGE_DAILY_MAX_DAYS = 400;
 /** Acima disto a leitura nunca é por dia (o schema já recusa `day`; aqui é a segunda trava). */
 export const USAGE_DAY_ROWS_MAX_DAYS = 90;
+/** O agregado só vale se o último tick bem-sucedido do job tiver menos que isto (job parado ou falhando = velho). */
+export const USAGE_DAILY_FRESH_MS = 45 * 60_000;
 
 /** De onde vieram os números dos recursos `LIVE`. */
 export type FeatureUsageResponseSource = 'live' | 'daily';
@@ -81,6 +84,8 @@ export interface FeatureUsageDeps {
   gate: IUsageReadGate;
   now?: () => Date;
   catalog?: readonly FeatureUsageDefinition[];
+  /** Aviso quando o agregado está velho e a leitura cai para a fonte viva. */
+  log?: { warn(obj: object, msg: string): void };
 }
 
 export function toUsageFilters(input: FeatureUsageQueryInput): FeatureUsageFilters {
@@ -143,23 +148,40 @@ export function resolveUsageRequestPeriod(input: FeatureUsageQueryInput, now: Da
 }
 
 /**
- * Fonte do pedido (design §4.4/§4.5): agregado quando o marco do backfill existe e o período começa em
- * `backfilledFrom` ou depois; senão sob demanda. Valida o teto da fonte (90 ou 400 dias) e que acima de 90 dias
- * a granularidade não é dia.
+ * Fonte do pedido (design §4.4/§4.5). O agregado cobre o período quando o marco do backfill existe e o período
+ * começa em `backfilledFrom` ou depois. E só vale fresco:
+ * `lastSuccessAt` do job há menos de 45 min. Cobre mas está velho (job desligado ou falhando): até 90 dias cai para a
+ * fonte viva com log `warn`; acima, 503 de leitura indisponível — nunca agregado velho em silêncio. Valida o teto da
+ * fonte (90 ou 400 dias) e que acima de 90 dias a granularidade não é dia.
  */
 export async function chooseUsageSource(
   deps: FeatureUsageDeps,
   period: UsagePeriod,
   budget: UsageReadBudget,
-): Promise<{ source: FeatureUsageResponseSource; maxDays: number; completedAt: Date | null; cutovers: FeatureUsageCutovers }> {
+  now: Date = (deps.now ?? (() => new Date()))(),
+): Promise<{ source: FeatureUsageResponseSource; maxDays: number; freshAt: Date; cutovers: FeatureUsageCutovers }> {
   const state = deps.dailyReader && deps.rollupState ? await deps.rollupState.get(budget) : null;
-  const daily = !!state?.backfillCompletedAt && !!state.backfilledFrom && period.from >= state.backfilledFrom;
+  const cutovers = state?.cutovers ?? {};
+  const covers =
+    !!state?.backfillCompletedAt &&
+    !!state.backfilledFrom &&
+    period.from >= state.backfilledFrom;
+  const lastSuccessAt = state?.lastSuccessAt ?? null;
+  const fresh = lastSuccessAt !== null && now.getTime() - lastSuccessAt.getTime() < USAGE_DAILY_FRESH_MS;
+  if (covers && !fresh) {
+    if (period.days > USAGE_LIVE_MAX_DAYS) throw new UsageMetricsReadUnavailableError();
+    (deps.log ?? logger).warn(
+      { lastSuccessAt: lastSuccessAt?.toISOString() ?? null, days: period.days },
+      'feature usage daily aggregate stale, reading live sources',
+    );
+  }
+  const daily = covers && fresh;
   const maxDays = daily ? USAGE_DAILY_MAX_DAYS : USAGE_LIVE_MAX_DAYS;
   if (period.days > maxDays) throw new UsageMetricsRangeInvalidError(`range above ${maxDays} days`, maxDays);
   if (period.granularity === 'day' && period.days > USAGE_DAY_ROWS_MAX_DAYS) {
     throw new UsageMetricsRangeInvalidError(`granularity day allows at most ${USAGE_DAY_ROWS_MAX_DAYS} days`, maxDays);
   }
-  return { source: daily ? 'daily' : 'live', maxDays, completedAt: state?.backfillCompletedAt ?? null, cutovers: state?.cutovers ?? {} };
+  return { source: daily ? 'daily' : 'live', maxDays, freshAt: daily ? lastSuccessAt! : now, cutovers };
 }
 
 /** Menor dia não nulo. */
@@ -183,7 +205,7 @@ export async function readUsageRows(
     budget: UsageReadBudget;
     cutovers: FeatureUsageCutovers;
   },
-): Promise<{ rows: FeatureUsageRow[]; firstDataDay: Record<string, string | null>; latestUpdate: Date | null }> {
+): Promise<{ rows: FeatureUsageRow[]; firstDataDay: Record<string, string | null> }> {
   const window = { from: input.from, toExclusive: input.toExclusive, currentFrom: input.currentFrom, granularity: input.granularity, budget: input.budget };
   const firstDataDay: Record<string, string | null> = {};
   for (const f of input.features) firstDataDay[f.key] = null;
@@ -191,7 +213,7 @@ export async function readUsageRows(
   if (input.source === 'daily') {
     const read = await deps.dailyReader!.read({ ...window, featureKeys: input.features.map((f) => f.key) });
     for (const f of input.features) firstDataDay[f.key] = read.firstDataDay[f.key] ?? null;
-    return { rows: read.rows, firstDataDay, latestUpdate: read.latestUpdate ?? null };
+    return { rows: read.rows, firstDataDay };
   }
 
   const { cutovers } = input;
@@ -220,7 +242,7 @@ export async function readUsageRows(
     }
     for (const f of counted) firstDataDay[f.key] = earliest(firstDataDay[f.key], rec.firstDataDay[f.key]);
   }
-  return { rows, firstDataDay, latestUpdate: null };
+  return { rows, firstDataDay };
 }
 
 /**
@@ -235,7 +257,7 @@ export async function readFeatureUsage(
   const now = (deps.now ?? (() => new Date()))();
   const period = resolveUsageRequestPeriod(input, now, usageMaxDaysFor(deps));
   return deps.gate.runExclusive(async (budget) => {
-    const chosen = await chooseUsageSource(deps, period, budget);
+    const chosen = await chooseUsageSource(deps, period, budget, now);
     const read = await readUsageRows(deps, {
       features,
       from: period.previousFromInstant,
@@ -254,7 +276,7 @@ export async function readFeatureUsage(
       firstDataDay: read.firstDataDay,
       tenants,
       source: chosen.source,
-      freshAt: chosen.source === 'daily' ? (read.latestUpdate ?? chosen.completedAt ?? now) : now,
+      freshAt: chosen.freshAt,
       maxDays: chosen.maxDays,
       cutovers: chosen.cutovers,
     };

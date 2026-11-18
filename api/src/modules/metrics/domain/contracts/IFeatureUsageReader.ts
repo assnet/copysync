@@ -24,8 +24,6 @@ export interface FeatureUsageReadResult {
   rows: FeatureUsageRow[];
   /** Primeiro dia com dado de cada recurso pedido (Brasília), `null` sem dado. Sem filtro de período. */
   firstDataDay: Partial<Record<FeatureUsageKey, string | null>>;
-  /** Só o agregado: maior `updatedAt` gravado (`null` com a tabela vazia). */
-  latestUpdate?: Date | null;
 }
 
 /** Linhas de uso por dia × conta × recurso × tipo. Só contagem: nada de conteúdo nem `userId`. */
