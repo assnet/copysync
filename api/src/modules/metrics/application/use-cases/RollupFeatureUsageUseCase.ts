@@ -10,6 +10,7 @@ import {
   FEATURE_USAGE_CATALOG,
   findFeature,
   sourceOn,
+  type FeatureUsageCutovers,
   type FeatureUsageDefinition,
   type FeatureUsageKey,
 } from '../../domain/services/featureUsageCatalog';
@@ -62,14 +63,16 @@ type GroupRead = { keys: string[]; rows: FeatureUsageRow[]; firstDataDay: Record
  *    (limitado à retenção). O cursor e o marco ficam em `platform_settings`; o marco só é gravado na execução que
  *    termina. Falha numa fonte = o cursor não anda (o passo se repete, idempotente);
  * 3. retenção de 400 dias, 1×/24 h (lease que não é solto).
- * Nunca grava recurso `RECORDED` nem dia a partir da data de corte (`recordedFrom`): só as chaves permitidas no dia
- * entram em `keys` do `replaceDay`, e o que não está lá não é tocado.
+ * Nunca grava recurso `RECORDED` nem dia a partir do corte gravado pelo contador (`cutovers`, lido no início do
+ * tick): só as chaves permitidas no dia entram em `keys` do `replaceDay`, e o que não está lá não é tocado.
  */
 export class RollupFeatureUsageUseCase {
   private readonly ownerId: string;
   private readonly catalog: readonly FeatureUsageDefinition[];
   private readonly groups: readonly (readonly string[])[];
   private readonly log: RollupLogger;
+  /** Cortes lidos no início do tick (o tick só toca hoje e dias anteriores; corte novo é sempre ≥ amanhã). */
+  private cutovers: FeatureUsageCutovers = {};
 
   constructor(private readonly deps: RollupFeatureUsageDeps) {
     this.ownerId = deps.ownerId ?? randomUUID();
@@ -85,10 +88,10 @@ export class RollupFeatureUsageUseCase {
     return this.deps.now?.() ?? new Date();
   }
 
-  /** O job pode gravar `key` em `day`: recurso `LIVE` e o dia antes da data de corte, se houver. */
+  /** O job pode gravar `key` em `day`: recurso `LIVE` e o dia antes do corte gravado, se houver. */
   private writable(key: string, day: string): boolean {
     const f = findFeature(key, this.catalog);
-    return !!f && f.source === 'LIVE' && sourceOn(f, day) === 'LIVE';
+    return !!f && f.source === 'LIVE' && sourceOn(f, day, this.cutovers) === 'LIVE';
   }
 
   async execute(): Promise<RollupFeatureUsageResult> {
@@ -97,6 +100,7 @@ export class RollupFeatureUsageUseCase {
     const until = new Date(now.getTime() + FEATURE_USAGE_ROLLUP_LEASE_TTL_MS);
     if (!(await lease.tryAcquire(FEATURE_USAGE_ROLLUP_LEASE, this.ownerId, until, now))) return { status: 'skipped' };
     try {
+      this.cutovers = (await this.deps.state.get()).cutovers;
       const today = dayInZone(now);
       const recent = await this.consolidate([addDays(today, -1), today], null);
       const backfill = await this.backfillStep(today, now);

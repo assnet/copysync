@@ -75,9 +75,10 @@ describe('catálogo de recursos medidos', () => {
     for (const f of saver) expect(f.product).toBe('SAVER');
   });
 
-  it('não tem recurso gravado sem data de corte', () => {
+  it('início do contador coerente com a fonte: RECORDED = FIRST_WRITE, LIVE só CUTOVER; nunca data fixa', () => {
     for (const f of FEATURE_USAGE_CATALOG) {
-      if (f.source === 'RECORDED') expect(f.recordedFrom).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      if (f.source === 'RECORDED') expect(f.recordedFrom, f.key).toBe('FIRST_WRITE');
+      else expect([undefined, 'CUTOVER'], f.key).toContain(f.recordedFrom);
     }
     // P2: só o Story ganha corte (fonte viva antes dele) e o chat nasce só do contador
     const withCut = FEATURE_USAGE_CATALOG.filter((f) => f.recordedFrom !== undefined).map((f) => [f.key, f.source, f.phase]);
@@ -123,18 +124,19 @@ describe('catálogo de recursos medidos', () => {
     expect(keys(featuresFor({ product: 'CHAT' }))).toEqual(['chat_send']);
   });
 
-  it('escolhe a fonte pela data de corte', () => {
+  it('escolhe a fonte pelo corte gravado', () => {
     const story = findFeature('offer_story')!;
-    expect(sourceOn(story, '2026-11-18')).toBe('LIVE');
-    expect(sourceOn(story, '2026-11-19')).toBe('RECORDED');
-    expect(sourceOn(findFeature('chat_send')!, '2026-11-18')).toBe('LIVE'); // antes do corte: nada a contar
+    // Sem corte gravado: o Story é inteiro da fonte viva
+    expect(sourceOn(story, '2030-01-01')).toBe('LIVE');
+    const cut = { offer_story: '2026-11-19' };
+    expect(sourceOn(story, '2026-11-18', cut)).toBe('LIVE');
+    expect(sourceOn(story, '2026-11-19', cut)).toBe('RECORDED');
+    expect(sourceOn(story, '2027-01-10', cut)).toBe('RECORDED');
+    // Só do contador: sempre RECORDED, com ou sem corte
+    expect(sourceOn(findFeature('chat_send')!, '2020-01-01')).toBe('RECORDED');
+    expect(sourceOn(findFeature('chat_send')!, '2020-01-01', { chat_send: '2030-01-01' })).toBe('RECORDED');
     const base: FeatureUsageDefinition = { ...story, recordedFrom: undefined };
-    const withCut: FeatureUsageDefinition = { ...base, source: 'RECORDED', recordedFrom: '2026-12-01' };
-    expect(sourceOn(withCut, '2026-11-30')).toBe('LIVE');
-    expect(sourceOn(withCut, '2026-12-01')).toBe('RECORDED');
-    expect(sourceOn(withCut, '2027-01-10')).toBe('RECORDED');
-    expect(sourceOn(base, '2026-11-30')).toBe('LIVE');
-    expect(sourceOn({ ...base, source: 'RECORDED' }, '2026-11-30')).toBe('RECORDED');
+    expect(sourceOn(base, '2026-11-30', cut)).toBe('LIVE');
   });
 
   it('não depende de Prisma nem de Fastify', () => {

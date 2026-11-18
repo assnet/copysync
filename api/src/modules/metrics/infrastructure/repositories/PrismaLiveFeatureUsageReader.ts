@@ -5,8 +5,6 @@ import type { UsageReadBudget } from '../../domain/contracts/IUsageReadGate';
 import type { FeatureUsageRow } from '../../domain/services/aggregateFeatureUsage';
 import {
   FEATURE_USAGE_CATALOG,
-  findFeature,
-  sourceOn,
   type FeatureUsageKey,
   type FeatureUsageKind,
 } from '../../domain/services/featureUsageCatalog';
@@ -241,8 +239,6 @@ export class PrismaLiveFeatureUsageReader implements IFeatureUsageReader {
       for (const r of raw) {
         const classified = source.classify(r);
         if (!classified || !wanted.has(classified.featureKey)) continue;
-        const feature = findFeature(classified.featureKey, FEATURE_USAGE_CATALOG);
-        if (feature && sourceOn(feature, String(r.day)) !== 'LIVE') continue; // dia do contador (P2)
         rows.push(toFeatureUsageRow(r, classified));
       }
       if (rows.length > LIVE_USAGE_ROW_GUARD) throw new UsageMetricsReadUnavailableError();

@@ -257,11 +257,16 @@ describe('motivos de cobertura do período', () => {
     expect(full.retentionDays).toBeNull();
   });
 
-  it('story deixa de ser parcial a partir da data de corte', () => {
-    const catalog = FEATURE_USAGE_CATALOG.map((f) => (f.key === 'offer_story' ? { ...f, source: 'RECORDED' as const, recordedFrom: '2026-10-01' } : f));
-    expect(feature(run([], { catalog }), 'offer_story').coverageReasons).toEqual([]);
-    const late = FEATURE_USAGE_CATALOG.map((f) => (f.key === 'offer_story' ? { ...f, source: 'RECORDED' as const, recordedFrom: '2026-11-01' } : f));
-    expect(feature(run([], { catalog: late }), 'offer_story').coverageReasons).toEqual(['AI_HEADLINE_ONLY']);
+  it('story deixa de ser parcial a partir do corte gravado; sem corte gravado é parcial', () => {
+    expect(feature(run([]), 'offer_story').coverageReasons).toEqual(['AI_HEADLINE_ONLY']);
+    expect(feature(run([], { cutovers: { offer_story: '2026-10-01' } }), 'offer_story').coverageReasons).toEqual([]);
+    expect(feature(run([], { cutovers: { offer_story: '2026-11-01' } }), 'offer_story').coverageReasons).toEqual(['AI_HEADLINE_ONLY']);
+  });
+
+  it('recurso só do contador: dataFrom = primeiro dia gravado (sem data fixa)', () => {
+    const out = run([], { firstDataDay: { ...FIRST, chat_send: '2026-10-20' } });
+    expect(feature(out, 'chat_send')).toMatchObject({ firstDataDay: '2026-10-20', dataFrom: '2026-10-20' });
+    expect(feature(run([], { firstDataDay: { ...FIRST, chat_send: null } }), 'chat_send').dataFrom).toBeNull();
   });
 });
 

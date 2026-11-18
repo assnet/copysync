@@ -49,9 +49,12 @@ export function listFeatureUsageTenantsUseCase(): ListFeatureUsageTenantsUseCase
   return (listTenants ??= new ListFeatureUsageTenantsUseCase({ ...featureUsageDeps(), audit: new PrismaAuditLogRepository() }));
 }
 
-/** Contador de uso (Story, chat): grava em `feature_usage_daily` a partir da data de corte de cada recurso. */
+/** Contador de uso (Story, chat): grava em `feature_usage_daily` desde a primeira escrita (ou do corte gravado, recurso `CUTOVER`). */
 export function featureUsageRecorder(): IFeatureUsageRecorder {
-  return (recorder ??= new RecordFeatureUsageUseCase({ daily: new PrismaFeatureUsageDailyRepository(prisma) }));
+  return (recorder ??= new RecordFeatureUsageUseCase({
+    daily: new PrismaFeatureUsageDailyRepository(prisma),
+    cutovers: new PrismaFeatureUsageRollupStateRepository(prisma),
+  }));
 }
 
 /**

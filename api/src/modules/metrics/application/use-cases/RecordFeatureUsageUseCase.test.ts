@@ -3,8 +3,19 @@ import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { FeatureUsageCount } from '../../domain/contracts/IFeatureUsageDailyRepository';
 import { recordFeatureUsage } from '../../domain/contracts/IFeatureUsageRecorder';
-import { CHAT_SEND_RECORDED_FROM, OFFER_STORY_RECORDED_FROM, findFeature } from '../../domain/services/featureUsageCatalog';
+import { findFeature } from '../../domain/services/featureUsageCatalog';
 import { RecordFeatureUsageUseCase } from './RecordFeatureUsageUseCase';
+
+/** Corte em `platform_settings`: grava uma vez (primeira chamada vence), como o `ON CONFLICT` do real. */
+class FakeCutovers {
+  stored = new Map<string, string>();
+  claims: Array<[string, string]> = [];
+  async claimCutover(key: string, day: string): Promise<string> {
+    this.claims.push([key, day]);
+    if (!this.stored.has(key)) this.stored.set(key, day);
+    return this.stored.get(key)!;
+  }
+}
 
 function setup(fail = false) {
   const written: Array<{ op: string; count: FeatureUsageCount }> = [];
@@ -18,36 +29,55 @@ function setup(fail = false) {
     }),
   };
   const log = { warn: vi.fn() };
-  return { written, log, daily, recorder: new RecordFeatureUsageUseCase({ daily, log }) };
+  const cutovers = new FakeCutovers();
+  return { written, log, daily, cutovers, recorder: new RecordFeatureUsageUseCase({ daily, cutovers, log }) };
 }
 
 describe('RecordFeatureUsageUseCase', () => {
-  it('cortes da P2 no dia seguinte ao deploy previsto; offer_story segue LIVE com corte, chat_send é RECORDED', () => {
-    expect(OFFER_STORY_RECORDED_FROM).toBe('2026-11-19');
-    expect(CHAT_SEND_RECORDED_FROM).toBe('2026-11-19');
-    expect(findFeature('offer_story')).toMatchObject({ source: 'LIVE', recordedFrom: OFFER_STORY_RECORDED_FROM });
-    expect(findFeature('chat_send')).toMatchObject({ source: 'RECORDED', recordedFrom: CHAT_SEND_RECORDED_FROM, product: 'CHAT' });
+  it('sem data fixa: offer_story é LIVE com corte gravado, chat_send é RECORDED desde a primeira escrita', () => {
+    expect(findFeature('offer_story')).toMatchObject({ source: 'LIVE', recordedFrom: 'CUTOVER' });
+    expect(findFeature('chat_send')).toMatchObject({ source: 'RECORDED', recordedFrom: 'FIRST_WRITE', product: 'CHAT' });
   });
 
-  it('no dia do corte (Brasília) grava só conta, chave, tipo e instante', async () => {
-    const { recorder, written } = setup();
-    const at = new Date('2026-11-19T15:00:00Z');
-    await recorder.increment({ tenantId: 't1', featureKey: 'offer_story', kind: 'ACTION', at });
+  it('chat_send conta desde a primeira escrita, sem gravar corte', async () => {
+    const { recorder, written, cutovers } = setup();
+    const at = new Date('2026-11-18T12:00:00Z');
     await recorder.increment({ tenantId: 't1', featureKey: 'chat_send', kind: 'ACTION', at });
-    expect(written).toEqual([
-      { op: 'increment', count: { tenantId: 't1', featureKey: 'offer_story', kind: 'ACTION', at } },
-      { op: 'increment', count: { tenantId: 't1', featureKey: 'chat_send', kind: 'ACTION', at } },
-    ]);
+    expect(written).toEqual([{ op: 'increment', count: { tenantId: 't1', featureKey: 'chat_send', kind: 'ACTION', at } }]);
+    expect(cutovers.claims).toEqual([]);
   });
 
-  it('véspera não grava: 00:30 UTC do dia do corte ainda é a véspera em Brasília', async () => {
-    const { recorder, written } = setup();
-    await recorder.increment({ tenantId: 't1', featureKey: 'offer_story', kind: 'ACTION', at: new Date('2026-11-18T18:00:00Z') });
-    await recorder.increment({ tenantId: 't1', featureKey: 'chat_send', kind: 'ACTION', at: new Date('2026-11-19T00:30:00Z') });
+  it('offer_story: a primeira escrita grava o corte = dia seguinte (Brasília) e não conta o dia dela; do corte em diante conta', async () => {
+    const { recorder, written, cutovers } = setup();
+    // 01:30 UTC do dia 19 = 22:30 do dia 18 em Brasília: corte = 19
+    await recorder.increment({ tenantId: 't1', featureKey: 'offer_story', kind: 'ACTION', at: new Date('2026-11-19T01:30:00Z') });
+    expect(cutovers.claims).toEqual([['offer_story', '2026-11-19']]);
+    await recorder.increment({ tenantId: 't1', featureKey: 'offer_story', kind: 'ACTION', at: new Date('2026-11-19T02:59:00Z') });
+    expect(written).toEqual([]); // ainda 18 em Brasília
+    const at = new Date('2026-11-19T03:00:00Z'); // 00:00 do dia 19
+    await recorder.increment({ tenantId: 't1', featureKey: 'offer_story', kind: 'ACTION', at });
+    expect(written).toEqual([{ op: 'increment', count: { tenantId: 't1', featureKey: 'offer_story', kind: 'ACTION', at } }]);
+    expect(cutovers.claims).toHaveLength(1); // o corte fica em memória depois de lido
+  });
+
+  it('corte já gravado por outro processo vale (não é regravado)', async () => {
+    const { recorder, written, cutovers } = setup();
+    cutovers.stored.set('offer_story', '2026-11-25');
+    await recorder.increment({ tenantId: 't1', featureKey: 'offer_story', kind: 'ACTION', at: new Date('2026-11-24T15:00:00Z') });
     expect(written).toEqual([]);
-    // 03:00 UTC = 00:00 de Brasília: já é o dia do corte
-    await recorder.increment({ tenantId: 't1', featureKey: 'chat_send', kind: 'ACTION', at: new Date('2026-11-19T03:00:00Z') });
+    await recorder.increment({ tenantId: 't1', featureKey: 'offer_story', kind: 'ACTION', at: new Date('2026-11-25T15:00:00Z') });
     expect(written).toHaveLength(1);
+    expect(cutovers.stored.get('offer_story')).toBe('2026-11-25');
+  });
+
+  it('falha ao gravar o corte não conta e vira warn; a próxima chamada tenta de novo', async () => {
+    const { recorder, written, cutovers, log } = setup();
+    const claim = vi.spyOn(cutovers, 'claimCutover').mockRejectedValueOnce(new Error('db'));
+    await recorder.increment({ tenantId: 't1', featureKey: 'offer_story', kind: 'ACTION', at: new Date('2026-11-24T15:00:00Z') });
+    expect(written).toEqual([]);
+    expect(log.warn).toHaveBeenCalledTimes(1);
+    await recorder.increment({ tenantId: 't1', featureKey: 'offer_story', kind: 'ACTION', at: new Date('2026-11-24T15:00:00Z') });
+    expect(claim).toHaveBeenCalledTimes(2);
   });
 
   it('recurso LIVE sem corte e chave fora do catálogo não gravam (são do rollup ou não existem)', async () => {

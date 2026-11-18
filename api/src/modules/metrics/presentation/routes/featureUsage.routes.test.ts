@@ -61,7 +61,7 @@ function mockReads() {
   const audit = vi.spyOn(PrismaAuditLogRepository.prototype, 'create').mockResolvedValue();
   // Sem marco do backfill: fonte viva; o agregado só responde pelos recursos do contador (vazio aqui)
   const state = vi.spyOn(PrismaFeatureUsageRollupStateRepository.prototype, 'get')
-    .mockResolvedValue({ backfillCompletedAt: null, backfilledFrom: null, backfillCursor: null });
+    .mockResolvedValue({ backfillCompletedAt: null, backfilledFrom: null, backfillCursor: null, cutovers: {} });
   const daily = vi.spyOn(PrismaDailyFeatureUsageReader.prototype, 'read').mockResolvedValue({ rows: [], firstDataDay: {}, latestUpdate: null });
   return { read, list, names, audit, state, daily };
 }
@@ -156,7 +156,7 @@ describe('GET /summary', () => {
 
   it('com o marco do backfill: 200 dias por semana respondem do agregado com teto 400', async () => {
     const { read, daily, state } = mockReads();
-    state.mockResolvedValue({ backfillCompletedAt: new Date('2026-11-10T00:00:00Z'), backfilledFrom: '2025-10-26', backfillCursor: null });
+    state.mockResolvedValue({ backfillCompletedAt: new Date('2026-11-10T00:00:00Z'), backfilledFrom: '2025-10-26', backfillCursor: null, cutovers: {} });
     daily.mockResolvedValue({ rows: [ROW], firstDataDay: { offer_generator: '2025-10-26' }, latestUpdate: new Date('2026-11-17T14:45:00Z') });
     const res = await app.inject({ method: 'GET', url: `${URL}/summary?from=2026-05-02&to=2026-11-17&granularity=week` });
     expect(res.statusCode).toBe(200);

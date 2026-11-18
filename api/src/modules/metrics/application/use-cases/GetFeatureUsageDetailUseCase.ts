@@ -101,6 +101,7 @@ export class GetFeatureUsageDetailUseCase {
       filters,
       now: read.now,
       source: read.source,
+      cutovers: read.cutovers,
     });
     const item = agg.features[0];
     if (!item) throw new UsageMetricsFeatureNotFoundError();

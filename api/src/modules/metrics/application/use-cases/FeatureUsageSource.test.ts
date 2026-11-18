@@ -12,8 +12,8 @@ import { FakeClock, FakeFeatureUsageReader, FakeUsageReadGate, FakeUsageTenantDi
 
 const NOW = new Date('2026-12-20T15:00:00.000Z'); // 12:00 em Brasília
 const FRESH = new Date('2026-12-20T14:45:00.000Z');
-const MARKER: FeatureUsageRollupState = { backfillCompletedAt: new Date('2026-11-20T10:00:00Z'), backfilledFrom: '2025-10-26', backfillCursor: null };
-const NO_MARKER: FeatureUsageRollupState = { backfillCompletedAt: null, backfilledFrom: null, backfillCursor: null };
+const MARKER: FeatureUsageRollupState = { backfillCompletedAt: new Date('2026-11-20T10:00:00Z'), backfilledFrom: '2025-10-26', backfillCursor: null, cutovers: {} };
+const NO_MARKER: FeatureUsageRollupState = { backfillCompletedAt: null, backfilledFrom: null, backfillCursor: null, cutovers: {} };
 const INPUT: FeatureUsageQueryInput = {
   from: '2026-11-21',
   to: '2026-12-20',
@@ -44,13 +44,14 @@ function setup(state: FeatureUsageRollupState, dailyRows: FeatureUsageRow[] = []
 }
 
 describe('escolha da fonte', () => {
-  it('sem marco cai em live mesmo com linhas no agregado; o agregado só responde pelos recursos com corte', async () => {
+  it('sem marco cai em live mesmo com linhas no agregado; o agregado só responde pelos recursos do contador', async () => {
     const s = setup(NO_MARKER, [usageRow('2026-12-01', 't1', 'offer_generator', 'ACTION', 9), usageRow('2026-12-01', 't1', 'chat_send', 'ACTION', 2)]);
     const out = await s.summary.execute(INPUT);
     expect(out).toMatchObject({ source: 'live', freshAt: NOW, range: { maxDays: 90 } });
     expect(s.rollupState.get).toHaveBeenCalledWith(s.gate.budgets[0]);
     expect(s.live.calls[0]!.featureKeys).not.toContain('chat_send');
-    expect([...s.daily.calls[0]!.featureKeys].sort()).toEqual(['chat_send', 'offer_story']);
+    // Story sem corte gravado é inteiro da fonte viva: o agregado só lê o chat
+    expect([...s.daily.calls[0]!.featureKeys].sort()).toEqual(['chat_send']);
     expect(out.features.find((f) => f.key === 'offer_generator')!.uses).toBe(0); // a linha do agregado não entrou
     expect(out.features.find((f) => f.key === 'chat_send')).toMatchObject({ uses: 2, dataFrom: '2026-11-19', firstDataDay: '2026-11-19' });
   });
@@ -119,17 +120,38 @@ describe('cobertura com agregado', () => {
     expect(out.features[0]).toMatchObject({ coverageReasons: ['EXISTING_ONLY'], dataFrom: '2026-09-25' });
   });
 
-  it('Story em fonte viva soma a fonte viva antes do corte e o contador a partir dele', async () => {
+  it('Story em fonte viva soma a fonte viva antes do corte gravado e o contador a partir dele', async () => {
     const s = setup(
-      NO_MARKER,
+      { ...NO_MARKER, cutovers: { offer_story: '2026-11-19' } },
       [usageRow('2026-11-18', 't1', 'offer_story', 'ACTION', 7), usageRow('2026-11-20', 't1', 'offer_story', 'ACTION', 2)],
       [usageRow('2026-11-18', 't2', 'offer_story', 'ACTION', 1)],
     );
     const out = await s.summary.execute({ ...INPUT, from: '2026-11-18', granularity: 'week' });
     const story = out.features.find((f) => f.key === 'offer_story')!;
     expect(story).toMatchObject({ uses: 3, activeTenants: 2, coverageReasons: ['AI_HEADLINE_ONLY'] });
-    // Linha por dia no agregado mesmo com série semanal: o recorte pela data de corte é exato
+    // Linha por dia no agregado mesmo com série semanal: o recorte pelo corte é exato
     expect(s.daily.calls[0]!.granularity).toBe('day');
+  });
+
+  it('Story sem corte gravado: inteiro da fonte viva, linha do agregado ignorada', async () => {
+    const s = setup(
+      NO_MARKER,
+      [usageRow('2026-11-20', 't1', 'offer_story', 'ACTION', 2)],
+      [usageRow('2026-11-18', 't2', 'offer_story', 'ACTION', 1), usageRow('2026-11-20', 't2', 'offer_story', 'ACTION', 4)],
+    );
+    const out = await s.summary.execute({ ...INPUT, from: '2026-11-18', granularity: 'week' });
+    expect(out.features.find((f) => f.key === 'offer_story')).toMatchObject({ uses: 5, activeTenants: 1, coverageReasons: ['AI_HEADLINE_ONLY'] });
+    expect(s.daily.calls.every((c) => !c.featureKeys.includes('offer_story'))).toBe(true);
+  });
+
+  it('com corte gravado a linha viva do dia do corte em diante não conta', async () => {
+    const s = setup(
+      { ...NO_MARKER, cutovers: { offer_story: '2026-11-19' } },
+      [],
+      [usageRow('2026-11-18', 't2', 'offer_story', 'ACTION', 1), usageRow('2026-11-20', 't2', 'offer_story', 'ACTION', 4)],
+    );
+    const out = await s.summary.execute({ ...INPUT, from: '2026-11-18', granularity: 'week' });
+    expect(out.features.find((f) => f.key === 'offer_story')).toMatchObject({ uses: 1 });
   });
 });
 

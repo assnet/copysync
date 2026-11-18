@@ -1,13 +1,15 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '../../../../shared/database/prisma.client';
 import {
+  FEATURE_USAGE_CUTOVER_SETTINGS_KEY,
   FEATURE_USAGE_ROLLUP_SETTINGS_KEY,
   PrismaFeatureUsageRollupStateRepository,
 } from './PrismaFeatureUsageRollupStateRepository';
 import { createReadBudget } from './featureUsageReadTimeout';
 
 /** Marco do backfill em `platform_settings` contra o Postgres descartável. */
-const clean = () => prisma.platformSetting.deleteMany({ where: { key: FEATURE_USAGE_ROLLUP_SETTINGS_KEY } });
+const clean = () =>
+  prisma.platformSetting.deleteMany({ where: { key: { in: [FEATURE_USAGE_ROLLUP_SETTINGS_KEY, FEATURE_USAGE_CUTOVER_SETTINGS_KEY] } } });
 
 beforeEach(clean);
 afterAll(async () => {
@@ -21,6 +23,7 @@ describe('PrismaFeatureUsageRollupStateRepository', () => {
       backfillCompletedAt: null,
       backfilledFrom: null,
       backfillCursor: null,
+      cutovers: {},
     });
   });
 
@@ -31,6 +34,7 @@ describe('PrismaFeatureUsageRollupStateRepository', () => {
       backfillCompletedAt: null,
       backfilledFrom: null,
       backfillCursor: '2026-11-08',
+      cutovers: {},
     });
 
     const done = new Date('2026-11-17T10:15:00.123Z');
@@ -38,9 +42,9 @@ describe('PrismaFeatureUsageRollupStateRepository', () => {
     expect(await writer.markBackfillCompleted({ completedAt: new Date('2026-11-18T00:00:00Z'), backfilledFrom: '2026-01-01' })).toBe(false);
 
     const other = new PrismaFeatureUsageRollupStateRepository(prisma);
-    expect(await other.get()).toEqual({ backfillCompletedAt: done, backfilledFrom: '2026-10-26', backfillCursor: '2026-11-08' });
+    expect(await other.get()).toEqual({ backfillCompletedAt: done, backfilledFrom: '2026-10-26', backfillCursor: '2026-11-08', cutovers: {} });
     // Leitura do painel: mesma resposta, dentro do orçamento do pedido
-    expect(await other.get(createReadBudget())).toEqual({ backfillCompletedAt: done, backfilledFrom: '2026-10-26', backfillCursor: '2026-11-08' });
+    expect(await other.get(createReadBudget())).toEqual({ backfillCompletedAt: done, backfilledFrom: '2026-10-26', backfillCursor: '2026-11-08', cutovers: {} });
     const row = await prisma.platformSetting.findUnique({ where: { key: FEATURE_USAGE_ROLLUP_SETTINGS_KEY } });
     expect(row?.updatedById).toBeNull();
     expect(row?.updatedAt.toISOString()).toBe('2026-11-17T10:00:00.000Z');
@@ -51,6 +55,21 @@ describe('PrismaFeatureUsageRollupStateRepository', () => {
     const repo = new PrismaFeatureUsageRollupStateRepository(prisma);
     expect((await repo.get()).backfillCursor).toBeNull();
     await repo.saveBackfillCursor('2026-11-01');
+    expect((await repo.get()).backfillCursor).toBe('2026-11-01');
+  });
+
+  it('corte do contador: gravado uma vez de forma atômica (corrida de 10), lido com o estado numa instrução', async () => {
+    const repo = new PrismaFeatureUsageRollupStateRepository(prisma);
+    const days = Array.from({ length: 10 }, (_, i) => `2026-11-${String(19 + i).padStart(2, '0')}`);
+    const got = await Promise.all(days.map((d) => repo.claimCutover('offer_story', d)));
+    expect(new Set(got).size).toBe(1);
+    const winner = got[0]!;
+    expect(days).toContain(winner);
+    expect(await repo.claimCutover('offer_story', '2027-01-01')).toBe(winner);
+    // Outra chave entra sem mexer na primeira
+    expect(await repo.claimCutover('view:home', '2026-12-01')).toBe('2026-12-01');
+    await repo.saveBackfillCursor('2026-11-01');
+    expect((await repo.get(createReadBudget())).cutovers).toEqual({ offer_story: winner, 'view:home': '2026-12-01' });
     expect((await repo.get()).backfillCursor).toBe('2026-11-01');
   });
 });

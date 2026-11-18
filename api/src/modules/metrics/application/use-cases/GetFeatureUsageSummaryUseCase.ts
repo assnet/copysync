@@ -13,11 +13,13 @@ import {
 } from '../../domain/services/aggregateFeatureUsage';
 import {
   FEATURE_USAGE_CATALOG,
+  type FeatureUsageCutovers,
   type FeatureUsageDefinition,
   type FeatureUsageKey,
   type FeatureUsageKind,
   type FeatureUsageProduct,
   featuresFor,
+  isCounted,
   sourceOn,
 } from '../../domain/services/featureUsageCatalog';
 import { USAGE_TIME_ZONE, type UsageGranularity, type UsagePeriod, resolveUsagePeriod } from '../../domain/services/featureUsagePeriod';
@@ -123,6 +125,8 @@ export interface FeatureUsageRead {
   freshAt: Date;
   /** Teto em vigor para a fonte escolhida (`range.maxDays`). */
   maxDays: number;
+  /** Cortes gravados pelo contador (lidos com o marco). */
+  cutovers: FeatureUsageCutovers;
 }
 
 /** Maior teto possível com estas dependências: sem agregado montado, 90 dias; com ele, 400 (o marco decide na vaga). */
@@ -147,7 +151,7 @@ export async function chooseUsageSource(
   deps: FeatureUsageDeps,
   period: UsagePeriod,
   budget: UsageReadBudget,
-): Promise<{ source: FeatureUsageResponseSource; maxDays: number; completedAt: Date | null }> {
+): Promise<{ source: FeatureUsageResponseSource; maxDays: number; completedAt: Date | null; cutovers: FeatureUsageCutovers }> {
   const state = deps.dailyReader && deps.rollupState ? await deps.rollupState.get(budget) : null;
   const daily = !!state?.backfillCompletedAt && !!state.backfilledFrom && period.from >= state.backfilledFrom;
   const maxDays = daily ? USAGE_DAILY_MAX_DAYS : USAGE_LIVE_MAX_DAYS;
@@ -155,7 +159,7 @@ export async function chooseUsageSource(
   if (period.granularity === 'day' && period.days > USAGE_DAY_ROWS_MAX_DAYS) {
     throw new UsageMetricsRangeInvalidError(`granularity day allows at most ${USAGE_DAY_ROWS_MAX_DAYS} days`, maxDays);
   }
-  return { source: daily ? 'daily' : 'live', maxDays, completedAt: state?.backfillCompletedAt ?? null };
+  return { source: daily ? 'daily' : 'live', maxDays, completedAt: state?.backfillCompletedAt ?? null, cutovers: state?.cutovers ?? {} };
 }
 
 /** Menor dia não nulo. */
@@ -164,8 +168,8 @@ const earliest = (a: string | null | undefined, b: string | null | undefined): s
 
 /**
  * Linhas dos recursos na janela `[from, toExclusive)`. Agregado: uma leitura de tudo. Sob demanda: os recursos
- * `LIVE` nas tabelas de domínio (sem os dias a partir da data de corte) e os que têm data de corte no agregado
- * (só os dias do contador): recurso `RECORDED` sempre vem do agregado.
+ * `LIVE` nas tabelas de domínio (sem os dias a partir do corte gravado) e os do contador no agregado (só os dias do
+ * contador): recurso `RECORDED` sempre vem do agregado; `CUTOVER` sem corte gravado é inteiro da fonte viva.
  */
 export async function readUsageRows(
   deps: FeatureUsageDeps,
@@ -177,6 +181,7 @@ export async function readUsageRows(
     granularity: UsageGranularity;
     source: FeatureUsageResponseSource;
     budget: UsageReadBudget;
+    cutovers: FeatureUsageCutovers;
   },
 ): Promise<{ rows: FeatureUsageRow[]; firstDataDay: Record<string, string | null>; latestUpdate: Date | null }> {
   const window = { from: input.from, toExclusive: input.toExclusive, currentFrom: input.currentFrom, granularity: input.granularity, budget: input.budget };
@@ -189,21 +194,29 @@ export async function readUsageRows(
     return { rows: read.rows, firstDataDay, latestUpdate: read.latestUpdate ?? null };
   }
 
+  const { cutovers } = input;
+  const byKey = new Map<string, FeatureUsageDefinition>(input.features.map((f) => [f.key, f]));
   const liveKeys = input.features.filter((f) => f.source === 'LIVE').map((f) => f.key);
-  const counted = deps.dailyReader ? input.features.filter((f) => f.recordedFrom !== undefined) : [];
+  // `CUTOVER` sem corte gravado: nada do contador a ler
+  const counted = deps.dailyReader
+    ? input.features.filter((f) => isCounted(f) && (f.recordedFrom !== 'CUTOVER' || cutovers[f.key] !== undefined))
+    : [];
   const rows: FeatureUsageRow[] = [];
   if (liveKeys.length > 0 || counted.length === 0) {
+    // O leitor sob demanda devolve linha por dia: o dia do contador sai aqui
     const live = await deps.reader.read({ ...window, featureKeys: liveKeys });
-    rows.push(...live.rows);
+    for (const r of live.rows) {
+      const f = byKey.get(r.featureKey);
+      if (!f || sourceOn(f, r.day, cutovers) === 'LIVE') rows.push(r);
+    }
     for (const k of liveKeys) firstDataDay[k] = live.firstDataDay[k] ?? null;
   }
   if (counted.length > 0) {
-    // Fonte viva = até 90 dias: linha por dia, e o recorte pela data de corte é exato
-    const byKey = new Map<string, FeatureUsageDefinition>(counted.map((f) => [f.key, f]));
+    // Fonte viva = até 90 dias: linha por dia, e o recorte pelo corte é exato
     const rec = await deps.dailyReader!.read({ ...window, granularity: 'day', featureKeys: counted.map((f) => f.key as FeatureUsageKey) });
     for (const r of rec.rows) {
       const f = byKey.get(r.featureKey);
-      if (f && sourceOn(f, r.day) === 'RECORDED') rows.push(r);
+      if (f && sourceOn(f, r.day, cutovers) === 'RECORDED') rows.push(r);
     }
     for (const f of counted) firstDataDay[f.key] = earliest(firstDataDay[f.key], rec.firstDataDay[f.key]);
   }
@@ -231,6 +244,7 @@ export async function readFeatureUsage(
       granularity: period.granularity,
       source: chosen.source,
       budget,
+      cutovers: chosen.cutovers,
     });
     const tenants = await deps.directory.list(budget);
     return {
@@ -242,6 +256,7 @@ export async function readFeatureUsage(
       source: chosen.source,
       freshAt: chosen.source === 'daily' ? (read.latestUpdate ?? chosen.completedAt ?? now) : now,
       maxDays: chosen.maxDays,
+      cutovers: chosen.cutovers,
     };
   });
 }
@@ -264,6 +279,7 @@ export class GetFeatureUsageSummaryUseCase {
       filters,
       now: read.now,
       source: read.source,
+      cutovers: read.cutovers,
     });
     return {
       range: rangeOf(read.period, read.maxDays),

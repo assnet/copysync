@@ -16,6 +16,12 @@ export type FeatureUsagePlanFamily = 'AFFILIATES' | 'SAVER';
 /** `LIVE` = lida sob demanda das tabelas do produto; `RECORDED` = contador/agregado próprio (P2). */
 export type FeatureUsageSource = 'LIVE' | 'RECORDED';
 
+/** Início do contador de um recurso (ver `FeatureUsageDefinition.recordedFrom`). */
+export type FeatureUsageCounterStart = 'CUTOVER' | 'FIRST_WRITE';
+
+/** Cortes gravados pelo contador: chave do recurso → primeiro dia (Brasília) do contador. Ausente = sem corte. */
+export type FeatureUsageCutovers = Readonly<Record<string, string>>;
+
 /** Motivo de cobertura parcial; o texto é do painel. */
 export type FeatureUsageCoverageReason =
   | 'EXISTING_ONLY'
@@ -64,8 +70,14 @@ export interface FeatureUsageDefinition {
   /** Tipos que o recurso pode ter (um ou mais). */
   kinds: readonly FeatureUsageKind[];
   source: FeatureUsageSource;
-  /** Data de corte `YYYY-MM-DD` (Brasília): antes dela `LIVE`, a partir dela `RECORDED`. Obrigatória em todo `RECORDED`. */
-  recordedFrom?: string;
+  /**
+   * Onde o contador começa (nunca uma data fixa no código). `CUTOVER`: recurso com fonte viva anterior; o contador
+   * grava o corte (dia seguinte, em Brasília, à sua primeira escrita) uma única vez em `platform_settings` e só conta
+   * dali em diante; antes do corte, e sem corte gravado, a fonte é a viva. `FIRST_WRITE`: recurso sem fonte anterior
+   * (`RECORDED`); conta desde a primeira escrita e o primeiro dado é o `MIN(day)` do agregado. Obrigatório em todo
+   * `RECORDED` (`FIRST_WRITE`); em `LIVE` só `CUTOVER`.
+   */
+  recordedFrom?: FeatureUsageCounterStart;
   /** Motivos que **podem** valer; os do período saem do agregador. Vazia = sempre total. */
   possibleCoverageReasons: readonly FeatureUsageCoverageReason[];
   /** Retenção da fonte em dias (a tabela é podada). */
@@ -81,17 +93,10 @@ function live(def: Def): FeatureUsageDefinition {
   return { possibleCoverageReasons: [], ...def, source: 'LIVE', phase: 1 };
 }
 
-/** Recurso só do contador (P2): sem fonte anterior ao corte. */
-function recorded(def: Def & { recordedFrom: string }): FeatureUsageDefinition {
-  return { possibleCoverageReasons: [], ...def, source: 'RECORDED', phase: 2 };
+/** Recurso só do contador (P2): sem fonte anterior, conta desde a primeira escrita. */
+function recorded(def: Omit<Def, 'recordedFrom'>): FeatureUsageDefinition {
+  return { possibleCoverageReasons: [], ...def, source: 'RECORDED', recordedFrom: 'FIRST_WRITE', phase: 2 };
 }
-
-/**
- * Datas de corte (Brasília) da P2: dia seguinte ao deploy previsto (2026-11-18). Se o deploy atrasar, adiar
- * antes de ligar (R2 e checklist da T24). A partir do corte só o contador conta; antes, a fonte viva.
- */
-export const OFFER_STORY_RECORDED_FROM = '2026-11-19';
-export const CHAT_SEND_RECORDED_FROM = '2026-11-19';
 
 export const FEATURE_USAGE_CATALOG: readonly FeatureUsageDefinition[] = [
   live({ key: 'offer_generator', product: 'AFFILIATES', planFamily: 'AFFILIATES', kinds: ['ACTION'] }),
@@ -110,14 +115,14 @@ export const FEATURE_USAGE_CATALOG: readonly FeatureUsageDefinition[] = [
     retentionDays: 90,
   }),
   live({ key: 'storefront', product: 'AFFILIATES', planFamily: 'AFFILIATES', kinds: ['ACTION'], possibleCoverageReasons: ['EXISTING_ONLY'] }),
-  // `LIVE` com corte: antes de `recordedFrom` o título da IA (`ai_usage_logs`), a partir dele o contador.
+  // `LIVE` com corte gravado: antes do corte o título da IA (`ai_usage_logs`), a partir dele o contador.
   live({
     key: 'offer_story',
     product: 'AFFILIATES',
     planFamily: 'AFFILIATES',
     kinds: ['ACTION'],
     possibleCoverageReasons: ['AI_HEADLINE_ONLY'],
-    recordedFrom: OFFER_STORY_RECORDED_FROM,
+    recordedFrom: 'CUTOVER',
   }),
   live({ key: 'affiliate_credentials', product: 'AFFILIATES', planFamily: 'AFFILIATES', kinds: ['ACTION'], possibleCoverageReasons: ['MIXED_EVENTS'] }),
   live({ key: 'extension_sync', product: 'AFFILIATES', planFamily: 'AFFILIATES', kinds: ['ACTION'], possibleCoverageReasons: ['TOKEN_CHANGE_ONLY'] }),
@@ -127,7 +132,7 @@ export const FEATURE_USAGE_CATALOG: readonly FeatureUsageDefinition[] = [
   live({ key: 'saver_export', product: 'SAVER', planFamily: 'SAVER', kinds: ['ACTION'] }),
   live({ key: 'panel_login', product: 'ACCESS', planFamily: 'AFFILIATES', kinds: ['ACCESS'], possibleCoverageReasons: ['RETENTION'], retentionDays: 30 }),
   // Só envio feito no painel (`origin = PANEL`); oferta automática fica em `offer_dispatch`.
-  recorded({ key: 'chat_send', product: 'CHAT', planFamily: 'AFFILIATES', kinds: ['ACTION'], recordedFrom: CHAT_SEND_RECORDED_FROM }),
+  recorded({ key: 'chat_send', product: 'CHAT', planFamily: 'AFFILIATES', kinds: ['ACTION'] }),
 ];
 
 export function findFeature(
@@ -148,8 +153,17 @@ export function featuresFor(
   );
 }
 
-/** Fonte do recurso no dia `YYYY-MM-DD` (Brasília): com corte, `LIVE` antes e `RECORDED` a partir dele. */
-export function sourceOn(feature: FeatureUsageDefinition, day: string): FeatureUsageSource {
-  if (!feature.recordedFrom) return feature.source;
-  return day < feature.recordedFrom ? 'LIVE' : 'RECORDED';
+/**
+ * Fonte do recurso no dia `YYYY-MM-DD` (Brasília). `CUTOVER`: `LIVE` antes do corte gravado e `RECORDED` a partir
+ * dele; sem corte gravado, `LIVE` em todo dia. Sem `CUTOVER`, a fonte do catálogo.
+ */
+export function sourceOn(feature: FeatureUsageDefinition, day: string, cutovers: FeatureUsageCutovers = {}): FeatureUsageSource {
+  if (feature.recordedFrom !== 'CUTOVER') return feature.source;
+  const cut = cutovers[feature.key];
+  return cut !== undefined && day >= cut ? 'RECORDED' : 'LIVE';
+}
+
+/** O contador grava este recurso (algum dia): `RECORDED` ou `LIVE` com corte. */
+export function isCounted(feature: FeatureUsageDefinition): boolean {
+  return feature.recordedFrom !== undefined;
 }

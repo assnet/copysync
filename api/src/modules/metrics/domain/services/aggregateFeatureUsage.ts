@@ -1,6 +1,7 @@
 import { PLAN_SLUGS, SAVER_PLAN_SLUGS } from '../../../tenants/domain/planPresets';
 import {
   type FeatureUsageCoverageReason,
+  type FeatureUsageCutovers,
   type FeatureUsageDefinition,
   type FeatureUsageKind,
   type FeatureUsagePlanFamily,
@@ -117,6 +118,8 @@ export interface AggregateFeatureUsageInput {
    * retenção, e `RETENTION`/`EXISTING_ONLY` só valem para período que começa antes dele. Padrão `live`.
    */
   source?: 'live' | 'daily';
+  /** Cortes gravados pelo contador (`AI_HEADLINE_ONLY` só vale antes do corte). Ausente = nenhum. */
+  cutovers?: FeatureUsageCutovers;
 }
 
 const FAMILY_PLANS: Record<FeatureUsagePlanFamily, readonly string[]> = {
@@ -163,11 +166,11 @@ function planRows(family: FeatureUsagePlanFamily, byTenant: Map<string, string>,
 }
 
 /**
- * Limite efetivo de comparação. Recurso só do contador: a data de corte. Agregado: o primeiro dia agregado (o
+ * Limite efetivo de comparação. Recurso só do contador: o primeiro dia gravado (`MIN(day)`). Agregado: o primeiro dia agregado (o
  * agregado guarda o que a fonte podada já perdeu). Fonte viva: o maior entre o primeiro dado e hoje − retenção.
  */
 function dataFromFor(feature: FeatureUsageDefinition, first: string | null, source: 'live' | 'daily', now: Date): string | null {
-  if (feature.source === 'RECORDED') return feature.recordedFrom ?? first;
+  if (feature.source === 'RECORDED') return first;
   if (source === 'daily') return first;
   return dataFromOf(first, feature.retentionDays, now);
 }
@@ -178,6 +181,7 @@ function coverageReasonsFor(
   today: string,
   source: 'live' | 'daily',
   first: string | null,
+  cutover: string | undefined,
 ): FeatureUsageCoverageReason[] {
   // Agregado: o período que começa no primeiro dia agregado (ou depois) não perdeu nada por poda nem por exclusão
   const beforeAggregate = first !== null && period.from < first;
@@ -187,7 +191,8 @@ function coverageReasonsFor(
         if (source === 'daily') return beforeAggregate;
         return feature.retentionDays !== undefined && period.from < addDays(today, -feature.retentionDays);
       case 'AI_HEADLINE_ONLY':
-        return !feature.recordedFrom || period.from < feature.recordedFrom;
+        // Antes do corte só o título da IA conta; sem corte gravado, o período inteiro
+        return cutover === undefined || period.from < cutover;
       case 'EXISTING_ONLY':
         return source === 'daily' ? beforeAggregate : true;
       case 'MIXED_EVENTS':
@@ -303,7 +308,7 @@ export function aggregateFeatureUsage(input: AggregateFeatureUsageInput): Featur
     // Recurso que nunca teve dado não tira a base do total (ex.: Telegram sem nenhuma conta); só tira quem começou a
     // ter dado dentro do período anterior ou foi cortado pela retenção.
     if (!hasBase && first !== null) everyHasBase = false;
-    const reasons = coverageReasonsFor(feature, period, today, source, first);
+    const reasons = coverageReasonsFor(feature, period, today, source, first, input.cutovers?.[feature.key]);
 
     featureSeries[feature.key] = bucketKeys.map((k) => ({
       bucket: k,

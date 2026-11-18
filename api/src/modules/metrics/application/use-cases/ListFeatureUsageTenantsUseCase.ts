@@ -117,7 +117,7 @@ export class ListFeatureUsageTenantsUseCase {
 
     const out = await this.deps.gate.runExclusive(async (budget) => {
       // Só o período atual: a janela não alcança o anterior e as linhas agrupadas não cruzam o início
-      const { source } = await chooseUsageSource(this.deps, period, budget);
+      const { source, cutovers } = await chooseUsageSource(this.deps, period, budget);
       const read = await readUsageRows(this.deps, {
         features: [feature],
         from: period.fromInstant,
@@ -125,6 +125,7 @@ export class ListFeatureUsageTenantsUseCase {
         granularity: period.granularity,
         source,
         budget,
+        cutovers,
       });
       const tenants = scopedTenants(await this.deps.directory.list(budget), filters, feature.planFamily);
       const kinds = filters.kinds.length > 0 ? filters.kinds : null;

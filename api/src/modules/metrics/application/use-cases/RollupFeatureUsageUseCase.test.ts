@@ -32,7 +32,7 @@ class FakeLease implements IJobLease {
 }
 
 class FakeState implements IFeatureUsageRollupStateRepository {
-  value: FeatureUsageRollupState = { backfillCompletedAt: null, backfilledFrom: null, backfillCursor: null };
+  value: FeatureUsageRollupState = { backfillCompletedAt: null, backfilledFrom: null, backfillCursor: null, cutovers: {} };
   marks = 0;
   async get() {
     return { ...this.value };
@@ -148,7 +148,7 @@ describe('RollupFeatureUsageUseCase', () => {
       firstData: { a: '2026-11-16' },
       now: new Date('2026-11-18T02:30:00Z'), // 23:30 de 17/11 em Brasília
     });
-    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null };
+    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: {} };
     await t.useCase.execute();
     expect(t.replaced.map((r) => r.day)).toEqual(['2026-11-16', '2026-11-17']);
     expect(dayInZone(t.reads[0]!.from)).toBe('2026-11-16');
@@ -158,7 +158,7 @@ describe('RollupFeatureUsageUseCase', () => {
   it('grava as linhas do dia de cada recurso e solta o lease do rollup ao terminar', async () => {
     const rows = [row('2026-11-16', 'a', 2), row('2026-11-17', 'b', 3, 't2')];
     const t2 = setup({ catalog: [def('a'), def('b')], groups: [['a', 'b']], data: rows, now: NOW });
-    t2.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null };
+    t2.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: {} };
     await t2.useCase.execute();
     expect(t2.replaced).toEqual([
       { day: '2026-11-16', keys: ['a', 'b'], rows: [{ tenantId: 't1', featureKey: 'a', kind: 'ACTION', uses: 2 }] },
@@ -170,7 +170,7 @@ describe('RollupFeatureUsageUseCase', () => {
 
   it('erro numa fonte não impede as outras, é logado e a chave dela não entra em keys', async () => {
     const t = setup({ catalog: [def('a'), def('b')], groups: [['a'], ['b']], failKeys: ['a'], now: NOW });
-    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null };
+    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: {} };
     const r = await t.useCase.execute();
     expect(r).toMatchObject({ status: 'ran', failedGroups: 1 });
     expect(t.replaced.map((x) => x.keys)).toEqual([['b'], ['b']]);
@@ -214,25 +214,36 @@ describe('RollupFeatureUsageUseCase', () => {
   it('nenhuma chave RECORDED vai ao replaceDay, nem nos dias antes do corte (view:*)', async () => {
     const catalog = [
       def('a'),
-      def('view:home', { source: 'RECORDED', recordedFrom: '2026-11-10', kinds: ['ACCESS'] }),
-      def('chat_send', { source: 'RECORDED', recordedFrom: '2026-11-12' }),
+      def('view:home', { source: 'RECORDED', recordedFrom: 'FIRST_WRITE', kinds: ['ACCESS'] }),
+      def('chat_send', { source: 'RECORDED', recordedFrom: 'FIRST_WRITE' }),
     ];
     const t = setup({ catalog, groups: [['a', 'view:home', 'chat_send']], firstData: { a: '2026-10-20' }, now: NOW });
     for (let i = 0; i < 6; i++) await t.useCase.execute();
-    expect(t.replaced.some((r) => r.day < '2026-11-10')).toBe(true);
+    expect(t.replaced.length).toBeGreaterThan(2);
     for (const r of t.replaced) expect(r.keys).toEqual(['a']);
     for (const read of t.reads) expect(read.featureKeys).toEqual(['a']);
   });
 
-  it('recurso com data de corte: o dia anterior ao corte é gravado e o dia do corte em diante não entra em keys', async () => {
-    const catalog = [def('a'), def('offer_story', { recordedFrom: '2026-11-17' })];
+  it('recurso CUTOVER sem corte gravado: todo dia é da fonte viva', async () => {
+    const catalog = [def('a'), def('offer_story', { recordedFrom: 'CUTOVER' })];
+    const t = setup({ catalog, groups: [['a', 'offer_story']], data: [row('2026-11-17', 'offer_story', 9)], now: NOW });
+    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: {} };
+    await t.useCase.execute();
+    expect(t.replaced.map((r) => [r.day, r.keys])).toEqual([
+      ['2026-11-16', ['a', 'offer_story']],
+      ['2026-11-17', ['a', 'offer_story']],
+    ]);
+  });
+
+  it('recurso com corte gravado: o dia anterior ao corte é gravado e o dia do corte em diante não entra em keys', async () => {
+    const catalog = [def('a'), def('offer_story', { recordedFrom: 'CUTOVER' })];
     const t = setup({
       catalog,
       groups: [['a', 'offer_story']],
       data: [row('2026-11-16', 'offer_story', 4), row('2026-11-17', 'offer_story', 9)],
       now: NOW,
     });
-    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null };
+    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: { offer_story: '2026-11-17' } };
     await t.useCase.execute();
     expect(t.replaced).toEqual([
       { day: '2026-11-16', keys: ['a', 'offer_story'], rows: [{ tenantId: 't1', featureKey: 'offer_story', kind: 'ACTION', uses: 4 }] },
@@ -242,7 +253,7 @@ describe('RollupFeatureUsageUseCase', () => {
 
   it('retenção apaga antes de hoje − 400 uma vez a cada 24 h', async () => {
     const t = setup({ catalog: [def('a')], now: NOW });
-    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null };
+    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: {} };
     await t.useCase.execute();
     await t.useCase.execute();
     expect(t.purged).toEqual([addDays('2026-11-17', -400)]);
