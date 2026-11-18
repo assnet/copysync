@@ -4,6 +4,7 @@ import { Alert, Box, IconButton, Skeleton, Stack, Tab, Tabs, Tooltip, useMediaQu
 import { RefreshCw } from 'lucide-react';
 import { AppIcon, PageHeader } from '@/components';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import { useSelectedTabInView } from '@/hooks/useSelectedTabInView';
 import { serverNow } from '@/services/serverClock';
 import { featureUsageStrings as S } from '@/features/featureUsage/strings';
 import { activeUsageTab, featureKeyFromPath, USAGE_TABS } from '@/features/featureUsage/paths';
@@ -35,6 +36,7 @@ const TAB_LABELS = { overview: S.tabs.overview, plans: S.tabs.plans, screens: S.
 export function AdminUsagePage() {
   const { pathname } = useLocation();
   const activeTab = activeUsageTab(pathname);
+  const tabsRef = useSelectedTabInView(activeTab);
   const featureKey = featureKeyFromPath(pathname);
   const theme = useTheme();
   const compactTabs = useMediaQuery(theme.breakpoints.down('sm'), { noSsr: true });
@@ -137,6 +139,7 @@ export function AdminUsagePage() {
           sx={{ mb: 2 }}
         />
         <Tabs
+          ref={tabsRef}
           value={activeTab}
           aria-label={S.tabs.aria}
           variant="scrollable"
