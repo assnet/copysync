@@ -2,7 +2,13 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { FeatureUsageCount } from '../../domain/contracts/IFeatureUsageDailyRepository';
-import { recordFeatureUsage } from '../../domain/contracts/IFeatureUsageRecorder';
+import {
+  FEATURE_USAGE_DROP_LOG_EVERY_MS,
+  FEATURE_USAGE_MAX_PENDING,
+  FeatureUsageDroppedError,
+  featureUsagePending,
+  recordFeatureUsage,
+} from '../../domain/contracts/IFeatureUsageRecorder';
 import { findFeature } from '../../domain/services/featureUsageCatalog';
 import { RecordFeatureUsageUseCase } from './RecordFeatureUsageUseCase';
 
@@ -107,6 +113,41 @@ describe('RecordFeatureUsageUseCase', () => {
     recordFeatureUsage(null, event, onError);
     await new Promise((r) => setTimeout(r, 0));
     expect(onError).toHaveBeenCalledTimes(2);
+  });
+
+  it('teto de 20 gravações em voo: acima descarta, avisa amostrado (1/min) e volta a gravar quando esvazia', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-11-20T12:00:00Z'));
+      const releases: Array<() => void> = [];
+      const slow = {
+        increment: vi.fn(() => new Promise<void>((r) => releases.push(r))),
+        markOnce: vi.fn(),
+      };
+      const onError = vi.fn();
+      const event = { tenantId: 't1', featureKey: 'chat_send', kind: 'ACTION' as const, at: new Date() };
+      const base = featureUsagePending();
+      for (let i = 0; i < FEATURE_USAGE_MAX_PENDING - base; i++) recordFeatureUsage(slow, event, onError);
+      expect(featureUsagePending()).toBe(FEATURE_USAGE_MAX_PENDING);
+      const calls = slow.increment.mock.calls.length;
+      for (let i = 0; i < 5; i++) recordFeatureUsage(slow, event, onError);
+      expect(slow.increment.mock.calls.length).toBe(calls); // descartados sem chamar o contador
+      expect(onError).toHaveBeenCalledTimes(1); // amostrado
+      expect(onError.mock.calls[0]![0]).toBeInstanceOf(FeatureUsageDroppedError);
+      expect((onError.mock.calls[0]![0] as FeatureUsageDroppedError).dropped).toBe(1);
+      vi.setSystemTime(new Date(Date.now() + FEATURE_USAGE_DROP_LOG_EVERY_MS));
+      recordFeatureUsage(slow, event, onError);
+      expect(onError).toHaveBeenCalledTimes(2);
+      expect((onError.mock.calls[1]![0] as FeatureUsageDroppedError).dropped).toBe(5); // 4 calados + este
+      for (const r of releases) r();
+      await vi.waitFor(() => expect(featureUsagePending()).toBe(base));
+      recordFeatureUsage(slow, event, onError);
+      expect(slow.increment.mock.calls.length).toBe(calls + 1);
+      releases[releases.length - 1]!();
+      await vi.waitFor(() => expect(featureUsagePending()).toBe(base));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('chat e Story dependem só do contrato do contador', () => {
