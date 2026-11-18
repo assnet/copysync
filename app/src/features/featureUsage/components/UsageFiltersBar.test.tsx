@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -7,6 +8,12 @@ import { featureUsageStrings as S } from '../strings';
 import { UsageFiltersBar } from './UsageFiltersBar';
 import { renderHook, act } from '@testing-library/react';
 import { useLoadedAccountNames } from '../hooks/useLoadedAccountNames';
+import type { UsageFilters } from '../types';
+
+function StatefulBar() {
+  const [filters, setFilters] = useState<UsageFilters>({ ...DEFAULT_USAGE_FILTERS, preset: '7d' });
+  return <UsageFiltersBar filters={filters} onChange={setFilters} maxDays={90} />;
+}
 
 vi.mock('@/services/serverClock', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/serverClock')>()),
@@ -72,6 +79,21 @@ describe('UsageFiltersBar', () => {
     expect(applyButton).toBeDisabled();
     expect(screen.getByText(S.periodErrors.tooLong(90))).toBeInTheDocument();
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('aplicar o personalizado limpa o rascunho salvo e os campos seguem com as datas aplicadas', async () => {
+    window.sessionStorage.clear();
+    const user = userEvent.setup();
+    renderWithTheme(<StatefulBar />);
+    await user.click(screen.getByRole('button', { name: S.filters.presets.custom }));
+    const from = screen.getByLabelText(S.filters.customFrom) as HTMLInputElement;
+    await user.clear(from);
+    await user.type(from, '2026-11-01');
+    expect(window.sessionStorage.getItem('ui.usage.customDraft')).toContain('2026-11-01');
+    await user.click(screen.getByRole('button', { name: S.filters.customApply }));
+    expect(window.sessionStorage.getItem('ui.usage.customDraft')).toBeNull();
+    expect((screen.getByLabelText(S.filters.customFrom) as HTMLInputElement).value).toBe('2026-11-01');
+    expect((screen.getByLabelText(S.filters.customTo) as HTMLInputElement).value).toBe('2026-11-17');
   });
 
   it('presets acima do teto não aparecem', () => {

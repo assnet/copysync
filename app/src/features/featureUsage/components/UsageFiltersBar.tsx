@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Box, Button, Chip, Drawer, FormControlLabel, IconButton, ListSubheader, MenuItem, Stack, Switch, TextField,
   ToggleButton, ToggleButtonGroup, Tooltip, Typography, useMediaQuery, useTheme,
@@ -36,9 +36,9 @@ export interface UsageFiltersBarProps {
 interface CustomDraft { from: string; to: string }
 
 function PeriodControl({ filters, onChange, maxDays }: Pick<UsageFiltersBarProps, 'filters' | 'onChange' | 'maxDays'>) {
-  const [draft, setDraft] = usePersistedState<CustomDraft>('usage.customDraft', {
-    from: filters.from ?? '', to: filters.to ?? '',
-  }, { scope: 'tab' });
+  /** Período aplicado: valor inicial do rascunho e o que os campos mostram depois de `clearDraft()`. */
+  const appliedRef = useRef<CustomDraft>({ from: filters.from ?? '', to: filters.to ?? '' });
+  const [draft, setDraft, clearDraft] = usePersistedState<CustomDraft>('usage.customDraft', () => ({ ...appliedRef.current }), { scope: 'tab' });
   /**
    * Preset em vigor quando "Personalizado" foi aberto sem aplicar. Derivado do preset: se ele muda (outro botão,
    * "Limpar filtros", volta aos 30 dias após 400), o modo personalizado fecha sozinho.
@@ -64,6 +64,9 @@ function PeriodControl({ filters, onChange, maxDays }: Pick<UsageFiltersBarProps
   const apply = () => {
     if (error) return;
     onChange(withPeriod(filters, { preset: 'custom', from: draft.from, to: draft.to }, serverNow()));
+    // Rascunho concluído: o período aplicado já vive em `usage.filters`; os campos seguem mostrando as datas dele.
+    appliedRef.current = { from: draft.from, to: draft.to };
+    clearDraft();
   };
 
   return (
