@@ -1,6 +1,7 @@
 import type { FeatureUsageItem } from '../../domain/services/aggregateFeatureUsage';
 import type { FeatureUsageSummaryOutput } from '../../application/use-cases/GetFeatureUsageSummaryUseCase';
 import type { FeatureUsageDetailOutput } from '../../application/use-cases/GetFeatureUsageDetailUseCase';
+import type { FeatureUsageScreensOutput } from '../../application/use-cases/GetFeatureUsageScreensUseCase';
 import type { ListFeatureUsageTenantsOutput } from '../../application/use-cases/ListFeatureUsageTenantsUseCase';
 
 /**
@@ -33,17 +34,21 @@ function presentFeature(item: FeatureUsageItem) {
   };
 }
 
+function presentRange(range: FeatureUsageSummaryOutput['range']) {
+  return {
+    from: range.from,
+    to: range.to,
+    timeZone: range.timeZone,
+    previousFrom: range.previousFrom,
+    previousTo: range.previousTo,
+    granularity: range.granularity,
+    maxDays: range.maxDays,
+  };
+}
+
 function presentHead(out: Pick<FeatureUsageSummaryOutput, 'range' | 'source' | 'freshAt' | 'population'>) {
   return {
-    range: {
-      from: out.range.from,
-      to: out.range.to,
-      timeZone: out.range.timeZone,
-      previousFrom: out.range.previousFrom,
-      previousTo: out.range.previousTo,
-      granularity: out.range.granularity,
-      maxDays: out.range.maxDays,
-    },
+    range: presentRange(out.range),
     source: out.source,
     freshAt: out.freshAt.toISOString(),
     population: {
@@ -91,5 +96,15 @@ export function presentFeatureUsageTenants(out: ListFeatureUsageTenantsOutput) {
       lastUsedDay: i.lastUsedDay,
     })),
     nextCursor: out.nextCursor,
+  };
+}
+
+/** Telas (P3): uma linha por tela, só chave e contagens; sem conta. */
+export function presentFeatureUsageScreens(out: FeatureUsageScreensOutput) {
+  return {
+    range: presentRange(out.range),
+    firstDataDay: out.firstDataDay,
+    population: { tenants: out.population.tenants },
+    screens: out.screens.map((s) => ({ key: s.key, product: s.product, planFamily: s.planFamily, tenants: s.tenants, tenantDays: s.tenantDays })),
   };
 }

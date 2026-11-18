@@ -11,6 +11,7 @@ import { PrismaUsageTenantDirectory } from '../../infrastructure/repositories/Pr
 import { PrismaDailyFeatureUsageReader } from '../../infrastructure/repositories/PrismaDailyFeatureUsageReader';
 import { PrismaFeatureUsageRollupStateRepository } from '../../infrastructure/repositories/PrismaFeatureUsageRollupStateRepository';
 import { PrismaFeatureEligibilityReader } from '../../infrastructure/repositories/PrismaFeatureEligibilityReader';
+import { PrismaPageViewReader } from '../../infrastructure/repositories/PrismaPageViewReader';
 import type { UsageTenantDirectoryEntry } from '../../domain/contracts/IUsageTenantDirectory';
 import { resolveUsageQuery } from '../schemas/featureUsage.schema';
 
@@ -303,6 +304,35 @@ describe('GET /features/:featureKey/tenants', () => {
   });
 });
 
+describe('GET /screens', () => {
+  it('sem super admin: 401 sem ler', async () => {
+    mockReads();
+    const views = vi.spyOn(PrismaPageViewReader.prototype, 'read');
+    auth.mode = 'user';
+    expect((await app.inject({ method: 'GET', url: `${URL}/screens` })).statusCode).toBe(401);
+    expect(views).not.toHaveBeenCalled();
+  });
+
+  it('200: uma linha por tela, sem conta; não lê as linhas do resumo', async () => {
+    const { read, daily, list } = mockReads();
+    const views = vi.spyOn(PrismaPageViewReader.prototype, 'read').mockResolvedValue({
+      rows: [{ key: 'view:offers', tenants: 1, tenantDays: 3 }],
+      firstDataDay: '2026-11-10',
+    });
+    const res = await app.inject({ method: 'GET', url: `${URL}/screens?from=2026-11-01&to=2026-11-17` });
+    expect(res.statusCode).toBe(200);
+    const data = res.json().data;
+    expect(data.screens[0]).toEqual({ key: 'view:offers', product: 'AFFILIATES', planFamily: 'AFFILIATES', tenants: 1, tenantDays: 3 });
+    expect(data.firstDataDay).toBe('2026-11-10');
+    expect(data.population).toEqual({ tenants: 1 });
+    expect(res.body).not.toMatch(/tenantId|tenantName|"t1"/);
+    expect(views).toHaveBeenCalledTimes(1);
+    expect(list).toHaveBeenCalledTimes(1);
+    expect(read).not.toHaveBeenCalled();
+    expect(daily).not.toHaveBeenCalled();
+  });
+});
+
 describe('resolveUsageQuery', () => {
   const base = { kind: 'ACTION,AUTOMATIC', tenantStatus: 'ACTIVE' as const, includeInternal: false };
 
@@ -322,8 +352,8 @@ describe('código da rota', () => {
   const schema = readFileSync(join(__dirname, '../schemas/featureUsage.schema.ts'), 'utf8');
 
   it('handlers terminam em return da resposta e não há onSend novo', () => {
-    expect(src.match(/async \(request, reply\) =>/g)).toHaveLength(3);
-    expect(src.match(/return reply;/g)).toHaveLength(3);
+    expect(src.match(/async \(request, reply\) =>/g)).toHaveLength(4);
+    expect(src.match(/return reply;/g)).toHaveLength(4);
     expect(src).not.toMatch(/onSend/);
   });
 

@@ -11,7 +11,13 @@ import {
   usageRow,
   usageTenant,
 } from '../../application/use-cases/featureUsageTestFakes';
-import { presentFeatureUsageDetail, presentFeatureUsageSummary, presentFeatureUsageTenants } from './featureUsagePresenter';
+import { GetFeatureUsageScreensUseCase } from '../../application/use-cases/GetFeatureUsageScreensUseCase';
+import {
+  presentFeatureUsageDetail,
+  presentFeatureUsageScreens,
+  presentFeatureUsageSummary,
+  presentFeatureUsageTenants,
+} from './featureUsagePresenter';
 
 const CONTRACTS = join(__dirname, '../../../../../../contracts/feature-usage');
 const fixture = (name: string) => JSON.parse(readFileSync(join(CONTRACTS, name), 'utf8')) as unknown;
@@ -150,6 +156,15 @@ describe('featureUsagePresenter × contrato', () => {
     expect(sameShape(detail, detailSample)).toEqual([]);
     expect(detail.source).toBe(detailSample.source);
     expect(detail.freshAt).toBe(LAST_TICK.toISOString());
+  });
+
+  it('telas batem com contracts/feature-usage/screens.response.json', async () => {
+    const pageViews = { read: async () => ({ rows: [{ key: 'view:offers', tenants: 1, tenantDays: 2 }], firstDataDay: '2026-11-19' }) };
+    const directory = new FakeUsageTenantDirectory([usageTenant('t1', 'COPYSYNC_MAX')]);
+    const out = await new GetFeatureUsageScreensUseCase({ pageViews, directory, gate: new FakeUsageReadGate(), now: () => NOW }).execute(INPUT);
+    const body = presentFeatureUsageScreens(out);
+    expect(sameShape(body, fixture('screens.response.json'))).toEqual([]);
+    expect(JSON.stringify(body)).not.toMatch(/tenantId|"t1"/);
   });
 
   it('a comparação falha com campo a mais ou a menos', () => {

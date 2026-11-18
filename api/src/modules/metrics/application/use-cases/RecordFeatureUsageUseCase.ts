@@ -4,6 +4,7 @@ import type { FeatureUsageEvent, IFeatureUsageRecorder } from '../../domain/cont
 import type { IFeatureUsageCutoverStore } from '../../domain/contracts/IFeatureUsageRollupStateRepository';
 import { FEATURE_USAGE_CATALOG, type FeatureUsageDefinition, findFeature } from '../../domain/services/featureUsageCatalog';
 import { addDays, dayInZone } from '../../domain/services/featureUsagePeriod';
+import { findScreenView, screenAsFeature } from '../../domain/services/screenViewCatalog';
 
 export interface RecordFeatureUsageDeps {
   daily: Pick<IFeatureUsageDailyRepository, 'increment' | 'markOnce'>;
@@ -19,6 +20,7 @@ export interface RecordFeatureUsageDeps {
  * - `CUTOVER` (fonte viva anterior, ex.: `offer_story`): a primeira escrita grava, uma única vez e de forma atômica,
  *   o corte = dia seguinte (Brasília) ao dia dela; só conta dia ≥ corte. O dia da primeira escrita (parcial) fica
  *   com a fonte viva, e o rollup nunca grava dia ≥ corte.
+ * - Tela `view:*` (P3, `SCREEN_VIEW_CATALOG`, fora do catálogo de recursos): como `FIRST_WRITE`, sem corte.
  * - Recurso sem contador ou fora do catálogo: não grava.
  * O corte gravado nunca muda: depois de lido fica em memória (cache de valor imutável, não estado operacional).
  * Fail-open: nunca rejeita; falha do banco vira log `warn` sem conta nem conteúdo.
@@ -37,8 +39,9 @@ export class RecordFeatureUsageUseCase implements IFeatureUsageRecorder {
   }
 
   /** `true` quando o dia de Brasília de `at` é do contador para a chave (pode gravar o corte). */
-  private async counts(event: Pick<FeatureUsageEvent, 'featureKey' | 'at'>): Promise<boolean> {
-    const feature = findFeature(event.featureKey, this.deps.catalog ?? FEATURE_USAGE_CATALOG);
+  async counts(event: Pick<FeatureUsageEvent, 'featureKey' | 'at'>): Promise<boolean> {
+    const screen = findScreenView(event.featureKey);
+    const feature = findFeature(event.featureKey, this.deps.catalog ?? FEATURE_USAGE_CATALOG) ?? (screen && screenAsFeature(screen));
     if (!feature?.recordedFrom) return false;
     if (feature.recordedFrom === 'FIRST_WRITE') return true;
     const day = dayInZone(event.at);

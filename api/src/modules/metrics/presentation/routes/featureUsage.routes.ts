@@ -4,6 +4,7 @@ import { superAdminHook } from '../../../../shared/http/hooks/superAdminHook';
 import { httpResponse } from '../../../../shared/http/httpResponse';
 import {
   getFeatureUsageDetailUseCase,
+  getFeatureUsageScreensUseCase,
   getFeatureUsageSummaryUseCase,
   listFeatureUsageTenantsUseCase,
 } from '../../infrastructure/featureUsageContainer';
@@ -13,6 +14,7 @@ import {
   resolveUsageQuery,
   usageFeatureDetailResponse,
   usageFeatureParams,
+  usageScreensResponse,
   usageQuery,
   usageSummaryQuery,
   usageSummaryResponse,
@@ -21,6 +23,7 @@ import {
 } from '../schemas/featureUsage.schema';
 import {
   presentFeatureUsageDetail,
+  presentFeatureUsageScreens,
   presentFeatureUsageSummary,
   presentFeatureUsageTenants,
 } from '../presenters/featureUsagePresenter';
@@ -87,6 +90,20 @@ export async function featureUsageRoutes(app: FastifyInstance): Promise<void> {
       actorUserId: request.user.userId,
     });
     httpResponse.ok(reply, presentFeatureUsageTenants(out));
+    return reply;
+  });
+
+  app.get<{ Querystring: UsageQuerystring }>('/screens', {
+    preHandler,
+    schema: {
+      tags,
+      summary: 'Telas do menu por contas que abriram no período (visitas); uma linha por tela, sem conta',
+      querystring: usageQuery,
+      response: { 200: usageScreensResponse },
+    },
+  }, async (request, reply) => {
+    const out = await getFeatureUsageScreensUseCase().execute(resolveUsageQuery(request.query, new Date()));
+    httpResponse.ok(reply, presentFeatureUsageScreens(out));
     return reply;
   });
 }

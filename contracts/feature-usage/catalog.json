@@ -25,5 +25,22 @@
     "MIXED_EVENTS",
     "MIXED_TRIGGERS",
     "TOKEN_CHANGE_ONLY"
+  ],
+  "screenKeys": [
+    "view:dashboard",
+    "view:offers",
+    "view:monitoring",
+    "view:broadcast-groups",
+    "view:link-rotation",
+    "view:storefront",
+    "view:offer-story",
+    "view:offer-hunter",
+    "view:affiliate-credentials",
+    "view:affiliate-tutorials",
+    "view:affiliate-plans",
+    "view:saver-groups",
+    "view:saver-settings",
+    "view:saver-plans",
+    "view:settings"
   ]
 }

@@ -1,0 +1,45 @@
+{
+  "range": {
+    "from": "2026-10-19",
+    "to": "2026-11-17",
+    "timeZone": "America/Sao_Paulo",
+    "previousFrom": "2026-09-19",
+    "previousTo": "2026-10-18",
+    "granularity": "day",
+    "maxDays": 400
+  },
+  "firstDataDay": "2026-11-19",
+  "population": {
+    "tenants": 15
+  },
+  "screens": [
+    {
+      "key": "view:offers",
+      "product": "AFFILIATES",
+      "planFamily": "AFFILIATES",
+      "tenants": 12,
+      "tenantDays": 140
+    },
+    {
+      "key": "view:dashboard",
+      "product": "ACCESS",
+      "planFamily": "AFFILIATES",
+      "tenants": 11,
+      "tenantDays": 96
+    },
+    {
+      "key": "view:saver-groups",
+      "product": "SAVER",
+      "planFamily": "SAVER",
+      "tenants": 2,
+      "tenantDays": 9
+    },
+    {
+      "key": "view:offer-story",
+      "product": "AFFILIATES",
+      "planFamily": "AFFILIATES",
+      "tenants": 0,
+      "tenantDays": 0
+    }
+  ]
+}

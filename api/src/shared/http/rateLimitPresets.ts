@@ -64,6 +64,11 @@ export const rateLimitPresets = {
     max: 60,
     timeWindow: '1 minute',
   },
+  /** Visita de tela do painel (`perTenantRateLimit`): por conta; o painel manda no máximo 1 por tela × aba × dia. */
+  usagePageViews: {
+    max: 60,
+    timeWindow: '1 minute',
+  },
   general: {
     max: 120,
     timeWindow: '1 minute',

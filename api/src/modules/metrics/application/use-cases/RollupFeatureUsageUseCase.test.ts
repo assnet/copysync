@@ -189,6 +189,18 @@ describe('RollupFeatureUsageUseCase', () => {
     expect(t2.lease.held.has(FEATURE_USAGE_ROLLUP_LEASE)).toBe(false);
   });
 
+  it('catálogo real: nenhuma chave view:* (tela) entra nas keys nem nas leituras do rollup', async () => {
+    const t = setup({ data: [row('2026-11-17', 'view:offers'), row('2026-11-17', 'offer_generator')], now: NOW });
+    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillStopReason: 'RETENTION', backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
+    await t.useCase.execute();
+    expect(t.replaced.length).toBeGreaterThan(0);
+    for (const r of t.replaced) {
+      expect(r.keys.some((k) => k.startsWith('view:'))).toBe(false);
+      expect(r.rows.some((x) => x.featureKey.startsWith('view:'))).toBe(false);
+    }
+    for (const read of t.reads) expect(read.featureKeys.some((k) => (k as string).startsWith('view:'))).toBe(false);
+  });
+
   it('erro numa fonte não impede as outras, é logado e a chave dela não entra em keys', async () => {
     const t = setup({ catalog: [def('a'), def('b')], groups: [['a'], ['b']], failKeys: ['a'], now: NOW });
     t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillStopReason: 'RETENTION', backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };

@@ -11,6 +11,7 @@ import {
   type FeatureUsageKind,
   type FeatureUsageProduct,
 } from '../../domain/services/featureUsageCatalog';
+import { SCREEN_VIEW_KEYS } from '../../domain/services/screenViewCatalog';
 import { DEFAULT_RECURRING_DAYS, RECURRING_DAYS_OPTIONS, type RecurringDays } from '../../domain/services/featureUsageRetention';
 import { type UsageGranularity, addDays, dayInZone, daysInclusive } from '../../domain/services/featureUsagePeriod';
 import type { FeatureUsageQueryInput } from '../../application/use-cases/GetFeatureUsageSummaryUseCase';
@@ -213,3 +214,16 @@ export const usageTenantsResponse = envelope(
     nextCursor: nullableStr,
   }),
 );
+
+/** Telas (P3): ranking das telas por contas que abriram; sem `tenantId`. */
+export const usageScreensResponse = envelope(
+  obj({
+    range,
+    firstDataDay: nullableStr,
+    population: obj({ tenants: int }),
+    screens: arr(obj({ key: str, product: strEnum(FEATURE_USAGE_PRODUCTS), planFamily: strEnum(['AFFILIATES', 'SAVER']), tenants: int, tenantDays: int })),
+  }),
+);
+
+/** `POST /usage/page-views` (rota da conta): só a chave da tela, da lista fechada. */
+export const pageViewBody = obj({ key: strEnum(SCREEN_VIEW_KEYS) });

@@ -12,6 +12,7 @@ import { workerAdminRoutes } from '../modules/sessions/presentation/routes/worke
 import { opsMetricsRoutes } from '../modules/metrics/presentation/routes/opsMetrics.routes';
 import { infraCostsRoutes } from '../modules/metrics/presentation/routes/infraCosts.routes';
 import { featureUsageRoutes } from '../modules/metrics/presentation/routes/featureUsage.routes';
+import { usagePageViewRoutes } from '../modules/metrics/presentation/routes/usagePageViews.routes';
 import { planEntitlementAdminRoutes } from '../modules/tenants/presentation/routes/planEntitlementAdmin.routes';
 import { tenantProductAdminRoutes } from '../modules/tenants/presentation/routes/tenantProductAdmin.routes';
 import { chatRoutes } from '../modules/chat/presentation/routes/chat.routes';
@@ -151,6 +152,8 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
   await app.register(infraCostsRoutes, { prefix: `${env.API_PREFIX}/admin/costs` });
   // Uso dos recursos: contagens por conta e recurso, lidas sob demanda (uma leitura por processo)
   await app.register(featureUsageRoutes, { prefix: `${env.API_PREFIX}/admin/usage` });
+  // Visita de tela (rota da conta, sem gate de produto; P3)
+  await app.register(usagePageViewRoutes, { prefix: `${env.API_PREFIX}/usage` });
 
   // ── Entitlements editáveis por plano (super admin) ─────────────────────────
   await app.register(planEntitlementAdminRoutes, { prefix: `${env.API_PREFIX}/admin/plan-entitlements` });

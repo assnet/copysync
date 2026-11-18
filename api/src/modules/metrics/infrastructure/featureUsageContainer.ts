@@ -4,6 +4,8 @@ import { PrismaJobLease } from '../../../shared/infrastructure/jobs/PrismaJobLea
 import { PrismaAuditLogRepository } from '../../../shared/audit/PrismaAuditLogRepository';
 import { GetFeatureUsageSummaryUseCase, type FeatureUsageDeps } from '../application/use-cases/GetFeatureUsageSummaryUseCase';
 import { GetFeatureUsageDetailUseCase } from '../application/use-cases/GetFeatureUsageDetailUseCase';
+import { GetFeatureUsageScreensUseCase } from '../application/use-cases/GetFeatureUsageScreensUseCase';
+import { RecordPageViewUseCase } from '../application/use-cases/RecordPageViewUseCase';
 import { ListFeatureUsageTenantsUseCase } from '../application/use-cases/ListFeatureUsageTenantsUseCase';
 import { RollupFeatureUsageUseCase } from '../application/use-cases/RollupFeatureUsageUseCase';
 import { RecordFeatureUsageUseCase } from '../application/use-cases/RecordFeatureUsageUseCase';
@@ -14,6 +16,7 @@ import { PrismaFeatureUsageDailyRepository } from './repositories/PrismaFeatureU
 import { PrismaFeatureUsageRollupStateRepository } from './repositories/PrismaFeatureUsageRollupStateRepository';
 import { FEATURE_USAGE_SOURCES, PrismaLiveFeatureUsageReader } from './repositories/PrismaLiveFeatureUsageReader';
 import { PrismaFeatureEligibilityReader } from './repositories/PrismaFeatureEligibilityReader';
+import { PrismaPageViewReader } from './repositories/PrismaPageViewReader';
 import { PrismaUsageTenantDirectory } from './repositories/PrismaUsageTenantDirectory';
 import { createReadBudget, usageReadGate } from './repositories/featureUsageReadTimeout';
 
@@ -27,6 +30,8 @@ let getSummary: GetFeatureUsageSummaryUseCase | undefined;
 let getDetail: GetFeatureUsageDetailUseCase | undefined;
 let listTenants: ListFeatureUsageTenantsUseCase | undefined;
 let recorder: IFeatureUsageRecorder | undefined;
+let getScreens: GetFeatureUsageScreensUseCase | undefined;
+let recordPageView: RecordPageViewUseCase | undefined;
 
 function featureUsageDeps(): FeatureUsageDeps {
   return (deps ??= {
@@ -57,6 +62,17 @@ export function featureUsageRecorder(): IFeatureUsageRecorder {
     daily: new PrismaFeatureUsageDailyRepository(prisma),
     cutovers: new PrismaFeatureUsageRollupStateRepository(prisma),
   }));
+}
+
+/** Aba Telas (P3): consulta própria agregada no SQL, no mesmo portão e orçamento das leituras de uso. */
+export function getFeatureUsageScreensUseCase(): GetFeatureUsageScreensUseCase {
+  const d = featureUsageDeps();
+  return (getScreens ??= new GetFeatureUsageScreensUseCase({ pageViews: new PrismaPageViewReader(prisma), directory: d.directory, gate: d.gate }));
+}
+
+/** Visita de tela (P3): `markOnce` pelo contador de uso (fail-open). */
+export function recordPageViewUseCase(): RecordPageViewUseCase {
+  return (recordPageView ??= new RecordPageViewUseCase({ recorder: featureUsageRecorder() }));
 }
 
 /**
