@@ -1,0 +1,179 @@
+{
+  "range": {
+    "from": "2026-08-18",
+    "to": "2026-11-15",
+    "timeZone": "America/Sao_Paulo",
+    "previousFrom": "2026-05-20",
+    "previousTo": "2026-08-17",
+    "granularity": "week",
+    "maxDays": 400
+  },
+  "source": "daily",
+  "freshAt": "2026-11-17T17:45:00.000Z",
+  "population": {
+    "tenants": 15,
+    "internalExcluded": 4,
+    "byPlan": [
+      {
+        "family": "AFFILIATES",
+        "plan": "COPYSYNC_LITE",
+        "tenants": 5
+      },
+      {
+        "family": "AFFILIATES",
+        "plan": "COPYSYNC_PRO",
+        "tenants": 3
+      },
+      {
+        "family": "AFFILIATES",
+        "plan": "COPYSYNC_MAX",
+        "tenants": 4
+      },
+      {
+        "family": "AFFILIATES",
+        "plan": "NONE",
+        "tenants": 3
+      },
+      {
+        "family": "SAVER",
+        "plan": "SAVER_PRO",
+        "tenants": 2
+      },
+      {
+        "family": "SAVER",
+        "plan": "NONE",
+        "tenants": 13
+      }
+    ]
+  },
+  "inScope": true,
+  "feature": {
+    "key": "offer_hunter",
+    "product": "AFFILIATES",
+    "planFamily": "AFFILIATES",
+    "kinds": [
+      "ACTION",
+      "AUTOMATIC"
+    ],
+    "coverage": "FULL",
+    "coverageReasons": [],
+    "retentionDays": null,
+    "firstDataDay": "2026-11-03",
+    "dataFrom": "2026-11-03",
+    "uses": 37,
+    "usesPrevious": null,
+    "activeTenants": 3,
+    "activeTenantsPrevious": null,
+    "reach": 0.2,
+    "lastUsedDay": "2026-11-14",
+    "byKind": [
+      {
+        "kind": "ACTION",
+        "uses": 9,
+        "activeTenants": 3
+      },
+      {
+        "kind": "AUTOMATIC",
+        "uses": 28,
+        "activeTenants": 2
+      }
+    ],
+    "byPlan": [
+      {
+        "plan": "COPYSYNC_LITE",
+        "tenants": 5,
+        "activeTenants": 0,
+        "uses": 0
+      },
+      {
+        "plan": "COPYSYNC_PRO",
+        "tenants": 3,
+        "activeTenants": 0,
+        "uses": 0
+      },
+      {
+        "plan": "COPYSYNC_MAX",
+        "tenants": 4,
+        "activeTenants": 3,
+        "uses": 37
+      },
+      {
+        "plan": "NONE",
+        "tenants": 3,
+        "activeTenants": 0,
+        "uses": 0
+      }
+    ],
+    "eligibleTenants": null,
+    "adoption": null,
+    "recurringTenants": null,
+    "retainedTenants": null
+  },
+  "series": [
+    {
+      "bucket": "2026-08-17",
+      "uses": 0,
+      "activeTenants": 0
+    },
+    {
+      "bucket": "2026-08-24",
+      "uses": 0,
+      "activeTenants": 0
+    },
+    {
+      "bucket": "2026-08-31",
+      "uses": 0,
+      "activeTenants": 0
+    },
+    {
+      "bucket": "2026-09-07",
+      "uses": 0,
+      "activeTenants": 0
+    },
+    {
+      "bucket": "2026-09-14",
+      "uses": 0,
+      "activeTenants": 0
+    },
+    {
+      "bucket": "2026-09-21",
+      "uses": 0,
+      "activeTenants": 0
+    },
+    {
+      "bucket": "2026-09-28",
+      "uses": 0,
+      "activeTenants": 0
+    },
+    {
+      "bucket": "2026-10-05",
+      "uses": 0,
+      "activeTenants": 0
+    },
+    {
+      "bucket": "2026-10-12",
+      "uses": 0,
+      "activeTenants": 0
+    },
+    {
+      "bucket": "2026-10-19",
+      "uses": 0,
+      "activeTenants": 0
+    },
+    {
+      "bucket": "2026-10-26",
+      "uses": 0,
+      "activeTenants": 0
+    },
+    {
+      "bucket": "2026-11-02",
+      "uses": 14,
+      "activeTenants": 2
+    },
+    {
+      "bucket": "2026-11-09",
+      "uses": 23,
+      "activeTenants": 3
+    }
+  ]
+}

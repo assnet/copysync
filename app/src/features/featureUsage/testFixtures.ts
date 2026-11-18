@@ -4,6 +4,8 @@
 import catalogRaw from '../../../../contracts/feature-usage/catalog.json?raw';
 import summaryRaw from '../../../../contracts/feature-usage/summary.response.json?raw';
 import detailRaw from '../../../../contracts/feature-usage/feature-detail.response.json?raw';
+import summaryDailyRaw from '../../../../contracts/feature-usage/summary.daily.response.json?raw';
+import detailDailyRaw from '../../../../contracts/feature-usage/feature-detail.daily.response.json?raw';
 import type { UsageFeatureDetail, UsageSummary } from './types';
 
 export const summaryFixtureRaw: string = summaryRaw;
@@ -12,3 +14,6 @@ export const catalogFixture = JSON.parse(catalogRaw) as { featureKeys: string[];
 /** Cópia nova a cada chamada: um teste não altera o dado do outro. */
 export const summaryFixture = (): UsageSummary => JSON.parse(summaryRaw) as UsageSummary;
 export const detailFixture = (): UsageFeatureDetail => JSON.parse(detailRaw) as UsageFeatureDetail;
+/** Os mesmos exemplos lidos do agregado diário (`source: "daily"`, `freshAt` do último tick do job). */
+export const summaryDailyFixture = (): UsageSummary => JSON.parse(summaryDailyRaw) as UsageSummary;
+export const detailDailyFixture = (): UsageFeatureDetail => JSON.parse(detailDailyRaw) as UsageFeatureDetail;

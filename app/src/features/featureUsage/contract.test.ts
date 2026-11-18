@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { catalogFixture as catalog, detailFixture, summaryFixture, summaryFixtureRaw as summaryRaw } from './testFixtures';
+import {
+  catalogFixture as catalog,
+  detailDailyFixture,
+  detailFixture,
+  summaryDailyFixture,
+  summaryFixture,
+  summaryFixtureRaw as summaryRaw,
+} from './testFixtures';
+import { sourceState } from './rules';
 import tenantsRaw from '../../../../contracts/feature-usage/feature-tenants.response.json?raw';
 import { featureUsageStrings as S } from './strings';
 import type {
@@ -114,6 +122,22 @@ describe('contrato do uso dos recursos (fixtures compartilhadas)', () => {
 
   it('o detalhe de exemplo tem exatamente a forma de UsageFeatureDetail', () => {
     expect(shapeErrors(detailFixture(), detailShape)).toEqual([]);
+  });
+
+  it('os exemplos do agregado (daily) têm a mesma forma, source daily, teto 400 e freshAt válido', () => {
+    const summary = summaryDailyFixture();
+    const detail = detailDailyFixture();
+    expect(shapeErrors(summary, summaryShape)).toEqual([]);
+    expect(shapeErrors(detail, detailShape)).toEqual([]);
+    for (const d of [summary, detail]) {
+      expect(d.source).toBe('daily');
+      expect(d.range.maxDays).toBe(400);
+      const fresh = Date.parse(d.freshAt);
+      expect(Number.isNaN(fresh)).toBe(false);
+      // O painel lê o frescor de freshAt: logo depois do tick é fresco; horas depois, velho
+      expect(sourceState(d, fresh + 60_000)).toBe('fresh');
+      expect(sourceState(d, fresh + 6 * 3_600_000)).toBe('stale');
+    }
   });
 
   it('a lista de contas de exemplo tem exatamente a forma de UsageTenantsPage', () => {

@@ -50,7 +50,39 @@ const INPUT: FeatureUsageQueryInput = {
   includeInternal: false,
 };
 
+/** Agregado com marco e último tick há 15 min: as mesmas linhas vêm do `dailyReader`. */
+const LAST_TICK = new Date('2026-11-17T14:45:00.000Z');
+function dailyUseCases() {
+  const base = useCasesDeps();
+  const dailyReader = base.reader;
+  const live = new FakeFeatureUsageReader();
+  const rollupState = {
+    get: async () => ({
+      backfillCompletedAt: new Date('2026-11-10T00:00:00.000Z'),
+      backfilledFrom: '2026-01-01',
+      backfillStopReason: 'FIRST_DATA' as const,
+      backfillCursor: null,
+      lastSuccessAt: LAST_TICK,
+      finalizedThrough: '2026-11-15',
+      failureStreak: 0,
+      cutovers: {},
+    }),
+  };
+  const deps = { ...base, reader: live, dailyReader, rollupState };
+  return { summary: new GetFeatureUsageSummaryUseCase(deps), detail: new GetFeatureUsageDetailUseCase(deps), live };
+}
+
 function useCases() {
+  const deps = useCasesDeps();
+  const audit = { create: async () => undefined };
+  return {
+    summary: new GetFeatureUsageSummaryUseCase(deps),
+    detail: new GetFeatureUsageDetailUseCase(deps),
+    tenants: new ListFeatureUsageTenantsUseCase({ ...deps, audit }),
+  };
+}
+
+function useCasesDeps() {
   const reader = new FakeFeatureUsageReader(
     [
       usageRow('2026-11-10', 't1', 'offer_generator', 'ACTION', 3),
@@ -66,13 +98,7 @@ function useCases() {
     usageTenant('t2', 'COPYSYNC_LITE', 'SAVER_PRO'),
     usageTenant('t3', 'NONE', 'SAVER_LITE', { internal: true }),
   ]);
-  const deps = { reader, directory, gate: new FakeUsageReadGate(), now: () => NOW };
-  const audit = { create: async () => undefined };
-  return {
-    summary: new GetFeatureUsageSummaryUseCase(deps),
-    detail: new GetFeatureUsageDetailUseCase(deps),
-    tenants: new ListFeatureUsageTenantsUseCase({ ...deps, audit }),
-  };
+  return { reader, directory, gate: new FakeUsageReadGate(), now: () => NOW };
 }
 
 describe('featureUsagePresenter × contrato', () => {
@@ -103,6 +129,23 @@ describe('featureUsagePresenter × contrato', () => {
     expect(sameShape(body, fixture('feature-tenants.response.json'))).toEqual([]);
     const sample = fixture('feature-tenants.response.json') as { nextCursor: string | null };
     expect(sameShape({ ...body, nextCursor: 'x' }, sample)).toEqual([]);
+  });
+
+  it('resumo e detalhe pelo agregado batem com os exemplos daily (source, teto 400, freshAt = último tick)', async () => {
+    const d = dailyUseCases();
+    const summary = presentFeatureUsageSummary(await d.summary.execute(INPUT));
+    const sample = fixture('summary.daily.response.json') as { source: string; range: { maxDays: number }; freshAt: string };
+    expect(sameShape(summary, sample)).toEqual([]);
+    expect({ source: summary.source, maxDays: summary.range.maxDays }).toEqual({ source: sample.source, maxDays: sample.range.maxDays });
+    expect(summary.freshAt).toBe(LAST_TICK.toISOString());
+    expect(Number.isNaN(Date.parse(sample.freshAt))).toBe(false);
+    expect(d.live.calls).toHaveLength(0);
+
+    const detail = presentFeatureUsageDetail(await d.detail.execute({ ...INPUT, featureKey: 'offer_hunter' }));
+    const detailSample = fixture('feature-detail.daily.response.json') as { source: string };
+    expect(sameShape(detail, detailSample)).toEqual([]);
+    expect(detail.source).toBe(detailSample.source);
+    expect(detail.freshAt).toBe(LAST_TICK.toISOString());
   });
 
   it('a comparação falha com campo a mais ou a menos', () => {
