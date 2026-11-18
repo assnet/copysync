@@ -25,6 +25,7 @@ import {
 } from '@/features/navigation';
 import { useOfferHunterAccess } from '@/features/offerHunter/hooks/useOfferHunterAccess';
 import { useSaverAccess } from '@/features/saver/hooks/useSaverAccess';
+import { usePageViewReporter } from '@/features/featureUsage/hooks/usePageViewReporter';
 import { NavLinkItem } from './nav/NavLinkItem';
 import { ProductNavItem } from './nav/ProductNavItem';
 import { useProductAccess } from '@/features/products';
@@ -344,6 +345,8 @@ export function AppLayout() {
     [isSuperAdmin, offerHunterVisible, saverVisible, productAccess.products],
   );
   const nav = useNavigationState(navModel, location.pathname);
+  // Visita de tela (uso dos recursos): só item do menu, 1 por dia × conta × tela por aba; nunca bloqueia.
+  usePageViewReporter(nav.active?.link.key, { isSuperAdmin, tenantId: activeTenantId });
 
   // Título da AppBar mobile: a tela atual orienta melhor que o nome do produto,
   // que já aparece no menu.
