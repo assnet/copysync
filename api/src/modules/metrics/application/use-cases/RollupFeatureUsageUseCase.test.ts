@@ -262,7 +262,28 @@ describe('RollupFeatureUsageUseCase', () => {
     const r = await t.useCase.execute();
     expect(r).toMatchObject({ backfill: 'failed' });
     expect(t.state.value.groups!['a']).toMatchObject({ backfillCursor: '2026-11-08', backfillFailures: 0 });
-    expect(t.state.value.groups!['b']).toMatchObject({ backfillCursor: null, backfillFailures: 1 });
+    expect(t.state.value.groups!['b']).toMatchObject({ backfillCursor: '2026-11-15', backfillFailures: 1 });
+  });
+
+  it('cursor único legado só vale no estado sem grupos; grupo novo num estado com grupos começa de hoje − 2', async () => {
+    const fromOf = (t: ReturnType<typeof setup>, key: string) =>
+      t.reads.filter((r) => (r.featureKeys as string[]).includes(key) && dayInZone(r.from) < '2026-11-16').map((r) => dayInZone(r.from));
+    // Estado antigo (sem grupos): todos os grupos herdam o cursor legado
+    const legacy = setup({ catalog: [def('a'), def('b')], firstData: { a: '2026-01-01', b: '2026-01-01' }, now: NOW });
+    legacy.state.value = { ...legacy.state.value, backfillCursor: '2026-10-01' };
+    await legacy.useCase.execute();
+    expect(fromOf(legacy, 'a')).toEqual(['2026-09-25']);
+    expect(fromOf(legacy, 'b')).toEqual(['2026-09-25']);
+    // Estado com grupos: `a` segue o próprio cursor; `b` (sem entrada) começa de anteontem, não do legado
+    const t = setup({ catalog: [def('a'), def('b')], firstData: { a: '2026-01-01', b: '2026-01-01' }, now: NOW });
+    t.state.value = {
+      ...t.state.value,
+      backfillCursor: '2026-10-01',
+      groups: { a: { failureStreak: 0, lastSuccessAt: null, backfillCursor: '2026-10-20', backfillDone: null, backfillFailures: 0 } },
+    };
+    await t.useCase.execute();
+    expect(fromOf(t, 'a')).toEqual(['2026-10-14']);
+    expect(fromOf(t, 'b')).toEqual(['2026-11-09']);
   });
 
   it('nenhuma chave RECORDED vai ao replaceDay, nem nos dias antes do corte (view:*)', async () => {

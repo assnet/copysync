@@ -539,8 +539,10 @@ export class RollupFeatureUsageUseCase {
         if (g.backfillDone) continue;
         // Com marco gravado, só os grupos pendentes andam (estado antigo sem grupos já está coberto)
         if (marked && !group.some((k) => pendingBefore.has(k))) continue;
-        // Hoje e ontem são do passo 1: o backfill começa anteontem (estado antigo: cursor único)
-        const start = g.backfillCursor ?? current.backfillCursor ?? addDays(today, -2);
+        // Hoje e ontem são do passo 1: o backfill começa anteontem. Cursor único legado só no estado antigo, sem
+        // grupos; grupo novo num estado com grupos começa de anteontem (não herda o progresso dos outros)
+        const legacy = current.groups === undefined ? current.backfillCursor : null;
+        const start = g.backfillCursor ?? legacy ?? addDays(today, -2);
         const days: string[] = [];
         for (let i = FEATURE_USAGE_BACKFILL_STEP_DAYS - 1; i >= 0; i--) {
           const d = addDays(start, -i);
@@ -553,6 +555,8 @@ export class RollupFeatureUsageUseCase {
           if (r.failedDays.length > 0) {
             g.backfillFailures += 1;
             failedGroups.add(id);
+            // Não anda, mas guarda o início (o cursor legado não se perde quando o estado ganha grupos)
+            g.backfillCursor = start;
             continue;
           }
           floor = floorOf(r.firstData);
