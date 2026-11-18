@@ -80,12 +80,12 @@ function UsedCell({ screenKey, cross }: { screenKey: string; cross: CrossState }
   );
 }
 
-/** Tabela alternativa (acessibilidade): mesmos números do ranking + parte do recorte e o cruzamento "usaram". */
 /** Denominador do "Do recorte": telas Saver pela família Saver, as demais pela de Afiliados; sem `byFamily`, o total. */
 function familyPopulation(population: UsageScreensResponse['population'], family: UsagePlanFamily): number {
   return population.byFamily?.find((f) => f.family === family)?.tenants ?? population.tenants;
 }
 
+/** Tabela alternativa (acessibilidade): mesmos números do ranking + parte do recorte e o cruzamento "usaram". */
 function ScreensTable({ screens, population, cross }: {
   screens: UsageScreenItem[]; population: UsageScreensResponse['population']; cross: CrossState;
 }) {
