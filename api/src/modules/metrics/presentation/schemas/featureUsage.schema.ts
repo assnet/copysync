@@ -220,7 +220,7 @@ export const usageScreensResponse = envelope(
   obj({
     range,
     firstDataDay: nullableStr,
-    population: obj({ tenants: int }),
+    population: obj({ tenants: int, byFamily: arr(obj({ family: strEnum(['AFFILIATES', 'SAVER']), tenants: int })) }),
     screens: arr(obj({ key: str, product: strEnum(FEATURE_USAGE_PRODUCTS), planFamily: strEnum(['AFFILIATES', 'SAVER']), tenants: int, tenantDays: int })),
   }),
 );

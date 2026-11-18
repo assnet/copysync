@@ -324,7 +324,7 @@ describe('GET /screens', () => {
     const data = res.json().data;
     expect(data.screens[0]).toEqual({ key: 'view:offers', product: 'AFFILIATES', planFamily: 'AFFILIATES', tenants: 1, tenantDays: 3 });
     expect(data.firstDataDay).toBe('2026-11-10');
-    expect(data.population).toEqual({ tenants: 1 });
+    expect(data.population).toEqual({ tenants: 1, byFamily: [{ family: 'AFFILIATES', tenants: 1 }, { family: 'SAVER', tenants: expect.any(Number) }] });
     expect(res.body).not.toMatch(/tenantId|tenantName|"t1"/);
     expect(views).toHaveBeenCalledTimes(1);
     expect(list).toHaveBeenCalledTimes(1);

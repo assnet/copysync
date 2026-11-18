@@ -10,7 +10,17 @@
   },
   "firstDataDay": "2026-11-19",
   "population": {
-    "tenants": 15
+    "tenants": 15,
+    "byFamily": [
+      {
+        "family": "AFFILIATES",
+        "tenants": 15
+      },
+      {
+        "family": "SAVER",
+        "tenants": 3
+      }
+    ]
   },
   "screens": [
     {

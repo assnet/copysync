@@ -104,7 +104,10 @@ export function presentFeatureUsageScreens(out: FeatureUsageScreensOutput) {
   return {
     range: presentRange(out.range),
     firstDataDay: out.firstDataDay,
-    population: { tenants: out.population.tenants },
+    population: {
+      tenants: out.population.tenants,
+      byFamily: out.population.byFamily.map((f) => ({ family: f.family, tenants: f.tenants })),
+    },
     screens: out.screens.map((s) => ({ key: s.key, product: s.product, planFamily: s.planFamily, tenants: s.tenants, tenantDays: s.tenantDays })),
   };
 }

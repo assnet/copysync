@@ -94,7 +94,7 @@ const screenItemShape = obj<UsageScreenItem>({ key: str, product: str, planFamil
 const screensShape = obj<UsageScreensResponse>({
   range: rangeShape,
   firstDataDay: strOrNull,
-  population: { object: { tenants: num } },
+  population: { object: { tenants: num, byFamily: arr({ object: { family: str, tenants: num } }) } },
   screens: arr(screenItemShape),
 });
 

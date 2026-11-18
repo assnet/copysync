@@ -43,6 +43,7 @@ describe('GetFeatureUsageScreensUseCase', () => {
     expect(calls[0]).toMatchObject({ fromDay: '2026-10-19', toDayExclusive: '2026-11-18' });
     expect(calls[0]!.scopes.map((s) => s.tenantIds)).toEqual([['t1', 't2'], ['t1', 't2']]);
     expect(out.population.tenants).toBe(2);
+    expect(out.population.byFamily).toEqual([{ family: 'AFFILIATES', tenants: 2 }, { family: 'SAVER', tenants: 2 }]);
   });
 
   it('plano restringe contas e telas à família dele; produto restringe telas', async () => {
@@ -58,6 +59,12 @@ describe('GetFeatureUsageScreensUseCase', () => {
     const { useCase, calls } = setup();
     await useCase.execute({ ...INPUT, plan: 'NONE', includeInternal: true });
     expect(calls[0]!.scopes.map((s) => s.tenantIds)).toEqual([['t3'], ['t1']]);
+  });
+
+  it('população por família: com plano só a família dele; Saver divide pelas contas com plano Saver', async () => {
+    const { useCase } = setup();
+    const saver = await useCase.execute({ ...INPUT, plan: 'SAVER_PRO' });
+    expect(saver.population).toEqual({ tenants: 1, byFamily: [{ family: 'SAVER', tenants: 1 }] });
   });
 
   it('período até 400 dias; acima ou no futuro = USAGE_METRICS_RANGE_INVALID', async () => {

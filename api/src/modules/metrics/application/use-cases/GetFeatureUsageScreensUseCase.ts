@@ -21,7 +21,11 @@ export interface FeatureUsageScreensOutput {
   range: FeatureUsageRangeOutput;
   /** Primeiro dia com visita gravada (início da coleta); `null` sem visita. */
   firstDataDay: string | null;
-  population: { tenants: number };
+  /**
+   * `tenants`: contas do recorte (união das famílias). `byFamily`: contas do recorte em cada família em escopo
+   * (com plano, as que têm o plano nela), para o alcance de cada tela dividir pelas contas da família dela.
+   */
+  population: { tenants: number; byFamily: { family: FeatureUsagePlanFamily; tenants: number }[] };
   screens: FeatureUsageScreenItem[];
 }
 
@@ -59,9 +63,11 @@ export class GetFeatureUsageScreensUseCase {
           (!input.tenantId || t.tenantId === input.tenantId),
       );
       const population = new Set<string>();
+      const byFamily: { family: FeatureUsagePlanFamily; tenants: number }[] = [];
       const scopes: PageViewScope[] = families.map((family) => {
         const ids = scoped.filter((t) => !input.plan || planIn(t, family) === input.plan).map((t) => t.tenantId);
         for (const id of ids) population.add(id);
+        byFamily.push({ family, tenants: ids.length });
         return { keys: screens.filter((s) => s.planFamily === family).map((s) => s.key), tenantIds: ids };
       });
       const read = await this.deps.pageViews.read({ fromDay: period.from, toDayExclusive: addDays(period.to, 1), scopes }, budget);
@@ -69,7 +75,7 @@ export class GetFeatureUsageScreensUseCase {
       return {
         range: rangeOf(period, USAGE_DAILY_MAX_DAYS),
         firstDataDay: read.firstDataDay,
-        population: { tenants: population.size },
+        population: { tenants: population.size, byFamily },
         screens: screens
           .map((s) => ({
             key: s.key,
