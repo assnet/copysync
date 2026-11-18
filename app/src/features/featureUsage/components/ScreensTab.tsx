@@ -12,7 +12,7 @@ import {
   screensCollectionNotice, visibleFeatures, visibleScreens,
 } from '../rules';
 import { featureUsageStrings as S } from '../strings';
-import type { UsageFeatureItem, UsageScreenItem } from '../types';
+import type { UsageFeatureItem, UsagePlanFamily, UsageScreenItem, UsageScreensResponse } from '../types';
 import { useUsagePage } from '../hooks/useUsagePage';
 import { useUsageScreens } from '../hooks/useUsageScreens';
 import { UsageRetryAlert } from './UsageSummaryGate';
@@ -81,10 +81,18 @@ function UsedCell({ screenKey, cross }: { screenKey: string; cross: CrossState }
 }
 
 /** Tabela alternativa (acessibilidade): mesmos números do ranking + parte do recorte e o cruzamento "usaram". */
+/** Denominador do "Do recorte": telas Saver pela família Saver, as demais pela de Afiliados; sem `byFamily`, o total. */
+function familyPopulation(population: UsageScreensResponse['population'], family: UsagePlanFamily): number {
+  return population.byFamily?.find((f) => f.family === family)?.tenants ?? population.tenants;
+}
+
 function ScreensTable({ screens, population, cross }: {
-  screens: UsageScreenItem[]; population: number; cross: CrossState;
+  screens: UsageScreenItem[]; population: UsageScreensResponse['population']; cross: CrossState;
 }) {
   const c = t.columns;
+  const shareHint = population.byFamily
+    ? t.shareHelpByFamily(formatInteger(familyPopulation(population, 'AFFILIATES')), formatInteger(familyPopulation(population, 'SAVER')))
+    : t.shareHelp(formatInteger(population.tenants));
   const num = { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } as const;
   return (
     <StickyFirstColumn>
@@ -94,19 +102,20 @@ function ScreensTable({ screens, population, cross }: {
             <TableCell component="th" scope="col">{c.screen}</TableCell>
             <TableCell component="th" scope="col">{c.product}</TableCell>
             <TableCell component="th" scope="col" align="right">{c.tenants}</TableCell>
-            <TableCell component="th" scope="col" align="right"><HeaderHint label={c.share} hint={t.shareHelp(formatInteger(population))} /></TableCell>
+            <TableCell component="th" scope="col" align="right"><HeaderHint label={c.share} hint={shareHint} /></TableCell>
             <TableCell component="th" scope="col" align="right"><HeaderHint label={c.tenantDays} hint={t.tenantDaysHelp} /></TableCell>
             <TableCell component="th" scope="col" align="right"><HeaderHint label={c.used} hint={t.usedHelp} /></TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {screens.map((sc) => {
+            const total = familyPopulation(population, sc.planFamily === 'SAVER' ? 'SAVER' : 'AFFILIATES');
             return (
               <TableRow key={sc.key} hover>
                 <TableCell component="th" scope="row" sx={{ fontWeight: 500, minWidth: 140 }}>{screenLabel(sc.key)}</TableCell>
                 <TableCell sx={{ whiteSpace: 'nowrap' }}>{productLabel(sc.product)}</TableCell>
                 <TableCell align="right" sx={num}>{formatInteger(sc.tenants)}</TableCell>
-                <TableCell align="right" sx={num}>{formatReach(population > 0 ? sc.tenants / population : null)}</TableCell>
+                <TableCell align="right" sx={num}>{formatReach(total > 0 ? sc.tenants / total : null)}</TableCell>
                 <TableCell align="right" sx={num}>{formatInteger(sc.tenantDays)}</TableCell>
                 <TableCell align="right" sx={num}><UsedCell screenKey={sc.key} cross={cross} /></TableCell>
               </TableRow>
@@ -121,8 +130,8 @@ function ScreensTable({ screens, population, cross }: {
 /**
  * Aba Telas (`/admin/usage/screens`, P3): ranking das telas do menu por **contas que abriram** (uma marca por conta e
  * dia, nunca número de aberturas), lido por consulta própria (`GET /admin/usage/screens`). Tabela alternativa com
- * dias-conta e o cruzamento com o uso do recurso da tela (do resumo já carregado, quando houver). O filtro de tipo
- * não vale aqui; produto, plano, status e internas valem.
+ * dias-conta, "Do recorte" pela família da tela e o cruzamento com o uso do recurso (resumo lido só com a tabela aberta).
+ * O ranking ignora o filtro de tipo; a coluna cruzada o segue. Produto, plano, status e internas valem.
  */
 export default function ScreensTab() {
   const { filters, setFilters, query, refreshKey, summary, screensView: view, setScreensView: setView } = useUsagePage();
@@ -155,7 +164,7 @@ export default function ScreensTab() {
 
   let body: ReactNode;
   if (asTable) {
-    body = <ScreensTable screens={screens} population={data.population.tenants} cross={cross} />;
+    body = <ScreensTable screens={screens} population={data.population} cross={cross} />;
   } else {
     body = (
       <>

@@ -113,6 +113,20 @@ describe('ScreensTab', () => {
     expect(within(table).queryByLabelText(t.usedLoading)).toBeNull();
   });
 
+  it('"Do recorte" divide telas Saver pela família Saver e as demais pela de Afiliados (population.byFamily)', async () => {
+    const data = screensFixture();
+    data.population = { tenants: 15, byFamily: [{ family: 'AFFILIATES', tenants: 12 }, { family: 'SAVER', tenants: 4 }] };
+    data.screens = data.screens.map((sc) => (sc.key === 'view:saver-groups' ? { ...sc, tenants: 2 } : sc));
+    getScreens.mockResolvedValue(data);
+    renderTab({ view: 'table' });
+    const table = await screen.findByRole('table', { name: t.tableAria });
+    // Gerador: 12 ÷ 12 de Afiliados; grupos do Saver: 2 ÷ 4 do Saver.
+    expect(within(within(table).getByRole('row', { name: /Gerador de ofertas/ })).getAllByRole('cell')[2].textContent).toBe('100%');
+    const saver = within(table).getByRole('row', { name: new RegExp(S.screens.labels['view:saver-groups']) });
+    expect(within(saver).getAllByRole('cell')[2].textContent).toBe('50%');
+    expect(screen.getByTitle(t.shareHelpByFamily('12', '4'))).toBeInTheDocument();
+  });
+
   it('sem nenhuma tela aberta mostra o estado vazio com limpar filtros', async () => {
     const data: UsageScreensResponse = { ...screensFixture(), firstDataDay: null };
     data.screens = data.screens.map((s) => ({ ...s, tenants: 0, tenantDays: 0 }));

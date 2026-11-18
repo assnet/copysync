@@ -229,6 +229,10 @@ export interface UsageScreensResponse {
   range: UsageRange;
   /** Primeiro dia com visita registrada (início da coleta); `null` sem nenhuma ainda. */
   firstDataDay: UsageDay | null;
-  population: { tenants: number };
+  /**
+   * Contas do recorte; `byFamily` (contas com plano em cada família) é o denominador do "Do recorte" de cada tela.
+   * Opcional até a API publicar: sem ele, todas as telas dividem por `tenants`.
+   */
+  population: { tenants: number; byFamily?: { family: UsagePlanFamily; tenants: number }[] };
   screens: UsageScreenItem[];
 }

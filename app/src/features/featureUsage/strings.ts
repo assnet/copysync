@@ -403,6 +403,8 @@ export const featureUsageStrings = {
     },
     tenantDaysHelp: 'Soma, por conta, dos dias em que ela abriu a tela.',
     shareHelp: (total: string) => `Contas que abriram ÷ ${accounts(total)} do recorte.`,
+    shareHelpByFamily: (affiliates: string, saver: string) =>
+      `Contas que abriram ÷ contas do recorte na família da tela: telas do ${planFamilies.SAVER} dividem por ${accounts(saver)}; as demais, pelas ${accounts(affiliates)} de ${planFamilies.AFFILIATES}.`,
     usedHelp: 'Contas que usaram o recurso desta tela no período, com os filtros atuais. Abrir não é usar: os dois números contam contas diferentes.',
     usedNone: 'Tela sem um recurso único medido, ou recurso fora dos filtros de tipo.',
     usedLoading: 'Carregando o uso do recurso',
