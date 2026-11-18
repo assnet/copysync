@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Alert, Box, Button, Chip, Skeleton, Stack, Tooltip, Typography } from '@mui/material';
 import { ChartColumn, Info, Radio, TriangleAlert } from 'lucide-react';
 import { serverNow } from '@/services/serverClock';
@@ -11,6 +11,9 @@ import type { UsageFeatureItem, UsageFilters, UsageSource, UsageSummary } from '
 import { useUsagePage } from '../hooks/useUsagePage';
 import { UsageKpiRowSkeleton } from './UsageKpiRow';
 
+/** Intervalo do relógio da linha de contexto (aviso de dado antigo). */
+export const CONTEXT_CLOCK_MS = 60_000;
+
 /**
  * "Dias no horário de Brasília · dados desde 26/10/2026 · atualizado às 15:02" (menor `firstDataDay` visível), com a
  * fonte: leitura sob demanda (`live`) ganha um chip discreto; agregado diário sem atualizar há mais de 1 h, um aviso.
@@ -18,7 +21,13 @@ import { UsageKpiRowSkeleton } from './UsageKpiRow';
 export function UsageContextLine({ features, freshAt, source }: {
   features: readonly Pick<UsageFeatureItem, 'firstDataDay'>[]; freshAt: string; source: UsageSource;
 }) {
-  const now = serverNow();
+  // Relógio reativo: o aviso de dado antigo aparece (e a idade avança) sem esperar outra renderização.
+  const [now, setNow] = useState(serverNow);
+  useEffect(() => {
+    setNow(serverNow());
+    const timer = window.setInterval(() => setNow(serverNow()), CONTEXT_CLOCK_MS);
+    return () => window.clearInterval(timer);
+  }, [freshAt]);
   const state = sourceState({ source, freshAt }, now);
   return (
     <Stack spacing={0.5} aria-label={S.context.aria} role="group">
