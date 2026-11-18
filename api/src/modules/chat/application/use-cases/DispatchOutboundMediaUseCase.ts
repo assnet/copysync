@@ -72,6 +72,8 @@ export class DispatchOutboundMediaUseCase {
     let status: ChatMessageStatus | null = ChatMessageStatus.FAILED;
     let sentAt: Date | undefined;
     let realExternalId: string | undefined;
+    /** Engine devolveu id externo não vazio (critério do uso, igual ao do texto). */
+    let confirmed = false;
     try {
       const message = await this.messageRepo.findById(job.messageId, job.tenantId);
       // Fora de PENDING (retry duplicado, recuperação, apagada): nada a fazer.
@@ -83,6 +85,7 @@ export class DispatchOutboundMediaUseCase {
       // Engine que só conhece o id real após o envio (Telegram) devolve outro: grava o real,
       // senão citação/reação e status posteriores não acham a mensagem.
       if (sentId && sentId !== message.externalMessageId) realExternalId = sentId;
+      confirmed = !!sentId;
       status = ChatMessageStatus.SENT;
       sentAt = this.now();
     } catch (err) {
@@ -91,7 +94,7 @@ export class DispatchOutboundMediaUseCase {
         'Falha ao despachar mídia',
       );
     } finally {
-      if (status) await this.settle(job, status, sentAt, realExternalId);
+      if (status) await this.settle(job, status, sentAt, realExternalId, confirmed);
     }
   }
 
@@ -197,7 +200,7 @@ export class DispatchOutboundMediaUseCase {
 
   /** Grava o desfecho e publica só se a transição ocorreu. Nunca lança. */
   private async settle(
-    job: OutboundMediaJob, status: ChatMessageStatus, sentAt?: Date, externalMessageId?: string,
+    job: OutboundMediaJob, status: ChatMessageStatus, sentAt?: Date, externalMessageId?: string, confirmed = false,
   ): Promise<void> {
     try {
       const from = [ChatMessageStatus.PENDING];
@@ -207,9 +210,9 @@ export class DispatchOutboundMediaUseCase {
           ? await this.messageRepo.transitionStatus(job.messageId, job.tenantId, from, status, sentAt, externalMessageId)
           : await this.messageRepo.transitionStatus(job.messageId, job.tenantId, from, status, sentAt);
       if (!updated) return;
-      // Uso do chat: mídia do painel conta quando a engine confirmou o envio (mesmo critério do texto, que conta
-      // com o id externo devolvido). Só na transição que ocorreu: retry duplicado não soma de novo
-      if (status === ChatMessageStatus.SENT && job.origin === 'PANEL') {
+      // Uso do chat: mídia do painel conta quando a engine confirmou o envio com id externo não vazio (mesmo
+      // critério do texto). Só na transição que ocorreu: retry duplicado não soma de novo
+      if (status === ChatMessageStatus.SENT && job.origin === 'PANEL' && confirmed) {
         recordFeatureUsage(
           this.usage,
           { tenantId: job.tenantId, featureKey: CHAT_SEND_USAGE_KEY, kind: 'ACTION', at: sentAt ?? this.now() },

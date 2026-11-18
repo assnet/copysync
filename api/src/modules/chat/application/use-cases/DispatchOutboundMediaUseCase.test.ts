@@ -418,6 +418,17 @@ describe('DispatchOutboundMediaUseCase — uso do chat', () => {
     expect(usage.increment).not.toHaveBeenCalled();
   });
 
+  it('engine sem id externo (vazio ou ausente): marca SENT mas não soma (mesmo critério do texto)', async () => {
+    const usage = usageOf();
+    for (const messageId of ['', undefined]) {
+      const d = makeDeps({ usage });
+      vi.mocked(d.engine!.sendMediaMessage).mockResolvedValue({ messageId, sentAt: NOW } as never);
+      await d.useCase.execute({ ...JOB, origin: 'PANEL' });
+      expect(d.messageRepo.transitionStatus).toHaveBeenCalledWith('msg-1', TENANT, [ChatMessageStatus.PENDING], ChatMessageStatus.SENT, NOW);
+    }
+    expect(usage.increment).not.toHaveBeenCalled();
+  });
+
   it('contador que rejeita não muda o desfecho', async () => {
     const usage = { increment: vi.fn(async () => { throw new Error('down'); }), markOnce: vi.fn(async () => undefined) };
     const d = makeDeps({ usage });
