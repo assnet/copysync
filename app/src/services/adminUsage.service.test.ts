@@ -39,23 +39,25 @@ afterEach(() => {
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 describe('fila de leituras de uso', () => {
-  it('uma leitura por vez entre os quatro endpoints; a próxima sai quando a anterior termina', async () => {
+  it('uma leitura por vez entre os cinco canais (resumo, tendência, detalhe, contas e telas); a próxima sai quando a anterior termina', async () => {
     const a = adminUsageService.getSummary({ from: '1' });
     const b = adminUsageService.getDetail('offer_hunter', { from: '1' }, 'trend');
     const c = adminUsageService.getDetail('offer_generator', { from: '1' });
     const d = adminUsageService.getTenants('offer_generator', { from: '1' });
+    const e = adminUsageService.getScreens({ from: '1' });
     await flush();
     expect(get).toHaveBeenCalledTimes(1);
-    for (const value of ['s', 't', 'd', 'l']) {
+    for (const value of ['s', 't', 'd', 'l', 'v']) {
       pending[pending.length - 1].resolve(value);
       await flush();
     }
-    await expect(Promise.all([a, b, c, d])).resolves.toEqual(['s', 't', 'd', 'l']);
+    await expect(Promise.all([a, b, c, d, e])).resolves.toEqual(['s', 't', 'd', 'l', 'v']);
     expect(get.mock.calls.map((call) => call[0])).toEqual([
       '/admin/usage/summary',
       '/admin/usage/features/offer_hunter',
       '/admin/usage/features/offer_generator',
       '/admin/usage/features/offer_generator/tenants',
+      '/admin/usage/screens',
     ]);
     expect(maxInFlight).toBe(1);
   });
