@@ -9,6 +9,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Added — app 0.126.0 / api 0.103.0 — Uso dos recursos (P2, super admin)
+
+#### app / api ([`docs/uso-dos-recursos.md`](docs/uso-dos-recursos.md))
+
+- **`metrics`** (`RollupFeatureUsageUseCase.ts`, `FeatureUsageRollupJob.ts`, `RecordFeatureUsageUseCase.ts`, repositórios `feature_usage_daily`) — agregado diário consolidado no `worker` sob `FEATURE_USAGE_ROLLUP_ENABLED` (default `false`), backfill e retenção de 400 dias, leitura pelo agregado quando fresco (< 45 min) com teto de 400 dias; contador fail-open para `chat_send` (só envio do painel aceito) e Story (corte em `platform_settings`). Migrations `20261117170000_create_feature_usage_daily` e `20261117173000_add_feature_usage_daily_tenant_index`. Detalhes em `api/CHANGELOG.md` [0.103.0].
+- **`/admin/usage`** (`UsageSummaryGate.tsx`, `rules.ts`) — fonte e frescor do dado, aviso de dado antigo, presets 180/365 dias.
+
 ### Added — app 0.125.0 / api 0.102.0 — Uso dos recursos (P1, super admin)
 
 #### app / api ([`docs/uso-dos-recursos.md`](docs/uso-dos-recursos.md))

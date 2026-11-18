@@ -9,8 +9,14 @@ nunca usados no período e, por recurso, as contas que mais usam. Plano completo
 
 - Só dado que já existe: as tabelas de domínio são lidas sob demanda (`source: "live"`). Sem tabela nova, sem
   instrumentação, sem analytics externo. Só dois índices e uma ação de auditoria.
-- P2 (agregado diário `feature_usage_daily` + contador para Story e chat) e P3 (adoção, recorrência, retenção e
-  visitas de tela) ainda não existem.
+
+## P2 — agregado diário e contador (api 0.103.0 · app 0.126.0)
+
+- Tabela `feature_usage_daily` (dia de Brasília × conta × recurso × tipo → `uses`), consolidada por job no `worker`,
+  e contador próprio para o que as tabelas de domínio não registram (Story e envio do chat). Com o agregado fresco e
+  cobrindo o período, a leitura sai dele (`source: "daily"`) e o teto sobe para **400 dias**; senão segue a P1.
+- **Só liga pela flag `FEATURE_USAGE_ROLLUP_ENABLED`** (default `false`). Sem ela nada muda: leitura sob demanda,
+  teto de 90 dias. O contador grava desde o deploy, com ou sem a flag.
 
 ## Arquivos-chave
 
@@ -28,6 +34,9 @@ nunca usados no período e, por recurso, as contas que mais usam. Plano completo
 | presentation | `.../presentation/routes/featureUsage.routes.ts`, `schemas/featureUsage.schema.ts`, `presenters/featureUsagePresenter.ts` | HTTP (`authHook` + `superAdminHook`) |
 | erros | `api/src/shared/errors/internal/UsageMetricsErrors.ts` | Erros abaixo |
 | painel | `app/src/features/featureUsage/` (`rules.ts`, `types.ts`, `strings.ts`, `hooks/`, `components/`), `app/src/services/adminUsage.service.ts`, `app/src/pages/admin/AdminUsagePage.tsx` | Tela, filtros, fila de leituras |
+| P2 domain | `.../domain/contracts/IFeatureUsageDailyRepository.ts`, `IFeatureUsageRollupStateRepository.ts`, `IFeatureUsageRecorder.ts` | Agregado, marco/corte, contador fail-open |
+| P2 application | `.../application/use-cases/RollupFeatureUsageUseCase.ts`, `RecordFeatureUsageUseCase.ts` | Consolidação e contador |
+| P2 infra | `.../infrastructure/repositories/PrismaFeatureUsageDailyRepository.ts`, `PrismaDailyFeatureUsageReader.ts`, `PrismaFeatureUsageRollupStateRepository.ts`, `jobs/FeatureUsageRollupJob.ts`, `featureUsageRollupStart.ts` | `replaceDay`/`increment`/`markOnce`, leitura do agregado, `platform_settings`, job |
 | contrato | `contracts/feature-usage/` | Fixtures lidas pelos testes dos dois lados (abaixo) |
 
 ## Rotas (só super admin; outro usuário = 401 `UNAUTHORIZED`)
@@ -54,12 +63,12 @@ início com aviso.
 
 | Código | HTTP | Quando |
 | --- | --- | --- |
-| `USAGE_METRICS_RANGE_INVALID` | 400 | `from > to`, data futura, período acima do teto da fonte (90 dias na P1). Formato, > 400 dias e `day` > 90 dias param antes, no schema (400 de validação) |
+| `USAGE_METRICS_RANGE_INVALID` | 400 | `from > to`, data futura, período acima do teto da fonte (90 dias sob demanda, 400 no agregado; `day` até 90). Formato, > 400 dias e `day` > 90 dias param antes, no schema (400 de validação) |
 | `USAGE_METRICS_FEATURE_NOT_FOUND` | 404 | Chave fora do catálogo |
 | `USAGE_METRICS_CURSOR_INVALID` | 400 | Cursor adulterado, vencido, de outro recurso ou de outro recorte; o painel recomeça com `CursorResetNotice` |
-| `USAGE_METRICS_READ_UNAVAILABLE` | 503 | Orçamento de 2 s esgotado (inclusive na fila ou esperando conexão), `statement_timeout`, fila do portão cheia ou linhas acima da guarda. O painel mostra `Alert` com "Tentar de novo" (não a tela de serviço atualizando) |
+| `USAGE_METRICS_READ_UNAVAILABLE` | 503 | Orçamento de 2 s esgotado (inclusive na fila ou esperando conexão), `statement_timeout`, fila do portão cheia, linhas acima da guarda ou agregado velho (> 45 min) com período acima de 90 dias. O painel mostra `Alert` com "Tentar de novo" (não a tela de serviço atualizando) |
 
-## Catálogo (P1, 16 recursos)
+## Catálogo (16 recursos da P1 + `chat_send` da P2)
 
 `tipo`: **ação** (alguém fez), **automático** (o sistema trabalhou pela conta), **audiência** (terceiro clicou),
 **acesso** (entrou no painel). O tipo é do **evento**: o Caçador tem linhas `ACTION` (manual) e `AUTOMATIC` (agendada).
@@ -82,6 +91,9 @@ início com aviso.
 | `saver_extraction` | extração pedida | `saver_extractions.createdAt` | ação | — |
 | `saver_export` | exportação concluída (`meta.completed = true`) | `audit_logs` `SAVER_EXPORTED` | ação | — |
 | `panel_login` | `LOGIN_OK` ou `LOGIN_CODE_VERIFIED`, conta via `user_tenants` | `login_events.createdAt` | acesso | `RETENTION` (30 d) |
+| `chat_send` (P2) | envio do painel aceito (`origin = PANEL`) | contador (`feature_usage_daily`) | ação | — |
+
+`offer_story` na P2: antes do corte, `ai_usage_logs`; do corte em diante, contador (arte gerada, com ou sem título).
 
 O que cada parcial realmente mede: `offer_dispatch` e `ai_rewrite` contam como automático mas incluem o que foi
 disparado à mão (a fonte não separa; "só ação" não os mostra, exceção D11); `offer_story` só conta Story cujo título a
@@ -137,9 +149,77 @@ Assim a feature ocupa no máximo 1 das 5 conexões. Com mais de uma réplica `ht
   promessa. A lista de contas só é pedida depois do detalhe. Timeout de 8 s em cada leitura de uso; a fila é limpa no
 logout. Sem retry automático.
 - Guarda de 100 mil linhas na leitura sob demanda (acima = 503).
-- **Limitação conhecida:** com o tipo `ACCESS` marcado e período maior que 15 dias, o total anterior de contas fica sem
-  base (`null`): o período anterior começa antes da retenção de 30 dias de `login_events` (`panel_login` tem dado).
-  Some na P2, com o agregado diário.
+- **Limitação conhecida:** sob demanda, com o tipo `ACCESS` marcado e período maior que 15 dias, o total anterior de
+  contas fica sem base (`null`): o período anterior começa antes da retenção de 30 dias de `login_events`. O agregado
+  guarda o dia consolidado por 400 dias, então a limitação some à medida que o job acumula histórico (o backfill não
+  recupera o que `login_events` já podou).
+
+## Agregado diário (P2)
+
+**Tabela `feature_usage_daily`:** PK `(day, tenantId, featureKey, kind)`, `uses int`, `updatedAt` (sem default; SQL cru
+grava). Índices `(featureKey, day)` e `(tenantId)`; FK para `tenants` com `ON DELETE CASCADE`. Só conta, chave, tipo e
+número: nada de usuário, conteúdo ou destino.
+
+**Job `FeatureUsageRollupJob`** (`infrastructure/jobs/`, use case `RollupFeatureUsageUseCase`), só `worker`/`all` com
+`FEATURE_USAGE_ROLLUP_ENABLED=true` (`featureUsageRollupStart.ts`; papel `http` nunca monta). `start()` só arma o timer:
+**o 1º tick roda 15 min depois do boot**, nada no boot. Tick de 15 min, não reentra, nunca lança. Em cada tick:
+
+1. Lease `feature-usage-rollup` (TTL 10 min, solto ao terminar). **Renovado** antes de cada leitura de fonte e de
+   cada gravação de dia; renovação recusada = log `feature usage rollup lost lease, tick aborted` e nada mais é gravado.
+2. **Janela recente** (`recentWindow`): de `finalizedThrough + 1` (sem marca: ontem) até hoje, **no máximo 7 dias por
+   tick** (job parado por dias alcança hoje em vários ticks), nunca antes da retenção. `replaceDay` regrava, numa
+   transação por dia, só as chaves `LIVE` do dia (as do contador nunca são tocadas). Sem falha: grava `lastSuccessAt`
+   (quando a janela chega a hoje) e avança `finalizedThrough`, **nunca além de anteontem** (ontem é sempre revisitado).
+3. **`failureStreak`:** falhas seguidas. A partir de **3**, log `error` `feature usage rollup failing repeatedly` e a
+   janela é lida **dia a dia** para isolar o dia ruim; `finalizedThrough` só anda até o último dia bom contíguo.
+4. **Backfill** (lease `feature-usage-backfill`, TTL 10 min, solto): ≤ 7 dias por tick, para trás a partir de
+   `backfillCursor` (começa anteontem). Falha numa fonte = o cursor não anda (o passo se repete, idempotente). Termina
+   ao passar do primeiro dado das fontes (`backfillStopReason = FIRST_DATA`) ou do teto de 400 dias (`RETENTION`);
+   grava `backfillCompletedAt`, `backfilledFrom` e o motivo, com log `feature usage backfill completed`.
+5. **Retenção:** apaga `day < hoje − 400`, 1×/24 h (lease `feature-usage-retention` de 24 h, não solto).
+
+Estado (cursor, marco, `finalizedThrough`, `failureStreak`, `lastSuccessAt`) em `platform_settings["feature_usage_rollup"]`,
+nunca em memória. Orçamento de 20 s por leitura de fonte no job (fora do portão do `http`).
+
+**Escolha da fonte (`chooseUsageSource`):** o agregado cobre o período quando o backfill terminou e (`FIRST_DATA`) ou
+o período começa em `backfilledFrom` ou depois (`RETENTION`). Só vale **fresco**: `lastSuccessAt` há menos de **45 min**.
+Cobre mas está velho (job desligado ou falhando): até 90 dias lê a fonte viva com log `warn`
+`feature usage daily aggregate stale, reading live sources`; acima de 90 dias, 503 `USAGE_METRICS_READ_UNAVAILABLE`
+(nunca agregado velho em silêncio). A resposta traz `source` (`daily`/`live`), `freshAt` (`lastSuccessAt` ou agora) e
+`range.maxDays` (400 ou 90). Granularidade `day` segue limitada a 90 dias.
+
+## Contador (P2)
+
+- `IFeatureUsageRecorder` / `RecordFeatureUsageUseCase`: `increment` (+1 no dia × conta × recurso × tipo). Quem chama
+  usa `recordFeatureUsage(...)`: **fail-open**, sem `await`, erro vira log `warn` (sem conta nem conteúdo). Teto de
+  **20 gravações em voo por processo**; acima o uso é descartado, com aviso amostrado 1×/min com a contagem.
+- **`chat_send`** (novo, `RECORDED`, `FIRST_WRITE`, produto Chat): só envio com `origin = PANEL` (pessoa no painel) e
+  **aceito** (texto com id externo da engine; mídia aceita pela engine ou pela fila). `AUTOMATION` (oferta) não conta;
+  `origin` é obrigatório em `SendMessageUseCase`/`SendMediaMessageUseCase`. Conta desde a primeira escrita.
+- **`offer_story`** (`LIVE` com `recordedFrom: CUTOVER`): arte gerada = 1 uso, com ou sem título da IA.
+- **Corte** em `platform_settings["feature_usage_cutover"]` (`{ "<chave>": "YYYY-MM-DD" }`), gravado uma vez e de forma
+  atômica na **primeira escrita** do contador: corte = **dia seguinte** (Brasília) a ela. Antes do corte o Story vem da
+  fonte viva (`ai_usage_logs`, parcial `AI_HEADLINE_ONLY`); do corte em diante, do contador, e o rollup nunca grava dia
+  ≥ corte. O corte nunca muda.
+- **Aviso:** qualquer processo que escreva no banco de produção grava o corte na primeira escrita — inclusive um
+  servidor local com `api/.env` (aponta para produção). **Nunca rodar a API local contra produção.**
+
+## Painel (P2)
+
+- Linha de contexto com a fonte: `live` sempre indicada; `daily` mostra "atualizado há X" e aviso de dado antigo
+  acima de **30 min** (`USAGE_DAILY_STALE_MS`, antes do corte de 45 min da API). Hora pelo `serverNow()`.
+- Presets `180d` e `365d` aparecem quando `range.maxDays` permite (`usageMaxDays.ts`).
+
+## Ligar na Render (checklist)
+
+1. Deploy com as migrations `20261117170000_create_feature_usage_daily` e
+   `20261117173000_add_feature_usage_daily_tenant_index` (boot do container).
+2. `DATABASE_URL` com `socket_timeout` (portão de leitura e job).
+3. `FEATURE_USAGE_ROLLUP_ENABLED=true` **só no `worker`** (nunca no `http`).
+4. Depois de ~15 min, conferir o 1º tick (sem `lost lease`/`failing repeatedly`), `lastSuccessAt` e
+   `finalizedThrough` em `platform_settings["feature_usage_rollup"]`.
+5. Acompanhar o backfill (`backfillCursor` andando 7 dias por tick) até o log `feature usage backfill completed` e o
+   marco (`backfilledFrom`, `backfillStopReason`). Só então a tela passa a `source: daily` e a 400 dias.
 
 ## Auditoria e privacidade
 
@@ -152,7 +232,8 @@ logout. Sem retry automático.
 
 ## Contrato (`contracts/feature-usage/`)
 
-`summary.response.json`, `feature-detail.response.json`, `feature-tenants.response.json`, `catalog.json` e `README.md`.
+`summary.response.json`, `feature-detail.response.json`, `feature-tenants.response.json`, `summary.daily.response.json` e
+`feature-detail.daily.response.json` (P2, `source: daily` com `freshAt`), `catalog.json` e `README.md`.
 O teste do catálogo da API compara `catalog.json` com `FEATURE_USAGE_CATALOG`; o teste do presenter compara as respostas
 com os exemplos; os testes do painel exigem texto para cada chave e código e validam os exemplos contra `types.ts`.
 Leitura por caminho (`fs`), sem import entre `api/` e `app/`, fora de build e imagem. **Mudou o contrato, muda a
@@ -171,6 +252,10 @@ fixture no mesmo commit.**
   criar antes do deploy, na Render, com `CREATE INDEX CONCURRENTLY IF NOT EXISTS` com os mesmos nomes; a migration
   vira no-op.
 
+- `20261117170000_create_feature_usage_daily` (P2) — tabela `feature_usage_daily`, índice `(featureKey, day)`, FK com cascade.
+- `20261117173000_add_feature_usage_daily_tenant_index` (P2) — índice `(tenantId)` (cascade da conta e leitura por conta).
+  Tabela nova e vazia: migration normal no boot.
+
 ## Suposições conferidas no código
 
 - **S1:** `SENT` só é gravado por `markResult`, e `updatedAt` = fim do envio; a linha não é tocada depois.
@@ -178,7 +263,7 @@ fixture no mesmo commit.**
 - **S3:** ofertas, envios, execuções do Caçador e `ai_usage_logs` não têm limpeza. `login_events` é podada em 30 dias e
   `link_clicks` em 90; vitrine e Gestor de Links são apagados de verdade pelo usuário.
 - **S4/S5:** Story só deixa linha quando a IA escreve o título; `OUTBOUND` do chat não separa pessoa de automação
-  (chat fica para a P2, com contador).
+  (resolvido na P2: `chat_send` pelo contador com `origin`).
 
 ## O que não fazer
 
@@ -195,3 +280,6 @@ fixture no mesmo commit.**
   rota ou função; renomear recurso para caber no gráfico.
 - Chamar a Render, APM, `/metrics` público, analytics externo; biblioteca nova de gráfico, data ou i18n.
 - Editar migration aplicada; rodar `prisma migrate deploy` fora da Render.
+- P2: ligar `FEATURE_USAGE_ROLLUP_ENABLED` no `http`; gravar recurso do contador pelo rollup (ou dia ≥ corte); servir
+  agregado com mais de 45 min; `await` no contador ou deixá-lo falhar o envio; contar envio de automação ou não aceito
+  em `chat_send`; editar/apagar o corte em `platform_settings`; rodar a API local contra produção (grava o corte).
