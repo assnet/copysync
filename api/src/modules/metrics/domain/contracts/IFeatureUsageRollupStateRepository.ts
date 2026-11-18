@@ -86,6 +86,12 @@ export interface FeatureUsageRollupState {
    * A leitura trata esses recursos como não cobertos pelo agregado. Sai daqui quando o grupo conclui.
    */
   backfillPendingKeys?: readonly string[];
+  /**
+   * Dia (Brasília) do primeiro tick inteiro sem falha: a partir dele a consolidação acompanha o dia ao vivo. Dias
+   * anteriores vieram do backfill, que só lê o que ainda existe na fonte (`EXISTING_ONLY`). Gravado uma única vez.
+   * Ausente = desconhecido (estado anterior ao campo): a leitura aplica `EXISTING_ONLY` sempre.
+   */
+  liveSince?: string | null;
 }
 
 /** Resultado de um tick para o estado: o que não vier não muda. */
@@ -98,6 +104,8 @@ export interface FeatureUsageTickPatch {
   retryQueue?: readonly FeatureUsageRetryItem[];
   revisitCursor?: string;
   backfillPendingKeys?: readonly string[];
+  /** Primeiro tick inteiro: dia em que a consolidação ao vivo começou. O repositório nunca regrava o já gravado. */
+  liveSince?: string;
 }
 
 export interface IFeatureUsageRollupStateRepository {

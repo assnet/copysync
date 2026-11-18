@@ -348,7 +348,11 @@ export class RollupFeatureUsageUseCase {
     patch.retryQueue = queue;
     // Fresco (global) só quando o tick inteiro concluiu: nenhum grupo falho na janela, backfill não falhou e a janela
     // chegou a hoje. A leitura usa o frescor por grupo; este é o de estado antigo sem grupos
-    if (recentFailed.size === 0 && backfill.outcome !== 'failed' && windowLast === today) patch.lastSuccessAt = now;
+    if (recentFailed.size === 0 && backfill.outcome !== 'failed' && windowLast === today) {
+      patch.lastSuccessAt = now;
+      // Primeiro tick inteiro: daqui em diante o dia é consolidado ao vivo (antes, só o que o backfill achou)
+      if (!st.liveSince) patch.liveSince = today;
+    }
     await this.keepAlive();
     await this.deps.state.recordTick(patch);
     return {

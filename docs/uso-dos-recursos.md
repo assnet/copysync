@@ -208,7 +208,15 @@ repeatedly`). Frescor do grupo (`groups[].lastSuccessAt`) só quando a janela ch
 janela**, **sem item do grupo pendente no reprocesso** e sem falha no backfill dele (o piso de reprocesso não tira o
 frescor). `lastSuccessAt` global só quando o tick inteiro concluiu; é o frescor do estado antigo, sem grupos.
 
-**Estado completo** (marca, `failureStreak`, `lastSuccessAt`, `groups` com cursor/marco/falhas/frescor/piso por grupo,
+**`liveSince` (consolidação ao vivo):** no primeiro tick inteiro (o mesmo que grava `lastSuccessAt` global) o job grava
+`liveSince` = hoje (Brasília), **uma única vez** (o SQL do merge devolve o valor já gravado por cima do patch). Os dias
+antes dele vieram do backfill, que só lê o que ainda existe na fonte: no agregado, `EXISTING_ONLY` vale quando o
+período começa antes de `liveSince` (não só antes de `backfilledFrom`). Estado sem o campo (gravado antes dele) =
+desconhecido: `EXISTING_ONLY` sempre, o conservador; o próximo tick inteiro grava o dia (mais tarde que o real, nunca
+mais cedo). Job parado e retomado não move `liveSince`: os dias da parada recuperados pela janela também só viram o que
+existia, limite conhecido.
+
+**Estado completo** (marca, `failureStreak`, `lastSuccessAt`, `liveSince`, `groups` com cursor/marco/falhas/frescor/piso por grupo,
 `retryQueue`, `revisitCursor`, marco e `backfillPendingKeys`) em `platform_settings["feature_usage_rollup"]`, nunca em
 memória. Orçamento de 20 s por leitura de fonte no job (fora do portão do `http`).
 

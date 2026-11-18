@@ -241,7 +241,9 @@ export async function chooseUsageSource(
   if (period.granularity === 'day' && period.days > USAGE_DAY_ROWS_MAX_DAYS) {
     throw new UsageMetricsRangeInvalidError(`granularity day allows at most ${USAGE_DAY_ROWS_MAX_DAYS} days`, maxDays);
   }
-  const coverage = daily ? { backfilledFrom: state!.backfilledFrom!, completedAt: state!.backfillCompletedAt! } : null;
+  const coverage = daily
+    ? { backfilledFrom: state!.backfilledFrom!, completedAt: state!.backfillCompletedAt!, liveSince: state!.liveSince ?? null }
+    : null;
   const liveReason: FeatureUsageLiveReason | null = daily
     ? null
     : !backfilled

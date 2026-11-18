@@ -119,6 +119,16 @@ describe('PrismaFeatureUsageRollupStateRepository', () => {
     });
   });
 
+  it('liveSince: gravado pelo tick uma única vez (o já gravado nunca muda); estado sem o campo lê ausente', async () => {
+    const repo = new PrismaFeatureUsageRollupStateRepository(prisma);
+    await repo.recordTick({ failureStreak: 0 });
+    expect(await repo.get()).not.toHaveProperty('liveSince');
+    await repo.recordTick({ failureStreak: 0, liveSince: '2026-11-17' });
+    await repo.recordTick({ failureStreak: 1, liveSince: '2026-11-18' });
+    await repo.recordTick({ failureStreak: 0 });
+    expect(await repo.get(createReadBudget())).toMatchObject({ liveSince: '2026-11-17', failureStreak: 0 });
+  });
+
   it('estado por grupo, reprocesso, revisita e pendentes do marco: gravados pelo tick e lidos de volta', async () => {
     const repo = new PrismaFeatureUsageRollupStateRepository(prisma);
     await repo.markBackfillCompleted({ completedAt: new Date('2026-11-17T10:00:00Z'), backfilledFrom: '2026-10-26', stopReason: 'FIRST_DATA', pendingKeys: ['link_rotation'] });

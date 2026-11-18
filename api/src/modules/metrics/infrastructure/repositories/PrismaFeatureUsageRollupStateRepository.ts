@@ -114,6 +114,7 @@ export function parseFeatureUsageRollupState(value: unknown, cutoverValue?: unkn
     ...optional('groups', parseGroups(o['groups'])),
     ...optional('retryQueue', parseRetryQueue(o['retryQueue'])),
     ...optional('revisitCursor', asDay(o['revisitCursor']) ?? undefined),
+    ...optional('liveSince', asDay(o['liveSince']) ?? undefined),
     ...optional(
       'backfillPendingKeys',
       Array.isArray(o['backfillPendingKeys']) ? (o['backfillPendingKeys'] as unknown[]).filter((k): k is string => typeof k === 'string' && KEY_RE.test(k)) : undefined,
@@ -237,6 +238,10 @@ export class PrismaFeatureUsageRollupStateRepository
       body['revisitCursor'] = patch.revisitCursor;
     }
     if (patch.backfillPendingKeys) body['backfillPendingKeys'] = [...patch.backfillPendingKeys];
+    if (patch.liveSince !== undefined) {
+      if (!DAY_RE.test(patch.liveSince)) throw new Error(`invalid liveSince: ${patch.liveSince}`);
+      body['liveSince'] = patch.liveSince;
+    }
     await this.merge(JSON.stringify(body), false);
   }
 
@@ -276,11 +281,15 @@ export class PrismaFeatureUsageRollupStateRepository
             "value" = (CASE WHEN jsonb_typeof("platform_settings"."value") = 'object' THEN "platform_settings"."value" ELSE '{}'::jsonb END) || EXCLUDED."value",
             "updatedAt" = EXCLUDED."updatedAt"
           WHERE NOT (jsonb_typeof("platform_settings"."value") = 'object' AND "platform_settings"."value" ? 'backfillCompletedAt')`
-      : this.prisma.$executeRaw`
+      : // `liveSince` gravado uma vez: o já gravado volta por cima do patch
+        this.prisma.$executeRaw`
           INSERT INTO "platform_settings" ("key", "value", "updatedById", "updatedAt")
           VALUES (${FEATURE_USAGE_ROLLUP_SETTINGS_KEY}, ${patch}::jsonb, NULL, (${at}::timestamptz AT TIME ZONE 'UTC'))
           ON CONFLICT ("key") DO UPDATE SET
-            "value" = (CASE WHEN jsonb_typeof("platform_settings"."value") = 'object' THEN "platform_settings"."value" ELSE '{}'::jsonb END) || EXCLUDED."value",
+            "value" = (CASE WHEN jsonb_typeof("platform_settings"."value") = 'object' THEN "platform_settings"."value" ELSE '{}'::jsonb END)
+              || EXCLUDED."value"
+              || (CASE WHEN jsonb_typeof("platform_settings"."value") = 'object' AND jsonb_typeof("platform_settings"."value" -> 'liveSince') = 'string'
+                    THEN jsonb_build_object('liveSince', "platform_settings"."value" -> 'liveSince') ELSE '{}'::jsonb END),
             "updatedAt" = EXCLUDED."updatedAt"`;
   }
 }

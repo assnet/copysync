@@ -12,7 +12,7 @@ import { FakeClock, FakeFeatureUsageReader, FakeUsageReadGate, FakeUsageTenantDi
 
 const NOW = new Date('2026-12-20T15:00:00.000Z'); // 12:00 em Brasília
 const FRESH = new Date('2026-12-20T14:45:00.000Z');
-const MARKER: FeatureUsageRollupState = { backfillCompletedAt: new Date('2026-11-20T10:00:00Z'), backfilledFrom: '2025-10-26', backfillStopReason: 'RETENTION', backfillCursor: null, cutovers: {}, lastSuccessAt: FRESH, finalizedThrough: null, failureStreak: 0 };
+const MARKER: FeatureUsageRollupState = { backfillCompletedAt: new Date('2026-11-20T10:00:00Z'), backfilledFrom: '2025-10-26', backfillStopReason: 'RETENTION', backfillCursor: null, cutovers: {}, lastSuccessAt: FRESH, finalizedThrough: null, failureStreak: 0, liveSince: '2026-11-20' };
 const NO_MARKER: FeatureUsageRollupState = { backfillCompletedAt: null, backfilledFrom: null, backfillStopReason: null, backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
 const INPUT: FeatureUsageQueryInput = {
   from: '2026-11-21',
@@ -164,19 +164,29 @@ describe('cobertura com agregado', () => {
   it('RETENTION/EXISTING_ONLY comparam com a cobertura do marco, não com o primeiro dia com uso', async () => {
     // Marco: backfilledFrom 2025-10-26, fim 2026-11-20; clique (retenção 90) coberto desde 2026-08-22
     const out = await setup(MARKER).summary.execute({ ...INPUT, from: '2026-08-01', granularity: 'week', kinds: ['AUDIENCE'] });
-    expect(out.features[0]).toMatchObject({ coverageReasons: ['RETENTION'], dataFrom: '2026-09-01' });
-    // Começa depois da poda (08-22) e antes do primeiro clique agregado (09-01): nada a apontar
+    // Antes de liveSince (11-20) os dias vieram do backfill: EXISTING_ONLY junto
+    expect(out.features[0]).toMatchObject({ coverageReasons: ['EXISTING_ONLY', 'RETENTION'], dataFrom: '2026-09-01' });
+    // Começa depois da poda (08-22) e antes do primeiro clique agregado (09-01): só o backfill a apontar
     const mid = await setup(MARKER).summary.execute({ ...INPUT, from: '2026-08-25', granularity: 'week', kinds: ['AUDIENCE'] });
-    expect(mid.features[0]!.coverageReasons).toEqual([]);
-    // Antes de backfilledFrom (RETENTION no marco cobre só a partir dele): EXISTING_ONLY e RETENTION
+    expect(mid.features[0]!.coverageReasons).toEqual(['EXISTING_ONLY']);
     const old = setup({ ...MARKER, backfilledFrom: '2026-08-10' });
     const before = await old.summary.execute({ ...INPUT, from: '2026-08-10', to: '2026-11-07', granularity: 'week', kinds: ['AUDIENCE'] });
-    expect(before.features[0]!.coverageReasons).toEqual(['RETENTION']);
+    expect(before.features[0]!.coverageReasons).toEqual(['EXISTING_ONLY', 'RETENTION']);
     expect(
       (await setup({ ...MARKER, backfilledFrom: '2026-08-10', backfillStopReason: 'FIRST_DATA' }).summary.execute({
         ...INPUT, from: '2026-08-01', to: '2026-10-29', granularity: 'week', kinds: ['AUDIENCE'],
       })).features[0]!.coverageReasons,
     ).toEqual(['EXISTING_ONLY', 'RETENTION']);
+  });
+
+  it('EXISTING_ONLY no agregado vale para período que começa antes de liveSince; estado sem liveSince = sempre', async () => {
+    const reasons = async (state: FeatureUsageRollupState, from: string) =>
+      (await setup(state).summary.execute({ ...INPUT, from, kinds: ['AUDIENCE'] })).features[0]!.coverageReasons;
+    const marker = { ...MARKER, backfilledFrom: '2026-09-01' };
+    expect(await reasons({ ...marker, liveSince: '2026-11-21' }, '2026-11-21')).toEqual([]);
+    expect(await reasons({ ...marker, liveSince: '2026-11-22' }, '2026-11-21')).toEqual(['EXISTING_ONLY']);
+    expect(await reasons({ ...marker, liveSince: undefined }, '2026-11-21')).toEqual(['EXISTING_ONLY']);
+    expect(await reasons({ ...marker, liveSince: null }, '2026-11-21')).toEqual(['EXISTING_ONLY']);
   });
 
   it('backfill parado no primeiro dado (FIRST_DATA): 365 dias começando antes de backfilledFrom usam o agregado', async () => {

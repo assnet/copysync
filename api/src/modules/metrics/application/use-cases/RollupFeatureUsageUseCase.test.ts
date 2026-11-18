@@ -74,6 +74,7 @@ class FakeState implements IFeatureUsageRollupStateRepository {
       ...(p.retryQueue ? { retryQueue: [...p.retryQueue] } : {}),
       ...(p.revisitCursor ? { revisitCursor: p.revisitCursor } : {}),
       ...(p.backfillPendingKeys ? { backfillPendingKeys: [...p.backfillPendingKeys] } : {}),
+      ...(p.liveSince && !this.value.liveSince ? { liveSince: p.liveSince } : {}),
     };
   }
 }
@@ -406,6 +407,18 @@ describe('RollupFeatureUsageUseCase', () => {
       expect(t.replaced.map((r) => r.day)).toEqual(['2026-11-16', '2026-11-17', '2026-11-15']);
       expect(t.state.ticks[1]).toMatchObject({ failureStreak: 0, lastSuccessAt: NOW });
       expect(t.state.ticks[1]).not.toHaveProperty('finalizedThrough'); // marca não anda para trás nem repete
+    });
+
+    it('primeiro tick inteiro grava liveSince = hoje uma única vez; tick incompleto não grava', async () => {
+      const t = setup({ catalog: [def('a')], now: NOW });
+      t.state.value = { ...t.state.value, ...DONE, finalizedThrough: '2026-11-06' };
+      await t.useCase.execute(); // janela não chega a hoje: incompleto
+      expect(t.state.ticks[0]).not.toHaveProperty('liveSince');
+      await t.useCase.execute();
+      expect(t.state.ticks[1]).toMatchObject({ lastSuccessAt: NOW, liveSince: '2026-11-17' });
+      await t.useCase.execute();
+      expect(t.state.ticks[2]).not.toHaveProperty('liveSince');
+      expect(t.state.value.liveSince).toBe('2026-11-17');
     });
 
     it('job parado 10 dias: alcança hoje em 7 + resto, e só fica fresco quando a janela chega a hoje', async () => {

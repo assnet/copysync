@@ -125,6 +125,11 @@ export interface FeatureUsageDailyCoverage {
   backfilledFrom: string;
   /** Fim do backfill: fonte podada já tinha perdido o que é mais velho que `completedAt − retenção`. */
   completedAt: Date;
+  /**
+   * Dia em que a consolidação ao vivo começou (`liveSince` do estado). Período que começa antes dele tem dia lido só
+   * pelo backfill (`EXISTING_ONLY`). `null`/ausente = desconhecido: `EXISTING_ONLY` sempre (conservador).
+   */
+  liveSince?: string | null;
 }
 
 export interface AggregateFeatureUsageInput {
@@ -254,7 +259,11 @@ function coverageReasonsFor(
         // Antes do corte só o título da IA conta; sem corte gravado, o período inteiro
         return cutover === undefined || period.from < cutover;
       case 'EXISTING_ONLY':
-        return source === 'daily' ? beforeCoverage : true;
+        // Agregado: os dias que o backfill leu vieram só dos registros que ainda existiam; vale até a consolidação ao
+        // vivo começar (`liveSince`). Sem o dia gravado (estado antigo), não dá para saber: vale sempre
+        if (source !== 'daily') return true;
+        if (!coverage) return beforeCoverage;
+        return !coverage.liveSince || period.from < coverage.liveSince;
       case 'MIXED_EVENTS':
       case 'MIXED_TRIGGERS':
       case 'TOKEN_CHANGE_ONLY':
