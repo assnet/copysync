@@ -39,16 +39,24 @@ function writeMarks(marks: PageViewMarks): void {
   }
 }
 
-/** Só testes: zera a reserva em memória. */
+/** Envios em voo (`<dia>|<tenantId>|<view:key>`): segura o duplo efeito do StrictMode e trocas rápidas sem gravar marca. */
+const inFlight = new Set<string>();
+
+/** Só testes: zera a reserva em memória e os envios em voo. */
 export function resetPageViewMarks(): void {
   memoryMarks = { day: '', marks: [] };
+  inFlight.clear();
 }
 
 /**
  * Registra a visita da tela do menu ativa (`menuKey` = chave de `buildNavigation`). No máximo uma chamada por
  * dia (Brasília, relógio do servidor) × conta × tela por aba. Não envia para super admin, sem conta ativa nem para
- * tela fora da lista. Fire-and-forget: nunca bloqueia a navegação nem mostra erro (429 e falha de rede são
- * ignorados; o servidor é idempotente, então perder ou repetir uma marca não muda o número).
+ * tela fora da lista. Fire-and-forget: nunca bloqueia a navegação nem mostra erro. A marca do dia só é gravada
+ * após a resposta de sucesso (204); enquanto o envio está em voo, a deduplicação é só em memória. Falha, 429 ou
+ * timeout não gravam marca: a próxima visita à tela tenta de novo (o servidor é idempotente, repetir não soma).
+ *
+ * Usa o `apiClient` comum e por isso herda os efeitos globais dele (401 renova/encerra a sessão, conta suspensa
+ * redireciona). Aceito: são os mesmos efeitos de qualquer outra chamada da tela aberta.
  */
 export function usePageViewReporter(menuKey: string | null | undefined, options: { isSuperAdmin: boolean; tenantId: string | null }): void {
   const { isSuperAdmin, tenantId } = options;
@@ -56,11 +64,19 @@ export function usePageViewReporter(menuKey: string | null | undefined, options:
     if (isSuperAdmin || !tenantId) return;
     const key = screenViewKeyOf(menuKey);
     if (!key) return;
-    const current = readMarks(screenViewDay(serverNow()));
+    const day = screenViewDay(serverNow());
     const mark = `${tenantId}|${key}`;
-    if (current.marks.includes(mark)) return;
-    // Marca antes de enviar: o duplo efeito do StrictMode e trocas rápidas não geram segunda chamada.
-    writeMarks({ day: current.day, marks: [...current.marks, mark] });
-    usagePageViewsService.report(key).catch(() => undefined);
+    if (readMarks(day).marks.includes(mark)) return;
+    const flightKey = `${day}|${mark}`;
+    if (inFlight.has(flightKey)) return;
+    inFlight.add(flightKey);
+    usagePageViewsService
+      .report(key)
+      .then(() => {
+        const latest = readMarks(day);
+        if (!latest.marks.includes(mark)) writeMarks({ day, marks: [...latest.marks, mark] });
+      })
+      .catch(() => undefined)
+      .finally(() => inFlight.delete(flightKey));
   }, [menuKey, isSuperAdmin, tenantId]);
 }

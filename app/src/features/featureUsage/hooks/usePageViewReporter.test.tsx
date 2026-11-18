@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { StrictMode } from 'react';
+import { renderHook, waitFor } from '@testing-library/react';
 import catalogRaw from '../../../../../contracts/feature-usage/catalog.json?raw';
 import { buildNavigation, isNavAction } from '@/features/navigation/model';
 import { usagePageViewsService } from '@/services/usagePageViews.service';
@@ -7,7 +8,15 @@ import { resetServerClock } from '@/services/serverClock';
 import { SCREEN_VIEW_KEYS, screenViewDay, screenViewKeyOf } from '../screenViews';
 import { PAGE_VIEW_MARKS_KEY, resetPageViewMarks, usePageViewReporter } from './usePageViewReporter';
 
+/** Processo do Node que roda o teste (o painel não tem os tipos de Node). */
+const nodeProcess = (globalThis as unknown as {
+  process: { on(e: string, f: (...a: unknown[]) => void): void; off(e: string, f: (...a: unknown[]) => void): void };
+}).process;
+
 const TENANT = { isSuperAdmin: false, tenantId: 't-1' };
+
+const flush = () => new Promise((r) => setTimeout(r, 0));
+const storedMarks = () => JSON.parse(sessionStorage.getItem(PAGE_VIEW_MARKS_KEY) ?? '{"marks":[]}').marks as string[];
 
 function render(menuKey: string | null, opts = TENANT) {
   return renderHook(({ key, o }) => usePageViewReporter(key, o), { initialProps: { key: menuKey, o: opts } });
@@ -41,19 +50,50 @@ describe('usePageViewReporter', () => {
     expect(report).toHaveBeenCalledTimes(2);
   });
 
-  it('dia novo descarta as marcas do anterior', () => {
+  it('dia novo descarta as marcas do anterior', async () => {
     sessionStorage.setItem(PAGE_VIEW_MARKS_KEY, JSON.stringify({ day: '2000-01-01', marks: ['t-1|view:offers'] }));
     render('offers');
     expect(report).toHaveBeenCalledTimes(1);
+    await flush();
     expect(JSON.parse(sessionStorage.getItem(PAGE_VIEW_MARKS_KEY) ?? '{}').day).not.toBe('2000-01-01');
   });
 
-  it('429 e falha de rede são ignorados em silêncio', async () => {
-    report.mockRejectedValue(Object.assign(new Error('Too Many Requests'), { status: 429 }));
-    const view = render('offers');
-    await Promise.resolve();
-    view.rerender({ key: 'offers', o: TENANT });
+  it('StrictMode real: duplo efeito gera um único POST', async () => {
+    renderHook(() => usePageViewReporter('offers', TENANT), { wrapper: StrictMode });
     expect(report).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(storedMarks()).toEqual(['t-1|view:offers']));
+  });
+
+  it('marca só é gravada após o sucesso', async () => {
+    let resolve: () => void = () => undefined;
+    report.mockReturnValue(new Promise<void>((r) => { resolve = r; }));
+    render('offers');
+    expect(storedMarks()).toEqual([]);
+    resolve();
+    await waitFor(() => expect(storedMarks()).toEqual(['t-1|view:offers']));
+  });
+
+  it.each([
+    ['429', Object.assign(new Error('Too Many Requests'), { status: 429 })],
+    ['timeout', Object.assign(new Error('timeout'), { code: 'ECONNABORTED' })],
+    ['rede', new Error('Network Error')],
+  ])('falha (%s) não grava marca, não escapa e a próxima visita reenvia', async (_n, error) => {
+    const unhandled = vi.fn();
+    nodeProcess.on('unhandledRejection', unhandled);
+    try {
+      report.mockRejectedValueOnce(error);
+      const first = render('offers');
+      await flush();
+      first.unmount();
+      expect(storedMarks()).toEqual([]);
+      render('offers');
+      expect(report).toHaveBeenCalledTimes(2);
+      await flush();
+      expect(storedMarks()).toEqual(['t-1|view:offers']);
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      nodeProcess.off('unhandledRejection', unhandled);
+    }
   });
 
   it('rota fora do menu, sem conta ou super admin não envia', () => {
