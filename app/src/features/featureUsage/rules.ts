@@ -20,8 +20,11 @@ export const USAGE_MAX_DAYS = 400;
  * assim um filtro salvo longo volta ao padrão no reload em vez de ser recusado pela API.
  */
 export const USAGE_INITIAL_MAX_DAYS = 90;
-/** Agregado diário sem atualizar há mais que isto mostra aviso na linha de contexto. */
-export const USAGE_DAILY_STALE_MS = 60 * 60 * 1000;
+/**
+ * Agregado diário sem atualizar há mais que isto mostra aviso na linha de contexto. A API nunca serve agregado com
+ * mais de 45 min (frescor do job; acima disso lê a fonte viva), então o aviso vem antes desse teto.
+ */
+export const USAGE_DAILY_STALE_MS = 30 * 60 * 1000;
 /** "Dia" só até este número de dias (acima, semana ou mês). */
 export const USAGE_DAY_GRANULARITY_MAX_DAYS = 90;
 /** Até aqui o padrão é "Dia"; acima, "Semana" (mesma regra do schema da API). */
@@ -608,7 +611,7 @@ export function contextLine(input: { firstDataDay: UsageDay | null; freshAt: str
 
 /**
  * Situação da fonte para a linha de contexto: `live` = lida agora nas tabelas de origem (indicação discreta);
- * `stale` = agregado diário sem atualizar há mais de 1 h (aviso). Fonte desconhecida (API mais nova) = `daily`.
+ * `stale` = agregado diário sem atualizar há mais de 30 min (aviso). Fonte desconhecida (API mais nova) = `daily`.
  * `nowMs` vem de `serverNow()`; `freshAt` inválido nunca vira aviso.
  */
 export function sourceState(input: { source: string; freshAt: string }, nowMs: number): 'live' | 'fresh' | 'stale' {

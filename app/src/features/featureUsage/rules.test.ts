@@ -125,10 +125,11 @@ describe('teto de 400 dias (agregado diário)', () => {
 
 describe('fonte e atualização', () => {
   const now = Date.parse('2026-11-17T18:02:11.000Z');
-  it('live é sempre indicado; daily só avisa com mais de 1 h sem atualizar', () => {
+  it('live é sempre indicado; daily só avisa com mais de 30 min sem atualizar (a API corta em 45 min)', () => {
     expect(sourceState({ source: 'live', freshAt: '2020-01-01T00:00:00.000Z' }, now)).toBe('live');
-    expect(sourceState({ source: 'daily', freshAt: '2026-11-17T17:02:11.000Z' }, now)).toBe('fresh');
-    expect(sourceState({ source: 'daily', freshAt: '2026-11-17T17:02:10.000Z' }, now)).toBe('stale');
+    expect(sourceState({ source: 'daily', freshAt: '2026-11-17T17:32:11.000Z' }, now)).toBe('fresh');
+    expect(sourceState({ source: 'daily', freshAt: '2026-11-17T17:32:10.000Z' }, now)).toBe('stale');
+    expect(sourceState({ source: 'daily', freshAt: '2026-11-17T17:20:00.000Z' }, now)).toBe('stale');
     expect(sourceState({ source: 'daily', freshAt: 'inválido' }, now)).toBe('fresh');
   });
 

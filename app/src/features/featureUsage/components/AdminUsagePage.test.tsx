@@ -197,18 +197,18 @@ describe('AdminUsagePage', () => {
     expect(screen.getByText(S.context.liveBadge)).toBeInTheDocument();
     view.unmount();
 
-    getSummary.mockResolvedValue({ ...summaryFixture(), source: 'daily', freshAt: '2026-11-18T00:30:00.000Z' });
+    getSummary.mockResolvedValue({ ...summaryFixture(), source: 'daily', freshAt: '2026-11-18T00:40:00.000Z' });
     renderAt(USAGE_PATH, 'dark');
     await screen.findByText(S.kpis.activeTenants.value('9', '15'));
     expect(screen.queryByText(S.context.liveBadge)).toBeNull();
-    expect(screen.queryByText(S.context.stale('30 min'))).toBeNull();
+    expect(screen.queryByText(S.context.stale('20 min'))).toBeNull();
     expect(screen.getByLabelText(S.context.dailyHint)).toBeInTheDocument();
   });
 
-  it('agregado diário com mais de 1 h sem atualizar mostra aviso', async () => {
-    getSummary.mockResolvedValue({ ...summaryFixture(), source: 'daily', freshAt: '2026-11-17T22:59:00.000Z' });
+  it('agregado diário com mais de 30 min sem atualizar mostra aviso (antes do corte de 45 min da API)', async () => {
+    getSummary.mockResolvedValue({ ...summaryFixture(), source: 'daily', freshAt: '2026-11-18T00:20:00.000Z' });
     renderAt(USAGE_PATH);
-    expect(await screen.findByText(S.context.stale('2 h'))).toBeInTheDocument();
+    expect(await screen.findByText(S.context.stale('40 min'))).toBeInTheDocument();
   });
 
   it('com range.maxDays = 400 oferece "6 meses" e "12 meses" e "12 meses" pede por semana', async () => {

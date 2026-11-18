@@ -254,7 +254,7 @@ export const featureUsageStrings = {
     liveBadge: 'Leitura direta',
     liveHint: 'O resumo diário ainda não cobre este período: os números foram lidos agora nas tabelas de origem, com limite de 90 dias.',
     dailyHint: 'Números do resumo diário, consolidado pelo sistema ao longo do dia. Permite períodos de até 400 dias.',
-    /** Agregado diário sem atualizar há mais de 1 h. */
+    /** Agregado diário sem atualizar há mais de 30 min. */
     stale: (age: string) => `O resumo diário não é atualizado há ${age}. Os números podem estar atrasados.`,
     age: (minutes: number) => {
       if (minutes < 60) return `${minutes} min`;
