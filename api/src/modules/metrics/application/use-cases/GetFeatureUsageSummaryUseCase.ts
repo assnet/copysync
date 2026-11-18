@@ -6,6 +6,7 @@ import type { IUsageReadGate, UsageReadBudget } from '../../domain/contracts/IUs
 import type { IUsageTenantDirectory, UsageTenantDirectoryEntry } from '../../domain/contracts/IUsageTenantDirectory';
 import {
   type FeatureUsageAggregate,
+  type FeatureUsageDailyCoverage,
   type FeatureUsageFilters,
   type FeatureUsageRow,
   type UsageTenantStatus,
@@ -132,6 +133,8 @@ export interface FeatureUsageRead {
   maxDays: number;
   /** Cortes gravados pelo contador (lidos com o marco). */
   cutovers: FeatureUsageCutovers;
+  /** Cobertura do agregado (do marco), só com `source = daily`. */
+  coverage: FeatureUsageDailyCoverage | null;
 }
 
 /** Maior teto possível com estas dependências: sem agregado montado, 90 dias; com ele, 400 (o marco decide na vaga). */
@@ -148,8 +151,9 @@ export function resolveUsageRequestPeriod(input: FeatureUsageQueryInput, now: Da
 }
 
 /**
- * Fonte do pedido (design §4.4/§4.5). O agregado cobre o período quando o marco do backfill existe e o período
- * começa em `backfilledFrom` ou depois. E só vale fresco:
+ * Fonte do pedido (design §4.4/§4.5). O agregado cobre o período quando o marco do backfill existe e: o backfill
+ * parou no primeiro dado (`FIRST_DATA`, nada antes existe: vale qualquer período até 400 dias) ou o período começa em
+ * `backfilledFrom` ou depois (`RETENTION`). E só vale fresco:
  * `lastSuccessAt` do job há menos de 45 min. Cobre mas está velho (job desligado ou falhando): até 90 dias cai para a
  * fonte viva com log `warn`; acima, 503 de leitura indisponível — nunca agregado velho em silêncio. Valida o teto da
  * fonte (90 ou 400 dias) e que acima de 90 dias a granularidade não é dia.
@@ -159,13 +163,19 @@ export async function chooseUsageSource(
   period: UsagePeriod,
   budget: UsageReadBudget,
   now: Date = (deps.now ?? (() => new Date()))(),
-): Promise<{ source: FeatureUsageResponseSource; maxDays: number; freshAt: Date; cutovers: FeatureUsageCutovers }> {
+): Promise<{
+  source: FeatureUsageResponseSource;
+  maxDays: number;
+  freshAt: Date;
+  cutovers: FeatureUsageCutovers;
+  coverage: FeatureUsageDailyCoverage | null;
+}> {
   const state = deps.dailyReader && deps.rollupState ? await deps.rollupState.get(budget) : null;
   const cutovers = state?.cutovers ?? {};
   const covers =
     !!state?.backfillCompletedAt &&
     !!state.backfilledFrom &&
-    period.from >= state.backfilledFrom;
+    (state.backfillStopReason === 'FIRST_DATA' || period.from >= state.backfilledFrom);
   const lastSuccessAt = state?.lastSuccessAt ?? null;
   const fresh = lastSuccessAt !== null && now.getTime() - lastSuccessAt.getTime() < USAGE_DAILY_FRESH_MS;
   if (covers && !fresh) {
@@ -181,7 +191,8 @@ export async function chooseUsageSource(
   if (period.granularity === 'day' && period.days > USAGE_DAY_ROWS_MAX_DAYS) {
     throw new UsageMetricsRangeInvalidError(`granularity day allows at most ${USAGE_DAY_ROWS_MAX_DAYS} days`, maxDays);
   }
-  return { source: daily ? 'daily' : 'live', maxDays, freshAt: daily ? lastSuccessAt! : now, cutovers };
+  const coverage = daily ? { backfilledFrom: state!.backfilledFrom!, completedAt: state!.backfillCompletedAt! } : null;
+  return { source: daily ? 'daily' : 'live', maxDays, freshAt: daily ? lastSuccessAt! : now, cutovers, coverage };
 }
 
 /** Menor dia não nulo. */
@@ -279,6 +290,7 @@ export async function readFeatureUsage(
       freshAt: chosen.freshAt,
       maxDays: chosen.maxDays,
       cutovers: chosen.cutovers,
+      coverage: chosen.coverage,
     };
   });
 }
@@ -302,6 +314,7 @@ export class GetFeatureUsageSummaryUseCase {
       now: read.now,
       source: read.source,
       cutovers: read.cutovers,
+      coverage: read.coverage,
     });
     return {
       range: rangeOf(read.period, read.maxDays),

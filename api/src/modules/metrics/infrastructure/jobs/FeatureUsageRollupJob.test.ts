@@ -30,7 +30,7 @@ class FakeLease implements IJobLease, IJobLeaseRenewal {
   }
 }
 
-const done: FeatureUsageRollupState = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-01-01', backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
+const done: FeatureUsageRollupState = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-01-01', backfillStopReason: 'RETENTION', backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
 const catalog = [
   { key: 'a', product: 'AFFILIATES', planFamily: 'AFFILIATES', kinds: ['ACTION'], source: 'LIVE', possibleCoverageReasons: [], phase: 1 },
 ] as unknown as FeatureUsageDefinition[];

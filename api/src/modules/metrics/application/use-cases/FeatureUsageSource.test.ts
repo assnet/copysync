@@ -12,8 +12,8 @@ import { FakeClock, FakeFeatureUsageReader, FakeUsageReadGate, FakeUsageTenantDi
 
 const NOW = new Date('2026-12-20T15:00:00.000Z'); // 12:00 em Brasília
 const FRESH = new Date('2026-12-20T14:45:00.000Z');
-const MARKER: FeatureUsageRollupState = { backfillCompletedAt: new Date('2026-11-20T10:00:00Z'), backfilledFrom: '2025-10-26', backfillCursor: null, cutovers: {}, lastSuccessAt: FRESH, finalizedThrough: null, failureStreak: 0 };
-const NO_MARKER: FeatureUsageRollupState = { backfillCompletedAt: null, backfilledFrom: null, backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
+const MARKER: FeatureUsageRollupState = { backfillCompletedAt: new Date('2026-11-20T10:00:00Z'), backfilledFrom: '2025-10-26', backfillStopReason: 'RETENTION', backfillCursor: null, cutovers: {}, lastSuccessAt: FRESH, finalizedThrough: null, failureStreak: 0 };
+const NO_MARKER: FeatureUsageRollupState = { backfillCompletedAt: null, backfilledFrom: null, backfillStopReason: null, backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
 const INPUT: FeatureUsageQueryInput = {
   from: '2026-11-21',
   to: '2026-12-20',
@@ -127,9 +127,34 @@ describe('cobertura com agregado', () => {
     expect(out.features[0]).toMatchObject({ key: 'link_rotation_click', coverageReasons: [], coverage: 'FULL', dataFrom: '2026-09-01' });
   });
 
-  it('período que começa antes do primeiro dia agregado do recurso mantém os dois motivos', async () => {
+  it('RETENTION/EXISTING_ONLY comparam com a cobertura do marco, não com o primeiro dia com uso', async () => {
+    // Marco: backfilledFrom 2025-10-26, fim 2026-11-20; clique (retenção 90) coberto desde 2026-08-22
     const out = await setup(MARKER).summary.execute({ ...INPUT, from: '2026-08-01', granularity: 'week', kinds: ['AUDIENCE'] });
-    expect(out.features[0]!.coverageReasons).toEqual(['EXISTING_ONLY', 'RETENTION']);
+    expect(out.features[0]).toMatchObject({ coverageReasons: ['RETENTION'], dataFrom: '2026-09-01' });
+    // Começa depois da poda (08-22) e antes do primeiro clique agregado (09-01): nada a apontar
+    const mid = await setup(MARKER).summary.execute({ ...INPUT, from: '2026-08-25', granularity: 'week', kinds: ['AUDIENCE'] });
+    expect(mid.features[0]!.coverageReasons).toEqual([]);
+    // Antes de backfilledFrom (RETENTION no marco cobre só a partir dele): EXISTING_ONLY e RETENTION
+    const old = setup({ ...MARKER, backfilledFrom: '2026-08-10' });
+    const before = await old.summary.execute({ ...INPUT, from: '2026-08-10', to: '2026-11-07', granularity: 'week', kinds: ['AUDIENCE'] });
+    expect(before.features[0]!.coverageReasons).toEqual(['RETENTION']);
+    expect(
+      (await setup({ ...MARKER, backfilledFrom: '2026-08-10', backfillStopReason: 'FIRST_DATA' }).summary.execute({
+        ...INPUT, from: '2026-08-01', to: '2026-10-29', granularity: 'week', kinds: ['AUDIENCE'],
+      })).features[0]!.coverageReasons,
+    ).toEqual(['EXISTING_ONLY', 'RETENTION']);
+  });
+
+  it('backfill parado no primeiro dado (FIRST_DATA): 365 dias começando antes de backfilledFrom usam o agregado', async () => {
+    const first = { ...MARKER, backfilledFrom: '2026-10-26', backfillStopReason: 'FIRST_DATA' as const };
+    const s = setup(first, [usageRow('2026-11-02', 't1', 'offer_generator', 'ACTION', 3)]);
+    const out = await s.summary.execute({ ...INPUT, from: '2025-12-21', granularity: 'month' });
+    expect(out).toMatchObject({ source: 'daily', range: { from: '2025-12-21', maxDays: 400 } });
+    expect(out.features.find((f) => f.key === 'offer_generator')!.uses).toBe(3);
+    expect(s.live.calls).toHaveLength(0);
+    // Mesmo marco com RETENTION: o período começa antes da cobertura → fonte viva, que não passa de 90 dias
+    const r = setup({ ...first, backfillStopReason: 'RETENTION' });
+    await expect(r.summary.execute({ ...INPUT, from: '2025-12-21', granularity: 'month' })).rejects.toBeInstanceOf(UsageMetricsRangeInvalidError);
   });
 
   it('fonte viva mantém o comportamento da P1 (retenção pelo relógio, EXISTING_ONLY sempre)', async () => {

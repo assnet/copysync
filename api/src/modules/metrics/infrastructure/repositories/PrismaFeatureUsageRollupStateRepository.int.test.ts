@@ -22,6 +22,7 @@ describe('PrismaFeatureUsageRollupStateRepository', () => {
     expect(await new PrismaFeatureUsageRollupStateRepository(prisma).get()).toEqual({
       backfillCompletedAt: null,
       backfilledFrom: null,
+      backfillStopReason: null,
       backfillCursor: null,
       cutovers: {},
       lastSuccessAt: null,
@@ -36,6 +37,7 @@ describe('PrismaFeatureUsageRollupStateRepository', () => {
     expect(await new PrismaFeatureUsageRollupStateRepository(prisma).get()).toEqual({
       backfillCompletedAt: null,
       backfilledFrom: null,
+      backfillStopReason: null,
       backfillCursor: '2026-11-08',
       cutovers: {},
       lastSuccessAt: null,
@@ -44,16 +46,23 @@ describe('PrismaFeatureUsageRollupStateRepository', () => {
     });
 
     const done = new Date('2026-11-17T10:15:00.123Z');
-    expect(await writer.markBackfillCompleted({ completedAt: done, backfilledFrom: '2026-10-26' })).toBe(true);
-    expect(await writer.markBackfillCompleted({ completedAt: new Date('2026-11-18T00:00:00Z'), backfilledFrom: '2026-01-01' })).toBe(false);
+    expect(await writer.markBackfillCompleted({ completedAt: done, backfilledFrom: '2026-10-26', stopReason: 'FIRST_DATA' })).toBe(true);
+    expect(await writer.markBackfillCompleted({ completedAt: new Date('2026-11-18T00:00:00Z'), backfilledFrom: '2026-01-01', stopReason: 'RETENTION' })).toBe(false);
 
     const other = new PrismaFeatureUsageRollupStateRepository(prisma);
-    expect(await other.get()).toEqual({ backfillCompletedAt: done, backfilledFrom: '2026-10-26', backfillCursor: '2026-11-08', cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 });
+    expect(await other.get()).toEqual({ backfillCompletedAt: done, backfilledFrom: '2026-10-26', backfillStopReason: 'FIRST_DATA', backfillCursor: '2026-11-08', cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 });
     // Leitura do painel: mesma resposta, dentro do orçamento do pedido
-    expect(await other.get(createReadBudget())).toEqual({ backfillCompletedAt: done, backfilledFrom: '2026-10-26', backfillCursor: '2026-11-08', cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 });
+    expect(await other.get(createReadBudget())).toEqual({ backfillCompletedAt: done, backfilledFrom: '2026-10-26', backfillStopReason: 'FIRST_DATA', backfillCursor: '2026-11-08', cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 });
     const row = await prisma.platformSetting.findUnique({ where: { key: FEATURE_USAGE_ROLLUP_SETTINGS_KEY } });
     expect(row?.updatedById).toBeNull();
     expect(row?.updatedAt.toISOString()).toBe('2026-11-17T10:00:00.000Z');
+  });
+
+  it('marco antigo sem motivo vale RETENTION (o conservador)', async () => {
+    await prisma.platformSetting.create({
+      data: { key: FEATURE_USAGE_ROLLUP_SETTINGS_KEY, value: { backfillCompletedAt: '2026-11-17T10:00:00.000Z', backfilledFrom: '2026-10-26' } },
+    });
+    expect((await new PrismaFeatureUsageRollupStateRepository(prisma).get()).backfillStopReason).toBe('RETENTION');
   });
 
   it('valor salvo inválido vira estado vazio e é sobrescrito pelo merge', async () => {
@@ -82,7 +91,7 @@ describe('PrismaFeatureUsageRollupStateRepository', () => {
   it('recordTick: merge sem tocar no marco nem no cursor; campo ausente não muda', async () => {
     const repo = new PrismaFeatureUsageRollupStateRepository(prisma);
     await repo.saveBackfillCursor('2026-11-01');
-    await repo.markBackfillCompleted({ completedAt: new Date('2026-11-17T10:00:00Z'), backfilledFrom: '2026-10-26' });
+    await repo.markBackfillCompleted({ completedAt: new Date('2026-11-17T10:00:00Z'), backfilledFrom: '2026-10-26', stopReason: 'RETENTION' });
     const at = new Date('2026-11-17T12:30:00.000Z');
     await repo.recordTick({ failureStreak: 0, lastSuccessAt: at, finalizedThrough: '2026-11-15' });
     await repo.recordTick({ failureStreak: 2 });

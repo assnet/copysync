@@ -43,7 +43,7 @@ class FakeLease implements IJobLease, IJobLeaseRenewal {
 }
 
 class FakeState implements IFeatureUsageRollupStateRepository {
-  value: FeatureUsageRollupState = { backfillCompletedAt: null, backfilledFrom: null, backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
+  value: FeatureUsageRollupState = { backfillCompletedAt: null, backfilledFrom: null, backfillStopReason: null, backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
   marks = 0;
   async get() {
     return { ...this.value };
@@ -51,10 +51,10 @@ class FakeState implements IFeatureUsageRollupStateRepository {
   async saveBackfillCursor(day: string) {
     this.value = { ...this.value, backfillCursor: day };
   }
-  async markBackfillCompleted(m: { completedAt: Date; backfilledFrom: string }) {
+  async markBackfillCompleted(m: { completedAt: Date; backfilledFrom: string; stopReason: FeatureUsageRollupState['backfillStopReason'] }) {
     if (this.value.backfillCompletedAt) return false;
     this.marks++;
-    this.value = { ...this.value, backfillCompletedAt: m.completedAt, backfilledFrom: m.backfilledFrom };
+    this.value = { ...this.value, backfillCompletedAt: m.completedAt, backfilledFrom: m.backfilledFrom, backfillStopReason: m.stopReason };
     return true;
   }
   ticks: FeatureUsageTickPatch[] = [];
@@ -169,7 +169,7 @@ describe('RollupFeatureUsageUseCase', () => {
       firstData: { a: '2026-11-16' },
       now: new Date('2026-11-18T02:30:00Z'), // 23:30 de 17/11 em Brasília
     });
-    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
+    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillStopReason: 'RETENTION', backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
     await t.useCase.execute();
     expect(t.replaced.map((r) => r.day)).toEqual(['2026-11-16', '2026-11-17']);
     expect(dayInZone(t.reads[0]!.from)).toBe('2026-11-16');
@@ -179,7 +179,7 @@ describe('RollupFeatureUsageUseCase', () => {
   it('grava as linhas do dia de cada recurso e solta o lease do rollup ao terminar', async () => {
     const rows = [row('2026-11-16', 'a', 2), row('2026-11-17', 'b', 3, 't2')];
     const t2 = setup({ catalog: [def('a'), def('b')], groups: [['a', 'b']], data: rows, now: NOW });
-    t2.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
+    t2.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillStopReason: 'RETENTION', backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
     await t2.useCase.execute();
     expect(t2.replaced).toEqual([
       { day: '2026-11-16', keys: ['a', 'b'], rows: [{ tenantId: 't1', featureKey: 'a', kind: 'ACTION', uses: 2 }] },
@@ -191,7 +191,7 @@ describe('RollupFeatureUsageUseCase', () => {
 
   it('erro numa fonte não impede as outras, é logado e a chave dela não entra em keys', async () => {
     const t = setup({ catalog: [def('a'), def('b')], groups: [['a'], ['b']], failKeys: ['a'], now: NOW });
-    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
+    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillStopReason: 'RETENTION', backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
     const r = await t.useCase.execute();
     expect(r).toMatchObject({ status: 'ran', failedGroups: 1 });
     expect(t.replaced.map((x) => x.keys)).toEqual([['b'], ['b']]);
@@ -211,6 +211,7 @@ describe('RollupFeatureUsageUseCase', () => {
     expect(outcomes).toEqual(['step', 'step', 'step', 'completed']);
     expect(t.state.marks).toBe(1);
     expect(t.state.value.backfilledFrom).toBe(first);
+    expect(t.state.value.backfillStopReason).toBe('FIRST_DATA');
     expect(t.state.value.backfillCompletedAt).toEqual(NOW);
     const days = backfillDays();
     expect(new Set(days).size).toBe(23);
@@ -248,7 +249,7 @@ describe('RollupFeatureUsageUseCase', () => {
   it('recurso CUTOVER sem corte gravado: todo dia é da fonte viva', async () => {
     const catalog = [def('a'), def('offer_story', { recordedFrom: 'CUTOVER' })];
     const t = setup({ catalog, groups: [['a', 'offer_story']], data: [row('2026-11-17', 'offer_story', 9)], now: NOW });
-    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
+    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillStopReason: 'RETENTION', backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
     await t.useCase.execute();
     expect(t.replaced.map((r) => [r.day, r.keys])).toEqual([
       ['2026-11-16', ['a', 'offer_story']],
@@ -264,7 +265,7 @@ describe('RollupFeatureUsageUseCase', () => {
       data: [row('2026-11-16', 'offer_story', 4), row('2026-11-17', 'offer_story', 9)],
       now: NOW,
     });
-    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: { offer_story: '2026-11-17' }, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
+    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillStopReason: 'RETENTION', backfillCursor: null, cutovers: { offer_story: '2026-11-17' }, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
     await t.useCase.execute();
     expect(t.replaced).toEqual([
       { day: '2026-11-16', keys: ['a', 'offer_story'], rows: [{ tenantId: 't1', featureKey: 'offer_story', kind: 'ACTION', uses: 4 }] },
@@ -274,7 +275,7 @@ describe('RollupFeatureUsageUseCase', () => {
 
   it('retenção apaga antes de hoje − 400 uma vez a cada 24 h', async () => {
     const t = setup({ catalog: [def('a')], now: NOW });
-    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
+    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillStopReason: 'RETENTION', backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
     await t.useCase.execute();
     await t.useCase.execute();
     expect(t.purged).toEqual([addDays('2026-11-17', -400)]);
@@ -284,22 +285,23 @@ describe('RollupFeatureUsageUseCase', () => {
     expect(t.purged).toHaveLength(2);
   });
 
-  it('sem dado nenhum o backfill termina na primeira execução a partir de ontem', async () => {
+  it('sem dado nenhum o backfill termina na primeira execução a partir de ontem (FIRST_DATA)', async () => {
     const t = setup({ catalog: [def('a')], now: NOW });
     expect(await t.useCase.execute()).toMatchObject({ backfill: 'completed' });
     expect(t.state.value.backfilledFrom).toBe('2026-11-16');
+    expect(t.state.value.backfillStopReason).toBe('FIRST_DATA');
     expect(t.replaced.map((r) => r.day)).toEqual(['2026-11-16', '2026-11-17']);
   });
 
   it('renova o lease antes de cada fonte e de cada gravação; a renovação falhando aborta o tick sem gravar mais', async () => {
     const t = setup({ catalog: [def('a'), def('b')], groups: [['a'], ['b']], now: NOW });
-    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
+    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillStopReason: 'RETENTION', backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
     await t.useCase.execute();
     // 2 fontes + 2 dias + gravação do estado do tick
     expect(t.lease.renewed.filter((n) => n === FEATURE_USAGE_ROLLUP_LEASE)).toHaveLength(5);
 
     const lost = setup({ catalog: [def('a'), def('b')], groups: [['a'], ['b']], now: NOW });
-    lost.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
+    lost.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillStopReason: 'RETENTION', backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
     const realRead = lost.reader.read.getMockImplementation()!;
     lost.reader.read.mockImplementation(async (input) => {
       lost.lease.stolen.add(FEATURE_USAGE_ROLLUP_LEASE);
@@ -318,8 +320,15 @@ describe('RollupFeatureUsageUseCase', () => {
     expect(t.lease.renewed).toContain(FEATURE_USAGE_BACKFILL_LEASE);
   });
 
+  it('primeiro dado além dos 400 dias: o backfill para na retenção e grava RETENTION', async () => {
+    const t = setup({ catalog: [def('a')], firstData: { a: '2024-01-01' }, now: NOW });
+    t.state.value = { ...t.state.value, backfillCursor: addDays('2026-11-17', -398) };
+    expect(await t.useCase.execute()).toMatchObject({ backfill: 'completed' });
+    expect(t.state.value).toMatchObject({ backfilledFrom: addDays('2026-11-17', -400), backfillStopReason: 'RETENTION' });
+  });
+
   describe('janela recente, frescor e falhas seguidas', () => {
-    const DONE = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-01-01', backfillCursor: null };
+    const DONE = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-01-01', backfillStopReason: 'RETENTION' as const, backfillCursor: null };
 
     it('recentWindow: sem marca ontem e hoje; com marca, de marca + 1 até hoje, no máximo 7 dias', () => {
       expect(recentWindow(null, '2026-11-17')).toEqual(['2026-11-16', '2026-11-17']);

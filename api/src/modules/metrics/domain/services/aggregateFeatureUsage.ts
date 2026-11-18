@@ -105,6 +105,14 @@ export interface FeatureUsageAggregate {
   neverUsed: string[];
 }
 
+/** Cobertura do agregado tirada do marco do backfill. */
+export interface FeatureUsageDailyCoverage {
+  /** Primeiro dia coberto pelo agregado. */
+  backfilledFrom: string;
+  /** Fim do backfill: fonte podada já tinha perdido o que é mais velho que `completedAt − retenção`. */
+  completedAt: Date;
+}
+
 export interface AggregateFeatureUsageInput {
   rows: readonly FeatureUsageRow[];
   firstDataDay: Readonly<Record<string, string | null>>;
@@ -120,6 +128,11 @@ export interface AggregateFeatureUsageInput {
   source?: 'live' | 'daily';
   /** Cortes gravados pelo contador (`AI_HEADLINE_ONLY` só vale antes do corte). Ausente = nenhum. */
   cutovers?: FeatureUsageCutovers;
+  /**
+   * `daily`: início da cobertura do agregado (do marco). `RETENTION`/`EXISTING_ONLY` e `dataFrom` comparam com ela,
+   * não com o primeiro dia com uso. Ausente com `daily` = cobertura desde o primeiro dia agregado.
+   */
+  coverage?: FeatureUsageDailyCoverage | null;
 }
 
 const FAMILY_PLANS: Record<FeatureUsagePlanFamily, readonly string[]> = {
@@ -169,10 +182,27 @@ function planRows(family: FeatureUsagePlanFamily, byTenant: Map<string, string>,
  * Limite efetivo de comparação. Recurso só do contador: o primeiro dia gravado (`MIN(day)`). Agregado: o primeiro dia agregado (o
  * agregado guarda o que a fonte podada já perdeu). Fonte viva: o maior entre o primeiro dado e hoje − retenção.
  */
-function dataFromFor(feature: FeatureUsageDefinition, first: string | null, source: 'live' | 'daily', now: Date): string | null {
+function dataFromFor(
+  feature: FeatureUsageDefinition,
+  first: string | null,
+  source: 'live' | 'daily',
+  now: Date,
+  coveredFrom: string | null,
+): string | null {
   if (feature.source === 'RECORDED') return first;
-  if (source === 'daily') return first;
+  if (source === 'daily') return first !== null && coveredFrom !== null && coveredFrom > first ? coveredFrom : first;
   return dataFromOf(first, feature.retentionDays, now);
+}
+
+/**
+ * Início da cobertura do agregado para o recurso: `backfilledFrom`; com retenção, nunca antes de
+ * `dia(completedAt) − retenção` (o backfill leu a fonte já podada).
+ */
+function coveredFromFor(feature: FeatureUsageDefinition, coverage: FeatureUsageDailyCoverage | null | undefined): string | null {
+  if (!coverage) return null;
+  if (feature.retentionDays === undefined) return coverage.backfilledFrom;
+  const pruned = addDays(dayInZone(coverage.completedAt), -feature.retentionDays);
+  return pruned > coverage.backfilledFrom ? pruned : coverage.backfilledFrom;
 }
 
 function coverageReasonsFor(
@@ -182,19 +212,25 @@ function coverageReasonsFor(
   source: 'live' | 'daily',
   first: string | null,
   cutover: string | undefined,
+  coverage: FeatureUsageDailyCoverage | null | undefined,
+  coveredFrom: string | null,
 ): FeatureUsageCoverageReason[] {
-  // Agregado: o período que começa no primeiro dia agregado (ou depois) não perdeu nada por poda nem por exclusão
-  const beforeAggregate = first !== null && period.from < first;
+  // Agregado: compara com o início da cobertura (do marco), não com o primeiro dia com uso. Sem marco informado,
+  // o primeiro dia agregado (comportamento anterior)
+  const coverageStart = coverage ? coverage.backfilledFrom : first;
+  const retentionStart = coverage ? coveredFrom : first;
+  const beforeCoverage = coverageStart !== null && period.from < coverageStart;
+  const beforeRetention = retentionStart !== null && period.from < retentionStart;
   return feature.possibleCoverageReasons.filter((reason) => {
     switch (reason) {
       case 'RETENTION':
-        if (source === 'daily') return beforeAggregate;
+        if (source === 'daily') return beforeRetention;
         return feature.retentionDays !== undefined && period.from < addDays(today, -feature.retentionDays);
       case 'AI_HEADLINE_ONLY':
         // Antes do corte só o título da IA conta; sem corte gravado, o período inteiro
         return cutover === undefined || period.from < cutover;
       case 'EXISTING_ONLY':
-        return source === 'daily' ? beforeAggregate : true;
+        return source === 'daily' ? beforeCoverage : true;
       case 'MIXED_EVENTS':
       case 'MIXED_TRIGGERS':
       case 'TOKEN_CHANGE_ONLY':
@@ -303,12 +339,13 @@ export function aggregateFeatureUsage(input: AggregateFeatureUsageInput): Featur
     }
 
     const first = firstDataDay[feature.key] ?? null;
-    const dataFrom = dataFromFor(feature, first, source, now);
+    const coveredFrom = source === 'daily' ? coveredFromFor(feature, input.coverage) : null;
+    const dataFrom = dataFromFor(feature, first, source, now, coveredFrom);
     const hasBase = dataFrom !== null && period.previousFrom >= dataFrom;
     // Recurso que nunca teve dado não tira a base do total (ex.: Telegram sem nenhuma conta); só tira quem começou a
     // ter dado dentro do período anterior ou foi cortado pela retenção.
     if (!hasBase && first !== null) everyHasBase = false;
-    const reasons = coverageReasonsFor(feature, period, today, source, first, input.cutovers?.[feature.key]);
+    const reasons = coverageReasonsFor(feature, period, today, source, first, input.cutovers?.[feature.key], input.coverage, coveredFrom);
 
     featureSeries[feature.key] = bucketKeys.map((k) => ({
       bucket: k,

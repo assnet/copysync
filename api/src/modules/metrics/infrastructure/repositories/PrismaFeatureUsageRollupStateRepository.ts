@@ -2,6 +2,7 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 import type { UsageReadBudget } from '../../domain/contracts/IUsageReadGate';
 import { runWithinBudget } from './featureUsageReadTimeout';
 import type {
+  FeatureUsageBackfillStopReason,
   FeatureUsageRollupState,
   FeatureUsageTickPatch,
   IFeatureUsageCutoverStore,
@@ -31,6 +32,7 @@ export function parseFeatureUsageRollupState(value: unknown, cutoverValue?: unkn
   const backfilledFrom = asDay(o['backfilledFrom']);
   const complete = backfillCompletedAt !== null && backfilledFrom !== null;
   const streak = o['failureStreak'];
+  const reason = o['backfillStopReason'];
   const cutovers: Record<string, string> = {};
   for (const [k, v] of Object.entries(asObject(cutoverValue))) {
     const day = asDay(v);
@@ -39,6 +41,7 @@ export function parseFeatureUsageRollupState(value: unknown, cutoverValue?: unkn
   return {
     backfillCompletedAt: complete ? backfillCompletedAt : null,
     backfilledFrom: complete ? backfilledFrom : null,
+    backfillStopReason: complete ? (reason === 'FIRST_DATA' ? 'FIRST_DATA' : 'RETENTION') : null,
     backfillCursor: asDay(o['backfillCursor']),
     lastSuccessAt: asInstant(o['lastSuccessAt']),
     finalizedThrough: asDay(o['finalizedThrough']),
@@ -79,9 +82,17 @@ export class PrismaFeatureUsageRollupStateRepository implements IFeatureUsageRol
     await this.merge(JSON.stringify({ backfillCursor: day }), false);
   }
 
-  async markBackfillCompleted(marker: { completedAt: Date; backfilledFrom: string }): Promise<boolean> {
+  async markBackfillCompleted(marker: {
+    completedAt: Date;
+    backfilledFrom: string;
+    stopReason: FeatureUsageBackfillStopReason;
+  }): Promise<boolean> {
     if (!DAY_RE.test(marker.backfilledFrom)) throw new Error(`invalid backfilledFrom: ${marker.backfilledFrom}`);
-    const patch = JSON.stringify({ backfillCompletedAt: marker.completedAt.toISOString(), backfilledFrom: marker.backfilledFrom });
+    const patch = JSON.stringify({
+      backfillCompletedAt: marker.completedAt.toISOString(),
+      backfilledFrom: marker.backfilledFrom,
+      backfillStopReason: marker.stopReason,
+    });
     return (await this.merge(patch, true)) > 0;
   }
 

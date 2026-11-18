@@ -4,6 +4,7 @@ import { logger } from '../../../../shared/logger/logger';
 import type { FeatureUsageDayRow, IFeatureUsageDailyRepository } from '../../domain/contracts/IFeatureUsageDailyRepository';
 import type { IFeatureUsageReader } from '../../domain/contracts/IFeatureUsageReader';
 import type {
+  FeatureUsageBackfillStopReason,
   FeatureUsageTickPatch,
   IFeatureUsageRollupStateRepository,
 } from '../../domain/contracts/IFeatureUsageRollupStateRepository';
@@ -307,23 +308,29 @@ export class RollupFeatureUsageUseCase {
         const d = addDays(start, -i);
         if (d >= retentionFloor) days.push(d);
       }
-      // Sem dado nenhum: o agregado já cobre a partir de ontem (passo 1)
+      // Sem dado nenhum: o agregado já cobre a partir de ontem (passo 1). Primeiro dado abaixo da retenção = parou
+      // no teto (`RETENTION`); senão chegou ao primeiro dado (`FIRST_DATA`: antes dele nada existe)
       const floorOf = (first: string | null) => {
         const f = first ?? addDays(today, -1);
         return f < retentionFloor ? retentionFloor : f;
       };
+      const reasonOf = (first: string | null): FeatureUsageBackfillStopReason =>
+        first !== null && first < retentionFloor ? 'RETENTION' : 'FIRST_DATA';
       let floor: string;
+      let stopReason: FeatureUsageBackfillStopReason;
       if (days.length > 0) {
         const r = await this.consolidate(days, floorOf);
         if (r.failedGroups > 0) return 'failed';
         floor = floorOf(r.firstData);
+        stopReason = reasonOf(r.firstData);
       } else {
         floor = retentionFloor;
+        stopReason = 'RETENTION';
       }
       const next = addDays(start, -FEATURE_USAGE_BACKFILL_STEP_DAYS);
       if (next < floor) {
-        await state.markBackfillCompleted({ completedAt: now, backfilledFrom: floor });
-        this.log.info({ backfilledFrom: floor }, 'feature usage backfill completed');
+        await state.markBackfillCompleted({ completedAt: now, backfilledFrom: floor, stopReason });
+        this.log.info({ backfilledFrom: floor, stopReason }, 'feature usage backfill completed');
         return 'completed';
       }
       await state.saveBackfillCursor(next);

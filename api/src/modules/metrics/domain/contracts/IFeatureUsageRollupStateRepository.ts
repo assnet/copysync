@@ -2,6 +2,13 @@ import type { FeatureUsageCutovers } from '../services/featureUsageCatalog';
 import type { UsageReadBudget } from './IUsageReadGate';
 
 /**
+ * Por que o backfill parou: `FIRST_DATA` = chegou ao primeiro dado das fontes (nada antes existe, o agregado vale
+ * para qualquer período até 400 dias); `RETENTION` = parou no teto de 400 dias (antes de `backfilledFrom` não há
+ * cobertura).
+ */
+export type FeatureUsageBackfillStopReason = 'FIRST_DATA' | 'RETENTION';
+
+/**
  * Estado da consolidação do uso em `platform_settings["feature_usage_rollup"]` (design §4.4, D14) e os cortes do
  * contador em `platform_settings["feature_usage_cutover"]`. Nada em memória: réplica nova ou reinício leem o mesmo
  * estado. A leitura do painel consulta tudo a cada pedido (uma instrução).
@@ -11,6 +18,8 @@ export interface FeatureUsageRollupState {
   backfillCompletedAt: Date | null;
   /** Marco: primeiro dia (Brasília) coberto pelo agregado para os recursos `LIVE`. */
   backfilledFrom: string | null;
+  /** Marco: motivo da parada (`null` sem marco; marco gravado antes do campo existir = `RETENTION`, o conservador). */
+  backfillStopReason: FeatureUsageBackfillStopReason | null;
   /** Progresso: dia mais recente ainda a consolidar no backfill (anda para trás); `null` = não começou. */
   backfillCursor: string | null;
   /** Último tick que consolidou a janela recente inteira até hoje sem falha (`freshAt` da leitura do agregado). */
@@ -36,7 +45,7 @@ export interface IFeatureUsageRollupStateRepository {
   /** Grava só o progresso; não toca no marco. */
   saveBackfillCursor(day: string): Promise<void>;
   /** Grava o marco uma única vez; `false` se já existia (não muda). */
-  markBackfillCompleted(marker: { completedAt: Date; backfilledFrom: string }): Promise<boolean>;
+  markBackfillCompleted(marker: { completedAt: Date; backfilledFrom: string; stopReason: FeatureUsageBackfillStopReason }): Promise<boolean>;
   /** Grava o resultado do tick (merge; não toca no marco nem no cursor). */
   recordTick(patch: FeatureUsageTickPatch): Promise<void>;
 }
