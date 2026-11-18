@@ -16,6 +16,7 @@ import { PrismaFeatureUsageDailyRepository } from './repositories/PrismaFeatureU
 import { PrismaFeatureUsageRollupStateRepository } from './repositories/PrismaFeatureUsageRollupStateRepository';
 import { FEATURE_USAGE_SOURCES, PrismaLiveFeatureUsageReader } from './repositories/PrismaLiveFeatureUsageReader';
 import { PrismaFeatureEligibilityReader } from './repositories/PrismaFeatureEligibilityReader';
+import { featureAudienceDefaults } from '../../tenants/infrastructure/featureAudience';
 import { PrismaPageViewReader } from './repositories/PrismaPageViewReader';
 import { PrismaUsageTenantDirectory } from './repositories/PrismaUsageTenantDirectory';
 import { createReadBudget, usageReadGate } from './repositories/featureUsageReadTimeout';
@@ -39,7 +40,7 @@ function featureUsageDeps(): FeatureUsageDeps {
     dailyReader: new PrismaDailyFeatureUsageReader(prisma),
     rollupState: new PrismaFeatureUsageRollupStateRepository(prisma),
     directory: new PrismaUsageTenantDirectory(prisma),
-    eligibility: new PrismaFeatureEligibilityReader(prisma),
+    eligibility: new PrismaFeatureEligibilityReader(prisma, featureAudienceDefaults),
     gate: usageReadGate,
   });
 }

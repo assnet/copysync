@@ -1,4 +1,5 @@
 import { ENTITLEMENT_KEYS, type EntitlementKey } from '../../../tenants/domain/entitlementKeys';
+import { type FeatureAudienceKey, SAVER_AUDIENCE_KEY } from '../../../tenants/domain/featureAudience';
 import { presetOf } from '../../../tenants/domain/planPresets';
 import {
   type ProductKey,
@@ -29,10 +30,18 @@ export interface EligibilitySnapshot {
   products: Readonly<Record<string, EligibilityProductRow>>;
   /** Valores crus das chaves de entitlement pedidas (só as que a conta tem). */
   entitlements: Readonly<Record<string, unknown>>;
+  /** Conta interna: algum membro super admin (mesma regra do diretório de contas). Ausente = não. */
+  internal?: boolean;
 }
 
+/**
+ * Audiência efetiva de cada chave (flag "Só super admin" de `/admin/plan-entitlements`, `platform_settings
+ * ["feature_audience"]`, senão o valor inicial da env): `true` = só super admin. Ausente = todo tenant.
+ */
+export type EligibilityAudience = Readonly<Partial<Record<FeatureAudienceKey, boolean>>>;
+
 /** Como cada chave de entitlement libera (a mesma leitura dos use cases do recurso). */
-type EntitlementRule = 'TRUE_ONLY' | 'NOT_FALSE' | 'POSITIVE_OR_UNLIMITED';
+type EntitlementRule = 'TRUE_ONLY' | 'NOT_FALSE' | 'POSITIVE_OR_UNLIMITED' | 'POSITIVE';
 
 const ENTITLEMENT_RULES: Readonly<Record<string, EntitlementRule>> = {
   // Vitrine, Story e Caçador: só `true` libera (`getBoolean(...) === true` nos use cases)
@@ -43,19 +52,38 @@ const ENTITLEMENT_RULES: Readonly<Record<string, EntitlementRule>> = {
   [ENTITLEMENT_KEYS.AI_REWRITE_ENABLED]: 'NOT_FALSE',
   // Sessões: ausente/`null` = ilimitado; número > 0 libera
   [ENTITLEMENT_KEYS.TELEGRAM_SESSIONS]: 'POSITIVE_OR_UNLIMITED',
+  // Teto diário do Caçador: ausente/`null` = 0 (o job não roda sem teto); só número > 0 libera
+  [ENTITLEMENT_KEYS.OFFER_HUNTER_FINDS_PER_DAY]: 'POSITIVE',
 };
 
 /**
- * Recurso → entitlement que o libera. Fica aqui, e não no catálogo, para o catálogo seguir só com a fonte da
- * medida. Recurso fora do mapa: basta o produto ativo.
+ * Recurso → entitlements que o liberam (todos precisam liberar). Fica aqui, e não no catálogo, para o catálogo seguir
+ * só com a fonte da medida. Recurso fora do mapa: basta o produto ativo.
  */
-export const FEATURE_ENTITLEMENT_KEYS: Readonly<Record<string, EntitlementKey>> = {
-  storefront: ENTITLEMENT_KEYS.STOREFRONT_ENABLED,
-  offer_story: ENTITLEMENT_KEYS.OFFER_STORY_ENABLED,
-  offer_hunter: ENTITLEMENT_KEYS.OFFER_HUNTER_ENABLED,
-  ai_rewrite: ENTITLEMENT_KEYS.AI_REWRITE_ENABLED,
-  telegram_session: ENTITLEMENT_KEYS.TELEGRAM_SESSIONS,
+export const FEATURE_ENTITLEMENT_KEYS: Readonly<Record<string, readonly EntitlementKey[]>> = {
+  storefront: [ENTITLEMENT_KEYS.STOREFRONT_ENABLED],
+  offer_story: [ENTITLEMENT_KEYS.OFFER_STORY_ENABLED],
+  // Caçador: flag e teto diário > 0 (ausente = 0), como o portão do recurso
+  offer_hunter: [ENTITLEMENT_KEYS.OFFER_HUNTER_ENABLED, ENTITLEMENT_KEYS.OFFER_HUNTER_FINDS_PER_DAY],
+  ai_rewrite: [ENTITLEMENT_KEYS.AI_REWRITE_ENABLED],
+  telegram_session: [ENTITLEMENT_KEYS.TELEGRAM_SESSIONS],
 };
+
+/**
+ * Recurso → chave de audiência (`featureAudience.ts`). Com a audiência "Só super admin", só conta interna tem
+ * direito: conta comum não vê o recurso, então não entra no denominador da adoção.
+ */
+export const FEATURE_AUDIENCE_OF: Readonly<Record<string, FeatureAudienceKey>> = {
+  offer_hunter: ENTITLEMENT_KEYS.OFFER_HUNTER_ENABLED,
+  saver_extraction: SAVER_AUDIENCE_KEY,
+  saver_export: SAVER_AUDIENCE_KEY,
+};
+
+/**
+ * Recursos só de conta interna enquanto o menu deles for só de super admin. `chat_send`: o item "Chat" do menu é
+ * `superAdminOnly` em `app/src/features/navigation/model.ts`; ao abrir o menu a todos, tirar a chave daqui.
+ */
+export const INTERNAL_ONLY_FEATURES: ReadonlySet<string> = new Set(['chat_send']);
 
 /** Produto do catálogo → produto de acesso; `SESSION`/`ACCESS` são da conta, sem produto. */
 const ACCESS_PRODUCT: Readonly<Partial<Record<FeatureUsageProduct, ProductKey>>> = {
@@ -95,12 +123,16 @@ export function entitlementAllows(key: string, value: unknown): boolean {
       const n = toNumber(value);
       return n === null || n > 0;
     }
+    case 'POSITIVE': {
+      const n = toNumber(value);
+      return n !== null && n > 0;
+    }
   }
 }
 
 /** Chaves de entitlement que a leitura precisa buscar para estes recursos. */
 export function entitlementKeysOf(features: readonly FeatureUsageDefinition[]): string[] {
-  return [...new Set(features.map((f) => FEATURE_ENTITLEMENT_KEYS[f.key]).filter((k): k is NonNullable<typeof k> => !!k))].sort();
+  return [...new Set(features.flatMap((f) => FEATURE_ENTITLEMENT_KEYS[f.key] ?? []))].sort();
 }
 
 function planOf(snapshot: EligibilitySnapshot, family: FeatureUsagePlanFamily): string | null {
@@ -115,26 +147,37 @@ export function hasProductAccess(snapshot: EligibilitySnapshot, product: Feature
   return resolveProductAccess(key, row ? { status: row.status } : null);
 }
 
-/** Direito da conta ao recurso: produto ativo e, se houver, entitlement (conta, senão preset do plano). */
-export function isEligible(snapshot: EligibilitySnapshot, feature: FeatureUsageDefinition): boolean {
-  if (!hasProductAccess(snapshot, feature.product)) return false;
-  const key = FEATURE_ENTITLEMENT_KEYS[feature.key];
-  if (!key) return true;
+/** Valor da chave na conta, senão no preset do plano da família do recurso. */
+function entitlementOf(snapshot: EligibilitySnapshot, feature: FeatureUsageDefinition, key: string): boolean {
   if (Object.prototype.hasOwnProperty.call(snapshot.entitlements, key)) return entitlementAllows(key, snapshot.entitlements[key]);
   const plan = planOf(snapshot, feature.planFamily);
   const preset = plan ? presetOf(plan) : undefined;
-  const fromPreset = preset && Object.prototype.hasOwnProperty.call(preset, key) ? preset[key] : undefined;
+  const fromPreset = preset && Object.prototype.hasOwnProperty.call(preset, key) ? (preset as Record<string, unknown>)[key] : undefined;
   return entitlementAllows(key, fromPreset);
+}
+
+/**
+ * Direito da conta ao recurso: só conta interna nos recursos internos e nos de audiência "Só super admin"; produto
+ * ativo; e, se houver, cada entitlement (conta, senão preset do plano).
+ */
+export function isEligible(snapshot: EligibilitySnapshot, feature: FeatureUsageDefinition, audience: EligibilityAudience = {}): boolean {
+  const internal = snapshot.internal === true;
+  if (INTERNAL_ONLY_FEATURES.has(feature.key) && !internal) return false;
+  const audienceKey = FEATURE_AUDIENCE_OF[feature.key];
+  if (audienceKey && audience[audienceKey] === true && !internal) return false;
+  if (!hasProductAccess(snapshot, feature.product)) return false;
+  return (FEATURE_ENTITLEMENT_KEYS[feature.key] ?? []).every((key) => entitlementOf(snapshot, feature, key));
 }
 
 /** Por recurso, as contas com direito hoje. */
 export function eligibleTenantsByFeature(
   snapshots: readonly EligibilitySnapshot[],
   features: readonly FeatureUsageDefinition[],
+  audience: EligibilityAudience = {},
 ): Map<string, Set<string>> {
   const out = new Map<string, Set<string>>(features.map((f) => [f.key, new Set<string>()]));
   for (const snapshot of snapshots) {
-    for (const feature of features) if (isEligible(snapshot, feature)) out.get(feature.key)!.add(snapshot.tenantId);
+    for (const feature of features) if (isEligible(snapshot, feature, audience)) out.get(feature.key)!.add(snapshot.tenantId);
   }
   return out;
 }

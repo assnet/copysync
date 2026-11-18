@@ -14,18 +14,18 @@ const snap = (over: Partial<EligibilitySnapshot> = {}): EligibilitySnapshot => (
 const f = (key: string) => findFeature(key)!;
 
 describe('direito ao recurso', () => {
-  it('conta legado sem linha de produto: Afiliados e chat sim, Saver não', () => {
+  it('conta legado sem linha de produto: Afiliados e chat (conta interna) sim, Saver não', () => {
     expect(isEligible(snap(), f('offer_generator'))).toBe(true);
-    expect(isEligible(snap(), f('chat_send'))).toBe(true);
+    expect(isEligible(snap({ internal: true }), f('chat_send'))).toBe(true);
     expect(isEligible(snap(), f('saver_extraction'))).toBe(false);
   });
 
   it('chat segue a linha de Afiliados', () => {
-    const off = snap({ products: { AFFILIATES: { status: 'INACTIVE', planSlug: null } } });
+    const off = snap({ internal: true, products: { AFFILIATES: { status: 'INACTIVE', planSlug: null } } });
     expect(isEligible(off, f('chat_send'))).toBe(false);
     expect(isEligible(off, f('offer_generator'))).toBe(false);
     // Linha CHAT (não deveria existir) não muda nada: vale a fonte
-    const odd = snap({ products: { AFFILIATES: { status: 'INACTIVE', planSlug: null }, CHAT: { status: 'ACTIVE', planSlug: null } } });
+    const odd = snap({ internal: true, products: { AFFILIATES: { status: 'INACTIVE', planSlug: null }, CHAT: { status: 'ACTIVE', planSlug: null } } });
     expect(isEligible(odd, f('chat_send'))).toBe(false);
   });
 
@@ -54,6 +54,39 @@ describe('direito ao recurso', () => {
     expect(entitlementAllows('telegram_sessions', '2')).toBe(true);
   });
 
+  it('chat só para conta interna enquanto o menu do Chat for só de super admin', () => {
+    expect(isEligible(snap(), f('chat_send'))).toBe(false);
+    expect(isEligible(snap({ internal: true }), f('chat_send'))).toBe(true);
+    const menu = readFileSync(resolve(__dirname, '../../../../../../app/src/features/navigation/model.ts'), 'utf8');
+    // Se o item do Chat deixar de ser `superAdminOnly`, tirar `chat_send` de INTERNAL_ONLY_FEATURES
+    expect(menu).toMatch(/key: 'chat',[^}]*superAdminOnly: true/);
+  });
+
+  it('audiência "Só super admin": conta comum fora, conta interna dentro; liberada = todo tenant com direito', () => {
+    const saver = { products: { SAVER: { status: 'ACTIVE' as const, planSlug: 'SAVER_LITE' } } };
+    const onlyAdmin = { offer_hunter_enabled: true, saver: true };
+    expect(isEligible(snap(), f('offer_hunter'), onlyAdmin)).toBe(false);
+    expect(isEligible(snap({ internal: true }), f('offer_hunter'), onlyAdmin)).toBe(true);
+    expect(isEligible(snap(saver), f('saver_export'), onlyAdmin)).toBe(false);
+    expect(isEligible(snap({ ...saver, internal: true }), f('saver_extraction'), onlyAdmin)).toBe(true);
+    const open = { offer_hunter_enabled: false, saver: false };
+    expect(isEligible(snap(), f('offer_hunter'), open)).toBe(true);
+    expect(isEligible(snap(saver), f('saver_export'), open)).toBe(true);
+    // A audiência de um não vale para o outro nem para recurso sem audiência
+    expect(isEligible(snap(), f('offer_hunter'), { saver: true })).toBe(true);
+    expect(isEligible(snap(), f('storefront'), onlyAdmin)).toBe(true);
+  });
+
+  it('Caçador exige também offer_hunter_finds_per_day > 0 (ausente = 0)', () => {
+    expect(isEligible(snap({ entitlements: { offer_hunter_enabled: true, offer_hunter_finds_per_day: 0 } }), f('offer_hunter'))).toBe(false);
+    expect(isEligible(snap({ planSlug: 'COPYSYNC_LITE', entitlements: { offer_hunter_enabled: true } }), f('offer_hunter'))).toBe(false);
+    expect(isEligible(snap({ planSlug: null, entitlements: { offer_hunter_enabled: true } }), f('offer_hunter'))).toBe(false);
+    expect(isEligible(snap({ planSlug: null, entitlements: { offer_hunter_enabled: true, offer_hunter_finds_per_day: '3' } }), f('offer_hunter'))).toBe(true);
+    // MAX: preset com flag e teto 10
+    expect(isEligible(snap(), f('offer_hunter'))).toBe(true);
+    expect(entitlementAllows('offer_hunter_finds_per_day', null)).toBe(false);
+  });
+
   it('sessão é da conta: sem produto exigido', () => {
     const none = snap({ planSlug: null, products: { AFFILIATES: { status: 'INACTIVE', planSlug: null } } });
     expect(isEligible(none, f('whatsapp_session'))).toBe(true);
@@ -72,7 +105,7 @@ describe('direito ao recurso', () => {
 
   it('chaves pedidas ao banco: só as dos recursos', () => {
     expect(entitlementKeysOf(FEATURE_USAGE_CATALOG)).toEqual(
-      ['ai_rewrite_enabled', 'offer_hunter_enabled', 'offer_story_enabled', 'storefront_enabled', 'telegram_sessions'],
+      ['ai_rewrite_enabled', 'offer_hunter_enabled', 'offer_hunter_finds_per_day', 'offer_story_enabled', 'storefront_enabled', 'telegram_sessions'],
     );
     expect(entitlementKeysOf([f('offer_generator')])).toEqual([]);
   });
