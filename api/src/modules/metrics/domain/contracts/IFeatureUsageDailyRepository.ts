@@ -31,6 +31,8 @@ export interface IFeatureUsageDailyRepository {
   increment(count: FeatureUsageCount): Promise<void>;
   /** Grava `uses = 1` se a linha do dia ainda não existe; senão não faz nada. */
   markOnce(count: FeatureUsageCount): Promise<void>;
+  /** Soma de `uses` do dia por chave (só as de `keys`); chave sem linha = 0. Para a revisita comparar. */
+  dayTotals(day: string, keys: readonly string[]): Promise<Record<string, number>>;
   /** Menor dia gravado (das chaves informadas, ou de todas), `null` sem linha. */
   oldestDay(keys?: readonly string[]): Promise<string | null>;
   /** Apaga `day < before` em lotes curtos; devolve quantas linhas saíram. */

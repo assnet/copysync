@@ -3,10 +3,14 @@ import type { IJobLease, IJobLeaseRenewal } from '../../../../shared/jobs/IJobLe
 import { logger } from '../../../../shared/logger/logger';
 import type { FeatureUsageDayRow, IFeatureUsageDailyRepository } from '../../domain/contracts/IFeatureUsageDailyRepository';
 import type { IFeatureUsageReader } from '../../domain/contracts/IFeatureUsageReader';
-import type {
-  FeatureUsageBackfillStopReason,
-  FeatureUsageTickPatch,
-  IFeatureUsageRollupStateRepository,
+import {
+  type FeatureUsageBackfillStopReason,
+  type FeatureUsageGroupState,
+  type FeatureUsageRetryItem,
+  type FeatureUsageRollupState,
+  type FeatureUsageTickPatch,
+  type IFeatureUsageRollupStateRepository,
+  featureUsageGroupId,
 } from '../../domain/contracts/IFeatureUsageRollupStateRepository';
 import type { UsageReadBudget } from '../../domain/contracts/IUsageReadGate';
 import type { FeatureUsageRow } from '../../domain/services/aggregateFeatureUsage';
@@ -34,8 +38,16 @@ export const FEATURE_USAGE_RETENTION_DAYS = 400;
 export const FEATURE_USAGE_BACKFILL_STEP_DAYS = 7;
 /** Janela recente: no máximo 7 dias por tick, de `finalizedThrough + 1` até hoje. */
 export const FEATURE_USAGE_RECENT_MAX_DAYS = 7;
-/** A partir de tantas falhas seguidas: log `error` e a janela recente é lida dia a dia (isola o dia ruim). */
+/** A partir de tantas falhas seguidas (do grupo ou do tick): log `error`. Backfill do grupo: pode ficar pendente. */
 export const FEATURE_USAGE_FAILURE_STREAK_ALERT = 3;
+/** Teto da lista de reprocesso (dia, grupo); cheia, o item mais antigo sai com log `error` (a revisita o recobre). */
+export const FEATURE_USAGE_RETRY_MAX = 30;
+/**
+ * Revisita leve: a cada tick recalcula UM dia antigo, em rodízio de hoje − 2 até hoje − 30. Premissa: o dado das
+ * fontes chega até D+2 (ontem é sempre recalculado e anteontem fecha a janela); o que chegar depois disso é
+ * exceção, e a revisita pega e loga `warn` quando o número do dia muda.
+ */
+export const FEATURE_USAGE_REVISIT_DAYS = 30;
 
 type RollupLogger = {
   warn: (obj: object, msg: string) => void;
@@ -61,7 +73,7 @@ export function recentWindow(finalizedThrough: string | null, today: string): st
 export interface RollupFeatureUsageDeps {
   /** Leitor sob demanda das tabelas de domínio (mesmo SQL da P1). */
   reader: IFeatureUsageReader;
-  daily: Pick<IFeatureUsageDailyRepository, 'replaceDay' | 'purgeBefore'>;
+  daily: Pick<IFeatureUsageDailyRepository, 'replaceDay' | 'purgeBefore' | 'dayTotals'>;
   state: IFeatureUsageRollupStateRepository;
   lease: IJobLease & IJobLeaseRenewal;
   /** Orçamento de cada leitura de fonte (o job não passa pelo portão do `http`). */
@@ -82,14 +94,19 @@ export type RollupFeatureUsageResult =
   | { status: 'lost' }
   | {
       status: 'ran';
+      /** Grupos com falha na janela recente neste tick. */
       failedGroups: number;
       backfill: FeatureUsageBackfillOutcome;
       purged: number | null;
       /** Janela recente lida neste tick. */
       window: { from: string; to: string };
-      /** Dias da janela com falha (só na leitura dia a dia). */
+      /** Dias da janela com falha em algum grupo. */
       failedDays: string[];
       failureStreak: number;
+      /** Itens (dia, grupo) na lista de reprocesso ao fim do tick. */
+      retryQueue: number;
+      /** Dia antigo revisitado neste tick (`null` = nenhum). */
+      revisited: string | null;
     };
 
 /** Perdeu o lease no meio do tick (renovação recusada): nada mais é lido nem gravado. */
@@ -100,21 +117,42 @@ export class FeatureUsageRollupLeaseLostError extends Error {
   }
 }
 
-type GroupRead = { keys: string[]; rows: FeatureUsageRow[]; firstDataDay: Record<string, string | null | undefined> };
+/** Resultado de um grupo em um conjunto de dias. */
+type GroupRun = {
+  /** Dias com falha (leitura que falhou = todos os dias pedidos). */
+  failedDays: string[];
+  /** Primeiro dado das fontes do grupo (backfill). */
+  firstData: string | null;
+  /** Soma gravada por dia × chave (revisita). */
+  totals: Map<string, Record<string, number>>;
+};
+
+const emptyGroup = (): FeatureUsageGroupState => ({
+  failureStreak: 0,
+  lastSuccessAt: null,
+  backfillCursor: null,
+  backfillDone: null,
+  backfillFailures: 0,
+});
 
 /**
  * Consolidação diária do uso (design §4.4, USAGE-18/20). Uma execução por tick do job, sob o lease
- * `feature-usage-rollup` (sem ele não lê nem grava):
- * 1. recalcula a janela recente (`recentWindow`: de `finalizedThrough + 1` até hoje, ≤ 7 dias) dos recursos cuja
- *    fonte no dia é `LIVE`; sem falha, grava `lastSuccessAt` (quando a janela chega a hoje) e avança
- *    `finalizedThrough` (nunca além de anteontem: ontem é sempre revisitado). Com 3+ falhas seguidas a janela é
- *    lida dia a dia e o dia ruim vai ao log `error`; `finalizedThrough` anda só até o último dia bom contíguo;
- * 2. backfill (lease próprio): no máximo 7 dias para trás a partir do cursor salvo, até o primeiro dado das fontes
- *    (limitado à retenção). O cursor e o marco ficam em `platform_settings`; o marco só é gravado na execução que
- *    termina. Falha numa fonte = o cursor não anda (o passo se repete, idempotente);
- * 3. retenção de 400 dias, 1×/24 h (lease que não é solto).
- * Nunca grava recurso `RECORDED` nem dia a partir do corte gravado pelo contador (`cutovers`, lido no início do
- * tick): só as chaves permitidas no dia entram em `keys` do `replaceDay`, e o que não está lá não é tocado.
+ * `feature-usage-rollup` (sem ele não lê nem grava). Cada grupo de fontes anda sozinho: erro persistente num grupo
+ * não trava o marco, o frescor nem o backfill dos outros.
+ * 1. reprocessa a lista (dia, grupo) que falhou antes (no máximo 30 itens, em `platform_settings`);
+ * 2. recalcula a janela recente (`recentWindow`: de `finalizedThrough + 1` até hoje, ≤ 7 dias) grupo a grupo.
+ *    `finalizedThrough` anda pelos dias concluídos (nunca além de anteontem: ontem é sempre revisitado) se algum
+ *    grupo deu certo; o (dia, grupo) que falhou e fica para trás entra no reprocesso. `failureStreak` por grupo,
+ *    log `error` a partir de 3;
+ * 3. revisita leve: um dia antigo por tick, em rodízio dentro dos últimos 30 dias, com `warn` se o número mudou;
+ * 4. backfill (lease próprio) com cursor por grupo, 7 dias por passo até o primeiro dado do grupo (limitado à
+ *    retenção). O marco é gravado quando todos os grupos concluíram ou os que falham 3+ vezes seguidas ficam
+ *    registrados como pendentes (`backfillPendingKeys`): a leitura trata os recursos deles como não cobertos;
+ * 5. retenção de 400 dias, 1×/24 h (lease que não é solto).
+ * Frescor: `groups[].lastSuccessAt` quando a janela do grupo chegou a hoje sem falha e o backfill dele não falhou;
+ * `lastSuccessAt` (global) só quando o tick inteiro concluiu (nenhum grupo falho na janela e backfill não `failed`).
+ * Nunca grava recurso `RECORDED` nem dia a partir do corte gravado pelo contador: os cortes são relidos antes de cada
+ * gravação e o `replaceDay` ainda confere o corte no SQL, na mesma transação.
  */
 export class RollupFeatureUsageUseCase {
   private readonly ownerId: string;
@@ -123,7 +161,7 @@ export class RollupFeatureUsageUseCase {
   private readonly log: RollupLogger;
   /** Leases detidos agora (renovados entre grupos de fonte). */
   private readonly held = new Set<string>();
-  /** Cortes lidos no início do tick (o tick só toca hoje e dias anteriores; corte novo é sempre ≥ amanhã). */
+  /** Cortes em vigor: relidos antes de cada gravação de dia. */
   private cutovers: FeatureUsageCutovers = {};
 
   constructor(private readonly deps: RollupFeatureUsageDeps) {
@@ -138,6 +176,11 @@ export class RollupFeatureUsageUseCase {
 
   private now(): Date {
     return this.deps.now?.() ?? new Date();
+  }
+
+  private alert(obj: object, msg: string): void {
+    if (this.log.error) this.log.error(obj, msg);
+    else this.log.warn(obj, msg);
   }
 
   /** O job pode gravar `key` em `day`: recurso `LIVE` e o dia antes do corte gravado, se houver. */
@@ -180,134 +223,260 @@ export class RollupFeatureUsageUseCase {
     const st = await this.deps.state.get();
     this.cutovers = st.cutovers;
     const today = dayInZone(now);
+    const retentionFloor = addDays(today, -FEATURE_USAGE_RETENTION_DAYS);
     const window = recentWindow(st.finalizedThrough, today);
-    const split = st.failureStreak >= FEATURE_USAGE_FAILURE_STREAK_ALERT;
+    const windowLast = window[window.length - 1]!;
+    const byId = new Map(this.groups.map((g) => [featureUsageGroupId(g), g]));
+    // Só os grupos da configuração atual (grupo que saiu do código some do estado)
+    const groups: Record<string, FeatureUsageGroupState> = {};
+    for (const id of byId.keys()) groups[id] = { ...emptyGroup(), ...(st.groups?.[id] ?? {}) };
+    const failedNow = new Set<string>();
 
-    let failedGroups = 0;
-    const failedDays: string[] = [];
-    /** Último dia bom contíguo desde o início da janela. */
-    let goodThrough: string | null = null;
-    if (!split) {
-      failedGroups = (await this.consolidate(window, null)).failedGroups;
-      if (failedGroups === 0) goodThrough = window[window.length - 1]!;
-    } else {
-      for (const day of window) {
-        const r = await this.consolidate([day], null);
-        failedGroups += r.failedGroups;
-        if (r.failedGroups > 0) failedDays.push(day);
-        else if (failedDays.length === 0) goodThrough = day;
+    // 1. Reprocesso: dia dentro da janela sai (a janela recalcula); grupo que saiu da configuração também
+    const keep: FeatureUsageRetryItem[] = [];
+    for (const item of st.retryQueue ?? []) {
+      const group = byId.get(item.group);
+      if (!group || item.day < retentionFloor || window.includes(item.day)) continue;
+      const r = await this.consolidateGroup(group, [item.day], null);
+      if (r.failedDays.length > 0) {
+        keep.push(item);
+        failedNow.add(item.group);
       }
     }
 
-    const backfill = await this.backfillStep(today, now);
+    // 2. Janela recente, grupo a grupo
+    const failedDays = new Set<string>();
+    const windowFailed: FeatureUsageRetryItem[] = [];
+    let okGroups = 0;
+    const recentFailed = new Set<string>();
+    for (const [id, group] of byId) {
+      const r = await this.consolidateGroup(group, window, null);
+      if (r.failedDays.length === 0) {
+        okGroups++;
+        continue;
+      }
+      recentFailed.add(id);
+      failedNow.add(id);
+      for (const d of r.failedDays) {
+        failedDays.add(d);
+        windowFailed.push({ day: d, group: id });
+      }
+    }
+
+    // Marca: anda pelos dias concluídos se algum grupo deu certo (todos falhando = falha geral, nada anda)
+    const patch: FeatureUsageTickPatch = { failureStreak: 0 };
+    const cap = addDays(today, -2);
+    let finalized = st.finalizedThrough;
+    if (okGroups > 0 || byId.size === 0) {
+      const next = windowLast < cap ? windowLast : cap;
+      if (!finalized || next > finalized) {
+        patch.finalizedThrough = next;
+        finalized = next;
+      }
+    }
+    // (dia, grupo) que ficou para trás da marca vai ao reprocesso; o resto a próxima janela recalcula
+    const queue = this.mergeQueue(
+      keep,
+      windowFailed.filter((i) => finalized !== null && i.day <= finalized),
+    );
+
+    // 3. Revisita leve de um dia finalizado em tick anterior
+    const revisit = await this.revisit(today, st.finalizedThrough, st.revisitCursor ?? null, byId);
+    if (revisit.next) patch.revisitCursor = revisit.next;
+
+    // 4. Backfill por grupo
+    const backfill = await this.backfillStep(today, now, groups, byId, patch);
     const purged = await this.retention(today, now);
 
-    const failed = failedGroups > 0 || backfill === 'failed';
+    // Estado por grupo
+    for (const [id, g] of Object.entries(groups)) {
+      if (failedNow.has(id)) g.failureStreak += 1;
+      else g.failureStreak = 0;
+      const backfillFailed = backfill.failedGroups.has(id);
+      if (!recentFailed.has(id) && !backfillFailed && windowLast === today) g.lastSuccessAt = now;
+      if (g.failureStreak >= FEATURE_USAGE_FAILURE_STREAK_ALERT) {
+        this.alert(
+          { group: id, failureStreak: g.failureStreak, days: queue.filter((i) => i.group === id).map((i) => i.day) },
+          'feature usage rollup group failing repeatedly',
+        );
+      }
+    }
+
+    const failed = failedNow.size > 0 || backfill.outcome === 'failed';
     const failureStreak = failed ? st.failureStreak + 1 : 0;
     if (failureStreak >= FEATURE_USAGE_FAILURE_STREAK_ALERT) {
-      const info = { failureStreak, failedDays, backfill, window: { from: window[0], to: window[window.length - 1] } };
-      if (this.log.error) this.log.error(info, 'feature usage rollup failing repeatedly');
-      else this.log.warn(info, 'feature usage rollup failing repeatedly');
+      this.alert(
+        { failureStreak, failedGroups: [...failedNow], failedDays: [...failedDays].sort(), backfill: backfill.outcome, window: { from: window[0], to: windowLast } },
+        'feature usage rollup failing repeatedly',
+      );
     }
-    const patch: FeatureUsageTickPatch = { failureStreak };
-    if (goodThrough !== null) {
-      const cap = addDays(today, -2);
-      const next = goodThrough < cap ? goodThrough : cap;
-      if (!st.finalizedThrough || next > st.finalizedThrough) patch.finalizedThrough = next;
-    }
-    // Fresco só quando a janela chegou a hoje sem falha nenhuma
-    if (failedGroups === 0 && window[window.length - 1] === today) patch.lastSuccessAt = now;
+    patch.failureStreak = failureStreak;
+    patch.groups = groups;
+    patch.retryQueue = queue;
+    // Fresco (global) só quando o tick inteiro concluiu: nenhum grupo falho na janela, backfill não falhou e a janela
+    // chegou a hoje. A leitura usa o frescor por grupo; este é o de estado antigo sem grupos
+    if (recentFailed.size === 0 && backfill.outcome !== 'failed' && windowLast === today) patch.lastSuccessAt = now;
     await this.keepAlive();
     await this.deps.state.recordTick(patch);
     return {
       status: 'ran',
-      failedGroups,
-      backfill,
+      failedGroups: recentFailed.size,
+      backfill: backfill.outcome,
       purged,
-      window: { from: window[0]!, to: window[window.length - 1]! },
-      failedDays,
+      window: { from: window[0]!, to: windowLast },
+      failedDays: [...failedDays].sort(),
       failureStreak,
+      retryQueue: queue.length,
+      revisited: revisit.day,
     };
   }
 
-  /**
-   * Lê cada grupo de fontes uma vez para os dias pedidos (crescentes e contíguos) e regrava dia a dia só as chaves
-   * permitidas dos grupos lidos com sucesso. `floorOf` (backfill) dá o primeiro dia a gravar a partir do primeiro dado.
-   */
-  private async consolidate(
-    days: readonly string[],
-    floorOf: ((first: string | null) => string) | null,
-  ): Promise<{ failedGroups: number; firstData: string | null }> {
-    const first = days[0]!;
-    const last = days[days.length - 1]!;
-    const ok: GroupRead[] = [];
-    let failedGroups = 0;
-    for (const group of this.groups) {
-      const keys = group.filter((k) => days.some((d) => this.writable(k, d)));
-      if (keys.length === 0) continue;
-      await this.keepAlive();
-      try {
-        const r = await this.deps.reader.read({
-          from: startOfDayInstant(first),
-          toExclusive: startOfDayInstant(addDays(last, 1)),
-          featureKeys: keys as FeatureUsageKey[],
-          granularity: 'day',
-          budget: this.deps.newBudget(),
-        });
-        ok.push({ keys, rows: r.rows, firstDataDay: r.firstDataDay as Record<string, string | null | undefined> });
-      } catch (err) {
-        failedGroups++;
-        this.log.warn({ keys, from: first, to: last, err: (err as Error)?.name }, 'feature usage rollup source failed');
-      }
+  /** Une sem repetir, em ordem de dia; acima de 30 itens os mais antigos saem (log `error`: a revisita os recobre). */
+  private mergeQueue(a: readonly FeatureUsageRetryItem[], b: readonly FeatureUsageRetryItem[]): FeatureUsageRetryItem[] {
+    const seen = new Set<string>();
+    const all: FeatureUsageRetryItem[] = [];
+    for (const i of [...a, ...b]) {
+      const id = `${i.day}|${i.group}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      all.push(i);
     }
-
-    let firstData: string | null = null;
-    for (const g of ok)
-      for (const k of g.keys) {
-        const d = g.firstDataDay[k];
-        if (d && (firstData === null || d < firstData)) firstData = d;
-      }
-    const floor = floorOf ? floorOf(firstData) : null;
-
-    for (const day of days) {
-      if (floor !== null && day < floor) continue;
-      const keys = ok.flatMap((g) => g.keys.filter((k) => this.writable(k, day)));
-      if (keys.length === 0) continue;
-      const allowed = new Set(keys);
-      const rows: FeatureUsageDayRow[] = [];
-      for (const g of ok)
-        for (const r of g.rows)
-          if (r.day === day && allowed.has(r.featureKey))
-            rows.push({ tenantId: r.tenantId, featureKey: r.featureKey, kind: r.kind, uses: r.uses });
-      await this.keepAlive();
-      try {
-        await this.deps.daily.replaceDay(day, keys, rows);
-      } catch (err) {
-        failedGroups++;
-        this.log.warn({ day, err: (err as Error)?.name }, 'feature usage rollup day write failed');
-      }
-    }
-    return { failedGroups, firstData };
+    all.sort((x, y) => (x.day < y.day ? -1 : x.day > y.day ? 1 : x.group < y.group ? -1 : 1));
+    if (all.length <= FEATURE_USAGE_RETRY_MAX) return all;
+    const dropped = all.slice(0, all.length - FEATURE_USAGE_RETRY_MAX);
+    this.alert({ dropped: dropped.length, oldest: dropped[0]!.day }, 'feature usage rollup retry queue full, oldest dropped');
+    return all.slice(-FEATURE_USAGE_RETRY_MAX);
   }
 
-  private async backfillStep(today: string, now: Date): Promise<FeatureUsageBackfillOutcome> {
+  /**
+   * Lê o grupo uma vez para os dias pedidos (crescentes e contíguos) e regrava dia a dia só as chaves permitidas. Os
+   * cortes são relidos antes de cada gravação (corte gravado no meio do tick não grava em dobro). `floorOf`
+   * (backfill) dá o primeiro dia a gravar a partir do primeiro dado do grupo.
+   */
+  private async consolidateGroup(
+    group: readonly string[],
+    days: readonly string[],
+    floorOf: ((first: string | null) => string) | null,
+  ): Promise<GroupRun> {
+    const first = days[0]!;
+    const last = days[days.length - 1]!;
+    const out: GroupRun = { failedDays: [], firstData: null, totals: new Map() };
+    const keys = group.filter((k) => days.some((d) => this.writable(k, d)));
+    if (keys.length === 0) return out;
+    await this.keepAlive();
+    let rows: FeatureUsageRow[];
+    try {
+      const r = await this.deps.reader.read({
+        from: startOfDayInstant(first),
+        toExclusive: startOfDayInstant(addDays(last, 1)),
+        featureKeys: keys as FeatureUsageKey[],
+        granularity: 'day',
+        budget: this.deps.newBudget(),
+      });
+      rows = r.rows;
+      const firstDataDay = r.firstDataDay as Record<string, string | null | undefined>;
+      for (const k of keys) {
+        const d = firstDataDay[k];
+        if (d && (out.firstData === null || d < out.firstData)) out.firstData = d;
+      }
+    } catch (err) {
+      this.log.warn({ keys, from: first, to: last, err: (err as Error)?.name }, 'feature usage rollup source failed');
+      out.failedDays.push(...days);
+      return out;
+    }
+
+    const floor = floorOf ? floorOf(out.firstData) : null;
+    for (const day of days) {
+      if (floor !== null && day < floor) continue;
+      await this.keepAlive();
+      try {
+        // Corte relido antes de cada gravação; o `replaceDay` confere de novo no SQL, na transação
+        this.cutovers = (await this.deps.state.get()).cutovers;
+        const dayKeys = keys.filter((k) => this.writable(k, day));
+        if (dayKeys.length === 0) continue;
+        const allowed = new Set(dayKeys);
+        const dayRows: FeatureUsageDayRow[] = [];
+        const totals: Record<string, number> = Object.fromEntries(dayKeys.map((k) => [k, 0]));
+        for (const r of rows) {
+          if (r.day !== day || !allowed.has(r.featureKey)) continue;
+          dayRows.push({ tenantId: r.tenantId, featureKey: r.featureKey, kind: r.kind, uses: r.uses });
+          totals[r.featureKey] = (totals[r.featureKey] ?? 0) + (r.uses > 0 ? Math.trunc(r.uses) : 0);
+        }
+        await this.deps.daily.replaceDay(day, dayKeys, dayRows);
+        out.totals.set(day, totals);
+      } catch (err) {
+        if (err instanceof FeatureUsageRollupLeaseLostError) throw err;
+        out.failedDays.push(day);
+        this.log.warn({ day, keys, err: (err as Error)?.name }, 'feature usage rollup day write failed');
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Revisita um dia já finalizado (≤ `finalizedThrough`, entre hoje − 30 e hoje − 2), em rodízio para trás: recalcula
+   * cada grupo e loga `warn` se a soma gravada mudou (dado que chegou depois de D+2). Falha só vai ao log.
+   */
+  private async revisit(
+    today: string,
+    finalized: string | null,
+    cursor: string | null,
+    byId: ReadonlyMap<string, readonly string[]>,
+  ): Promise<{ day: string | null; next: string | undefined }> {
+    const hi = addDays(today, -2);
+    const lo = addDays(today, -FEATURE_USAGE_REVISIT_DAYS);
+    const day = cursor && cursor >= lo && cursor <= hi ? cursor : hi;
+    if (!finalized || day > finalized || byId.size === 0) return { day: null, next: undefined };
+    const changed: { keys: string[]; before: Record<string, number>; after: Record<string, number> }[] = [];
+    for (const group of byId.values()) {
+      const keys = group.filter((k) => this.writable(k, day));
+      if (keys.length === 0) continue;
+      let before: Record<string, number>;
+      try {
+        await this.keepAlive();
+        before = await this.deps.daily.dayTotals(day, keys);
+      } catch (err) {
+        if (err instanceof FeatureUsageRollupLeaseLostError) throw err;
+        this.log.warn({ day, keys, err: (err as Error)?.name }, 'feature usage rollup revisit read failed');
+        continue;
+      }
+      const r = await this.consolidateGroup(group, [day], null);
+      const after = r.totals.get(day);
+      if (!after) continue;
+      if (keys.some((k) => (before[k] ?? 0) !== (after[k] ?? 0))) changed.push({ keys, before, after });
+    }
+    if (changed.length > 0) this.log.warn({ day, changed }, 'feature usage rollup revisit changed a finalized day');
+    const next = addDays(day, -1);
+    return { day, next: next < lo ? hi : next };
+  }
+
+  /**
+   * Backfill por grupo (lease próprio): cada grupo anda 7 dias para trás a partir do seu cursor até o primeiro dado
+   * dele (limitado à retenção). Grupo que falha não anda (o passo se repete, idempotente) e não segura os outros.
+   * Marco: gravado uma vez quando todo grupo concluiu ou os que faltam falharam 3+ passos seguidos (ficam em
+   * `backfillPendingKeys`, e continuam tentando; ao concluir saem de lá).
+   */
+  private async backfillStep(
+    today: string,
+    now: Date,
+    groups: Record<string, FeatureUsageGroupState>,
+    byId: ReadonlyMap<string, readonly string[]>,
+    patch: FeatureUsageTickPatch,
+  ): Promise<{ outcome: FeatureUsageBackfillOutcome; failedGroups: Set<string> }> {
     const { state, lease } = this.deps;
-    if ((await state.get()).backfillCompletedAt) return 'done';
+    const failedGroups = new Set<string>();
+    const settled = (s: FeatureUsageRollupState) => !!s.backfillCompletedAt && (s.backfillPendingKeys ?? []).length === 0;
+    if (settled(await state.get())) return { outcome: 'done', failedGroups };
     const until = new Date(now.getTime() + FEATURE_USAGE_BACKFILL_LEASE_TTL_MS);
-    if (!(await lease.tryAcquire(FEATURE_USAGE_BACKFILL_LEASE, this.ownerId, until, now))) return 'busy';
+    if (!(await lease.tryAcquire(FEATURE_USAGE_BACKFILL_LEASE, this.ownerId, until, now))) return { outcome: 'busy', failedGroups };
     this.held.add(FEATURE_USAGE_BACKFILL_LEASE);
     try {
       // Relido sob a trava: outro processo pode ter acabado de andar ou de terminar
       const current = await state.get();
-      if (current.backfillCompletedAt) return 'done';
+      if (settled(current)) return { outcome: 'done', failedGroups };
+      const marked = !!current.backfillCompletedAt;
+      const pendingBefore = new Set(current.backfillPendingKeys ?? []);
       const retentionFloor = addDays(today, -FEATURE_USAGE_RETENTION_DAYS);
-      // Hoje e ontem são do passo 1: o backfill começa anteontem
-      const start = current.backfillCursor ?? addDays(today, -2);
-      const days: string[] = [];
-      for (let i = FEATURE_USAGE_BACKFILL_STEP_DAYS - 1; i >= 0; i--) {
-        const d = addDays(start, -i);
-        if (d >= retentionFloor) days.push(d);
-      }
       // Sem dado nenhum: o agregado já cobre a partir de ontem (passo 1). Primeiro dado abaixo da retenção = parou
       // no teto (`RETENTION`); senão chegou ao primeiro dado (`FIRST_DATA`: antes dele nada existe)
       const floorOf = (first: string | null) => {
@@ -316,25 +485,77 @@ export class RollupFeatureUsageUseCase {
       };
       const reasonOf = (first: string | null): FeatureUsageBackfillStopReason =>
         first !== null && first < retentionFloor ? 'RETENTION' : 'FIRST_DATA';
-      let floor: string;
-      let stopReason: FeatureUsageBackfillStopReason;
-      if (days.length > 0) {
-        const r = await this.consolidate(days, floorOf);
-        if (r.failedGroups > 0) return 'failed';
-        floor = floorOf(r.firstData);
-        stopReason = reasonOf(r.firstData);
-      } else {
-        floor = retentionFloor;
-        stopReason = 'RETENTION';
+
+      for (const [id, group] of byId) {
+        const g = groups[id]!;
+        if (g.backfillDone) continue;
+        // Com marco gravado, só os grupos pendentes andam (estado antigo sem grupos já está coberto)
+        if (marked && !group.some((k) => pendingBefore.has(k))) continue;
+        // Hoje e ontem são do passo 1: o backfill começa anteontem (estado antigo: cursor único)
+        const start = g.backfillCursor ?? current.backfillCursor ?? addDays(today, -2);
+        const days: string[] = [];
+        for (let i = FEATURE_USAGE_BACKFILL_STEP_DAYS - 1; i >= 0; i--) {
+          const d = addDays(start, -i);
+          if (d >= retentionFloor) days.push(d);
+        }
+        let floor: string;
+        let reason: FeatureUsageBackfillStopReason;
+        if (days.length > 0) {
+          const r = await this.consolidateGroup(group, days, floorOf);
+          if (r.failedDays.length > 0) {
+            g.backfillFailures += 1;
+            failedGroups.add(id);
+            continue;
+          }
+          floor = floorOf(r.firstData);
+          reason = reasonOf(r.firstData);
+        } else {
+          floor = retentionFloor;
+          reason = 'RETENTION';
+        }
+        g.backfillFailures = 0;
+        const next = addDays(start, -FEATURE_USAGE_BACKFILL_STEP_DAYS);
+        if (next < floor) {
+          g.backfillDone = { from: floor, reason };
+          g.backfillCursor = null;
+        } else {
+          g.backfillCursor = next;
+        }
       }
-      const next = addDays(start, -FEATURE_USAGE_BACKFILL_STEP_DAYS);
-      if (next < floor) {
-        await state.markBackfillCompleted({ completedAt: now, backfilledFrom: floor, stopReason });
-        this.log.info({ backfilledFrom: floor, stopReason }, 'feature usage backfill completed');
-        return 'completed';
+
+      const ids = [...byId.keys()];
+      const open = ids.filter((id) => !groups[id]!.backfillDone);
+      const pendingKeys = open.flatMap((id) => [...byId.get(id)!]).sort();
+      const failedOutcome: FeatureUsageBackfillOutcome = failedGroups.size > 0 ? 'failed' : 'step';
+      if (marked) {
+        patch.backfillPendingKeys = pendingKeys;
+        if (pendingKeys.length === 0) {
+          this.log.info({}, 'feature usage backfill pending groups completed');
+          return { outcome: 'completed', failedGroups };
+        }
+        return { outcome: failedOutcome, failedGroups };
       }
-      await state.saveBackfillCursor(next);
-      return 'step';
+      const done = ids.map((id) => groups[id]!.backfillDone).filter((d): d is NonNullable<typeof d> => d !== null);
+      const stuck = open.every((id) => groups[id]!.backfillFailures >= FEATURE_USAGE_FAILURE_STREAK_ALERT);
+      if (ids.length > 0 && done.length > 0 && stuck) {
+        const retention = done.filter((d) => d.reason === 'RETENTION');
+        const stopReason: FeatureUsageBackfillStopReason = retention.length > 0 ? 'RETENTION' : 'FIRST_DATA';
+        // RETENTION: o maior início entre os que pararam no teto (conservador); FIRST_DATA: o menor primeiro dado
+        const backfilledFrom = retention.length > 0
+          ? retention.map((d) => d.from).sort().at(-1)!
+          : done.map((d) => d.from).sort()[0]!;
+        await state.markBackfillCompleted({ completedAt: now, backfilledFrom, stopReason, pendingKeys });
+        const info = { backfilledFrom, stopReason, pendingKeys };
+        if (pendingKeys.length > 0) this.alert(info, 'feature usage backfill completed with pending groups');
+        else this.log.info(info, 'feature usage backfill completed');
+        return { outcome: failedGroups.size > 0 ? 'failed' : 'completed', failedGroups };
+      }
+      if (ids.length === 0) {
+        // Sem grupo `LIVE`: nada a consolidar
+        await state.markBackfillCompleted({ completedAt: now, backfilledFrom: addDays(today, -1), stopReason: 'FIRST_DATA' });
+        return { outcome: 'completed', failedGroups };
+      }
+      return { outcome: failedOutcome, failedGroups };
     } finally {
       this.held.delete(FEATURE_USAGE_BACKFILL_LEASE);
       await lease.release(FEATURE_USAGE_BACKFILL_LEASE, this.ownerId);

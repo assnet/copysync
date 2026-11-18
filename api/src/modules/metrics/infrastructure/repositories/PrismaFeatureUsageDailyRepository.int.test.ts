@@ -109,6 +109,17 @@ describe('PrismaFeatureUsageDailyRepository', () => {
     ]);
   });
 
+  it('dayTotals: soma do dia por chave; chave sem linha = 0', async () => {
+    const k = key('tot');
+    await repo.replaceDay('2026-11-07', [k], [
+      { tenantId: A, featureKey: k, kind: 'ACTION', uses: 2 },
+      { tenantId: B, featureKey: k, kind: 'AUTOMATIC', uses: 5 },
+    ]);
+    expect(await repo.dayTotals('2026-11-07', [k, key('none')])).toEqual({ [k]: 7, [key('none')]: 0 });
+    expect(await repo.dayTotals('2026-11-08', [k])).toEqual({ [k]: 0 });
+    expect(await repo.dayTotals('2026-11-07', [])).toEqual({});
+  });
+
   it('replaceDay com falha depois do DELETE deixa o dia exatamente como estava', async () => {
     const k = key('tx');
     await repo.replaceDay('2026-11-03', [k], [

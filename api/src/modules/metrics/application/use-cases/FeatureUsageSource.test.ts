@@ -45,6 +45,35 @@ function setup(state: FeatureUsageRollupState, dailyRows: FeatureUsageRow[] = []
 }
 
 describe('escolha da fonte', () => {
+  const g = (lastSuccessAt: Date | null) => ({ failureStreak: 0, lastSuccessAt, backfillCursor: null, backfillDone: null, backfillFailures: 0 });
+
+  it('recurso de grupo com backfill pendente não é coberto: até 90 dias live com warn, acima 503; os outros seguem no agregado', async () => {
+    const state = { ...MARKER, backfillPendingKeys: ['link_rotation_click'] };
+    const s = setup(state, [usageRow('2026-12-01', 't1', 'offer_generator', 'ACTION', 9)]);
+    // Detalhe de recurso não pendente: agregado
+    expect((await s.detail.execute({ ...INPUT, featureKey: 'offer_generator' })).source).toBe('daily');
+    // Resumo inclui o pendente: fonte viva
+    const out = await s.summary.execute(INPUT);
+    expect(out).toMatchObject({ source: 'live', range: { maxDays: 90 } });
+    expect(s.log.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ pending: ['link_rotation_click'] }),
+      'feature usage daily aggregate pending backfill, reading live sources',
+    );
+    await expect(s.summary.execute({ ...INPUT, from: '2026-06-04', granularity: 'week' })).rejects.toBeInstanceOf(UsageMetricsReadUnavailableError);
+  });
+
+  it('frescor por grupo: grupo velho só envelhece os recursos dele; freshAt = menor frescor dos grupos pedidos', async () => {
+    const OLD = new Date(NOW.getTime() - 3 * 3_600_000);
+    const groups = { offer_generator: g(FRESH), 'link_rotation+link_rotation_click': g(OLD) };
+    const s = setup({ ...MARKER, lastSuccessAt: OLD, groups });
+    const detail = await s.detail.execute({ ...INPUT, featureKey: 'offer_generator' });
+    expect(detail).toMatchObject({ source: 'daily', freshAt: FRESH });
+    const click = await s.detail.execute({ ...INPUT, featureKey: 'link_rotation_click' });
+    expect(click).toMatchObject({ source: 'live' });
+    // Só recurso do contador: vale o tick mais recente que deu certo
+    expect((await s.detail.execute({ ...INPUT, featureKey: 'chat_send' })).source).toBe('daily');
+  });
+
   it('sem marco cai em live mesmo com linhas no agregado; o agregado só responde pelos recursos do contador', async () => {
     const s = setup(NO_MARKER, [usageRow('2026-12-01', 't1', 'offer_generator', 'ACTION', 9), usageRow('2026-12-01', 't1', 'chat_send', 'ACTION', 2)]);
     const out = await s.summary.execute(INPUT);

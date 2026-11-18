@@ -94,7 +94,7 @@ describe('FeatureUsageRollupJob', () => {
       };
       const rollup = new RollupFeatureUsageUseCase({
         reader,
-        daily: { replaceDay: vi.fn(async () => undefined), purgeBefore: vi.fn(async () => 0) },
+        daily: { replaceDay: vi.fn(async () => undefined), purgeBefore: vi.fn(async () => 0), dayTotals: vi.fn(async () => ({})) },
         state: { get: async () => done, saveBackfillCursor: async () => undefined, markBackfillCompleted: async () => false, recordTick: async () => undefined },
         lease,
         newBudget: () => ({ remainingMs: () => 1000, track: () => undefined, settled: async () => undefined }),

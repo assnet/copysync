@@ -116,6 +116,17 @@ export class PrismaFeatureUsageDailyRepository implements IFeatureUsageDailyRepo
       ON CONFLICT ("day", "tenantId", "featureKey", "kind") DO NOTHING`;
   }
 
+  async dayTotals(day: string, keys: readonly string[]): Promise<Record<string, number>> {
+    const out: Record<string, number> = Object.fromEntries(keys.map((k) => [k, 0]));
+    if (keys.length === 0) return out;
+    const rows = await this.prisma.$queryRaw<{ key: string; uses: number }[]>`
+      SELECT "featureKey" AS key, sum("uses")::int AS uses FROM "feature_usage_daily"
+      WHERE "day" = ${asDay(day)} AND "featureKey" IN (${Prisma.join([...keys])})
+      GROUP BY "featureKey"`;
+    for (const r of rows) out[r.key] = Number(r.uses);
+    return out;
+  }
+
   async oldestDay(keys?: readonly string[]): Promise<string | null> {
     if (keys && keys.length === 0) return null;
     const filter = keys ? Prisma.sql`WHERE "featureKey" IN (${Prisma.join([...keys])})` : Prisma.empty;

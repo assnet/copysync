@@ -5,6 +5,8 @@ import type { FeatureUsageDropCounts } from '../../domain/contracts/IFeatureUsag
 import { addDays, dayInZone } from '../../domain/services/featureUsagePeriod';
 import type {
   FeatureUsageBackfillStopReason,
+  FeatureUsageGroupState,
+  FeatureUsageRetryItem,
   IFeatureUsageDropStore,
   FeatureUsageRollupState,
   FeatureUsageTickPatch,
@@ -31,6 +33,10 @@ const asInstant = (v: unknown): Date | null => {
 const asObject = (v: unknown): Record<string, unknown> =>
   v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 
+/** Campo só presente quando tem valor (estado antigo continua igual ao lido antes). */
+const optional = <K extends string, V>(key: K, value: V | undefined): Partial<Record<K, V>> =>
+  value === undefined ? {} : ({ [key]: value } as Record<K, V>);
+
 /** Descartes salvos → só dia válido, chave válida e contagem inteira > 0. */
 export function parseFeatureUsageDropped(value: unknown): FeatureUsageDropCounts {
   const out: FeatureUsageDropCounts = {};
@@ -42,6 +48,43 @@ export function parseFeatureUsageDropped(value: unknown): FeatureUsageDropCounts
     }
   }
   return out;
+}
+
+const GROUP_RE = /^[a-z0-9_:.+-]{1,1024}$/;
+/** Teto do reprocesso guardado (o use case corta antes; aqui só protege a leitura). */
+const RETRY_MAX = 30;
+const asCount = (v: unknown): number => (typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : 0);
+const asReason = (v: unknown): FeatureUsageBackfillStopReason => (v === 'FIRST_DATA' ? 'FIRST_DATA' : 'RETENTION');
+
+function parseGroups(value: unknown): Record<string, FeatureUsageGroupState> | undefined {
+  if (value === undefined) return undefined;
+  const out: Record<string, FeatureUsageGroupState> = {};
+  for (const [id, raw] of Object.entries(asObject(value))) {
+    if (!GROUP_RE.test(id)) continue;
+    const g = asObject(raw);
+    const done = asObject(g['backfillDone']);
+    const from = asDay(done['from']);
+    out[id] = {
+      failureStreak: asCount(g['failureStreak']),
+      lastSuccessAt: asInstant(g['lastSuccessAt']),
+      backfillCursor: asDay(g['backfillCursor']),
+      backfillDone: from ? { from, reason: asReason(done['reason']) } : null,
+      backfillFailures: asCount(g['backfillFailures']),
+    };
+  }
+  return out;
+}
+
+function parseRetryQueue(value: unknown): FeatureUsageRetryItem[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out: FeatureUsageRetryItem[] = [];
+  for (const raw of value) {
+    const o = asObject(raw);
+    const day = asDay(o['day']);
+    const group = o['group'];
+    if (day && typeof group === 'string' && GROUP_RE.test(group)) out.push({ day, group });
+  }
+  return out.slice(-RETRY_MAX);
 }
 
 /** Valor salvo → estado; campo ausente ou inválido = vazio (marco só vale com os dois campos). */
@@ -67,6 +110,13 @@ export function parseFeatureUsageRollupState(value: unknown, cutoverValue?: unkn
     failureStreak: typeof streak === 'number' && Number.isInteger(streak) && streak > 0 ? streak : 0,
     cutovers,
     dropped: parseFeatureUsageDropped(droppedValue),
+    ...optional('groups', parseGroups(o['groups'])),
+    ...optional('retryQueue', parseRetryQueue(o['retryQueue'])),
+    ...optional('revisitCursor', asDay(o['revisitCursor']) ?? undefined),
+    ...optional(
+      'backfillPendingKeys',
+      Array.isArray(o['backfillPendingKeys']) ? (o['backfillPendingKeys'] as unknown[]).filter((k): k is string => typeof k === 'string' && KEY_RE.test(k)) : undefined,
+    ),
   };
 }
 
@@ -146,12 +196,14 @@ export class PrismaFeatureUsageRollupStateRepository
     completedAt: Date;
     backfilledFrom: string;
     stopReason: FeatureUsageBackfillStopReason;
+    pendingKeys?: readonly string[];
   }): Promise<boolean> {
     if (!DAY_RE.test(marker.backfilledFrom)) throw new Error(`invalid backfilledFrom: ${marker.backfilledFrom}`);
     const patch = JSON.stringify({
       backfillCompletedAt: marker.completedAt.toISOString(),
       backfilledFrom: marker.backfilledFrom,
       backfillStopReason: marker.stopReason,
+      backfillPendingKeys: [...(marker.pendingKeys ?? [])],
     });
     return (await this.merge(patch, true)) > 0;
   }
@@ -163,6 +215,26 @@ export class PrismaFeatureUsageRollupStateRepository
     const body: Record<string, unknown> = { failureStreak: Math.max(0, Math.trunc(patch.failureStreak)) };
     if (patch.lastSuccessAt) body['lastSuccessAt'] = patch.lastSuccessAt.toISOString();
     if (patch.finalizedThrough) body['finalizedThrough'] = patch.finalizedThrough;
+    if (patch.groups) {
+      body['groups'] = Object.fromEntries(
+        Object.entries(patch.groups).map(([id, g]) => [
+          id,
+          {
+            failureStreak: g.failureStreak,
+            lastSuccessAt: g.lastSuccessAt?.toISOString() ?? null,
+            backfillCursor: g.backfillCursor,
+            backfillDone: g.backfillDone,
+            backfillFailures: g.backfillFailures,
+          },
+        ]),
+      );
+    }
+    if (patch.retryQueue) body['retryQueue'] = patch.retryQueue.slice(-RETRY_MAX).map((r) => ({ day: r.day, group: r.group }));
+    if (patch.revisitCursor !== undefined) {
+      if (!DAY_RE.test(patch.revisitCursor)) throw new Error(`invalid revisitCursor: ${patch.revisitCursor}`);
+      body['revisitCursor'] = patch.revisitCursor;
+    }
+    if (patch.backfillPendingKeys) body['backfillPendingKeys'] = [...patch.backfillPendingKeys];
     await this.merge(JSON.stringify(body), false);
   }
 

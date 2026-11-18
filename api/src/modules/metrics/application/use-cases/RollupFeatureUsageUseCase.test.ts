@@ -45,16 +45,21 @@ class FakeLease implements IJobLease, IJobLeaseRenewal {
 class FakeState implements IFeatureUsageRollupStateRepository {
   value: FeatureUsageRollupState = { backfillCompletedAt: null, backfilledFrom: null, backfillStopReason: null, backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
   marks = 0;
+  /** Cortes que passam a valer na N-ésima leitura (simula o contador gravando o corte no meio do tick). */
+  cutoverAfterReads: { reads: number; cutovers: Record<string, string> } | null = null;
+  gets = 0;
   async get() {
-    return { ...this.value };
+    this.gets++;
+    if (this.cutoverAfterReads && this.gets > this.cutoverAfterReads.reads) this.value = { ...this.value, cutovers: this.cutoverAfterReads.cutovers };
+    return structuredClone(this.value);
   }
   async saveBackfillCursor(day: string) {
     this.value = { ...this.value, backfillCursor: day };
   }
-  async markBackfillCompleted(m: { completedAt: Date; backfilledFrom: string; stopReason: FeatureUsageRollupState['backfillStopReason'] }) {
+  async markBackfillCompleted(m: { completedAt: Date; backfilledFrom: string; stopReason: FeatureUsageRollupState['backfillStopReason']; pendingKeys?: readonly string[] }) {
     if (this.value.backfillCompletedAt) return false;
     this.marks++;
-    this.value = { ...this.value, backfillCompletedAt: m.completedAt, backfilledFrom: m.backfilledFrom, backfillStopReason: m.stopReason };
+    this.value = { ...this.value, backfillCompletedAt: m.completedAt, backfilledFrom: m.backfilledFrom, backfillStopReason: m.stopReason, backfillPendingKeys: [...(m.pendingKeys ?? [])] };
     return true;
   }
   ticks: FeatureUsageTickPatch[] = [];
@@ -65,6 +70,10 @@ class FakeState implements IFeatureUsageRollupStateRepository {
       failureStreak: p.failureStreak,
       ...(p.lastSuccessAt ? { lastSuccessAt: p.lastSuccessAt } : {}),
       ...(p.finalizedThrough ? { finalizedThrough: p.finalizedThrough } : {}),
+      ...(p.groups ? { groups: structuredClone(p.groups) } : {}),
+      ...(p.retryQueue ? { retryQueue: [...p.retryQueue] } : {}),
+      ...(p.revisitCursor ? { revisitCursor: p.revisitCursor } : {}),
+      ...(p.backfillPendingKeys ? { backfillPendingKeys: [...p.backfillPendingKeys] } : {}),
     };
   }
 }
@@ -111,6 +120,15 @@ function setup(s: Setup) {
     purgeBefore: vi.fn(async (before: string) => {
       purged.push(before);
       return 0;
+    }),
+    /** Soma gravada por chave no dia (último replaceDay do dia que tocou a chave). */
+    dayTotals: vi.fn(async (day: string, keys: readonly string[]) => {
+      const out: Record<string, number> = Object.fromEntries(keys.map((k) => [k, 0]));
+      for (const k of keys) {
+        const last = [...replaced].reverse().find((r) => r.day === day && r.keys.includes(k));
+        out[k] = (last?.rows ?? []).filter((x) => x.featureKey === k).reduce((n, x) => n + x.uses, 0);
+      }
+      return out;
     }),
   };
   const deps: RollupFeatureUsageDeps = {
@@ -232,17 +250,19 @@ describe('RollupFeatureUsageUseCase', () => {
     const before = t.replaced.length;
     const r5 = await t.useCase.execute();
     expect(r5).toMatchObject({ backfill: 'done' });
-    expect(t.replaced.slice(before).map((x) => x.day)).toEqual(['2026-11-16', '2026-11-17']);
+    // Janela + revisita (rodízio: 15, 14, 13 nos ticks 2–4; 12 agora)
+    expect(t.replaced.slice(before).map((x) => x.day)).toEqual(['2026-11-16', '2026-11-17', '2026-11-12']);
     expect(t.state.marks).toBe(1);
     expect(t.state.value.backfillCompletedAt).toEqual(NOW);
     expect(t.lease.held.has(FEATURE_USAGE_BACKFILL_LEASE)).toBe(false);
   });
 
-  it('backfill com fonte em erro não anda o cursor (o passo se repete)', async () => {
+  it('backfill com fonte em erro: o cursor do grupo com erro não anda (o passo se repete); o do outro anda', async () => {
     const t = setup({ catalog: [def('a'), def('b')], firstData: { a: '2026-10-01', b: '2026-10-01' }, failKeys: ['b'], now: NOW });
     const r = await t.useCase.execute();
     expect(r).toMatchObject({ backfill: 'failed' });
-    expect(t.state.value.backfillCursor).toBeNull();
+    expect(t.state.value.groups!['a']).toMatchObject({ backfillCursor: '2026-11-08', backfillFailures: 0 });
+    expect(t.state.value.groups!['b']).toMatchObject({ backfillCursor: null, backfillFailures: 1 });
   });
 
   it('nenhuma chave RECORDED vai ao replaceDay, nem nos dias antes do corte (view:*)', async () => {
@@ -309,8 +329,8 @@ describe('RollupFeatureUsageUseCase', () => {
     const t = setup({ catalog: [def('a'), def('b')], groups: [['a'], ['b']], now: NOW });
     t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillStopReason: 'RETENTION', backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
     await t.useCase.execute();
-    // 2 fontes + 2 dias + gravação do estado do tick
-    expect(t.lease.renewed.filter((n) => n === FEATURE_USAGE_ROLLUP_LEASE)).toHaveLength(5);
+    // 2 grupos × (1 fonte + 2 dias) + gravação do estado do tick
+    expect(t.lease.renewed.filter((n) => n === FEATURE_USAGE_ROLLUP_LEASE)).toHaveLength(7);
 
     const lost = setup({ catalog: [def('a'), def('b')], groups: [['a'], ['b']], now: NOW });
     lost.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillStopReason: 'RETENTION', backfillCursor: null, cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0 };
@@ -357,11 +377,14 @@ describe('RollupFeatureUsageUseCase', () => {
       const t = setup({ catalog: [def('a')], now: NOW });
       t.state.value = { ...t.state.value, ...DONE };
       await t.useCase.execute();
-      expect(t.state.ticks).toEqual([{ failureStreak: 0, finalizedThrough: '2026-11-15', lastSuccessAt: NOW }]);
+      expect(t.state.ticks[0]).toMatchObject({ failureStreak: 0, finalizedThrough: '2026-11-15', lastSuccessAt: NOW, retryQueue: [] });
+      expect(t.state.value.groups!['a']).toMatchObject({ failureStreak: 0, lastSuccessAt: NOW });
       t.replaced.length = 0;
       await t.useCase.execute();
-      expect(t.replaced.map((r) => r.day)).toEqual(['2026-11-16', '2026-11-17']);
-      expect(t.state.ticks[1]).toEqual({ failureStreak: 0, lastSuccessAt: NOW }); // marca não anda para trás nem repete
+      // Janela de ontem e hoje + revisita de anteontem (finalizado no tick anterior)
+      expect(t.replaced.map((r) => r.day)).toEqual(['2026-11-16', '2026-11-17', '2026-11-15']);
+      expect(t.state.ticks[1]).toMatchObject({ failureStreak: 0, lastSuccessAt: NOW });
+      expect(t.state.ticks[1]).not.toHaveProperty('finalizedThrough'); // marca não anda para trás nem repete
     });
 
     it('job parado 10 dias: alcança hoje em 7 + resto, e só fica fresco quando a janela chega a hoje', async () => {
@@ -369,10 +392,12 @@ describe('RollupFeatureUsageUseCase', () => {
       t.state.value = { ...t.state.value, ...DONE, finalizedThrough: '2026-11-06' };
       const r1 = await t.useCase.execute();
       expect(r1).toMatchObject({ window: { from: '2026-11-07', to: '2026-11-13' } });
-      expect(t.state.ticks[0]).toEqual({ failureStreak: 0, finalizedThrough: '2026-11-13' });
+      expect(t.state.ticks[0]).toMatchObject({ failureStreak: 0, finalizedThrough: '2026-11-13' });
+      expect(t.state.ticks[0]).not.toHaveProperty('lastSuccessAt');
+      expect(t.state.value.groups!['a']!.lastSuccessAt).toBeNull();
       const r2 = await t.useCase.execute();
       expect(r2).toMatchObject({ window: { from: '2026-11-14', to: '2026-11-17' } });
-      expect(t.state.ticks[1]).toEqual({ failureStreak: 0, finalizedThrough: '2026-11-15', lastSuccessAt: NOW });
+      expect(t.state.ticks[1]).toMatchObject({ failureStreak: 0, finalizedThrough: '2026-11-15', lastSuccessAt: NOW });
     });
 
     it('falha numa fonte: sem lastSuccessAt, marca parada e contador de falhas sobe; zera no primeiro tick bom', async () => {
@@ -380,38 +405,135 @@ describe('RollupFeatureUsageUseCase', () => {
       const t = setup({ catalog: [def('a')], failKeys, now: NOW });
       t.state.value = { ...t.state.value, ...DONE, finalizedThrough: '2026-11-10', lastSuccessAt: new Date(0) };
       await t.useCase.execute();
-      expect(t.state.ticks[0]).toEqual({ failureStreak: 1 });
+      expect(t.state.ticks[0]).toMatchObject({ failureStreak: 1, retryQueue: [] });
+      expect(t.state.ticks[0]).not.toHaveProperty('lastSuccessAt');
+      expect(t.state.ticks[0]).not.toHaveProperty('finalizedThrough'); // todos os grupos falharam: nada anda
       expect(t.state.value).toMatchObject({ finalizedThrough: '2026-11-10', lastSuccessAt: new Date(0) });
+      expect(t.state.value.groups!['a']).toMatchObject({ failureStreak: 1, lastSuccessAt: null });
       failKeys.length = 0;
       await t.useCase.execute();
       expect(t.state.value.failureStreak).toBe(0);
     });
 
-    it('3 falhas seguidas: log error e janela lida dia a dia; o dia ruim fica isolado e a marca anda até ele', async () => {
-      const t = setup({ catalog: [def('a')], now: NOW });
+    it('3 falhas seguidas do grupo: log error; dia ruim que ficou para trás vai ao reprocesso e é isolado', async () => {
+      const t = setup({ catalog: [def('a'), def('b')], groups: [['a'], ['b']], now: NOW });
       const error = vi.fn();
       const uc = new RollupFeatureUsageUseCase({ ...(t.useCase as unknown as { deps: RollupFeatureUsageDeps }).deps, log: { warn: t.warn, info: vi.fn(), error } });
-      t.state.value = { ...t.state.value, ...DONE, finalizedThrough: '2026-11-10', failureStreak: 2 };
-      // Só o dia 13 quebra (lido sozinho); lido em janela, quebra tudo
+      t.state.value = { ...t.state.value, ...DONE, finalizedThrough: '2026-11-10', failureStreak: 2, groups: { a: { failureStreak: 2, lastSuccessAt: null, backfillCursor: null, backfillDone: null, backfillFailures: 0 } } };
+      // Fonte `a` quebra em qualquer leitura que inclua o dia 13; `b` sempre bem
       const realRead = t.reader.read.getMockImplementation()!;
       t.reader.read.mockImplementation(async (input) => {
         const from = dayInZone(input.from);
         const to = dayInZone(input.toExclusive);
-        if (from <= '2026-11-13' && to > '2026-11-13') throw new Error('bad day');
+        if ((input.featureKeys as string[]).includes('a') && from <= '2026-11-13' && to > '2026-11-13') throw new Error('bad day');
         return realRead(input);
       });
-      // Tick 3 (streak 2 → 3): ainda em janela, falha e alerta
-      const r3 = await uc.execute();
-      expect(r3).toMatchObject({ failureStreak: 3, failedDays: [] });
-      expect(error).toHaveBeenCalledTimes(1);
-      expect(t.replaced).toEqual([]);
-      // Tick 4: dia a dia, 11 e 12 bons, 13 ruim, 14–17 gravados
-      const r4 = await uc.execute();
-      expect(r4).toMatchObject({ failureStreak: 4, failedDays: ['2026-11-13'] });
-      expect(t.replaced.map((r) => r.day)).toEqual(['2026-11-11', '2026-11-12', '2026-11-14', '2026-11-15', '2026-11-16', '2026-11-17']);
-      expect(t.state.value.finalizedThrough).toBe('2026-11-12');
-      expect(t.state.ticks[1]!.lastSuccessAt).toBeUndefined();
-      expect(error).toHaveBeenLastCalledWith(expect.objectContaining({ failureStreak: 4, failedDays: ['2026-11-13'] }), 'feature usage rollup failing repeatedly');
+      const r1 = await uc.execute();
+      // `b` andou a marca até 15; os dias 11–15 de `a` (leitura da janela falhou) entram no reprocesso
+      expect(r1).toMatchObject({ failedGroups: 1, failureStreak: 3, retryQueue: 5 });
+      expect(t.state.value.finalizedThrough).toBe('2026-11-15');
+      expect(t.state.value.retryQueue).toEqual(['11', '12', '13', '14', '15'].map((d) => ({ day: `2026-11-${d}`, group: 'a' })));
+      expect(t.state.value.groups!['a']).toMatchObject({ failureStreak: 3 });
+      expect(t.state.value.groups!['b']).toMatchObject({ failureStreak: 0, lastSuccessAt: NOW });
+      expect(error).toHaveBeenCalledWith(expect.objectContaining({ group: 'a', failureStreak: 3 }), 'feature usage rollup group failing repeatedly');
+      // Tick seguinte: reprocesso dia a dia isola o 13; a janela (16–17) de `a` dá certo
+      t.replaced.length = 0;
+      const r2 = await uc.execute();
+      expect(t.replaced.filter((x) => x.keys.includes('a')).map((x) => x.day)).toEqual(['2026-11-11', '2026-11-12', '2026-11-14', '2026-11-15', '2026-11-16', '2026-11-17', '2026-11-15']);
+      expect(t.state.value.retryQueue).toEqual([{ day: '2026-11-13', group: 'a' }]);
+      expect(r2).toMatchObject({ failedGroups: 0, retryQueue: 1 });
+      // Reprocesso falho não tira o frescor do grupo (só a janela recente e o backfill tiram)
+      expect(t.state.value.groups!['a']!.failureStreak).toBe(4);
+    });
+
+    it('grupo A sempre falhando não impede B de avançar a marca, o frescor nem o backfill/marco de B', async () => {
+      const t = setup({ catalog: [def('a'), def('b')], groups: [['a'], ['b']], failKeys: ['a'], firstData: { b: '2026-11-01' }, now: NOW });
+      const outcomes: string[] = [];
+      for (let i = 0; i < 4; i++) {
+        const r = await t.useCase.execute();
+        outcomes.push(r.status === 'ran' ? r.backfill : r.status);
+      }
+      // B concluiu no 1º passo; A falhou 3 passos seguidos e ficou pendente: o marco sai no 3º tick
+      expect(outcomes).toEqual(['failed', 'failed', 'failed', 'failed']);
+      expect(t.state.marks).toBe(1);
+      expect(t.state.value).toMatchObject({ backfilledFrom: '2026-11-01', backfillStopReason: 'FIRST_DATA', backfillPendingKeys: ['a'] });
+      expect(t.state.value.finalizedThrough).toBe('2026-11-15');
+      expect(t.state.value.groups!['b']).toMatchObject({ lastSuccessAt: NOW, failureStreak: 0, backfillDone: { from: '2026-11-01', reason: 'FIRST_DATA' } });
+      expect(t.state.value.groups!['a']).toMatchObject({ lastSuccessAt: null, failureStreak: 4, backfillFailures: 4, backfillDone: null });
+      // Tick inteiro nunca concluiu: sem frescor global
+      expect(t.state.value.lastSuccessAt).toBeNull();
+    });
+
+    it('grupo pendente que volta conclui o backfill e sai de backfillPendingKeys', async () => {
+      const failKeys = ['a'];
+      const t = setup({ catalog: [def('a'), def('b')], groups: [['a'], ['b']], failKeys, now: NOW });
+      for (let i = 0; i < 3; i++) await t.useCase.execute();
+      expect(t.state.value.backfillPendingKeys).toEqual(['a']);
+      failKeys.length = 0;
+      expect(await t.useCase.execute()).toMatchObject({ backfill: 'completed' });
+      expect(t.state.value.backfillPendingKeys).toEqual([]);
+      expect(await t.useCase.execute()).toMatchObject({ backfill: 'done' });
+      expect(t.state.marks).toBe(1);
+    });
+
+    it('lastSuccessAt global não grava quando o backfill falha, mesmo com a janela inteira boa', async () => {
+      const t = setup({ catalog: [def('a'), def('b')], groups: [['a'], ['b']], firstData: { a: '2026-10-01', b: '2026-10-01' }, now: NOW });
+      // `b` falha só nas leituras do backfill (antes de ontem)
+      const realRead = t.reader.read.getMockImplementation()!;
+      t.reader.read.mockImplementation(async (input) => {
+        if ((input.featureKeys as string[]).includes('b') && dayInZone(input.from) < '2026-11-16') throw new Error('backfill');
+        return realRead(input);
+      });
+      const r = await t.useCase.execute();
+      expect(r).toMatchObject({ failedGroups: 0, backfill: 'failed' });
+      expect(t.state.ticks[0]).not.toHaveProperty('lastSuccessAt');
+      expect(t.state.value.groups!['a']!.lastSuccessAt).toEqual(NOW);
+      expect(t.state.value.groups!['b']!.lastSuccessAt).toBeNull();
+    });
+
+    it('reprocesso cheio (30): o item mais antigo sai com log error', async () => {
+      const t = setup({ catalog: [def('a'), def('b')], groups: [['a'], ['b']], failKeys: ['a'], now: NOW });
+      const error = vi.fn();
+      const uc = new RollupFeatureUsageUseCase({ ...(t.useCase as unknown as { deps: RollupFeatureUsageDeps }).deps, log: { warn: t.warn, info: vi.fn(), error } });
+      const old = Array.from({ length: 30 }, (_, i) => ({ day: addDays('2026-11-08', -i), group: 'a' }));
+      t.state.value = { ...t.state.value, ...DONE, finalizedThrough: '2026-11-10', retryQueue: old };
+      await uc.execute();
+      expect(t.state.value.retryQueue).toHaveLength(30);
+      expect(t.state.value.retryQueue!.at(-1)).toEqual({ day: '2026-11-15', group: 'a' });
+      expect(t.state.value.retryQueue![0]!.day).toBe(addDays('2026-11-08', -24));
+      expect(error).toHaveBeenCalledWith(expect.objectContaining({ dropped: 5 }), 'feature usage rollup retry queue full, oldest dropped');
+    });
+
+    it('revisita: um dia antigo por tick em rodízio (hoje − 2 … hoje − 30) e warn quando o número mudou', async () => {
+      const data: FeatureUsageRow[] = [];
+      const t = setup({ catalog: [def('a')], data, now: NOW });
+      t.state.value = { ...t.state.value, ...DONE, finalizedThrough: '2026-11-15' };
+      const r1 = await t.useCase.execute();
+      expect(r1).toMatchObject({ revisited: '2026-11-15' });
+      expect(t.state.value.revisitCursor).toBe('2026-11-14');
+      expect(t.warn).not.toHaveBeenCalledWith(expect.anything(), 'feature usage rollup revisit changed a finalized day');
+      // Dado atrasado chega para o dia 14 (já finalizado)
+      data.push(row('2026-11-14', 'a', 5));
+      const r2 = await t.useCase.execute();
+      expect(r2).toMatchObject({ revisited: '2026-11-14' });
+      expect(t.warn).toHaveBeenCalledWith(
+        { day: '2026-11-14', changed: [{ keys: ['a'], before: { a: 0 }, after: { a: 5 } }] },
+        'feature usage rollup revisit changed a finalized day',
+      );
+      // Rodízio volta a hoje − 2 depois de hoje − 30
+      t.state.value = { ...t.state.value, revisitCursor: addDays('2026-11-17', -30) };
+      expect(await t.useCase.execute()).toMatchObject({ revisited: addDays('2026-11-17', -30) });
+      expect(t.state.value.revisitCursor).toBe('2026-11-15');
+    });
+
+    it('corrida: corte gravado no meio do tick não deixa gravar o dia do corte (cortes relidos antes de cada gravação)', async () => {
+      const catalog = [def('offer_story', { recordedFrom: 'CUTOVER' })];
+      const t = setup({ catalog, data: [row('2026-11-16', 'offer_story', 4), row('2026-11-17', 'offer_story', 9)], now: NOW });
+      t.state.value = { ...t.state.value, ...DONE };
+      // 1ª leitura (início do tick) sem corte; a partir da 2ª, corte em 17
+      t.state.cutoverAfterReads = { reads: 1, cutovers: { offer_story: '2026-11-17' } };
+      await t.useCase.execute();
+      expect(t.replaced.map((r) => [r.day, r.keys])).toEqual([['2026-11-16', ['offer_story']]]);
     });
   });
 });

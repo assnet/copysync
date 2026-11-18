@@ -53,9 +53,9 @@ describe('PrismaFeatureUsageRollupStateRepository', () => {
     expect(await writer.markBackfillCompleted({ completedAt: new Date('2026-11-18T00:00:00Z'), backfilledFrom: '2026-01-01', stopReason: 'RETENTION' })).toBe(false);
 
     const other = new PrismaFeatureUsageRollupStateRepository(prisma);
-    expect(await other.get()).toEqual({ backfillCompletedAt: done, backfilledFrom: '2026-10-26', backfillStopReason: 'FIRST_DATA', backfillCursor: '2026-11-08', cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0, dropped: {} });
+    expect(await other.get()).toEqual({ backfillCompletedAt: done, backfilledFrom: '2026-10-26', backfillStopReason: 'FIRST_DATA', backfillCursor: '2026-11-08', cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0, dropped: {}, backfillPendingKeys: [] });
     // Leitura do painel: mesma resposta, dentro do orçamento do pedido
-    expect(await other.get(createReadBudget())).toEqual({ backfillCompletedAt: done, backfilledFrom: '2026-10-26', backfillStopReason: 'FIRST_DATA', backfillCursor: '2026-11-08', cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0, dropped: {} });
+    expect(await other.get(createReadBudget())).toEqual({ backfillCompletedAt: done, backfilledFrom: '2026-10-26', backfillStopReason: 'FIRST_DATA', backfillCursor: '2026-11-08', cutovers: {}, lastSuccessAt: null, finalizedThrough: null, failureStreak: 0, dropped: {}, backfillPendingKeys: [] });
     const row = await prisma.platformSetting.findUnique({ where: { key: FEATURE_USAGE_ROLLUP_SETTINGS_KEY } });
     expect(row?.updatedById).toBeNull();
     expect(row?.updatedAt.toISOString()).toBe('2026-11-17T10:00:00.000Z');
@@ -117,5 +117,21 @@ describe('PrismaFeatureUsageRollupStateRepository', () => {
       finalizedThrough: '2026-11-15',
       failureStreak: 2,
     });
+  });
+
+  it('estado por grupo, reprocesso, revisita e pendentes do marco: gravados pelo tick e lidos de volta', async () => {
+    const repo = new PrismaFeatureUsageRollupStateRepository(prisma);
+    await repo.markBackfillCompleted({ completedAt: new Date('2026-11-17T10:00:00Z'), backfilledFrom: '2026-10-26', stopReason: 'FIRST_DATA', pendingKeys: ['link_rotation'] });
+    const at = new Date('2026-11-17T12:30:00.000Z');
+    const groups = {
+      'link_rotation+link_rotation_click': { failureStreak: 3, lastSuccessAt: null, backfillCursor: '2026-11-01', backfillDone: null, backfillFailures: 4 },
+      offer_generator: { failureStreak: 0, lastSuccessAt: at, backfillCursor: null, backfillDone: { from: '2026-10-26', reason: 'FIRST_DATA' as const }, backfillFailures: 0 },
+    };
+    await repo.recordTick({ failureStreak: 1, groups, retryQueue: [{ day: '2026-11-12', group: 'link_rotation+link_rotation_click' }], revisitCursor: '2026-11-14' });
+    const st = await repo.get(createReadBudget());
+    expect(st).toMatchObject({ groups, retryQueue: [{ day: '2026-11-12', group: 'link_rotation+link_rotation_click' }], revisitCursor: '2026-11-14', backfillPendingKeys: ['link_rotation'] });
+    // Pendente que concluiu sai; o marco não muda
+    await repo.recordTick({ failureStreak: 0, backfillPendingKeys: [] });
+    expect(await repo.get()).toMatchObject({ backfillPendingKeys: [], backfilledFrom: '2026-10-26', groups });
   });
 });

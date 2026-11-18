@@ -3,7 +3,7 @@ import { logger } from '../../../../shared/logger/logger';
 import type { IFeatureEligibilityReader } from '../../domain/contracts/IFeatureEligibilityReader';
 import type { IFeatureUsageReader } from '../../domain/contracts/IFeatureUsageReader';
 import type { FeatureUsageDropCounts } from '../../domain/contracts/IFeatureUsageRecorder';
-import type { IFeatureUsageRollupStateRepository } from '../../domain/contracts/IFeatureUsageRollupStateRepository';
+import type { FeatureUsageRollupState, IFeatureUsageRollupStateRepository } from '../../domain/contracts/IFeatureUsageRollupStateRepository';
 import type { IUsageReadGate, UsageReadBudget } from '../../domain/contracts/IUsageReadGate';
 import type { IUsageTenantDirectory, UsageTenantDirectoryEntry } from '../../domain/contracts/IUsageTenantDirectory';
 import {
@@ -162,18 +162,42 @@ export function resolveUsageRequestPeriod(input: FeatureUsageQueryInput, now: Da
 }
 
 /**
+ * Frescor do agregado para os recursos `LIVE` pedidos: o menor `lastSuccessAt` dos grupos de fonte deles (grupo com
+ * erro não envelhece os outros). Recurso sem grupo no estado (estado antigo) usa o `lastSuccessAt` global. Sem
+ * recurso `LIVE` pedido (só contador), vale o tick mais recente que deu certo (o job está vivo).
+ */
+export function usageFreshAt(state: FeatureUsageRollupState, liveKeys: readonly string[]): Date | null {
+  const groups = Object.entries(state.groups ?? {});
+  if (groups.length === 0) return state.lastSuccessAt;
+  if (liveKeys.length === 0) {
+    const all = [state.lastSuccessAt, ...groups.map(([, g]) => g.lastSuccessAt)].filter((d): d is Date => d !== null);
+    return all.length === 0 ? null : new Date(Math.max(...all.map((d) => d.getTime())));
+  }
+  let min: Date | null = null;
+  for (const key of liveKeys) {
+    const g = groups.find(([id]) => id.split('+').includes(key))?.[1];
+    const at = g ? g.lastSuccessAt : state.lastSuccessAt;
+    if (at === null) return null;
+    if (min === null || at < min) min = at;
+  }
+  return min;
+}
+
+/**
  * Fonte do pedido (design §4.4/§4.5). O agregado cobre o período quando o marco do backfill existe e: o backfill
  * parou no primeiro dado (`FIRST_DATA`, nada antes existe: vale qualquer período até 400 dias) ou o período começa em
- * `backfilledFrom` ou depois (`RETENTION`). E só vale fresco:
- * `lastSuccessAt` do job há menos de 45 min. Cobre mas está velho (job desligado ou falhando): até 90 dias cai para a
- * fonte viva com log `warn`; acima, 503 de leitura indisponível — nunca agregado velho em silêncio. Valida o teto da
- * fonte (90 ou 400 dias) e que acima de 90 dias a granularidade não é dia.
+ * `backfilledFrom` ou depois (`RETENTION`); e nenhum recurso `LIVE` pedido é de grupo com backfill pendente
+ * (`backfillPendingKeys`). E só vale fresco: o frescor dos grupos dos recursos pedidos (`usageFreshAt`) há menos de
+ * 45 min. Cobre mas está velho (job desligado ou falhando) ou tem recurso pendente: até 90 dias cai para a fonte viva
+ * com log `warn`; acima, 503 de leitura indisponível — nunca agregado velho ou incompleto em silêncio. Valida o teto
+ * da fonte (90 ou 400 dias) e que acima de 90 dias a granularidade não é dia.
  */
 export async function chooseUsageSource(
   deps: FeatureUsageDeps,
   period: UsagePeriod,
   budget: UsageReadBudget,
   now: Date = (deps.now ?? (() => new Date()))(),
+  features?: readonly FeatureUsageDefinition[],
 ): Promise<{
   source: FeatureUsageResponseSource;
   maxDays: number;
@@ -184,17 +208,21 @@ export async function chooseUsageSource(
 }> {
   const state = deps.dailyReader && deps.rollupState ? await deps.rollupState.get(budget) : null;
   const cutovers = state?.cutovers ?? {};
-  const covers =
+  const liveKeys = (features ?? deps.catalog ?? FEATURE_USAGE_CATALOG).filter((f) => f.source === 'LIVE').map((f) => f.key as string);
+  const marker =
     !!state?.backfillCompletedAt &&
     !!state.backfilledFrom &&
     (state.backfillStopReason === 'FIRST_DATA' || period.from >= state.backfilledFrom);
-  const lastSuccessAt = state?.lastSuccessAt ?? null;
+  const pendingSet = new Set(state?.backfillPendingKeys ?? []);
+  const pending = liveKeys.filter((k) => pendingSet.has(k));
+  const covers = marker && pending.length === 0;
+  const lastSuccessAt = state ? usageFreshAt(state, liveKeys) : null;
   const fresh = lastSuccessAt !== null && now.getTime() - lastSuccessAt.getTime() < USAGE_DAILY_FRESH_MS;
-  if (covers && !fresh) {
+  if (marker && (pending.length > 0 || !fresh)) {
     if (period.days > USAGE_LIVE_MAX_DAYS) throw new UsageMetricsReadUnavailableError();
     (deps.log ?? logger).warn(
-      { lastSuccessAt: lastSuccessAt?.toISOString() ?? null, days: period.days },
-      'feature usage daily aggregate stale, reading live sources',
+      { lastSuccessAt: lastSuccessAt?.toISOString() ?? null, days: period.days, pending },
+      pending.length > 0 ? 'feature usage daily aggregate pending backfill, reading live sources' : 'feature usage daily aggregate stale, reading live sources',
     );
   }
   const daily = covers && fresh;
@@ -281,7 +309,7 @@ export async function readFeatureUsage(
   const now = (deps.now ?? (() => new Date()))();
   const period = resolveUsageRequestPeriod(input, now, usageMaxDaysFor(deps));
   return deps.gate.runExclusive(async (budget) => {
-    const chosen = await chooseUsageSource(deps, period, budget, now);
+    const chosen = await chooseUsageSource(deps, period, budget, now, features);
     const read = await readUsageRows(deps, {
       features,
       from: period.previousFromInstant,
