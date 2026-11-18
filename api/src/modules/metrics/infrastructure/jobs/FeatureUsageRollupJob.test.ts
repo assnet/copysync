@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { IJobLease } from '../../../../shared/jobs/IJobLease';
+import type { IJobLease, IJobLeaseRenewal } from '../../../../shared/jobs/IJobLease';
 import type { FeatureUsageReadResult } from '../../domain/contracts/IFeatureUsageReader';
 import type { FeatureUsageRollupState } from '../../domain/contracts/IFeatureUsageRollupStateRepository';
 import type { FeatureUsageDefinition } from '../../domain/services/featureUsageCatalog';
@@ -12,8 +12,13 @@ import { startFeatureUsageRollupJob } from '../featureUsageRollupStart';
 import { FEATURE_USAGE_ROLLUP_TICK_MS, FeatureUsageRollupJob } from './FeatureUsageRollupJob';
 
 /** Lease com a semântica do `PrismaJobLease`: adquire se livre ou vencido (`expiresAt < now`). */
-class FakeLease implements IJobLease {
+class FakeLease implements IJobLease, IJobLeaseRenewal {
   readonly held = new Map<string, { owner: string; until: Date }>();
+  async renew(name: string, ownerId: string, until: Date) {
+    if (this.held.get(name)?.owner !== ownerId) return false;
+    this.held.set(name, { owner: ownerId, until });
+    return true;
+  }
   async tryAcquire(name: string, ownerId: string, until: Date, now: Date) {
     const cur = this.held.get(name);
     if (cur && !(cur.until < now)) return false;
@@ -115,7 +120,7 @@ describe('FeatureUsageRollupJob', () => {
     await b.runTick();
     expect(reads).toEqual(['owner-a', 'owner-b']);
 
-    // Um terceiro pega o lease; A termina atrasado e não solta o que já não é dele
+    // Um terceiro pega o lease; A termina atrasado, não grava (renovação recusada) e não solta o que já não é dele
     await lease.tryAcquire(FEATURE_USAGE_ROLLUP_LEASE, 'owner-c', new Date(now.getTime() + 60_000), now);
     hang();
     await tickA;

@@ -13,6 +13,8 @@ export const FEATURE_USAGE_RETENTION_BATCH_SIZE = 5_000;
 export const FEATURE_USAGE_RETENTION_MAX_BATCHES = 10;
 /** Cada lote morre aqui em vez de prender a conexão. */
 export const FEATURE_USAGE_RETENTION_STATEMENT_TIMEOUT = '2s';
+/** Teto de cada instrução do `replaceDay` (`SET LOCAL`): gravação presa não segura o lease do job. */
+export const FEATURE_USAGE_REPLACE_STATEMENT_TIMEOUT = '15s';
 
 export interface PrismaFeatureUsageDailyRepositoryOptions {
   now?: () => Date;
@@ -67,13 +69,15 @@ export class PrismaFeatureUsageDailyRepository implements IFeatureUsageDailyRepo
               AND ("tenantId", "featureKey", "kind") NOT IN (
                 SELECT v.t, v.f, v.k FROM (VALUES ${Prisma.join(kept.map((r) => Prisma.sql`(${r.tenantId}, ${r.featureKey}, ${r.kind})`))}) AS v(t, f, k)
               )`;
+    const timeout = this.prisma.$executeRawUnsafe(`SET LOCAL statement_timeout = '${FEATURE_USAGE_REPLACE_STATEMENT_TIMEOUT}'`);
     if (kept.length === 0) {
-      await this.prisma.$transaction([del]);
+      await this.prisma.$transaction([timeout, del]);
       return;
     }
     const values = kept.map((r) => Prisma.sql`(${d}, ${r.tenantId}, ${r.featureKey}, ${r.kind}, ${Math.trunc(r.uses)}::int, ${stamp})`);
     // DELETE e INSERT na mesma transação: falha no meio desfaz tudo e o dia fica como estava
     await this.prisma.$transaction([
+      timeout,
       del,
       this.prisma.$executeRaw`
         INSERT INTO "feature_usage_daily" ("day", "tenantId", "featureKey", "kind", "uses", "updatedAt")

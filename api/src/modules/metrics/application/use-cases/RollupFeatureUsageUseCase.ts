@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { IJobLease } from '../../../../shared/jobs/IJobLease';
+import type { IJobLease, IJobLeaseRenewal } from '../../../../shared/jobs/IJobLease';
 import { logger } from '../../../../shared/logger/logger';
 import type { FeatureUsageDayRow, IFeatureUsageDailyRepository } from '../../domain/contracts/IFeatureUsageDailyRepository';
 import type { IFeatureUsageReader } from '../../domain/contracts/IFeatureUsageReader';
@@ -36,7 +36,7 @@ export interface RollupFeatureUsageDeps {
   reader: IFeatureUsageReader;
   daily: Pick<IFeatureUsageDailyRepository, 'replaceDay' | 'purgeBefore'>;
   state: IFeatureUsageRollupStateRepository;
-  lease: IJobLease;
+  lease: IJobLease & IJobLeaseRenewal;
   /** Orçamento de cada leitura de fonte (o job não passa pelo portão do `http`). */
   newBudget: () => UsageReadBudget;
   /** Recursos lidos juntos (uma fonte = uma instrução). Ausente = um grupo por recurso. Erro num grupo não para os outros. */
@@ -51,7 +51,17 @@ export type FeatureUsageBackfillOutcome = 'done' | 'busy' | 'failed' | 'step' | 
 
 export type RollupFeatureUsageResult =
   | { status: 'skipped' }
+  /** Renovação do lease falhou no meio: o tick parou sem gravar mais nada. */
+  | { status: 'lost' }
   | { status: 'ran'; failedGroups: number; backfill: FeatureUsageBackfillOutcome; purged: number | null };
+
+/** Perdeu o lease no meio do tick (renovação recusada): nada mais é lido nem gravado. */
+export class FeatureUsageRollupLeaseLostError extends Error {
+  constructor(readonly lease: string) {
+    super(`feature usage rollup lost lease ${lease}`);
+    this.name = 'FeatureUsageRollupLeaseLostError';
+  }
+}
 
 type GroupRead = { keys: string[]; rows: FeatureUsageRow[]; firstDataDay: Record<string, string | null | undefined> };
 
@@ -71,6 +81,8 @@ export class RollupFeatureUsageUseCase {
   private readonly catalog: readonly FeatureUsageDefinition[];
   private readonly groups: readonly (readonly string[])[];
   private readonly log: RollupLogger;
+  /** Leases detidos agora (renovados entre grupos de fonte). */
+  private readonly held = new Set<string>();
   /** Cortes lidos no início do tick (o tick só toca hoje e dias anteriores; corte novo é sempre ≥ amanhã). */
   private cutovers: FeatureUsageCutovers = {};
 
@@ -94,21 +106,43 @@ export class RollupFeatureUsageUseCase {
     return !!f && f.source === 'LIVE' && sourceOn(f, day, this.cutovers) === 'LIVE';
   }
 
+  /**
+   * Renova os leases detidos (rollup e, no backfill, o do backfill) por mais um TTL a partir de agora. Chamado antes
+   * de cada leitura de fonte e de cada gravação de dia: o tick longo não deixa o lease vencer no meio. Renovação
+   * recusada = outro processo pode estar no mesmo trabalho: aborta o tick.
+   */
+  private async keepAlive(): Promise<void> {
+    const until = new Date(this.now().getTime() + FEATURE_USAGE_ROLLUP_LEASE_TTL_MS);
+    for (const name of this.held) {
+      if (!(await this.deps.lease.renew(name, this.ownerId, until))) throw new FeatureUsageRollupLeaseLostError(name);
+    }
+  }
+
   async execute(): Promise<RollupFeatureUsageResult> {
     const { lease } = this.deps;
     const now = this.now();
     const until = new Date(now.getTime() + FEATURE_USAGE_ROLLUP_LEASE_TTL_MS);
     if (!(await lease.tryAcquire(FEATURE_USAGE_ROLLUP_LEASE, this.ownerId, until, now))) return { status: 'skipped' };
+    this.held.add(FEATURE_USAGE_ROLLUP_LEASE);
     try {
-      this.cutovers = (await this.deps.state.get()).cutovers;
-      const today = dayInZone(now);
-      const recent = await this.consolidate([addDays(today, -1), today], null);
-      const backfill = await this.backfillStep(today, now);
-      const purged = await this.retention(today, now);
-      return { status: 'ran', failedGroups: recent.failedGroups, backfill, purged };
+      return await this.run(now);
+    } catch (err) {
+      if (!(err instanceof FeatureUsageRollupLeaseLostError)) throw err;
+      this.log.warn({ lease: err.lease }, 'feature usage rollup lost lease, tick aborted');
+      return { status: 'lost' };
     } finally {
+      this.held.delete(FEATURE_USAGE_ROLLUP_LEASE);
       await lease.release(FEATURE_USAGE_ROLLUP_LEASE, this.ownerId);
     }
+  }
+
+  private async run(now: Date): Promise<RollupFeatureUsageResult> {
+    this.cutovers = (await this.deps.state.get()).cutovers;
+    const today = dayInZone(now);
+    const recent = await this.consolidate([addDays(today, -1), today], null);
+    const backfill = await this.backfillStep(today, now);
+    const purged = await this.retention(today, now);
+    return { status: 'ran', failedGroups: recent.failedGroups, backfill, purged };
   }
 
   /**
@@ -126,6 +160,7 @@ export class RollupFeatureUsageUseCase {
     for (const group of this.groups) {
       const keys = group.filter((k) => days.some((d) => this.writable(k, d)));
       if (keys.length === 0) continue;
+      await this.keepAlive();
       try {
         const r = await this.deps.reader.read({
           from: startOfDayInstant(first),
@@ -159,6 +194,7 @@ export class RollupFeatureUsageUseCase {
         for (const r of g.rows)
           if (r.day === day && allowed.has(r.featureKey))
             rows.push({ tenantId: r.tenantId, featureKey: r.featureKey, kind: r.kind, uses: r.uses });
+      await this.keepAlive();
       try {
         await this.deps.daily.replaceDay(day, keys, rows);
       } catch (err) {
@@ -174,6 +210,7 @@ export class RollupFeatureUsageUseCase {
     if ((await state.get()).backfillCompletedAt) return 'done';
     const until = new Date(now.getTime() + FEATURE_USAGE_BACKFILL_LEASE_TTL_MS);
     if (!(await lease.tryAcquire(FEATURE_USAGE_BACKFILL_LEASE, this.ownerId, until, now))) return 'busy';
+    this.held.add(FEATURE_USAGE_BACKFILL_LEASE);
     try {
       // Relido sob a trava: outro processo pode ter acabado de andar ou de terminar
       const current = await state.get();
@@ -208,6 +245,7 @@ export class RollupFeatureUsageUseCase {
       await state.saveBackfillCursor(next);
       return 'step';
     } finally {
+      this.held.delete(FEATURE_USAGE_BACKFILL_LEASE);
       await lease.release(FEATURE_USAGE_BACKFILL_LEASE, this.ownerId);
     }
   }

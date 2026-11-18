@@ -9,6 +9,12 @@ export interface IJobLease {
   release(name: string, ownerId: string): Promise<void>;
 }
 
+/** Renovação do lease por quem o detém (job longo que precisa estender o vencimento no meio). */
+export interface IJobLeaseRenewal {
+  /** Estende para `until` só se `ownerId` ainda é o dono; `false` = perdeu o lease (outro adquiriu ou foi solto). */
+  renew(name: string, ownerId: string, until: Date): Promise<boolean>;
+}
+
 /**
  * Limpeza de leases por processo (nome `<job>:<workerId>`): o id muda a cada boot, então o
  * lease de processo que morreu sem liberar ficaria para sempre. Apaga só os vencidos antes de `expiredBefore`.

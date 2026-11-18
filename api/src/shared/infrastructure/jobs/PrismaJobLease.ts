@@ -1,12 +1,12 @@
 import type { PrismaClient } from '@prisma/client';
-import type { IJobLease, IJobLeaseSweep } from '../../jobs/IJobLease';
+import type { IJobLease, IJobLeaseRenewal, IJobLeaseSweep } from '../../jobs/IJobLease';
 
 /**
  * Lease em `job_leases` (tabela do `billing-reconcile`). Um único upsert condicional: sem
  * corrida entre update e create e sem exceção (nem log `prisma:error`) quando outro é dono —
  * o job tenta a cada 60 s e o lease de retenção fica ocupado por 1 h.
  */
-export class PrismaJobLease implements IJobLease, IJobLeaseSweep {
+export class PrismaJobLease implements IJobLease, IJobLeaseRenewal, IJobLeaseSweep {
   constructor(private readonly prisma: PrismaClient) {}
 
   async tryAcquire(name: string, ownerId: string, until: Date, now: Date): Promise<boolean> {
@@ -14,6 +14,12 @@ export class PrismaJobLease implements IJobLease, IJobLeaseSweep {
       INSERT INTO "job_leases" ("name", "ownerId", "expiresAt") VALUES (${name}, ${ownerId}, ${until})
       ON CONFLICT ("name") DO UPDATE SET "ownerId" = EXCLUDED."ownerId", "expiresAt" = EXCLUDED."expiresAt"
       WHERE "job_leases"."expiresAt" < ${now}`;
+    return count > 0;
+  }
+
+  async renew(name: string, ownerId: string, until: Date): Promise<boolean> {
+    const count = await this.prisma.$executeRaw`
+      UPDATE "job_leases" SET "expiresAt" = ${until} WHERE "name" = ${name} AND "ownerId" = ${ownerId}`;
     return count > 0;
   }
 

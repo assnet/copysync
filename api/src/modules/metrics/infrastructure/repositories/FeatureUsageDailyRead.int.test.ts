@@ -95,7 +95,7 @@ describe('leitura pelo agregado', () => {
       reader: new PrismaLiveFeatureUsageReader(prisma),
       daily: new PrismaFeatureUsageDailyRepository(prisma),
       state,
-      lease: { tryAcquire: async () => true, release: async () => undefined, deleteExpiredByPrefix: async () => 0 } as never,
+      lease: { tryAcquire: async () => true, renew: async () => true, release: async () => undefined },
       newBudget: () => createReadBudget(10_000),
       sourceGroups: FEATURE_USAGE_SOURCES.map((x) => x.keys),
       now: () => now,

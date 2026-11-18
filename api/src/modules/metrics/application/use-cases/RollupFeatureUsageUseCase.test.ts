@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { IJobLease } from '../../../../shared/jobs/IJobLease';
+import type { IJobLease, IJobLeaseRenewal } from '../../../../shared/jobs/IJobLease';
 import type { FeatureUsageDayRow } from '../../domain/contracts/IFeatureUsageDailyRepository';
 import type { FeatureUsageReadInput, FeatureUsageReadResult } from '../../domain/contracts/IFeatureUsageReader';
 import type { FeatureUsageRollupState, IFeatureUsageRollupStateRepository } from '../../domain/contracts/IFeatureUsageRollupStateRepository';
@@ -16,9 +16,19 @@ import {
 } from './RollupFeatureUsageUseCase';
 
 /** Lease com a semântica do `PrismaJobLease`: adquire se livre ou vencido (`expiresAt < now`). */
-class FakeLease implements IJobLease {
+class FakeLease implements IJobLease, IJobLeaseRenewal {
   readonly held = new Map<string, { owner: string; until: Date }>();
   readonly acquired: string[] = [];
+  readonly renewed: string[] = [];
+  /** Simula outro processo tomando o lease: a próxima renovação desse nome falha. */
+  stolen = new Set<string>();
+  async renew(name: string, ownerId: string, until: Date): Promise<boolean> {
+    const cur = this.held.get(name);
+    if (this.stolen.has(name) || cur?.owner !== ownerId) return false;
+    this.held.set(name, { owner: ownerId, until });
+    this.renewed.push(name);
+    return true;
+  }
   async tryAcquire(name: string, ownerId: string, until: Date, now: Date): Promise<boolean> {
     const cur = this.held.get(name);
     if (cur && !(cur.until < now)) return false;
@@ -268,5 +278,32 @@ describe('RollupFeatureUsageUseCase', () => {
     expect(await t.useCase.execute()).toMatchObject({ backfill: 'completed' });
     expect(t.state.value.backfilledFrom).toBe('2026-11-16');
     expect(t.replaced.map((r) => r.day)).toEqual(['2026-11-16', '2026-11-17']);
+  });
+
+  it('renova o lease antes de cada fonte e de cada gravação; a renovação falhando aborta o tick sem gravar mais', async () => {
+    const t = setup({ catalog: [def('a'), def('b')], groups: [['a'], ['b']], now: NOW });
+    t.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: {} };
+    await t.useCase.execute();
+    // 2 fontes + 2 dias
+    expect(t.lease.renewed.filter((n) => n === FEATURE_USAGE_ROLLUP_LEASE)).toHaveLength(4);
+
+    const lost = setup({ catalog: [def('a'), def('b')], groups: [['a'], ['b']], now: NOW });
+    lost.state.value = { backfillCompletedAt: new Date(0), backfilledFrom: '2026-11-01', backfillCursor: null, cutovers: {} };
+    const realRead = lost.reader.read.getMockImplementation()!;
+    lost.reader.read.mockImplementation(async (input) => {
+      lost.lease.stolen.add(FEATURE_USAGE_ROLLUP_LEASE);
+      return realRead(input);
+    });
+    expect(await lost.useCase.execute()).toEqual({ status: 'lost' });
+    expect(lost.reader.read).toHaveBeenCalledTimes(1);
+    expect(lost.daily.replaceDay).not.toHaveBeenCalled();
+    expect(lost.daily.purgeBefore).not.toHaveBeenCalled();
+    expect(lost.warn).toHaveBeenCalledWith({ lease: FEATURE_USAGE_ROLLUP_LEASE }, 'feature usage rollup lost lease, tick aborted');
+  });
+
+  it('no backfill renova também o lease do backfill', async () => {
+    const t = setup({ catalog: [def('a')], firstData: { a: '2026-10-01' }, now: NOW });
+    await t.useCase.execute();
+    expect(t.lease.renewed).toContain(FEATURE_USAGE_BACKFILL_LEASE);
   });
 });
