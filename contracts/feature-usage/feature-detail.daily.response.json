@@ -106,6 +106,8 @@
     ],
     "eligibleTenants": null,
     "adoption": null,
+    "adoptedTenants": null,
+    "usedWithoutEligibility": null,
     "recurringTenants": null,
     "retainedTenants": null
   },

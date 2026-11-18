@@ -708,11 +708,17 @@ export interface UsageRatioCell {
   missing: boolean;
 }
 
-export function adoptionCell(f: Pick<UsageFeatureItem, 'adoption' | 'activeTenants' | 'eligibleTenants'>): UsageRatioCell {
-  if (f.adoption === null || f.eligibleTenants === null) return { value: S.measures.noValue, hint: S.retention.noEligible, missing: true };
+export function adoptionCell(
+  f: Pick<UsageFeatureItem, 'adoption' | 'adoptedTenants' | 'usedWithoutEligibility' | 'eligibleTenants'>,
+): UsageRatioCell {
+  if (f.adoption === null || f.eligibleTenants === null || f.adoptedTenants === null) {
+    return { value: S.measures.noValue, hint: S.retention.noEligible, missing: true };
+  }
+  const base = S.retention.adoptionOf(formatInteger(f.adoptedTenants), formatInteger(f.eligibleTenants));
+  const without = f.usedWithoutEligibility ?? 0;
   return {
     value: formatReach(f.adoption),
-    hint: S.retention.adoptionOf(formatInteger(f.activeTenants), formatInteger(f.eligibleTenants)),
+    hint: without > 0 ? `${base}. ${S.retention.usedWithoutEligibility(formatInteger(without))}` : base,
     missing: false,
   };
 }

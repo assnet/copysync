@@ -107,6 +107,8 @@
       ],
       "eligibleTenants": 12,
       "adoption": 0.6667,
+      "adoptedTenants": 8,
+      "usedWithoutEligibility": 0,
       "recurringTenants": 5,
       "retainedTenants": 4
     },
@@ -169,6 +171,8 @@
       ],
       "eligibleTenants": 7,
       "adoption": 0.4286,
+      "adoptedTenants": 3,
+      "usedWithoutEligibility": 0,
       "recurringTenants": 2,
       "retainedTenants": null
     },
@@ -227,7 +231,9 @@
         }
       ],
       "eligibleTenants": 15,
-      "adoption": 0.1333,
+      "adoption": 0.0667,
+      "adoptedTenants": 1,
+      "usedWithoutEligibility": 1,
       "recurringTenants": 1,
       "retainedTenants": null
     },
@@ -272,6 +278,8 @@
       ],
       "eligibleTenants": 3,
       "adoption": 0.6667,
+      "adoptedTenants": 2,
+      "usedWithoutEligibility": 0,
       "recurringTenants": 1,
       "retainedTenants": null
     },
@@ -328,6 +336,8 @@
       ],
       "eligibleTenants": 0,
       "adoption": null,
+      "adoptedTenants": 0,
+      "usedWithoutEligibility": 0,
       "recurringTenants": 0,
       "retainedTenants": null
     }

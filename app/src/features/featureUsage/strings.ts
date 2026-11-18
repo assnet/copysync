@@ -23,6 +23,8 @@ const count = (value: string | number, one: string, many: string) =>
 const uses = (v: string | number) => count(v, 'uso', 'usos');
 const accounts = (v: string | number) => count(v, 'conta', 'contas');
 const days = (v: string | number) => count(v, 'dia', 'dias');
+/** Verbo concordando com a contagem: "1 voltou", "2 voltaram" (mesma regra de `count`, sem repetir o número). */
+const agree = (value: string | number, one: string, many: string) => (/^[+-]?1$/.test(String(value)) ? one : many);
 const planNames = planEntitlementsAdminStrings.planName;
 
 /** Rótulo e descrição de cada chave do catálogo (`contracts/feature-usage/catalog.json`). */
@@ -372,10 +374,13 @@ export const featureUsageStrings = {
 
   /** Adoção, recorrência e retenção (P3). */
   retention: {
-    adoptionHelp: 'Contas que usaram ÷ contas com direito ao recurso hoje (produto ativo e recurso liberado no plano).',
+    adoptionHelp:
+      'Contas com direito que usaram ÷ contas com direito ao recurso hoje (produto ativo e recurso liberado no plano). Quem usou sem direito fica fora da conta.',
     recurringHelp: (n: number) => `Contas que usaram em ${days(n)} distintos ou mais ÷ contas que usaram no período.`,
     retentionHelp: 'Das contas que usaram no período anterior, quantas usaram de novo neste período.',
-    adoptionOf: (active: string, eligible: string) => `${active} de ${accounts(eligible)} com direito`,
+    adoptionOf: (adopted: string, eligible: string) => `${adopted} de ${accounts(eligible)} com direito`,
+    /** Complemento da dica de adoção: contas que usaram sem ter direito hoje (fora da adoção). */
+    usedWithoutEligibility: (n: string) => `+${n} ${agree(n, 'usou', 'usaram')} sem direito`,
     recurringOf: (recurring: string, active: string, n: number) => `${recurring} de ${accounts(active)} usaram em ${days(n)} ou mais`,
     retainedOf: (retained: string, previous: string) => `${retained} de ${accounts(previous)} do período anterior voltaram`,
     noEligible: 'Nenhuma conta tem direito a este recurso no recorte.',

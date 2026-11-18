@@ -39,23 +39,32 @@ describe('adoção do recurso', () => {
     const out = featureRetentionStats(input({ current: CURRENT, eligible: null }));
     expect(out.eligibleTenants).toBeNull();
     expect(out.adoption).toBeNull();
-    expect(out.usedWithoutEligibility).toBe(0);
+    expect(out.adoptedTenants).toBeNull();
+    expect(out.usedWithoutEligibility).toBeNull();
   });
 
   it('contas que usaram ÷ contas com direito', () => {
     const out = featureRetentionStats(input({ current: CURRENT, eligible: new Set(['t1', 't2', 't3', 't4', 't5', 't6', 't7', 't8']) }));
     expect(out.eligibleTenants).toBe(8);
     expect(out.adoption).toBe(0.5);
+    expect(out.adoptedTenants).toBe(4);
     expect(out.usedWithoutEligibility).toBe(0);
   });
 
-  it('conta que usou sem ter direito hoje conta no numerador, é sinalizada e a adoção para em 100%', () => {
+  it('conta que usou sem ter direito hoje fica fora do numerador e é sinalizada (adoção nunca passa de 100%)', () => {
     const out = featureRetentionStats(input({ current: CURRENT, eligible: new Set(['t1', 't2']) }));
+    expect(out.adoptedTenants).toBe(2);
     expect(out.usedWithoutEligibility).toBe(2);
     expect(out.adoption).toBe(1);
     const partial = featureRetentionStats(input({ current: [row('2026-11-01', 't9')], eligible: new Set(['t1', 't2']) }));
+    expect(partial.adoptedTenants).toBe(0);
     expect(partial.usedWithoutEligibility).toBe(1);
-    expect(partial.adoption).toBe(0.5);
+    expect(partial.adoption).toBe(0);
+    // caso do teste visual: 3 usaram, 1 com direito → 100 %, não 300 %
+    const visual = featureRetentionStats(input({ current: CURRENT.filter((r) => r.tenantId !== 't4'), eligible: new Set(['t9']) }));
+    expect(visual.adoption).toBe(0);
+    const one = featureRetentionStats(input({ current: CURRENT.filter((r) => r.tenantId !== 't4'), eligible: new Set(['t3']) }));
+    expect([one.adoptedTenants, one.usedWithoutEligibility, one.adoption]).toEqual([1, 2, 1]);
   });
 
   it('arredonda em 4 casas', () => {

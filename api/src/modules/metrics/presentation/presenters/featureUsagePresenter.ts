@@ -29,6 +29,8 @@ function presentFeature(item: FeatureUsageItem) {
     byPlan: item.byPlan.map((p) => ({ plan: p.plan, tenants: p.tenants, activeTenants: p.activeTenants, uses: p.uses })),
     eligibleTenants: item.eligibleTenants,
     adoption: item.adoption,
+    adoptedTenants: item.adoptedTenants,
+    usedWithoutEligibility: item.usedWithoutEligibility,
     recurringTenants: item.recurringTenants,
     retainedTenants: item.retainedTenants,
   };

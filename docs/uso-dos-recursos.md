@@ -281,10 +281,11 @@ agregado e o `claimCutover` (instrução única) só trava a linha dos cortes.
   (`platform_settings["feature_audience"]`, Caçador e Saver): só conta interna tem direito. `INTERNAL_ONLY_FEATURES`
   (hoje `chat_send`, menu do Chat só de super admin): só conta interna; a lista está no contrato
   (`internalOnlyFeatures`) e o teste do menu no painel confere o `superAdminOnly` do Chat.
-- `featureUsageRetention.ts` (puro): adoção limitada a 1 e `null` com 0 contas com direito; quem usou sem direito hoje
-  entra no numerador (`usedWithoutEligibility`, interno); retenção `null` sem período anterior completo (mesma regra
-  da tendência). Item do resumo: `eligibleTenants`, `adoption`, `recurringTenants`, `retainedTenants` (no detalhe
-  saem `null`). A leitura do direito é mais uma instrução, em sequência, no mesmo orçamento e na mesma vaga.
+- `featureUsageRetention.ts` (puro): adoção = |usaram ∩ com direito| ÷ |com direito| (nunca passa de 1) e `null` com 0
+  contas com direito; quem usou sem direito hoje fica **fora** do numerador e sai em `usedWithoutEligibility` (o painel
+  mostra "+N usaram sem direito" na dica); retenção `null` sem período anterior completo (mesma regra da tendência).
+  Item do resumo: `eligibleTenants`, `adoption`, `adoptedTenants`, `usedWithoutEligibility`, `recurringTenants`,
+  `retainedTenants` (no detalhe saem `null`). Não somar quem usou sem direito na adoção: dava "3 de 1 conta" (300 %). A leitura do direito é mais uma instrução, em sequência, no mesmo orçamento e na mesma vaga.
 - `GET /admin/usage/summary?recurringDays=2|3|5` (outro valor = 400 de validação). Fora do cursor da lista.
 
 ## Visitas de tela (P3)

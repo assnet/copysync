@@ -88,10 +88,12 @@ export interface FeatureUsageItem {
   byPlan: FeatureUsagePlanStat[];
   /** P3: contas do recorte com direito hoje (`null` sem leitura de direito). */
   eligibleTenants: number | null;
-  /** P3: contas que usaram ÷ contas com direito, limitada a 1 (`null` sem direito lido ou com 0 contas com direito). */
+  /** P3: contas que usaram e têm direito ÷ contas com direito (`null` sem direito lido ou com 0 contas com direito). */
   adoption: number | null;
-  /** P3: contas que usaram sem ter direito hoje (contam na adoção; fora da resposta HTTP). */
-  usedWithoutEligibility: number;
+  /** P3: contas que usaram e têm direito hoje (numerador da adoção; `null` sem leitura de direito). */
+  adoptedTenants: number | null;
+  /** P3: contas que usaram sem ter direito hoje (fora da adoção; `null` sem leitura de direito). */
+  usedWithoutEligibility: number | null;
   /** P3: contas com uso em ≥ N dias distintos (`null` sem `recurringDays`). */
   recurringTenants: number | null;
   /** P3: contas que usaram no anterior e no atual (`null` sem `recurringDays` ou sem base no período anterior). */
@@ -421,6 +423,7 @@ export function aggregateFeatureUsage(input: AggregateFeatureUsageInput): Featur
         })),
       eligibleTenants: retention.eligibleTenants,
       adoption: retention.adoption,
+      adoptedTenants: retention.adoptedTenants,
       usedWithoutEligibility: retention.usedWithoutEligibility,
       recurringTenants: withRecurrence ? retention.recurringTenants : null,
       retainedTenants: withRecurrence ? retention.retainedTenants : null,

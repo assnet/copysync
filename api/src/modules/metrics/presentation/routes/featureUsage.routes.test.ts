@@ -116,7 +116,7 @@ describe('GET /summary', () => {
     expect(read).toHaveBeenCalledTimes(1);
     // P3: só t1 no recorte com direito (t3 é interna); recorrência padrão N = 3; anterior sem uso
     expect(data.features.find((f: { key: string }) => f.key === 'offer_generator')).toMatchObject({
-      uses: 4, activeTenants: 1, eligibleTenants: 1, adoption: 1, recurringTenants: 0, retainedTenants: 0,
+      uses: 4, activeTenants: 1, eligibleTenants: 1, adoption: 1, adoptedTenants: 1, usedWithoutEligibility: 0, recurringTenants: 0, retainedTenants: 0,
     });
     expect(data.features.find((f: { key: string }) => f.key === 'storefront')).toMatchObject({ eligibleTenants: 0, adoption: null });
   });
@@ -139,7 +139,7 @@ describe('GET /summary', () => {
     eligibility.mockClear();
     const detail = await app.inject({ method: 'GET', url: `${URL}/features/offer_generator` });
     expect(detail.statusCode).toBe(200);
-    expect(detail.json().data.feature).toMatchObject({ eligibleTenants: null, adoption: null, recurringTenants: null, retainedTenants: null });
+    expect(detail.json().data.feature).toMatchObject({ eligibleTenants: null, adoption: null, adoptedTenants: null, usedWithoutEligibility: null, recurringTenants: null, retainedTenants: null });
     expect(eligibility).not.toHaveBeenCalled();
   });
 

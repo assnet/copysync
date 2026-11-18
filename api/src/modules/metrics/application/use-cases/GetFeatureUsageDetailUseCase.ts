@@ -64,7 +64,8 @@ function emptyFeatureItem(feature: FeatureUsageDefinition): FeatureUsageItem {
     byPlan: [],
     eligibleTenants: null,
     adoption: null,
-    usedWithoutEligibility: 0,
+    adoptedTenants: null,
+    usedWithoutEligibility: null,
     recurringTenants: null,
     retainedTenants: null,
   };

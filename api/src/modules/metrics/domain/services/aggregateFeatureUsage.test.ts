@@ -397,13 +397,15 @@ describe('adoção, recorrência e retenção (P3)', () => {
 
   it('denominador = contas com direito dentro do recorte (status, interna, família); quem usou sem direito é sinalizado', () => {
     const f = item(run(rows, { eligibility, recurringDays: 3 }), 'storefront');
-    // t4 interna e t5 suspensa saem; sobra t1. t1 e t2 usaram → adoção limitada a 1, t2 sinalizada
+    // t4 interna e t5 suspensa saem; sobra t1. t1 e t2 usaram → só t1 entra na adoção, t2 sinalizada
     expect(f.eligibleTenants).toBe(1);
+    expect(f.adoptedTenants).toBe(1);
     expect(f.adoption).toBe(1);
     expect(f.usedWithoutEligibility).toBe(1);
     const all = item(run(rows, { eligibility, recurringDays: 3, filters: { includeInternal: true, tenantStatus: 'ALL' } }), 'storefront');
     expect(all.eligibleTenants).toBe(3);
-    expect(all.adoption).toBe(1); // t1, t2 e t4 usaram ÷ 3 com direito
+    expect(all.adoptedTenants).toBe(2); // t1 e t4 usaram e têm direito; t2 usou sem direito
+    expect(all.adoption).toBe(0.6667);
   });
 
   it('recorrência por N e retenção contra o período anterior', () => {

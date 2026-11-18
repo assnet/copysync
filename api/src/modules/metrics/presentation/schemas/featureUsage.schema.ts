@@ -166,6 +166,8 @@ const featureItem = obj({
   byPlan: arr(obj({ plan: str, tenants: int, activeTenants: int, uses: int })),
   eligibleTenants: nullableInt,
   adoption: nullableNum,
+  adoptedTenants: nullableInt,
+  usedWithoutEligibility: nullableInt,
   recurringTenants: nullableInt,
   retainedTenants: nullableInt,
 });

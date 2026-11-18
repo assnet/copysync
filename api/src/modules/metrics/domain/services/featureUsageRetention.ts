@@ -30,10 +30,12 @@ export interface FeatureRetentionInput {
 export interface FeatureRetentionStats {
   /** Contas com direito no recorte; `null` sem leitura de direito. */
   eligibleTenants: number | null;
-  /** Contas que usaram ÷ contas com direito, limitada a 1; `null` com 0 contas com direito. */
+  /** Contas que usaram E têm direito ÷ contas com direito (nunca passa de 1); `null` com 0 contas com direito. */
   adoption: number | null;
-  /** Contas que usaram sem ter direito hoje (contam no numerador da adoção; sinal para o painel). */
-  usedWithoutEligibility: number;
+  /** Contas que usaram e têm direito hoje (numerador da adoção); `null` sem leitura de direito. */
+  adoptedTenants: number | null;
+  /** Contas que usaram sem ter direito hoje (fora da adoção; sinal para o painel); `null` sem leitura de direito. */
+  usedWithoutEligibility: number | null;
   /** Contas que usaram em ≥ N dias distintos do período. */
   recurringTenants: number;
   /** Contas que usaram no período anterior e de novo no atual; `null` sem período anterior completo. */
@@ -76,9 +78,11 @@ export function featureRetentionStats(input: FeatureRetentionInput): FeatureRete
   }
 
   const eligible = input.eligible;
-  const usedWithoutEligibility = eligible ? used.filter((t) => !eligible.has(t)).length : 0;
+  const adoptedTenants = eligible ? used.filter((t) => eligible.has(t)).length : null;
+  const usedWithoutEligibility = eligible ? used.length - adoptedTenants! : null;
   const eligibleTenants = eligible ? eligible.size : null;
-  const adoption = eligible && eligible.size > 0 ? round4(Math.min(1, used.length / eligible.size)) : null;
+  // Só quem tem direito entra no numerador: a adoção não passa de 100 % (teste visual: "3 de 1").
+  const adoption = eligible && eligible.size > 0 ? round4(adoptedTenants! / eligible.size) : null;
 
-  return { eligibleTenants, adoption, usedWithoutEligibility, recurringTenants, retainedTenants };
+  return { eligibleTenants, adoption, adoptedTenants, usedWithoutEligibility, recurringTenants, retainedTenants };
 }

@@ -114,7 +114,7 @@ describe('featureUsagePresenter × contrato', () => {
     expect(body.features.find((f) => f.key === 'link_rotation')!.coverageReasons).toEqual(['EXISTING_ONLY']);
     // P3: recorrência e retenção preenchidas no resumo (sem leitor de direito, adoção `null`)
     const generator = body.features.find((f) => f.key === 'offer_generator')!;
-    expect(generator).toMatchObject({ eligibleTenants: null, adoption: null, recurringTenants: 0 });
+    expect(generator).toMatchObject({ eligibleTenants: null, adoption: null, adoptedTenants: null, usedWithoutEligibility: null, recurringTenants: 0 });
     expect(typeof generator.retainedTenants).toBe('number');
   });
 

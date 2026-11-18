@@ -15,5 +15,5 @@ Fixtures que amarram a API e o painel sem import entre `api/` e `app/` (`.specs/
 - **Valida (api):** o teste de elegibilidade compara `internalOnlyFeatures` com `INTERNAL_ONLY_FEATURES`.
 - **Consome (app):** os testes de `features/featureUsage` exigem texto para cada chave e código e validam os exemplos contra `types.ts`; o teste do menu exige o item do Chat `superAdminOnly` enquanto `chat_send` estiver em `internalOnlyFeatures` (e o contrário).
 - Os testes leem os arquivos por caminho (`fs`). Nada daqui entra em build, imagem ou código de produção.
-- P3: o resumo traz `eligibleTenants`, `adoption`, `recurringTenants` e `retainedTenants` preenchidos (`adoption`/`retainedTenants` podem ser `null`); no detalhe os quatro seguem `null`.
+- P3: o resumo traz `eligibleTenants`, `adoption`, `adoptedTenants`, `usedWithoutEligibility`, `recurringTenants` e `retainedTenants` preenchidos (`adoption`/`retainedTenants` podem ser `null`); no detalhe os seis seguem `null`. `adoption = adoptedTenants ÷ eligibleTenants` (só quem usou e tem direito; nunca passa de 1); quem usou sem direito vem em `usedWithoutEligibility`.
 - Dados fictícios. Mudou o contrato? Atualize estes arquivos no mesmo commit.

@@ -16,6 +16,19 @@ describe('adoção, recorrência e retenção (P3)', () => {
     expect(cell).toEqual({ value: '67%', hint: S.retention.adoptionOf('8', '12'), missing: false });
   });
 
+  it('adoção conta só quem tem direito e sinaliza quem usou sem direito', () => {
+    const cell = adoptionCell(feature('link_rotation_click'));
+    expect(cell).toEqual({
+      value: '6,7%',
+      hint: `${S.retention.adoptionOf('1', '15')}. ${S.retention.usedWithoutEligibility('1')}`,
+      missing: false,
+    });
+    // caso do teste visual ("3 de 1"): numerador nunca passa do denominador
+    expect(adoptionCell({ adoption: 1, adoptedTenants: 1, usedWithoutEligibility: 2, eligibleTenants: 1 }).hint).toBe(
+      `${S.retention.adoptionOf('1', '1')}. ${S.retention.usedWithoutEligibility('2')}`,
+    );
+  });
+
   it('adoção null (sem conta com direito) vira "—" com explicação', () => {
     const cell = adoptionCell(feature('telegram_session'));
     expect(cell).toEqual({ value: S.measures.noValue, hint: S.retention.noEligible, missing: true });

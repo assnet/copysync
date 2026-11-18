@@ -64,6 +64,8 @@ const featureShape = obj<UsageFeatureItem>({
   byPlan: arr({ object: { plan: str, tenants: num, activeTenants: num, uses: num } }),
   eligibleTenants: numOrNull,
   adoption: numOrNull,
+  adoptedTenants: numOrNull,
+  usedWithoutEligibility: numOrNull,
   recurringTenants: numOrNull,
   retainedTenants: numOrNull,
 });
@@ -172,8 +174,16 @@ describe('contrato do uso dos recursos (fixtures compartilhadas)', () => {
     expect(features.some((f) => f.adoption !== null && f.eligibleTenants !== null && f.recurringTenants !== null)).toBe(true);
     expect(features.some((f) => f.adoption === null)).toBe(true);
     expect(features.some((f) => f.retainedTenants === null)).toBe(true);
+    // adoção = usaram e têm direito ÷ com direito; quem usou sem direito fica fora e nunca passa de 1
+    for (const f of features) {
+      if (f.eligibleTenants === null) continue;
+      expect(f.adoptedTenants! + f.usedWithoutEligibility!, f.key).toBe(f.activeTenants);
+      expect(f.adoptedTenants!, f.key).toBeLessThanOrEqual(f.eligibleTenants);
+      if (f.adoption !== null) expect(f.adoption, f.key).toBeCloseTo(f.adoptedTenants! / f.eligibleTenants, 3);
+    }
+    expect(features.some((f) => (f.usedWithoutEligibility ?? 0) > 0)).toBe(true);
     const { feature } = detailOf();
-    expect([feature.eligibleTenants, feature.adoption, feature.recurringTenants, feature.retainedTenants]).toEqual([null, null, null, null]);
+    expect([feature.eligibleTenants, feature.adoption, feature.adoptedTenants, feature.usedWithoutEligibility, feature.recurringTenants, feature.retainedTenants]).toEqual([null, null, null, null, null, null]);
   });
 
   it('cada tela medida tem rótulo em strings.ts e a lista do painel é a do catálogo', () => {

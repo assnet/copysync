@@ -116,8 +116,12 @@ export interface UsageFeatureItem {
   byPlan: UsagePlanBreakdown[];
   /** P3. Contas com direito ao recurso hoje (produto ativo + entitlement). `null` no detalhe. */
   eligibleTenants: number | null;
-  /** Contas que usaram ÷ contas com direito (0–1); `null` sem conta com direito (e no detalhe). */
+  /** Contas que usaram e têm direito ÷ contas com direito (0–1); `null` sem conta com direito (e no detalhe). */
   adoption: number | null;
+  /** Contas que usaram e têm direito (numerador da adoção). `null` no detalhe. */
+  adoptedTenants: number | null;
+  /** Contas que usaram sem ter direito hoje (fora da adoção). `null` no detalhe. */
+  usedWithoutEligibility: number | null;
   /** Contas com uso em ≥ `recurringDays` dias distintos do período. `null` no detalhe. */
   recurringTenants: number | null;
   /** Das contas que usaram no período anterior, quantas usaram de novo; `null` sem base (e no detalhe). */
