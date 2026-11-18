@@ -178,6 +178,18 @@ describe('AdminUsagePage', () => {
     expect(await screen.findByText(serviceUpdatingStrings.title)).toBeInTheDocument();
   });
 
+  it('503 de leitura lenta com período acima de 90 dias tem texto próprio e "Usar 90 dias"', async () => {
+    const user = userEvent.setup();
+    window.sessionStorage.setItem('ui.usage.filters', JSON.stringify({ v: 1, d: { preset: '180d' } }));
+    getSummary.mockRejectedValueOnce({ code: 'USAGE_METRICS_READ_UNAVAILABLE', status: 503 });
+    renderAt(USAGE_PATH);
+    expect(await screen.findByText(S.errors.readSlowLongPeriod)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: S.errors.useShortPeriod }));
+    await waitFor(() => expect(getSummary).toHaveBeenLastCalledWith(expect.objectContaining({ from: '2026-08-20', to: '2026-11-17' })));
+    expect(await screen.findByText(S.kpis.activeTenants.value('9', '15'))).toBeInTheDocument();
+    expect(JSON.parse(window.sessionStorage.getItem('ui.usage.filters') ?? '{}').d.preset).toBe('90d');
+  });
+
   it('400 de período mostra o aviso com o teto de meta.maxDays e volta ao preset padrão', async () => {
     window.sessionStorage.setItem('ui.usage.filters', JSON.stringify({ v: 1, d: { preset: '90d' } }));
     getSummary.mockRejectedValueOnce({ code: 'USAGE_METRICS_RANGE_INVALID', status: 400, meta: { field: 'range', maxDays: 60 } });

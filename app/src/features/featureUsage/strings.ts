@@ -508,6 +508,9 @@ export const featureUsageStrings = {
   errors: {
     loadFailed: 'Não foi possível carregar o uso dos recursos.',
     readSlow: 'A leitura demorou mais que o limite ou outra leitura está em andamento. Tente de novo em alguns segundos.',
+    /** 503 com período acima de 90 dias: sem o resumo diário, só a leitura sob demanda (até 90 dias) responde. */
+    readSlowLongPeriod: 'O resumo diário está sem atualização; períodos acima de 90 dias ficam indisponíveis até ele voltar.',
+    useShortPeriod: 'Usar 90 dias',
     detailFailed: 'Não foi possível carregar os detalhes do recurso.',
     /** Com dado anterior na tela: a atualização falhou e o que aparece pode estar desatualizado. */
     staleFailed: 'Não foi possível atualizar. Os dados abaixo são da última leitura e podem estar desatualizados.',

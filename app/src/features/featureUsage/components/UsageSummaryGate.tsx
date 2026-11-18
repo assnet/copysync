@@ -3,7 +3,9 @@ import { Alert, Box, Button, Chip, Skeleton, Stack, Tooltip, Typography } from '
 import { ChartColumn, Info, Radio, TriangleAlert } from 'lucide-react';
 import { serverNow } from '@/services/serverClock';
 import { AppIcon, EmptyState, ServiceUpdatingState } from '@/components';
-import { contextLine, earliestFirstDataDay, minutesSince, sourceState, visibleFeatures } from '../rules';
+import {
+  contextLine, earliestFirstDataDay, minutesSince, presetDays, sourceState, USAGE_INITIAL_MAX_DAYS, visibleFeatures, withPeriod,
+} from '../rules';
 import { featureUsageStrings as S } from '../strings';
 import type { UsageFeatureItem, UsageFilters, UsageSource, UsageSummary } from '../types';
 import { useUsagePage } from '../hooks/useUsagePage';
@@ -66,15 +68,24 @@ export function UsageContextLine({ features, freshAt, source }: {
 /**
  * Erro e leitura lenta: `Alert` com "Tentar de novo" (o 503 `USAGE_METRICS_READ_UNAVAILABLE` tem texto próprio).
  * `stale`: há dado anterior na tela, mostrado abaixo do aviso e marcado como desatualizado.
+ * `onUseShortPeriod`: 503 com período acima de 90 dias (resumo diário parado): texto próprio e ação "Usar 90 dias".
  */
-export function UsageRetryAlert({ slow, onRetry, message, stale = false }: {
-  slow: boolean; onRetry: () => void; message?: string; stale?: boolean;
+export function UsageRetryAlert({ slow, onRetry, message, stale = false, onUseShortPeriod }: {
+  slow: boolean; onRetry: () => void; message?: string; stale?: boolean; onUseShortPeriod?: () => void;
 }) {
-  const text = stale ? (slow ? S.errors.staleSlow : S.errors.staleFailed) : slow ? S.errors.readSlow : message ?? S.errors.loadFailed;
+  const longPeriod = slow && onUseShortPeriod !== undefined;
+  const text = longPeriod ? S.errors.readSlowLongPeriod
+    : stale ? (slow ? S.errors.staleSlow : S.errors.staleFailed) : slow ? S.errors.readSlow : message ?? S.errors.loadFailed;
+  const button = { whiteSpace: 'nowrap' } as const;
   return (
     <Alert
       severity={slow ? 'warning' : 'error'}
-      action={<Button color="inherit" size="small" sx={{ whiteSpace: 'nowrap' }} onClick={onRetry}>{S.actions.retry}</Button>}
+      action={(
+        <Stack direction="row" spacing={0.5}>
+          {longPeriod && <Button color="inherit" size="small" sx={button} onClick={onUseShortPeriod}>{S.errors.useShortPeriod}</Button>}
+          <Button color="inherit" size="small" sx={button} onClick={onRetry}>{S.actions.retry}</Button>
+        </Stack>
+      )}
     >
       {text}
     </Alert>
@@ -97,11 +108,16 @@ export function UsageSummaryGate({
   children: (summary: UsageSummary) => ReactNode;
   onClearFilters: () => void;
 }) {
-  const { summary: q, filters } = useUsagePage();
+  const { summary: q, filters, setFilters } = useUsagePage();
   const { data } = q;
+  // 503 com período acima de 90 dias: só o resumo diário cobre; parado, oferece voltar a 90 dias.
+  const longPeriod = (presetDays(filters.preset, filters.from, filters.to) ?? 0) > USAGE_INITIAL_MAX_DAYS;
+  const useShortPeriod = longPeriod ? () => setFilters(withPeriod(filters, { preset: '90d' }, serverNow())) : undefined;
 
   if (q.unavailable && !data) return <ServiceUpdatingState onRetry={q.reload} />;
-  if ((q.error || q.slow) && !data && !q.loading) return <UsageRetryAlert slow={q.slow} onRetry={q.reload} />;
+  if ((q.error || q.slow) && !data && !q.loading) {
+    return <UsageRetryAlert slow={q.slow} onRetry={q.reload} onUseShortPeriod={useShortPeriod} />;
+  }
   if (!data) {
     return (
       <Stack spacing={2} role="status" aria-label={S.states.loading}>
@@ -118,7 +134,7 @@ export function UsageSummaryGate({
   const stale = (q.error || q.slow) && !q.loading;
   return (
     <Stack spacing={2} aria-busy={q.loading}>
-      {stale && <UsageRetryAlert slow={q.slow} onRetry={q.reload} stale />}
+      {stale && <UsageRetryAlert slow={q.slow} onRetry={q.reload} stale onUseShortPeriod={useShortPeriod} />}
       <UsageContextLine features={features} freshAt={data.freshAt} source={data.source} />
       {empty ? (
         <EmptyState
