@@ -2,7 +2,7 @@ import { USAGE_INITIAL_MAX_DAYS, USAGE_MAX_DAYS } from './rules';
 
 /**
  * Teto do período (`range.maxDays`) da última resposta de uso nesta aba, **só em memória** (some no reload; aí vale
- * `USAGE_INITIAL_MAX_DAYS`). Usado ao reler os filtros salvos, para não descartar um personalizado que a API aceita.
+ * `USAGE_INITIAL_MAX_DAYS`). Valor inicial do teto da barra; os filtros salvos são relidos contra `USAGE_MAX_DAYS`.
  */
 let lastMaxDays: number | null = null;
 

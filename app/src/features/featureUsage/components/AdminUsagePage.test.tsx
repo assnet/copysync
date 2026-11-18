@@ -178,6 +178,24 @@ describe('AdminUsagePage', () => {
     await waitFor(() => expect(getSummary).toHaveBeenCalledWith(expect.objectContaining({ from: '2026-06-01', to: '2026-11-10' })));
   });
 
+  it('período longo salvo sobrevive ao reload com usePersistedState real, sem teto conhecido', async () => {
+    const user = userEvent.setup();
+    const long = summaryFixture();
+    long.range.maxDays = 400;
+    getSummary.mockResolvedValue(long);
+    const first = renderAt(USAGE_PATH);
+    await user.click(await screen.findByRole('button', { name: S.filters.presets['180d'] }));
+    await waitFor(() => expect(window.sessionStorage.getItem('ui.usage.filters')).toContain('"180d"'));
+    first.unmount();
+    forgetUsageMaxDays();
+    getSummary.mockClear();
+    getSummary.mockReturnValue(new Promise(() => {}));
+    renderAt(USAGE_PATH);
+    await waitFor(() => expect(getSummary).toHaveBeenCalledWith(expect.objectContaining({ from: '2026-05-22', to: '2026-11-17' })));
+    expect(screen.getByRole('button', { name: S.filters.presets['180d'] })).toHaveAttribute('aria-pressed', 'true');
+    expect(window.sessionStorage.getItem('ui.usage.filters')).toContain('"180d"');
+  });
+
   it('personalizado acima do teto mostra a mensagem ao lado do campo e não chama a API', async () => {
     const user = userEvent.setup();
     renderAt(USAGE_PATH);

@@ -8,7 +8,7 @@ import { serverNow } from '@/services/serverClock';
 import { featureUsageStrings as S } from '@/features/featureUsage/strings';
 import { activeUsageTab, featureKeyFromPath, USAGE_TABS } from '@/features/featureUsage/paths';
 import {
-  DEFAULT_USAGE_FILTERS, parseUsageFilters, toUsageQuery, toUsageSummaryQuery, USAGE_FILTERS_KEY, USAGE_FILTERS_VERSION, withPeriod,
+  DEFAULT_USAGE_FILTERS, parseUsageFilters, presetDays, toUsageQuery, toUsageSummaryQuery, USAGE_FILTERS_KEY, USAGE_FILTERS_VERSION, USAGE_MAX_DAYS, withPeriod,
 } from '@/features/featureUsage/rules';
 import type { UsageFilters } from '@/features/featureUsage/types';
 import { useUsageSummary } from '@/features/featureUsage/hooks/useUsageSummary';
@@ -40,7 +40,9 @@ export function AdminUsagePage() {
   const [filters, setFilters] = usePersistedState<UsageFilters>(USAGE_FILTERS_KEY, DEFAULT_USAGE_FILTERS, {
     scope: 'tab',
     version: USAGE_FILTERS_VERSION,
-    deserialize: (raw) => parseUsageFilters(raw, serverNow(), knownUsageMaxDays()),
+    // Releitura contra o teto ABSOLUTO (400): o teto da última resposta some no reload e derrubaria um período longo
+    // válido. Quem decide é a API: período recusado (400) volta ao padrão com o aviso de `rangeReset`.
+    deserialize: (raw) => parseUsageFilters(raw, serverNow(), USAGE_MAX_DAYS),
   });
   const [maxDays, setMaxDaysState] = useState(knownUsageMaxDays);
   /** Teto informado por qualquer resposta: vale na tela e na próxima releitura dos filtros salvos. */
@@ -52,6 +54,9 @@ export function AdminUsagePage() {
   /** Período recusado pela API (400): aviso até a próxima troca de filtro; `max` = `meta.maxDays` ou `null`. */
   const [rangeReset, setRangeReset] = useState<{ max: number | null } | null>(null);
   const accountNames = useLoadedAccountNames();
+  /** Teto da barra: o em vigor, sem esconder o período salvo mais longo (a API confirma ou recusa). */
+  const currentDays = presetDays(filters.preset, filters.from, filters.to) ?? 0;
+  const barMaxDays = Math.min(USAGE_MAX_DAYS, Math.max(maxDays, currentDays));
 
   // "Hoje" dos presets vem do relógio do servidor; muda o dia, muda a query.
   const query = toUsageQuery(filters, serverNow());
@@ -137,7 +142,7 @@ export function AdminUsagePage() {
           <UsageFiltersBar
             filters={filters}
             onChange={changeFilters}
-            maxDays={maxDays}
+            maxDays={barMaxDays}
             accountName={accountNames.nameOf(filters.tenantId)}
             showRecurring={featureKey === null && activeTab !== 'screens'}
           />
