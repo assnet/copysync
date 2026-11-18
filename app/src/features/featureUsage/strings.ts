@@ -408,7 +408,7 @@ export const featureUsageStrings = {
     usedLoading: 'Carregando o uso do recurso',
     usedFailed: 'Não foi possível cruzar',
     usedFailedHint: 'O resumo do uso não carregou para este recorte. Use "Atualizar" para tentar de novo.',
-    kindIgnored: 'O filtro de tipo não vale para as telas; produto, plano, status e internas valem.',
+    kindIgnored: 'O ranking de telas ignora o filtro de tipo; a coluna "Usaram o recurso" segue o filtro de tipo. Produto, plano, status e internas valem para os dois.',
     collectionNone: 'A coleta de visitas ainda não registrou nenhuma tela.',
     collectionSince: (day: string) => `Visitas coletadas desde ${day}.`,
     collectionPartial: (day: string) => `A coleta de visitas começou em ${day}: o período escolhido começa antes e os números ficam menores.`,
