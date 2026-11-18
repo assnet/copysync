@@ -262,7 +262,7 @@ export const featureUsageStrings = {
     age: (minutes: number) => {
       if (minutes < 60) return `${minutes} min`;
       const hours = Math.floor(minutes / 60);
-      return hours < 24 ? `${hours} h` : `${Math.floor(hours / 24)} ${Math.floor(hours / 24) === 1 ? 'dia' : 'dias'}`;
+      return hours < 24 ? `${hours} h` : days(Math.floor(hours / 24));
     },
   },
 
@@ -381,8 +381,10 @@ export const featureUsageStrings = {
     adoptionOf: (adopted: string, eligible: string) => `${adopted} de ${accounts(eligible)} com direito`,
     /** Complemento da dica de adoção: contas que usaram sem ter direito hoje (fora da adoção). */
     usedWithoutEligibility: (n: string) => `+${n} ${agree(n, 'usou', 'usaram')} sem direito`,
-    recurringOf: (recurring: string, active: string, n: number) => `${recurring} de ${accounts(active)} usaram em ${days(n)} ou mais`,
-    retainedOf: (retained: string, previous: string) => `${retained} de ${accounts(previous)} do período anterior voltaram`,
+    recurringOf: (recurring: string, active: string, n: number) =>
+      `${recurring} de ${accounts(active)} ${agree(recurring, 'usou', 'usaram')} em ${days(n)} ou mais`,
+    retainedOf: (retained: string, previous: string) =>
+      `${retained} de ${accounts(previous)} do período anterior ${agree(retained, 'voltou', 'voltaram')}`,
     noEligible: 'Nenhuma conta tem direito a este recurso no recorte.',
     noUse: 'Nenhuma conta usou o recurso no período.',
     noBase: 'Sem base: nenhuma conta usou no período anterior ou ele começa antes do primeiro dado.',
@@ -398,7 +400,7 @@ export const featureUsageStrings = {
     aria: 'Ranking das telas por contas que abriram',
     tableAria: 'Tabela das telas abertas',
     tenantsAxis: 'Contas que abriram',
-    barValue: (tenants: string, tenantDays: string) => `${accounts(tenants)} · ${tenantDays} dias-conta`,
+    barValue: (tenants: string, tenantDays: string) => `${accounts(tenants)} · ${count(tenantDays, 'dia-conta', 'dias-conta')}`,
     columns: {
       screen: 'Tela',
       product: 'Produto',
@@ -410,7 +412,7 @@ export const featureUsageStrings = {
     tenantDaysHelp: 'Soma, por conta, dos dias em que ela abriu a tela.',
     shareHelp: (total: string) => `Contas que abriram ÷ ${accounts(total)} do recorte.`,
     shareHelpByFamily: (affiliates: string, saver: string) =>
-      `Contas que abriram ÷ contas do recorte na família da tela: telas do ${planFamilies.SAVER} dividem por ${accounts(saver)}; as demais, pelas ${accounts(affiliates)} de ${planFamilies.AFFILIATES}.`,
+      `Contas que abriram ÷ contas do recorte na família da tela: telas do ${planFamilies.SAVER} dividem por ${accounts(saver)}; as demais, por ${accounts(affiliates)} de ${planFamilies.AFFILIATES}.`,
     usedHelp: 'Contas que usaram o recurso desta tela no período, com os filtros atuais. Abrir não é usar: os dois números contam contas diferentes.',
     usedNone: 'Tela sem um recurso único medido, ou recurso fora dos filtros de tipo.',
     usedLoading: 'Carregando o uso do recurso',
