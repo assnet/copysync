@@ -41,6 +41,14 @@ export const USAGE_DAILY_FRESH_MS = 45 * 60_000;
 /** De onde vieram os números dos recursos `LIVE`. */
 export type FeatureUsageResponseSource = 'live' | 'daily';
 
+/**
+ * Por que a leitura foi direta nas tabelas de origem (`source = live`): sem marco do backfill (`NO_AGGREGATE`),
+ * período antes da cobertura do agregado (`NOT_COVERED`), agregado sem atualização há 45 min ou mais (`STALE`) ou
+ * recurso pedido de grupo com backfill pendente (`PENDING`). `null` com `source = daily`.
+ */
+export const FEATURE_USAGE_LIVE_REASONS = ['NO_AGGREGATE', 'NOT_COVERED', 'STALE', 'PENDING'] as const;
+export type FeatureUsageLiveReason = (typeof FEATURE_USAGE_LIVE_REASONS)[number];
+
 /** Filtros já com os padrões aplicados (o schema da rota resolve os ausentes). */
 export interface FeatureUsageQueryInput {
   /** `YYYY-MM-DD` inclusivos, em Brasília. */
@@ -72,6 +80,8 @@ export interface FeatureUsageRangeOutput {
 export interface FeatureUsageSummaryOutput {
   range: FeatureUsageRangeOutput;
   source: FeatureUsageResponseSource;
+  /** Motivo da leitura direta; `null` com `daily`. */
+  liveReason: FeatureUsageLiveReason | null;
   freshAt: Date;
   population: FeatureUsageAggregate['population'];
   totals: FeatureUsageAggregate['totals'];
@@ -135,6 +145,7 @@ export interface FeatureUsageRead {
   firstDataDay: Record<string, string | null>;
   tenants: UsageTenantDirectoryEntry[];
   source: FeatureUsageResponseSource;
+  liveReason: FeatureUsageLiveReason | null;
   freshAt: Date;
   /** Teto em vigor para a fonte escolhida (`range.maxDays`). */
   maxDays: number;
@@ -200,6 +211,7 @@ export async function chooseUsageSource(
   features?: readonly FeatureUsageDefinition[],
 ): Promise<{
   source: FeatureUsageResponseSource;
+  liveReason: FeatureUsageLiveReason | null;
   maxDays: number;
   freshAt: Date;
   cutovers: FeatureUsageCutovers;
@@ -209,10 +221,8 @@ export async function chooseUsageSource(
   const state = deps.dailyReader && deps.rollupState ? await deps.rollupState.get(budget) : null;
   const cutovers = state?.cutovers ?? {};
   const liveKeys = (features ?? deps.catalog ?? FEATURE_USAGE_CATALOG).filter((f) => f.source === 'LIVE').map((f) => f.key as string);
-  const marker =
-    !!state?.backfillCompletedAt &&
-    !!state.backfilledFrom &&
-    (state.backfillStopReason === 'FIRST_DATA' || period.from >= state.backfilledFrom);
+  const backfilled = !!state?.backfillCompletedAt && !!state.backfilledFrom;
+  const marker = backfilled && (state!.backfillStopReason === 'FIRST_DATA' || period.from >= state!.backfilledFrom!);
   const pendingSet = new Set(state?.backfillPendingKeys ?? []);
   const pending = liveKeys.filter((k) => pendingSet.has(k));
   const covers = marker && pending.length === 0;
@@ -232,7 +242,24 @@ export async function chooseUsageSource(
     throw new UsageMetricsRangeInvalidError(`granularity day allows at most ${USAGE_DAY_ROWS_MAX_DAYS} days`, maxDays);
   }
   const coverage = daily ? { backfilledFrom: state!.backfilledFrom!, completedAt: state!.backfillCompletedAt! } : null;
-  return { source: daily ? 'daily' : 'live', maxDays, freshAt: daily ? lastSuccessAt! : now, cutovers, coverage, dropped: state?.dropped ?? {} };
+  const liveReason: FeatureUsageLiveReason | null = daily
+    ? null
+    : !backfilled
+      ? 'NO_AGGREGATE'
+      : !marker
+        ? 'NOT_COVERED'
+        : pending.length > 0
+          ? 'PENDING'
+          : 'STALE';
+  return {
+    source: daily ? 'daily' : 'live',
+    liveReason,
+    maxDays,
+    freshAt: daily ? lastSuccessAt! : now,
+    cutovers,
+    coverage,
+    dropped: state?.dropped ?? {},
+  };
 }
 
 /** Menor dia não nulo. */
@@ -331,6 +358,7 @@ export async function readFeatureUsage(
       firstDataDay: read.firstDataDay,
       tenants,
       source: chosen.source,
+      liveReason: chosen.liveReason,
       freshAt: chosen.freshAt,
       maxDays: chosen.maxDays,
       cutovers: chosen.cutovers,
@@ -367,6 +395,7 @@ export class GetFeatureUsageSummaryUseCase {
     return {
       range: rangeOf(read.period, read.maxDays),
       source: read.source,
+      liveReason: read.liveReason,
       freshAt: read.freshAt,
       population: agg.population,
       totals: agg.totals,

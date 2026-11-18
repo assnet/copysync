@@ -72,6 +72,7 @@ const featureShape = obj<UsageFeatureItem>({
 const summaryShape = obj<UsageSummary>({
   range: rangeShape,
   source: str,
+  liveReason: strOrNull,
   freshAt: str,
   population: populationShape,
   totals: totalsShape,
@@ -82,6 +83,7 @@ const summaryShape = obj<UsageSummary>({
 const detailShape = obj<UsageFeatureDetail & { inScope: boolean }>({
   range: rangeShape,
   source: str,
+  liveReason: strOrNull,
   freshAt: str,
   population: populationShape,
   inScope: ['boolean'],
@@ -207,6 +209,16 @@ describe('contrato do uso dos recursos (fixtures compartilhadas)', () => {
       expect(features[key]?.label, key).toBeTruthy();
       expect(features[key]?.description, key).toBeTruthy();
     }
+  });
+
+  it('cada motivo de leitura direta tem um texto próprio e as fixtures usam só códigos do catálogo', () => {
+    const reasons = S.context.liveReasons as Record<string, string | undefined>;
+    for (const code of catalog.liveReasonCodes) expect(reasons[code], code).toBeTruthy();
+    expect(Object.keys(reasons).sort()).toEqual([...catalog.liveReasonCodes].sort());
+    const texts = catalog.liveReasonCodes.map((c) => reasons[c]);
+    expect(new Set(texts).size).toBe(texts.length);
+    for (const f of [summaryFixture(), detailFixture()]) expect(catalog.liveReasonCodes).toContain(f.liveReason);
+    for (const f of [summaryDailyFixture(), detailDailyFixture()]) expect(f.liveReason).toBeNull();
   });
 
   it('cada código de cobertura parcial tem um texto próprio', () => {

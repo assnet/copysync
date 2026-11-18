@@ -6,7 +6,7 @@ import { plansStrings } from '@/features/plans/strings';
 import { saverStrings } from '@/features/saver/strings';
 import type {
   UsageCoverageReason, UsageFeatureKey, UsageGranularity, UsageKind, UsagePeriodPreset, UsagePlan, UsagePlanFamily,
-  UsageProduct, UsageSort, UsageSource, UsageTenantStatus, UsageTenantStatusFilter,
+  UsageLiveReason, UsageProduct, UsageSort, UsageSource, UsageTenantStatus, UsageTenantStatusFilter,
 } from './types';
 
 /**
@@ -25,6 +25,8 @@ const accounts = (v: string | number) => count(v, 'conta', 'contas');
 const days = (v: string | number) => count(v, 'dia', 'dias');
 /** Verbo concordando com a contagem: "1 voltou", "2 voltaram" (mesma regra de `count`, sem repetir o número). */
 const agree = (value: string | number, one: string, many: string) => (/^[+-]?1$/.test(String(value)) ? one : many);
+/** O que a leitura direta significa (vale para todo motivo). */
+const LIVE_HINT = 'Os números foram lidos agora nas tabelas de origem, com limite de 90 dias.';
 const planNames = planEntitlementsAdminStrings.planName;
 
 /** Rótulo e descrição de cada chave do catálogo (`contracts/feature-usage/catalog.json`). */
@@ -255,7 +257,16 @@ export const featureUsageStrings = {
     sourceHint: (source: string) => `Fonte: ${source}.`,
     /** Indicação discreta quando a resposta veio da leitura sob demanda (`source = live`). */
     liveBadge: 'Leitura direta',
-    liveHint: 'O resumo diário ainda não cobre este período: os números foram lidos agora nas tabelas de origem, com limite de 90 dias.',
+    liveHint: LIVE_HINT,
+    /** Motivo da leitura direta (`liveReason`), antes do `liveHint` no Tooltip. */
+    liveReasons: {
+      NO_AGGREGATE: 'O resumo diário ainda não foi montado (a primeira consolidação não terminou).',
+      NOT_COVERED: 'O período começa antes do que o resumo diário cobre.',
+      STALE: 'O resumo diário está sem atualização há 45 min ou mais.',
+      PENDING: 'O resumo diário ainda está consolidando o histórico de algum recurso deste recorte.',
+    } satisfies Record<UsageLiveReason, string>,
+    /** Texto completo do Tooltip da leitura direta: motivo (se houver) + o que significa. */
+    liveTooltip: (reason: string | null) => (reason ? `${reason} ${LIVE_HINT}` : LIVE_HINT),
     dailyHint: 'Números do resumo diário, consolidado pelo sistema ao longo do dia. Permite períodos de até 400 dias.',
     /** Agregado diário sem atualizar há mais de 30 min. */
     stale: (age: string) => `O resumo diário não é atualizado há ${age}. Os números podem estar atrasados.`,

@@ -9,6 +9,7 @@
     "maxDays": 90
   },
   "source": "live",
+  "liveReason": "NO_AGGREGATE",
   "freshAt": "2026-11-17T18:02:11.000Z",
   "population": {
     "tenants": 15,

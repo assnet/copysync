@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { FEATURE_USAGE_LIVE_REASONS } from '../../application/use-cases/GetFeatureUsageSummaryUseCase';
 import {
   FEATURE_USAGE_CATALOG,
   FEATURE_USAGE_COVERAGE_REASONS,
@@ -12,7 +13,7 @@ import {
 
 const contract = JSON.parse(
   readFileSync(resolve(__dirname, '../../../../../../contracts/feature-usage/catalog.json'), 'utf8'),
-) as { featureKeys: string[]; coverageReasonCodes: string[] };
+) as { featureKeys: string[]; coverageReasonCodes: string[]; liveReasonCodes: string[] };
 
 const keys = (list: readonly FeatureUsageDefinition[]) => list.map((f) => f.key);
 
@@ -22,6 +23,7 @@ describe('catálogo de recursos medidos', () => {
     expect([...FEATURE_USAGE_COVERAGE_REASONS].sort()).toEqual([...contract.coverageReasonCodes].sort());
     const used = new Set(FEATURE_USAGE_CATALOG.flatMap((f) => f.possibleCoverageReasons));
     for (const r of used) expect(contract.coverageReasonCodes).toContain(r);
+    expect([...FEATURE_USAGE_LIVE_REASONS].sort()).toEqual([...contract.liveReasonCodes].sort());
   });
 
   it('tem 17 chaves únicas em snake_case e sem a marca', () => {

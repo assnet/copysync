@@ -148,6 +148,8 @@ describe('featureUsagePresenter × contrato', () => {
     expect(sameShape(summary, sample)).toEqual([]);
     expect({ source: summary.source, maxDays: summary.range.maxDays }).toEqual({ source: sample.source, maxDays: sample.range.maxDays });
     expect(summary.freshAt).toBe(LAST_TICK.toISOString());
+    expect(summary.liveReason).toBeNull();
+    expect((sample as { liveReason?: unknown }).liveReason).toBeNull();
     expect(Number.isNaN(Date.parse(sample.freshAt))).toBe(false);
     expect(d.live.calls).toHaveLength(0);
 

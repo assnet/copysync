@@ -219,7 +219,10 @@ recurso sem grupo no estado usa o `lastSuccessAt` global; só recurso do contado
 **45 min**. Cobre mas está velho ou pendente: até 90 dias lê a fonte viva com log `warn`
 (`feature usage daily aggregate stale, reading live sources` / `... pending backfill, ...`); acima de 90 dias, 503
 `USAGE_METRICS_READ_UNAVAILABLE` (nunca agregado velho ou incompleto em silêncio). A resposta traz `source`
-(`daily`/`live`), `freshAt` e `range.maxDays` (400 ou 90). Granularidade `day` segue limitada a 90 dias.
+(`daily`/`live`), `liveReason`, `freshAt` e `range.maxDays` (400 ou 90). `liveReason` diz por que leu direto:
+`NO_AGGREGATE` (sem marco do backfill), `NOT_COVERED` (período antes de `backfilledFrom`), `PENDING` (recurso pedido em
+`backfillPendingKeys`; vence `STALE`) ou `STALE` (frescor ≥ 45 min); `null` com `daily` e no detalhe fora do recorte.
+Códigos em `catalog.json` (`liveReasonCodes`); o painel mostra o texto do motivo no Tooltip do selo "Leitura direta". Granularidade `day` segue limitada a 90 dias.
 
 **Corte no SQL:** `replaceDay` cria a linha `platform_settings["feature_usage_cutover"]` vazia se ainda não existe
 (`ON CONFLICT DO NOTHING`, `"updatedAt"` explícito) e a trava com `FOR SHARE` na mesma transação, antes de tocar
@@ -251,7 +254,8 @@ agregado e o `claimCutover` (instrução única) só trava a linha dos cortes.
 
 ## Painel (P2)
 
-- Linha de contexto com a fonte: `live` sempre indicada; `daily` mostra "atualizado há X" e aviso de dado antigo
+- Linha de contexto com a fonte: `live` sempre indicada (selo "Leitura direta" com o motivo de `liveReason` no Tooltip;
+  nunca inferir o motivo no painel); `daily` mostra "atualizado há X" e aviso de dado antigo
   acima de **30 min** (`USAGE_DAILY_STALE_MS`, antes do corte de 45 min da API). Hora pelo `serverNow()`.
 - Presets `180d` e `365d` aparecem quando `range.maxDays` permite (`usageMaxDays.ts`).
 - Leitura lenta (503) com período acima de 90 dias: o aviso oferece **"Usar 90 dias"** (volta ao preset `90d`, que a

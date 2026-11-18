@@ -42,6 +42,8 @@ export type UsageCoverageReason =
   | 'DROPPED';
 export type UsageGranularity = 'day' | 'week' | 'month';
 export type UsageSource = 'live' | 'daily';
+/** Por que a leitura foi direta nas tabelas de origem (`source = live`); `null` com `daily`. */
+export type UsageLiveReason = 'NO_AGGREGATE' | 'NOT_COVERED' | 'STALE' | 'PENDING';
 export type UsageTenantStatus = 'ACTIVE' | 'SUSPENDED' | 'CANCELLED';
 export type UsageTenantStatusFilter = UsageTenantStatus | 'ALL';
 
@@ -136,6 +138,7 @@ export interface UsageSummarySeriesPoint {
 export interface UsageSummary {
   range: UsageRange;
   source: UsageSource;
+  liveReason: UsageLiveReason | null;
   freshAt: string;
   population: UsagePopulation;
   totals: UsageTotals;
@@ -152,6 +155,8 @@ export interface UsageFeatureSeriesPoint {
 export interface UsageFeatureDetail {
   range: UsageRange;
   source: UsageSource;
+  /** `null` com `daily` e fora do recorte (nada lido). */
+  liveReason: UsageLiveReason | null;
   freshAt: string;
   population: UsagePopulation;
   feature: UsageFeatureItem;

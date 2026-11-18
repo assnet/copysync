@@ -27,6 +27,12 @@
     "TOKEN_CHANGE_ONLY",
     "DROPPED"
   ],
+  "liveReasonCodes": [
+    "NO_AGGREGATE",
+    "NOT_COVERED",
+    "STALE",
+    "PENDING"
+  ],
   "screenKeys": [
     "view:dashboard",
     "view:offers",

@@ -5,6 +5,7 @@ import {
   type FeatureUsageDeps,
   type FeatureUsageQueryInput,
   type FeatureUsageRangeOutput,
+  type FeatureUsageLiveReason,
   type FeatureUsageResponseSource,
   rangeOf,
   readFeatureUsage,
@@ -21,6 +22,8 @@ export interface GetFeatureUsageDetailInput extends FeatureUsageQueryInput {
 export interface FeatureUsageDetailOutput {
   range: FeatureUsageRangeOutput;
   source: FeatureUsageResponseSource;
+  /** Motivo da leitura direta; `null` com `daily` e fora do recorte (nada lido). */
+  liveReason: FeatureUsageLiveReason | null;
   freshAt: Date;
   population: FeatureUsageAggregate['population'];
   /** `false` quando tipo ou plano excluem o recurso: resposta zerada, sem ir ao banco. */
@@ -89,6 +92,7 @@ export class GetFeatureUsageDetailUseCase {
       return {
         range: rangeOf(period, maxDays),
         source: 'live',
+        liveReason: null,
         freshAt: now,
         population: { tenants: 0, internalExcluded: 0, byPlan: [] },
         inScope: false,
@@ -116,6 +120,7 @@ export class GetFeatureUsageDetailUseCase {
     return {
       range: rangeOf(read.period, read.maxDays),
       source: read.source,
+      liveReason: read.liveReason,
       freshAt: read.freshAt,
       population: agg.population,
       inScope: true,

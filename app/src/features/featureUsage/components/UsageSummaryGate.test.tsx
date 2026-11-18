@@ -22,4 +22,12 @@ describe('UsageContextLine', () => {
     act(() => { vi.advanceTimersByTime(CONTEXT_CLOCK_MS); });
     expect(screen.getByText(S.context.stale('31 min'))).toBeInTheDocument();
   });
+
+  it('selo de leitura direta diz o motivo vindo da API', () => {
+    const { unmount } = renderWithTheme(<UsageContextLine features={[]} freshAt="2026-11-18T00:40:00.000Z" source="live" liveReason="NOT_COVERED" />);
+    expect(screen.getByLabelText(`${S.context.liveBadge}. ${S.context.liveReasons.NOT_COVERED} ${S.context.liveHint}`)).toBeInTheDocument();
+    unmount();
+    renderWithTheme(<UsageContextLine features={[]} freshAt="2026-11-18T00:40:00.000Z" source="live" liveReason="STALE" />);
+    expect(screen.getByLabelText(`${S.context.liveBadge}. ${S.context.liveReasons.STALE} ${S.context.liveHint}`)).toBeInTheDocument();
+  });
 });

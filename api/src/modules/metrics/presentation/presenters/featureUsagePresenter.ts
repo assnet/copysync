@@ -48,10 +48,11 @@ function presentRange(range: FeatureUsageSummaryOutput['range']) {
   };
 }
 
-function presentHead(out: Pick<FeatureUsageSummaryOutput, 'range' | 'source' | 'freshAt' | 'population'>) {
+function presentHead(out: Pick<FeatureUsageSummaryOutput, 'range' | 'source' | 'liveReason' | 'freshAt' | 'population'>) {
   return {
     range: presentRange(out.range),
     source: out.source,
+    liveReason: out.liveReason,
     freshAt: out.freshAt.toISOString(),
     population: {
       tenants: out.population.tenants,

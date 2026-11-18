@@ -13,6 +13,8 @@ export const summaryFixtureRaw: string = summaryRaw;
 export const catalogFixture = JSON.parse(catalogRaw) as {
   featureKeys: string[];
   coverageReasonCodes: string[];
+  /** Motivos da leitura direta (`liveReason`). */
+  liveReasonCodes: string[];
   screenKeys: string[];
   /** Recursos só de conta interna (`INTERNAL_ONLY_FEATURES` da api). */
   internalOnlyFeatures: string[];

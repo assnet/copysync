@@ -7,7 +7,7 @@ import {
   contextLine, earliestFirstDataDay, minutesSince, presetDays, sourceState, USAGE_INITIAL_MAX_DAYS, visibleFeatures, withPeriod,
 } from '../rules';
 import { featureUsageStrings as S } from '../strings';
-import type { UsageFeatureItem, UsageFilters, UsageSource, UsageSummary } from '../types';
+import type { UsageFeatureItem, UsageFilters, UsageLiveReason, UsageSource, UsageSummary } from '../types';
 import { useUsagePage } from '../hooks/useUsagePage';
 import { UsageKpiRowSkeleton } from './UsageKpiRow';
 
@@ -18,8 +18,10 @@ export const CONTEXT_CLOCK_MS = 60_000;
  * "Dias no horário de Brasília · dados desde 26/10/2026 · atualizado às 15:02" (menor `firstDataDay` visível), com a
  * fonte: leitura sob demanda (`live`) ganha um chip discreto; agregado diário sem atualizar há mais de 1 h, um aviso.
  */
-export function UsageContextLine({ features, freshAt, source }: {
+export function UsageContextLine({ features, freshAt, source, liveReason = null }: {
   features: readonly Pick<UsageFeatureItem, 'firstDataDay'>[]; freshAt: string; source: UsageSource;
+  /** Por que leu direto (`null` = motivo não informado: só o que a leitura significa). */
+  liveReason?: UsageLiveReason | null;
 }) {
   // Relógio reativo: o aviso de dado antigo aparece (e a idade avança) sem esperar outra renderização.
   const [now, setNow] = useState(serverNow);
@@ -29,6 +31,7 @@ export function UsageContextLine({ features, freshAt, source }: {
     return () => window.clearInterval(timer);
   }, [freshAt]);
   const state = sourceState({ source, freshAt }, now);
+  const liveTip = S.context.liveTooltip(liveReason ? S.context.liveReasons[liveReason] : null);
   return (
     <Stack spacing={0.5} aria-label={S.context.aria} role="group">
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
@@ -36,14 +39,14 @@ export function UsageContextLine({ features, freshAt, source }: {
           {contextLine({ firstDataDay: earliestFirstDataDay(features), freshAt })}
         </Typography>
         {state === 'live' ? (
-          <Tooltip title={S.context.liveHint} enterTouchDelay={0}>
+          <Tooltip title={liveTip} enterTouchDelay={0}>
             <Chip
               size="small"
               variant="outlined"
               tabIndex={0}
               icon={<AppIcon icon={Radio} size="inline" aria-hidden />}
               label={S.context.liveBadge}
-              aria-label={`${S.context.liveBadge}. ${S.context.liveHint}`}
+              aria-label={`${S.context.liveBadge}. ${liveTip}`}
               sx={{ height: 22, color: 'text.secondary', '& .MuiChip-label': { px: 0.75, fontSize: 11, fontWeight: 600 } }}
             />
           </Tooltip>
@@ -144,7 +147,7 @@ export function UsageSummaryGate({
   return (
     <Stack spacing={2} aria-busy={q.loading}>
       {stale && <UsageRetryAlert slow={q.slow} onRetry={q.reload} stale onUseShortPeriod={useShortPeriod} />}
-      <UsageContextLine features={features} freshAt={data.freshAt} source={data.source} />
+      <UsageContextLine features={features} freshAt={data.freshAt} source={data.source} liveReason={data.liveReason} />
       {empty ? (
         <EmptyState
           icon={<AppIcon icon={ChartColumn} size="lg" aria-hidden />}

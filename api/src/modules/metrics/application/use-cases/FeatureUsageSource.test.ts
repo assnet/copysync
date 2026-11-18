@@ -51,10 +51,10 @@ describe('escolha da fonte', () => {
     const state = { ...MARKER, backfillPendingKeys: ['link_rotation_click'] };
     const s = setup(state, [usageRow('2026-12-01', 't1', 'offer_generator', 'ACTION', 9)]);
     // Detalhe de recurso não pendente: agregado
-    expect((await s.detail.execute({ ...INPUT, featureKey: 'offer_generator' })).source).toBe('daily');
+    expect((await s.detail.execute({ ...INPUT, featureKey: 'offer_generator' }))).toMatchObject({ source: 'daily', liveReason: null });
     // Resumo inclui o pendente: fonte viva
     const out = await s.summary.execute(INPUT);
-    expect(out).toMatchObject({ source: 'live', range: { maxDays: 90 } });
+    expect(out).toMatchObject({ source: 'live', liveReason: 'PENDING', range: { maxDays: 90 } });
     expect(s.log.warn).toHaveBeenCalledWith(
       expect.objectContaining({ pending: ['link_rotation_click'] }),
       'feature usage daily aggregate pending backfill, reading live sources',
@@ -69,7 +69,7 @@ describe('escolha da fonte', () => {
     const detail = await s.detail.execute({ ...INPUT, featureKey: 'offer_generator' });
     expect(detail).toMatchObject({ source: 'daily', freshAt: FRESH });
     const click = await s.detail.execute({ ...INPUT, featureKey: 'link_rotation_click' });
-    expect(click).toMatchObject({ source: 'live' });
+    expect(click).toMatchObject({ source: 'live', liveReason: 'STALE' });
     // Só recurso do contador: vale o tick mais recente que deu certo
     expect((await s.detail.execute({ ...INPUT, featureKey: 'chat_send' })).source).toBe('daily');
   });
@@ -77,7 +77,7 @@ describe('escolha da fonte', () => {
   it('sem marco cai em live mesmo com linhas no agregado; o agregado só responde pelos recursos do contador', async () => {
     const s = setup(NO_MARKER, [usageRow('2026-12-01', 't1', 'offer_generator', 'ACTION', 9), usageRow('2026-12-01', 't1', 'chat_send', 'ACTION', 2)]);
     const out = await s.summary.execute(INPUT);
-    expect(out).toMatchObject({ source: 'live', freshAt: NOW, range: { maxDays: 90 } });
+    expect(out).toMatchObject({ source: 'live', liveReason: 'NO_AGGREGATE', freshAt: NOW, range: { maxDays: 90 } });
     expect(s.rollupState.get).toHaveBeenCalledWith(s.gate.budgets[0]);
     expect(s.live.calls[0]!.featureKeys).not.toContain('chat_send');
     // Story sem corte gravado é inteiro da fonte viva: o agregado só lê o chat
@@ -90,7 +90,7 @@ describe('escolha da fonte', () => {
     for (const lastSuccessAt of [new Date(NOW.getTime() - 45 * 60_000), null]) {
       const s = setup({ ...MARKER, lastSuccessAt }, [usageRow('2026-12-01', 't1', 'offer_generator', 'ACTION', 9)]);
       const out = await s.summary.execute(INPUT);
-      expect(out).toMatchObject({ source: 'live', freshAt: NOW, range: { maxDays: 90 } });
+      expect(out).toMatchObject({ source: 'live', liveReason: 'STALE', freshAt: NOW, range: { maxDays: 90 } });
       expect(out.features.find((f) => f.key === 'offer_generator')!.uses).toBe(0);
       expect(s.log.warn).toHaveBeenCalledWith(expect.objectContaining({ days: 30 }), 'feature usage daily aggregate stale, reading live sources');
       const long = s.summary.execute({ ...INPUT, from: '2026-06-04', granularity: 'week' });
@@ -105,7 +105,7 @@ describe('escolha da fonte', () => {
   it('com marco cobrindo o período: uma leitura do agregado, freshAt = último tick bem-sucedido e teto 400', async () => {
     const s = setup(MARKER, [usageRow('2026-12-01', 't1', 'offer_generator', 'ACTION', 9)]);
     const out = await s.summary.execute(INPUT);
-    expect(out).toMatchObject({ source: 'daily', freshAt: FRESH, range: { maxDays: 400 } });
+    expect(out).toMatchObject({ source: 'daily', liveReason: null, freshAt: FRESH, range: { maxDays: 400 } });
     expect(s.live.calls).toHaveLength(0);
     expect(s.daily.calls).toHaveLength(1);
     expect(s.daily.calls[0]!.currentFrom!.toISOString()).toBe('2026-11-21T03:00:00.000Z');
@@ -114,8 +114,13 @@ describe('escolha da fonte', () => {
 
   it('período que começa antes de backfilledFrom: fonte viva', async () => {
     const s = setup({ ...MARKER, backfilledFrom: '2026-11-22' });
-    expect((await s.summary.execute(INPUT)).source).toBe('live');
-    expect((await s.detail.execute({ ...INPUT, featureKey: 'offer_generator' })).source).toBe('live');
+    expect(await s.summary.execute(INPUT)).toMatchObject({ source: 'live', liveReason: 'NOT_COVERED' });
+    expect(await s.detail.execute({ ...INPUT, featureKey: 'offer_generator' })).toMatchObject({ source: 'live', liveReason: 'NOT_COVERED' });
+  });
+
+  it('marco pela metade (backfill sem conclusão) também é NO_AGGREGATE', async () => {
+    const s = setup({ ...MARKER, backfillCompletedAt: null });
+    expect(await s.summary.execute(INPUT)).toMatchObject({ source: 'live', liveReason: 'NO_AGGREGATE' });
   });
 
   it('200 dias: sem agregado = 400 (teto 90), com agregado = 200; 401 dias com agregado = 400', async () => {

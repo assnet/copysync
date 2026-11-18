@@ -14,7 +14,7 @@ import {
 import { SCREEN_VIEW_KEYS } from '../../domain/services/screenViewCatalog';
 import { DEFAULT_RECURRING_DAYS, RECURRING_DAYS_OPTIONS, type RecurringDays } from '../../domain/services/featureUsageRetention';
 import { type UsageGranularity, addDays, dayInZone, daysInclusive } from '../../domain/services/featureUsagePeriod';
-import type { FeatureUsageQueryInput } from '../../application/use-cases/GetFeatureUsageSummaryUseCase';
+import { FEATURE_USAGE_LIVE_REASONS, type FeatureUsageQueryInput } from '../../application/use-cases/GetFeatureUsageSummaryUseCase';
 
 /** Teto absoluto do schema; o teto da fonte (90 dias na P1) é do use case. */
 export const USAGE_SCHEMA_MAX_DAYS = 400;
@@ -172,7 +172,13 @@ const featureItem = obj({
   retainedTenants: nullableInt,
 });
 
-const head = { range, source: strEnum(['live', 'daily']), freshAt: str, population } as const;
+const head = {
+  range,
+  source: strEnum(['live', 'daily']),
+  liveReason: { type: ['string', 'null'], enum: [...FEATURE_USAGE_LIVE_REASONS, null] },
+  freshAt: str,
+  population,
+} as const;
 
 export const usageSummaryResponse = envelope(
   obj({
