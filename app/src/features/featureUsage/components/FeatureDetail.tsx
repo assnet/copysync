@@ -10,7 +10,7 @@ import { chartColors } from '@/features/opsMetrics/chartColors';
 import { HelpTip } from '@/features/opsMetrics/components/HelpTip';
 import { srOnly } from '@/features/infraCosts/components/costParts';
 import {
-  bucketLabel, bucketTick, coverageTexts, featureDataSince, featureLabel, featureUsesTrend, formatCount, formatDay,
+  bucketLabel, bucketTick, coverageTexts, featureDataSince, featureLabel, featureUsesTrend, COUNT_AXIS, formatDay,
   formatInteger, formatReach, formatTenantsComparison, formatTrend, formatUsesComparison, kindLabel, planLabel,
   trendTone,
 } from '../rules';
@@ -79,7 +79,7 @@ function SeriesChart({ detail, tableId }: { detail: UsageFeatureDetail; tableId:
           scaleType: 'point',
           valueFormatter: (v: string, ctx) => (ctx.location === 'tick' ? bucketTick(v, granularity) : bucketLabel(v, granularity)),
         }]}
-        yAxis={[{ width: 48, min: 0, valueFormatter: (v: number) => formatCount(v) }]}
+        yAxis={[{ width: 48, ...COUNT_AXIS }]}
         grid={{ horizontal: true }}
         slotProps={{ legend: { position: { vertical: 'top', horizontal: 'start' } }, tooltip: { trigger: 'axis' } }}
         // Margem à direita: o último rótulo do eixo X ("17/11") é centrado no ponto e seria cortado ("1…").

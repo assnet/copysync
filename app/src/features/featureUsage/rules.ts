@@ -550,6 +550,12 @@ export function accountChipLabel(tenantId: string, loadedName?: string | null): 
 /* ── Números e datas para exibição ─────────────────────────────────── */
 
 /** Contagem pt-BR; a partir de 10 mil, compacta ("24 mil"). */
+/**
+ * Eixo Y de contagem (usos, contas): começa em 0 e só marca inteiros. Sem `tickMinStep` o x-charts divide uma
+ * faixa 0–1 em 0,2 e o `formatCount` arredondado repetia rótulos ("0, 0, 0, 1, 1"). Use em todo gráfico da feature.
+ */
+export const COUNT_AXIS = { min: 0, tickMinStep: 1, valueFormatter: (v: number) => formatCount(v) } as const;
+
 export function formatCount(n: number): string {
   if (Math.abs(n) >= 10_000) {
     return new Intl.NumberFormat('pt-BR', { notation: 'compact', maximumFractionDigits: 1 }).format(n);

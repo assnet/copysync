@@ -8,7 +8,7 @@ import type { LineSeriesType } from '@mui/x-charts/models';
 import { ChartLine, Table2 } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { chartColors } from '@/features/opsMetrics/chartColors';
-import { bucketLabel, bucketTick, featureLabel, formatCount, formatInteger, previousUsesPerBucket } from '../rules';
+import { COUNT_AXIS, bucketLabel, bucketTick, featureLabel, formatCount, formatInteger, previousUsesPerBucket } from '../rules';
 import { featureUsageStrings as S } from '../strings';
 import type {
   UsageFeatureItem, UsageFeatureSeriesPoint, UsageGranularity, UsageSummarySeriesPoint,
@@ -151,8 +151,8 @@ export default function UsageTrendChart({ granularity, data, error, slow, onRetr
               valueFormatter: (v: string, ctx) => (ctx.location === 'tick' ? bucketTick(v, granularity) : bucketLabel(v, granularity)),
             }]}
             yAxis={[
-              { id: 'left', width: 44, min: 0, valueFormatter: (v: number) => formatCount(v) },
-              ...(hasRight ? [{ id: 'right', position: 'right' as const, width: 36, min: 0, valueFormatter: (v: number) => formatCount(v) }] : []),
+              { id: 'left', width: 44, ...COUNT_AXIS },
+              ...(hasRight ? [{ id: 'right', position: 'right' as const, width: 36, ...COUNT_AXIS }] : []),
             ]}
             grid={{ horizontal: true }}
             slotProps={{ legend: { position: { vertical: 'top', horizontal: 'start' } }, tooltip: { trigger: 'axis' } }}

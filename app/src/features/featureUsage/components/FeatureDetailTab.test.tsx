@@ -17,7 +17,10 @@ vi.mock('@/services/serverClock', async (importOriginal) => ({
   serverNow: () => Date.UTC(2026, 10, 18, 1, 0, 0),
 }));
 
-vi.mock('@mui/x-charts/LineChart', () => ({ LineChart: () => <div data-testid="line-chart" /> }));
+const chartProps = vi.hoisted(() => [] as Array<{ yAxis?: Array<{ tickMinStep?: number; min?: number }> }>);
+vi.mock('@mui/x-charts/LineChart', () => ({
+  LineChart: (p: { yAxis?: Array<{ tickMinStep?: number; min?: number }> }) => { chartProps.push(p); return <div data-testid="line-chart" />; },
+}));
 
 vi.mock('@/services/adminUsage.service', () => ({
   adminUsageService: { getSummary: vi.fn(), getDetail: vi.fn(), getTenants: vi.fn() },
@@ -76,6 +79,16 @@ afterEach(() => {
 });
 
 describe('FeatureDetailTab', () => {
+  it('eixo Y do detalhe só marca inteiros', async () => {
+    chartProps.length = 0;
+    getDetail.mockResolvedValueOnce(detailFixture());
+    renderAt(DETAIL_PATH);
+    await screen.findByTestId('line-chart');
+    const axes = chartProps.flatMap((p) => p.yAxis ?? []);
+    expect(axes.length).toBeGreaterThan(0);
+    for (const axis of axes) expect(axis).toMatchObject({ min: 0, tickMinStep: 1 });
+  });
+
   it('lê o detalhe pela chave da URL e só depois a lista de contas (a fila da rede está em UsageReadQueue.test)', async () => {
     const d = deferred<UsageFeatureDetail>();
     getDetail.mockReturnValueOnce(d.promise);

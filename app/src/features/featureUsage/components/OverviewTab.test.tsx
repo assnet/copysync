@@ -12,7 +12,10 @@ import type { UsageFeatureItem, UsageFeatureKey, UsageFilters, UsageSummary } fr
 import OverviewTab from './OverviewTab';
 
 // O x-charts não carrega no jsdom (ESM do @mui/material/styles): o gráfico vira um marcador; os números estão nos rótulos e nas tabelas.
-vi.mock('@mui/x-charts/LineChart', () => ({ LineChart: () => <div data-testid="line-chart" /> }));
+const chartProps = vi.hoisted(() => [] as Array<{ yAxis?: Array<{ tickMinStep?: number; min?: number }> }>);
+vi.mock('@mui/x-charts/LineChart', () => ({
+  LineChart: (p: { yAxis?: Array<{ tickMinStep?: number; min?: number }> }) => { chartProps.push(p); return <div data-testid="line-chart" />; },
+}));
 vi.mock('@/services/adminUsage.service', () => ({
   adminUsageService: { getSummary: vi.fn(), getDetail: vi.fn(), getTenants: vi.fn() },
 }));
@@ -52,6 +55,15 @@ beforeEach(() => window.sessionStorage.clear());
 afterEach(() => window.sessionStorage.clear());
 
 describe('OverviewTab', () => {
+  it('eixo Y da tendência só marca inteiros (sem "0, 0, 0, 1, 1" com valores pequenos)', async () => {
+    chartProps.length = 0;
+    renderTab(summaryFixture());
+    await screen.findByTestId('line-chart');
+    const axes = chartProps.flatMap((p) => p.yAxis ?? []);
+    expect(axes.length).toBeGreaterThan(0);
+    for (const axis of axes) expect(axis).toMatchObject({ min: 0, tickMinStep: 1 });
+  });
+
   it('ranking ordena por contas por padrão e cada nome abre o detalhe', async () => {
     renderTab(summaryFixture());
     const region = await ranking();
