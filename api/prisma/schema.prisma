@@ -526,6 +526,7 @@ model FeatureUsageDaily {
 
   @@id([day, tenantId, featureKey, kind])
   @@index([featureKey, day])
+  @@index([tenantId])
   @@map("feature_usage_daily")
 }
 
