@@ -6,6 +6,7 @@ import { prisma } from '../../../shared/database/prisma.client';
 import { env } from '../../../shared/config/env';
 import { getActiveEngine } from '../../../shared/engine/activeEngine';
 import { mediaContainer } from '../../media/infrastructure/mediaContainer';
+import { featureUsageRecorder } from '../../metrics/infrastructure/featureUsageContainer';
 import { uploadVoiceFilePath } from '../../media/infrastructure/uploads/DiskUploadSessionStore';
 import { buildMediaUploadConfig } from '../../media/domain/services/mediaUploadConfig';
 import type { OutboundMediaLimits } from '../../media/domain/services/classifyOutboundMedia';
@@ -61,6 +62,8 @@ const queue = new InMemoryOutboundMediaQueue({
       tmpSpace,
       fileSize,
       env.MEDIA_TMP_RESERVE_BYTES,
+      undefined,
+      featureUsageRecorder(),
     ).execute(job),
   globalConcurrency:     env.MEDIA_SEND_CONCURRENCY,
   perSessionConcurrency: env.MEDIA_SEND_PER_SESSION,

@@ -16,6 +16,7 @@ import type { IMediaFileStore } from '../../../media/domain/contracts/IMediaFile
 import type { IMediaProcessor } from '../../../media/domain/contracts/IMediaProcessor';
 import type { IMessageStatusPublisher } from '../contracts/IMessageStatusPublisher';
 import type { OutboundMediaJob } from '../contracts/IOutboundMediaQueue';
+import type { IFeatureUsageRecorder } from '../../../metrics/domain/contracts/IFeatureUsageRecorder';
 
 vi.mock('../../../../shared/logger/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -50,6 +51,7 @@ function makeDeps(overrides?: {
   transicaoOcorre?: boolean;
   engine?: IMessagingEngine | null;
   freeBytes?: number;
+  usage?: IFeatureUsageRecorder;
 }) {
   const message = overrides?.message === null ? null : mensagem(overrides?.message);
   const conversation = {
@@ -94,7 +96,7 @@ function makeDeps(overrides?: {
 
   const useCase = new DispatchOutboundMediaUseCase(
     messageRepo, conversationRepo, contactRepo, engine, fileStore, processor, publisher,
-    tmpSpace, fileSize, RESERVA, () => NOW,
+    tmpSpace, fileSize, RESERVA, () => NOW, overrides?.usage ?? null,
   );
   return {
     useCase, messageRepo, conversationRepo, contactRepo, engine, fileStore, processor, publisher, tmpSpace, fileSize, release,
@@ -393,5 +395,33 @@ describe('DispatchOutboundMediaUseCase', () => {
     expect(d.publisher.publishStatusUpdated).toHaveBeenCalledWith(
       expect.objectContaining({ status: ChatMessageStatus.SENT }),
     );
+  });
+});
+
+describe('DispatchOutboundMediaUseCase — uso do chat', () => {
+  const usageOf = () => ({ increment: vi.fn(async () => undefined), markOnce: vi.fn(async () => undefined) });
+
+  it('mídia do painel soma 1 só quando a engine confirma o envio (SENT)', async () => {
+    const usage = usageOf();
+    await makeDeps({ usage }).useCase.execute({ ...JOB, origin: 'PANEL' });
+    expect(usage.increment).toHaveBeenCalledTimes(1);
+    expect(usage.increment).toHaveBeenCalledWith({ tenantId: TENANT, featureKey: 'chat_send', kind: 'ACTION', at: NOW });
+  });
+
+  it('falha da engine, origem automática, sem origem (retry/boot) ou transição já feita não somam', async () => {
+    const usage = usageOf();
+    const falha = { sendMediaMessage: vi.fn().mockRejectedValue(new MessageSendFailedError('falhou')) } as unknown as IMessagingEngine;
+    await makeDeps({ usage, engine: falha }).useCase.execute({ ...JOB, origin: 'PANEL' });
+    await makeDeps({ usage }).useCase.execute({ ...JOB, origin: 'AUTOMATION' });
+    await makeDeps({ usage }).useCase.execute(JOB);
+    await makeDeps({ usage, transicaoOcorre: false }).useCase.execute({ ...JOB, origin: 'PANEL' });
+    expect(usage.increment).not.toHaveBeenCalled();
+  });
+
+  it('contador que rejeita não muda o desfecho', async () => {
+    const usage = { increment: vi.fn(async () => { throw new Error('down'); }), markOnce: vi.fn(async () => undefined) };
+    const d = makeDeps({ usage });
+    await expect(d.useCase.execute({ ...JOB, origin: 'PANEL' })).resolves.toBeUndefined();
+    expect(d.publisher.publishStatusUpdated).toHaveBeenCalledWith(expect.objectContaining({ status: ChatMessageStatus.SENT }));
   });
 });

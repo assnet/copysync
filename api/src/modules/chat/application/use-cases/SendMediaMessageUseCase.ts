@@ -39,8 +39,7 @@ import {
 import { logger } from '../../../../shared/logger/logger';
 import { resolveConversationTarget } from './resolveConversationTarget';
 import type { ChatMessageDto } from './ListMessagesUseCase';
-import { type IFeatureUsageRecorder, recordFeatureUsage } from '../../../metrics/domain/contracts/IFeatureUsageRecorder';
-import { CHAT_SEND_USAGE_KEY, type ChatSendOrigin } from './SendMessageUseCase';
+import type { ChatSendOrigin } from './SendMessageUseCase';
 
 export interface SendMediaMessageInput {
   tenantId: string;
@@ -73,9 +72,6 @@ export interface SendMediaMessageDeps {
   tmpPathFor: (uploadId: string, ext: string) => string;
   /** Foto WebP vira JPEG: o app Android não exibe foto WebP (ver `inlineImageFormat`). */
   images: IImageTranscoder;
-  /** Contador de uso (fail-open). Sem ele nada é contado. */
-  usage?: IFeatureUsageRecorder | null;
-  now?: () => Date;
 }
 
 /** Arquivo pronto e promovido, com o que a mensagem precisa gravar. */
@@ -182,18 +178,10 @@ export class SendMediaMessageUseCase {
     );
 
     // 10. Enfileira; recusa (fila cheia ou em drain) vira FAILED reenviável
+    // Uso do chat: contado no despacho, quando a engine confirma o envio (mesmo critério do texto)
     const accepted = queue.enqueue({
-      messageId: message.id, tenantId, sessionId: prepared.sessionId, conversationId,
+      messageId: message.id, tenantId, sessionId: prepared.sessionId, conversationId, origin: input.origin,
     });
-    // Uso do chat: só mídia do painel aceita pela fila (recusa vira FAILED e não conta; confirmação repetida já
-    // voltou acima); sem esperar e sem falhar o envio
-    if (accepted && input.origin === 'PANEL') {
-      recordFeatureUsage(
-        this.deps.usage,
-        { tenantId, featureKey: CHAT_SEND_USAGE_KEY, kind: 'ACTION', at: (this.deps.now ?? (() => new Date()))() },
-        (err) => logger.warn({ err: (err as Error)?.name }, 'chat media send usage not counted'),
-      );
-    }
     if (!accepted) {
       logger.warn({ messageId: message.id, sessionId: prepared.sessionId }, 'Fila de mídia recusou o envio');
       const failed = await messageRepo.transitionStatus(

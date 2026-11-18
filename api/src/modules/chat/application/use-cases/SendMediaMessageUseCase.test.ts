@@ -1,5 +1,4 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { IFeatureUsageRecorder } from '../../../metrics/domain/contracts/IFeatureUsageRecorder';
 import { SendMediaMessageUseCase } from './SendMediaMessageUseCase';
 import {
   ChatMessageDirection,
@@ -103,7 +102,6 @@ function makeDeps(o: {
   promoteError?: Error;
   enqueued?: boolean;
   transcodeError?: Error;
-  usage?: IFeatureUsageRecorder;
 } = {}) {
   const calls: string[] = [];
   const track = <A extends unknown[], R>(name: string, impl: (...args: A) => R) =>
@@ -196,8 +194,6 @@ function makeDeps(o: {
     limits: LIMITS,
     tmpPathFor,
     images,
-    usage: o.usage,
-    now: () => NOW,
   });
   return { useCase, calls, messageRepo, conversationRepo, uploads, processor, files, queue, engine, images };
 }
@@ -228,7 +224,7 @@ describe('SendMediaMessageUseCase — caminho feliz', () => {
     });
     expect(d.uploads.finishConsume).toHaveBeenCalledWith(UPLOAD, 'msg-nova');
     expect(d.queue.enqueue).toHaveBeenCalledWith({
-      messageId: 'msg-nova', tenantId: TENANT, sessionId: SESSAO, conversationId: CONVERSA,
+      messageId: 'msg-nova', tenantId: TENANT, sessionId: SESSAO, conversationId: CONVERSA, origin: 'PANEL',
     });
     expect(out.replayed).toBe(false);
     expect(out.message).toMatchObject({
@@ -619,32 +615,9 @@ describe('SendMediaMessageUseCase — foto WebP', () => {
 });
 
 describe('SendMediaMessageUseCase — uso do chat', () => {
-  const usageOf = (impl: () => Promise<void>) => ({ increment: vi.fn(impl), markOnce: vi.fn(async () => undefined) });
-
-  it('mídia do painel soma 1; automática e confirmação repetida não somam', async () => {
-    const usage = usageOf(async () => undefined);
-    await enviar(makeDeps({ usage }));
-    expect(usage.increment).toHaveBeenCalledWith({ tenantId: TENANT, featureKey: 'chat_send', kind: 'ACTION', at: NOW });
-    await enviar(makeDeps({ usage }), { origin: 'AUTOMATION' });
-    await enviar(makeDeps({
-      usage,
-      begin: { outcome: 'consumed', messageId: 'msg-antiga', record: registro({ state: 'CONSUMED', messageId: 'msg-antiga' }) },
-    }));
-    expect(usage.increment).toHaveBeenCalledTimes(1);
-  });
-
-  it('mídia recusada pela fila (vira FAILED) não soma; o contador só é chamado depois do enqueue aceito', async () => {
-    const usage = usageOf(async () => undefined);
-    await enviar(makeDeps({ usage, enqueued: false }));
-    expect(usage.increment).not.toHaveBeenCalled();
-    const d = makeDeps({ usage });
-    await enviar(d);
-    expect(vi.mocked(d.queue.enqueue).mock.invocationCallOrder[0]!).toBeLessThan(usage.increment.mock.invocationCallOrder[0]!);
-  });
-
-  it('contador que rejeita ou trava não muda o resultado', async () => {
-    const reference = await enviar(makeDeps({ usage: usageOf(async () => undefined) }));
-    await expect(enviar(makeDeps({ usage: usageOf(async () => { throw new Error('down'); }) }))).resolves.toEqual(reference);
-    await expect(enviar(makeDeps({ usage: usageOf(() => new Promise<void>(() => {})) }))).resolves.toEqual(reference);
+  it('a origem viaja no job: quem conta é o despacho, quando a engine confirma', async () => {
+    const d = makeDeps();
+    await enviar(d, { origin: 'AUTOMATION' });
+    expect((vi.mocked(d.queue.enqueue).mock.calls as unknown[][])[0]![0]).toMatchObject({ origin: 'AUTOMATION' });
   });
 });

@@ -14,6 +14,11 @@ export interface OutboundMediaJob {
    * degradação aceita: a mídia chega, só não marca ninguém.
    */
   mentions?: string[];
+  /**
+   * Origem do envio, só no job em memória (como as menções): `PANEL` soma 1 em `chat_send` quando a engine
+   * confirma o envio. Retry e recuperação de PENDING no boot chegam sem origem e não somam.
+   */
+  origin?: 'PANEL' | 'AUTOMATION';
 }
 
 /**

@@ -20,6 +20,8 @@ import {
   UnsupportedMediaTypeError,
 } from '../../../../shared/errors/internal/MediaErrors';
 import { logger } from '../../../../shared/logger/logger';
+import { type IFeatureUsageRecorder, recordFeatureUsage } from '../../../metrics/domain/contracts/IFeatureUsageRecorder';
+import { CHAT_SEND_USAGE_KEY } from './SendMessageUseCase';
 import {
   buildEngineMessageRef,
   resolveConversationTarget,
@@ -61,6 +63,8 @@ export class DispatchOutboundMediaUseCase {
     private readonly fileSize: FileSizeProbe,
     private readonly tmpReserveBytes: number,
     private readonly now: () => Date = () => new Date(),
+    /** Contador de uso (fail-open). Sem ele nada é contado. */
+    private readonly usage: IFeatureUsageRecorder | null = null,
   ) {}
 
   async execute(job: OutboundMediaJob): Promise<void> {
@@ -203,6 +207,15 @@ export class DispatchOutboundMediaUseCase {
           ? await this.messageRepo.transitionStatus(job.messageId, job.tenantId, from, status, sentAt, externalMessageId)
           : await this.messageRepo.transitionStatus(job.messageId, job.tenantId, from, status, sentAt);
       if (!updated) return;
+      // Uso do chat: mídia do painel conta quando a engine confirmou o envio (mesmo critério do texto, que conta
+      // com o id externo devolvido). Só na transição que ocorreu: retry duplicado não soma de novo
+      if (status === ChatMessageStatus.SENT && job.origin === 'PANEL') {
+        recordFeatureUsage(
+          this.usage,
+          { tenantId: job.tenantId, featureKey: CHAT_SEND_USAGE_KEY, kind: 'ACTION', at: sentAt ?? this.now() },
+          (err) => logger.warn({ err: (err as Error)?.name }, 'chat media send usage not counted'),
+        );
+      }
       this.publisher.publishStatusUpdated({
         tenantId:       updated.tenantId,
         conversationId: updated.conversationId,

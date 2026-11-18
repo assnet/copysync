@@ -154,7 +154,7 @@ describe('RecordFeatureUsageUseCase', () => {
     const root = resolve(__dirname, '../../..');
     for (const f of [
       'chat/application/use-cases/SendMessageUseCase.ts',
-      'chat/application/use-cases/SendMediaMessageUseCase.ts',
+      'chat/application/use-cases/DispatchOutboundMediaUseCase.ts',
       'offer-story/application/use-cases/RenderOfferStoryUseCase.ts',
       'offer-story/application/use-cases/offerStoryUseCaseDeps.ts',
     ]) {
