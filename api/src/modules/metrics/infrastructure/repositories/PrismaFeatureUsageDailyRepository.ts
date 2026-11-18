@@ -59,29 +59,25 @@ export class PrismaFeatureUsageDailyRepository implements IFeatureUsageDailyRepo
     const keyList = Prisma.join([...allowed]);
     const kept = [...merged.values()];
     const stamp = this.stamp();
+    // Arrays em `unnest`: 4 parâmetros qualquer que seja o volume (nada de VALUES com milhares de binds)
+    const tenants = kept.map((r) => r.tenantId);
+    const features = kept.map((r) => r.featureKey);
+    const kinds = kept.map((r) => r.kind);
+    const uses = kept.map((r) => Math.trunc(r.uses));
 
-    const del =
-      kept.length === 0
-        ? this.prisma.$executeRaw`DELETE FROM "feature_usage_daily" WHERE "day" = ${d} AND "featureKey" IN (${keyList})`
-        : this.prisma.$executeRaw`
-            DELETE FROM "feature_usage_daily"
-            WHERE "day" = ${d} AND "featureKey" IN (${keyList})
-              AND ("tenantId", "featureKey", "kind") NOT IN (
-                SELECT v.t, v.f, v.k FROM (VALUES ${Prisma.join(kept.map((r) => Prisma.sql`(${r.tenantId}, ${r.featureKey}, ${r.kind})`))}) AS v(t, f, k)
-              )`;
-    const timeout = this.prisma.$executeRawUnsafe(`SET LOCAL statement_timeout = '${FEATURE_USAGE_REPLACE_STATEMENT_TIMEOUT}'`);
-    if (kept.length === 0) {
-      await this.prisma.$transaction([timeout, del]);
-      return;
-    }
-    const values = kept.map((r) => Prisma.sql`(${d}, ${r.tenantId}, ${r.featureKey}, ${r.kind}, ${Math.trunc(r.uses)}::int, ${stamp})`);
     // DELETE e INSERT na mesma transação: falha no meio desfaz tudo e o dia fica como estava
     await this.prisma.$transaction([
-      timeout,
-      del,
+      this.prisma.$executeRawUnsafe(`SET LOCAL statement_timeout = '${FEATURE_USAGE_REPLACE_STATEMENT_TIMEOUT}'`),
+      this.prisma.$executeRaw`
+        DELETE FROM "feature_usage_daily" d
+        WHERE d."day" = ${d} AND d."featureKey" IN (${keyList})
+          AND NOT EXISTS (
+            SELECT 1 FROM unnest(${tenants}::text[], ${features}::text[], ${kinds}::text[]) AS v(t, f, k)
+            WHERE v.t = d."tenantId" AND v.f = d."featureKey" AND v.k = d."kind")`,
       this.prisma.$executeRaw`
         INSERT INTO "feature_usage_daily" ("day", "tenantId", "featureKey", "kind", "uses", "updatedAt")
-        VALUES ${Prisma.join(values)}
+        SELECT ${d}, v.t, v.f, v.k, v.u, ${stamp}
+        FROM unnest(${tenants}::text[], ${features}::text[], ${kinds}::text[], ${uses}::int[]) AS v(t, f, k, u)
         ON CONFLICT ("day", "tenantId", "featureKey", "kind") DO UPDATE SET
           "uses" = EXCLUDED."uses", "updatedAt" = EXCLUDED."updatedAt"`,
     ]);

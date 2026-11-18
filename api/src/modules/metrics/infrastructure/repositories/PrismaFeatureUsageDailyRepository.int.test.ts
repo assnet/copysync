@@ -105,6 +105,24 @@ describe('PrismaFeatureUsageDailyRepository', () => {
     expect(await rowsOf(k)).toEqual(before);
   });
 
+  it('replaceDay com 12 mil linhas (unnest, uma instrução cada): grava, regrava a metade e apaga o que zerou', async () => {
+    const keys = Array.from({ length: 6_000 }, (_, i) => key(`big${i}`));
+    const all = keys.flatMap((k, i) => [
+      { tenantId: A, featureKey: k, kind: 'ACTION' as const, uses: i + 1 },
+      { tenantId: B, featureKey: k, kind: 'ACTION' as const, uses: 1 },
+    ]);
+    expect(all).toHaveLength(12_000);
+    await repo.replaceDay('2026-11-06', keys, all);
+    const count = async () =>
+      (await prisma.$queryRaw<{ n: number; sum: number }[]>`
+        SELECT count(*)::int AS n, coalesce(sum(uses), 0)::int AS sum FROM feature_usage_daily
+        WHERE day = '2026-11-06'::date AND "featureKey" = ANY(${keys}::text[])`)[0]!;
+    expect(await count()).toEqual({ n: 12_000, sum: (6_000 * 6_001) / 2 + 6_000 });
+    // Só A fica (B zerou em todas): 6 mil apagadas no mesmo replace
+    await repo.replaceDay('2026-11-06', keys, all.filter((r) => r.tenantId === A).map((r) => ({ ...r, uses: 2 })));
+    expect(await count()).toEqual({ n: 6_000, sum: 12_000 });
+  }, 60_000);
+
   it('replaceDay recusa linha com chave fora de keys sem ir ao banco', async () => {
     const spy = vi.spyOn(prisma, '$transaction');
     await expect(repo.replaceDay('2026-11-04', [key('a')], [{ tenantId: A, featureKey: key('b'), kind: 'ACTION', uses: 1 }])).rejects.toThrow(
