@@ -45,6 +45,15 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - **`featureEligibility.ts`** — direito respeita a audiência "Só super admin" (Caçador, Saver: só conta interna), Caçador exige `offer_hunter_finds_per_day > 0` e `INTERNAL_ONLY_FEATURES` (`chat_send`: só conta interna enquanto o menu do Chat for só de super admin). A amarração com o menu saiu do teste da api (lia `app/`): `contracts/feature-usage/catalog.json` ganhou `internalOnlyFeatures`, conferido pela api e pelo teste do menu no painel.
 - **`GetFeatureUsageScreensUseCase.ts`**, schema e presenter — `population.byFamily` em `/admin/usage/screens`; o "Do recorte" divide pela família da tela.
 - Painel (app 0.127.0) — aba Telas com teto próprio de 400 dias e resumo da coluna cruzada com estado próprio; leitura lenta acima de 90 dias oferece "Usar 90 dias"; aviso de dado antigo com relógio a cada 60 s.
+
+### Correções do teste visual
+
+- **`featureUsageRetention.ts`**, **`aggregateFeatureUsage.ts`**, schema e presenter — adoção = contas que usaram **e** têm direito ÷ contas com direito (antes somava quem usou sem direito e passava de 100 %: "3 de 1 conta"). Campos novos no item do resumo: `adoptedTenants` e `usedWithoutEligibility` (`null` no detalhe); o painel mostra "+N usaram sem direito".
+- **`GetFeatureUsageSummaryUseCase.ts`** (`chooseUsageSource`), **`GetFeatureUsageDetailUseCase.ts`** — `liveReason` no resumo e no detalhe: `NO_AGGREGATE`, `NOT_COVERED`, `STALE` ou `PENDING` (`null` com `daily`); códigos em `catalog.json` (`liveReasonCodes`). O selo "Leitura direta" do painel mostra o motivo.
+- **`RollupFeatureUsageUseCase.ts`**, **`PrismaFeatureUsageRollupStateRepository.ts`**, **`aggregateFeatureUsage.ts`** — `liveSince` no estado do rollup (dia do primeiro tick inteiro, gravado uma vez, protegido no SQL do merge); no agregado `EXISTING_ONLY` vale para período que começa antes dele (estado sem o campo: sempre). Sem migration (`platform_settings`).
+- **`contracts/feature-usage/`** — `screenProducts` no catálogo (produto de cada tela, conferido com `SCREEN_VIEW_CATALOG`).
+- Painel (app 0.127.0) — concordância de número ("1 dia-conta", "voltou"/"voltaram"), eixo Y só com inteiros nos gráficos de contagem, aba ativa visível ao estreitar a janela sem recarregar (`useSelectedTabInView`), telas de mesmo nome com o produto no rótulo ("Configurações · Saver").
+
 ---
 
 ## [0.103.0] — 2026-11-17 — Uso dos recursos (P2): agregado diário, contador de Story e chat e períodos até 400 dias (app 0.126.0)

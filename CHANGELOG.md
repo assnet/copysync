@@ -20,6 +20,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 - Direito com audiência "Só super admin", teto do Caçador > 0 e `chat_send` só de conta interna (`internalOnlyFeatures` no contrato, conferido pela api e pelo teste do menu); `population.byFamily` nas telas; aba Telas com teto próprio de 400 dias; "Usar 90 dias" na leitura lenta. Detalhes em `api/CHANGELOG.md` [0.104.0].
 
+#### Correções do teste visual
+
+- Adoção só com contas que têm direito (`adoptedTenants`, `usedWithoutEligibility` no resumo); `liveReason` explica a leitura direta; `liveSince` no estado do rollup limita `EXISTING_ONLY` no agregado; plural nas frases novas, eixo Y inteiro, aba ativa visível no resize e telas de mesmo nome com o produto. Detalhes em `api/CHANGELOG.md` [0.104.0].
+
 ### Added — app 0.126.0 / api 0.103.0 — Uso dos recursos (P2, super admin)
 
 #### app / api ([`docs/uso-dos-recursos.md`](docs/uso-dos-recursos.md))
