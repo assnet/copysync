@@ -40,7 +40,10 @@ export const FEATURE_USAGE_BACKFILL_STEP_DAYS = 7;
 export const FEATURE_USAGE_RECENT_MAX_DAYS = 7;
 /** A partir de tantas falhas seguidas (do grupo ou do tick): log `error`. Backfill do grupo: pode ficar pendente. */
 export const FEATURE_USAGE_FAILURE_STREAK_ALERT = 3;
-/** Teto da lista de reprocesso (dia, grupo); cheia, o item mais antigo sai com log `error` (a revisita o recobre). */
+/**
+ * Teto da lista de reprocesso (dia, grupo); cheia, o item mais antigo sai com log `error` e vira piso de reprocesso do
+ * grupo (`reprocessFrom`), recalculado 1 dia por tick até a faixa da revisita.
+ */
 export const FEATURE_USAGE_RETRY_MAX = 30;
 /**
  * Revisita leve: a cada tick recalcula UM dia antigo, em rodízio de hoje − 2 até hoje − 30. Premissa: o dado das
@@ -107,6 +110,8 @@ export type RollupFeatureUsageResult =
       retryQueue: number;
       /** Dia antigo revisitado neste tick (`null` = nenhum). */
       revisited: string | null;
+      /** Dias recalculados pelo piso de reprocesso neste tick (1 por grupo com piso). */
+      reprocessed: number;
     };
 
 /** Perdeu o lease no meio do tick (renovação recusada): nada mais é lido nem gravado. */
@@ -133,6 +138,7 @@ const emptyGroup = (): FeatureUsageGroupState => ({
   backfillCursor: null,
   backfillDone: null,
   backfillFailures: 0,
+  reprocessFrom: null,
 });
 
 /**
@@ -144,7 +150,9 @@ const emptyGroup = (): FeatureUsageGroupState => ({
  *    `finalizedThrough` anda pelos dias concluídos (nunca além de anteontem: ontem é sempre revisitado) se algum
  *    grupo deu certo; o (dia, grupo) que falhou e fica para trás entra no reprocesso. `failureStreak` por grupo,
  *    log `error` a partir de 3;
- * 3. revisita leve: um dia antigo por tick, em rodízio dentro dos últimos 30 dias, com `warn` se o número mudou;
+ * 3. revisita leve: um dia antigo por tick, em rodízio dentro dos últimos 30 dias, com `warn` se o número mudou; e
+ *    piso de reprocesso (`groups[].reprocessFrom`, item descartado do reprocesso cheio): 1 dia por tick e grupo, do
+ *    piso para frente até a faixa da revisita;
  * 4. backfill (lease próprio) com cursor por grupo, 7 dias por passo até o primeiro dado do grupo (limitado à
  *    retenção). O marco é gravado quando todos os grupos concluíram ou os que falham 3+ vezes seguidas ficam
  *    registrados como pendentes (`backfillPendingKeys`): a leitura trata os recursos deles como não cobertos;
@@ -279,11 +287,33 @@ export class RollupFeatureUsageUseCase {
     const queue = this.mergeQueue(
       keep,
       windowFailed.filter((i) => finalized !== null && i.day <= finalized),
+      groups,
     );
 
     // 3. Revisita leve de um dia finalizado em tick anterior
     const revisit = await this.revisit(today, st.finalizedThrough, st.revisitCursor ?? null, byId);
     if (revisit.next) patch.revisitCursor = revisit.next;
+
+    // 3b. Piso de reprocesso (item descartado do reprocesso cheio): 1 dia por tick e grupo, até a faixa da revisita
+    let reprocessed = 0;
+    const revisitFloor = addDays(today, -FEATURE_USAGE_REVISIT_DAYS);
+    for (const [id, group] of byId) {
+      const g = groups[id]!;
+      if (!g.reprocessFrom) continue;
+      const day = g.reprocessFrom < retentionFloor ? retentionFloor : g.reprocessFrom;
+      if (day >= revisitFloor || !finalized || day > finalized) {
+        g.reprocessFrom = null;
+        continue;
+      }
+      const r = await this.consolidateGroup(group, [day], null);
+      if (r.failedDays.length > 0) {
+        failedNow.add(id);
+        continue;
+      }
+      reprocessed++;
+      const next = addDays(day, 1);
+      g.reprocessFrom = next >= revisitFloor || next > finalized ? null : next;
+    }
 
     // 4. Backfill por grupo
     const backfill = await this.backfillStep(today, now, groups, byId, patch);
@@ -331,11 +361,19 @@ export class RollupFeatureUsageUseCase {
       failureStreak,
       retryQueue: queue.length,
       revisited: revisit.day,
+      reprocessed,
     };
   }
 
-  /** Une sem repetir, em ordem de dia; acima de 30 itens os mais antigos saem (log `error`: a revisita os recobre). */
-  private mergeQueue(a: readonly FeatureUsageRetryItem[], b: readonly FeatureUsageRetryItem[]): FeatureUsageRetryItem[] {
+  /**
+   * Une sem repetir, em ordem de dia; acima de 30 itens os mais antigos saem com log `error` e o menor dia descartado
+   * de cada grupo vira o piso de reprocesso dele (`reprocessFrom`): o dia pode estar abaixo da faixa da revisita.
+   */
+  private mergeQueue(
+    a: readonly FeatureUsageRetryItem[],
+    b: readonly FeatureUsageRetryItem[],
+    groups: Record<string, FeatureUsageGroupState>,
+  ): FeatureUsageRetryItem[] {
     const seen = new Set<string>();
     const all: FeatureUsageRetryItem[] = [];
     for (const i of [...a, ...b]) {
@@ -347,7 +385,14 @@ export class RollupFeatureUsageUseCase {
     all.sort((x, y) => (x.day < y.day ? -1 : x.day > y.day ? 1 : x.group < y.group ? -1 : 1));
     if (all.length <= FEATURE_USAGE_RETRY_MAX) return all;
     const dropped = all.slice(0, all.length - FEATURE_USAGE_RETRY_MAX);
-    this.alert({ dropped: dropped.length, oldest: dropped[0]!.day }, 'feature usage rollup retry queue full, oldest dropped');
+    const floors: Record<string, string> = {};
+    for (const i of dropped) {
+      const g = groups[i.group];
+      if (!g) continue;
+      if (!g.reprocessFrom || i.day < g.reprocessFrom) g.reprocessFrom = i.day;
+      floors[i.group] = g.reprocessFrom;
+    }
+    this.alert({ dropped: dropped.length, oldest: dropped[0]!.day, reprocessFrom: floors }, 'feature usage rollup retry queue full, oldest dropped');
     return all.slice(-FEATURE_USAGE_RETRY_MAX);
   }
 

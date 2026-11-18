@@ -124,8 +124,8 @@ describe('PrismaFeatureUsageRollupStateRepository', () => {
     await repo.markBackfillCompleted({ completedAt: new Date('2026-11-17T10:00:00Z'), backfilledFrom: '2026-10-26', stopReason: 'FIRST_DATA', pendingKeys: ['link_rotation'] });
     const at = new Date('2026-11-17T12:30:00.000Z');
     const groups = {
-      'link_rotation+link_rotation_click': { failureStreak: 3, lastSuccessAt: null, backfillCursor: '2026-11-01', backfillDone: null, backfillFailures: 4 },
-      offer_generator: { failureStreak: 0, lastSuccessAt: at, backfillCursor: null, backfillDone: { from: '2026-10-26', reason: 'FIRST_DATA' as const }, backfillFailures: 0 },
+      'link_rotation+link_rotation_click': { failureStreak: 3, lastSuccessAt: null, backfillCursor: '2026-11-01', backfillDone: null, backfillFailures: 4, reprocessFrom: '2026-10-02' },
+      offer_generator: { failureStreak: 0, lastSuccessAt: at, backfillCursor: null, backfillDone: { from: '2026-10-26', reason: 'FIRST_DATA' as const }, backfillFailures: 0, reprocessFrom: null },
     };
     await repo.recordTick({ failureStreak: 1, groups, retryQueue: [{ day: '2026-11-12', group: 'link_rotation+link_rotation_click' }], revisitCursor: '2026-11-14' });
     const st = await repo.get(createReadBudget());

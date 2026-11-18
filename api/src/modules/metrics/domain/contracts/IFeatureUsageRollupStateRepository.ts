@@ -27,9 +27,17 @@ export interface FeatureUsageGroupState {
   backfillDone: { from: string; reason: FeatureUsageBackfillStopReason } | null;
   /** Passos de backfill seguidos com falha; com 3+ o grupo pode ficar pendente no marco. */
   backfillFailures: number;
+  /**
+   * Piso de reprocesso: menor dia descartado do reprocesso cheio. O job recalcula 1 dia por tick daqui para frente
+   * até entrar na faixa da revisita (hoje − 30); `null`/ausente = nada a recalcular.
+   */
+  reprocessFrom?: string | null;
 }
 
-/** (dia, grupo) que falhou fora da janela recente: retentado a cada tick, no máximo 30 itens. */
+/**
+ * (dia, grupo) que falhou fora da janela recente: retentado a cada tick, no máximo 30 itens. Cheio, o mais antigo sai
+ * e vira piso de reprocesso do grupo (`reprocessFrom`).
+ */
 export interface FeatureUsageRetryItem {
   day: string;
   group: string;
@@ -69,7 +77,7 @@ export interface FeatureUsageRollupState {
   dropped?: FeatureUsageDropCounts;
   /** Estado por grupo de fontes. Ausente = estado gravado antes dos grupos. */
   groups?: Readonly<Record<string, FeatureUsageGroupState>>;
-  /** Reprocesso de (dia, grupo) que falhou; no máximo 30, os mais antigos saem primeiro (log `error`). */
+  /** Reprocesso de (dia, grupo) que falhou; no máximo 30, os mais antigos saem (log `error`) para o `reprocessFrom`. */
   retryQueue?: readonly FeatureUsageRetryItem[];
   /** Revisita leve: próximo dia antigo (≤ hoje − 2, ≥ hoje − 30) a recalcular; anda para trás em rodízio. */
   revisitCursor?: string | null;

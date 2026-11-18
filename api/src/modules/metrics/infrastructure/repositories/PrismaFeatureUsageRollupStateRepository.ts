@@ -70,6 +70,7 @@ function parseGroups(value: unknown): Record<string, FeatureUsageGroupState> | u
       backfillCursor: asDay(g['backfillCursor']),
       backfillDone: from ? { from, reason: asReason(done['reason']) } : null,
       backfillFailures: asCount(g['backfillFailures']),
+      reprocessFrom: asDay(g['reprocessFrom']),
     };
   }
   return out;
@@ -225,6 +226,7 @@ export class PrismaFeatureUsageRollupStateRepository
             backfillCursor: g.backfillCursor,
             backfillDone: g.backfillDone,
             backfillFailures: g.backfillFailures,
+            reprocessFrom: g.reprocessFrom ?? null,
           },
         ]),
       );

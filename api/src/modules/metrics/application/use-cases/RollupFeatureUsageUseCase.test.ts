@@ -498,8 +498,9 @@ describe('RollupFeatureUsageUseCase', () => {
       expect(t.state.value.groups!['b']!.lastSuccessAt).toBeNull();
     });
 
-    it('reprocesso cheio (30): o item mais antigo sai com log error', async () => {
-      const t = setup({ catalog: [def('a'), def('b')], groups: [['a'], ['b']], failKeys: ['a'], now: NOW });
+    it('reprocesso cheio (30): o item mais antigo sai com log error e vira piso; o piso anda 1 dia por tick até hoje − 30', async () => {
+      const failKeys = ['a'];
+      const t = setup({ catalog: [def('a'), def('b')], groups: [['a'], ['b']], failKeys, now: NOW });
       const error = vi.fn();
       const uc = new RollupFeatureUsageUseCase({ ...(t.useCase as unknown as { deps: RollupFeatureUsageDeps }).deps, log: { warn: t.warn, info: vi.fn(), error } });
       const old = Array.from({ length: 30 }, (_, i) => ({ day: addDays('2026-11-08', -i), group: 'a' }));
@@ -508,7 +509,24 @@ describe('RollupFeatureUsageUseCase', () => {
       expect(t.state.value.retryQueue).toHaveLength(30);
       expect(t.state.value.retryQueue!.at(-1)).toEqual({ day: '2026-11-15', group: 'a' });
       expect(t.state.value.retryQueue![0]!.day).toBe(addDays('2026-11-08', -24));
-      expect(error).toHaveBeenCalledWith(expect.objectContaining({ dropped: 5 }), 'feature usage rollup retry queue full, oldest dropped');
+      expect(error).toHaveBeenCalledWith(
+        expect.objectContaining({ dropped: 5, reprocessFrom: { a: '2026-10-10' } }),
+        'feature usage rollup retry queue full, oldest dropped',
+      );
+      // Piso no menor dia descartado (abaixo da revisita, que só vai até hoje − 30 = 18/10); falhou, não anda
+      expect(t.state.value.groups!['a']!.reprocessFrom).toBe('2026-10-10');
+      // Fonte volta: 1 dia do piso por tick, até sair da faixa abaixo da revisita
+      failKeys.length = 0;
+      const walked: string[] = [];
+      for (let i = 0; i < 8; i++) {
+        t.replaced.length = 0;
+        const r = await uc.execute();
+        expect(r).toMatchObject({ reprocessed: 1 });
+        walked.push(...t.replaced.filter((x) => x.keys.includes('a') && x.day < '2026-10-15').map((x) => x.day));
+      }
+      expect(walked).toEqual(['10', '11', '12', '13', '14'].map((d) => `2026-10-${d}`));
+      expect(t.state.value.groups!['a']!.reprocessFrom).toBeNull();
+      expect(await uc.execute()).toMatchObject({ reprocessed: 0 });
     });
 
     it('revisita: um dia antigo por tick em rodízio (hoje − 2 … hoje − 30) e warn quando o número mudou', async () => {
