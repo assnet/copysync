@@ -60,6 +60,22 @@ describe('fila de leituras de uso', () => {
     expect(maxInFlight).toBe(1);
   });
 
+  it('telas usam canal próprio na mesma fila: esperam a leitura em voo e o pedido superado de telas é descartado', async () => {
+    const summary = adminUsageService.getSummary({ from: '1' });
+    const old = adminUsageService.getScreens({ from: '1' });
+    const fresh = adminUsageService.getScreens({ from: '2' });
+    await expect(old).rejects.toMatchObject({ code: 'USAGE_READ_SUPERSEDED' });
+    await flush();
+    expect(get).toHaveBeenCalledTimes(1);
+    pending[0].resolve('s');
+    await flush();
+    expect(get.mock.calls[1][0]).toBe('/admin/usage/screens');
+    expect(get.mock.calls[1][1]).toMatchObject({ params: { from: '2' }, timeout: USAGE_READ_TIMEOUT_MS });
+    pending[1].resolve('telas');
+    await expect(Promise.all([summary, fresh])).resolves.toEqual(['s', 'telas']);
+    expect(maxInFlight).toBe(1);
+  });
+
   it('pedido superado no mesmo canal é descartado antes de ir à rede', async () => {
     const first = adminUsageService.getSummary({ from: '1' });
     const second = adminUsageService.getSummary({ from: '2' });

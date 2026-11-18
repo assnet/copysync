@@ -8,7 +8,7 @@ import { serverNow } from '@/services/serverClock';
 import { featureUsageStrings as S } from '@/features/featureUsage/strings';
 import { activeUsageTab, featureKeyFromPath, USAGE_TABS } from '@/features/featureUsage/paths';
 import {
-  DEFAULT_USAGE_FILTERS, parseUsageFilters, toUsageQuery, USAGE_FILTERS_KEY, USAGE_FILTERS_VERSION, withPeriod,
+  DEFAULT_USAGE_FILTERS, parseUsageFilters, toUsageQuery, toUsageSummaryQuery, USAGE_FILTERS_KEY, USAGE_FILTERS_VERSION, withPeriod,
 } from '@/features/featureUsage/rules';
 import type { UsageFilters } from '@/features/featureUsage/types';
 import { useUsageSummary } from '@/features/featureUsage/hooks/useUsageSummary';
@@ -22,8 +22,9 @@ import { ExportSummaryButton } from '@/features/featureUsage/components/ExportSu
 const OverviewTab = lazy(() => import('@/features/featureUsage/components/OverviewTab'));
 const PlansTab = lazy(() => import('@/features/featureUsage/components/PlansTab'));
 const FeatureDetailTab = lazy(() => import('@/features/featureUsage/components/FeatureDetailTab'));
+const ScreensTab = lazy(() => import('@/features/featureUsage/components/ScreensTab'));
 
-const TAB_LABELS = { overview: S.tabs.overview, plans: S.tabs.plans } as const;
+const TAB_LABELS = { overview: S.tabs.overview, plans: S.tabs.plans, screens: S.tabs.screens } as const;
 
 /**
  * Uso dos recursos (super admin): cabeçalho, abas por sub-rota, filtros persistidos (`usage.filters`, escopo `tab`) e
@@ -54,13 +55,16 @@ export function AdminUsagePage() {
 
   // "Hoje" dos presets vem do relógio do servidor; muda o dia, muda a query.
   const query = toUsageQuery(filters, serverNow());
+  // Só o resumo leva o N da recorrência; detalhe, contas e telas usam a query comum.
+  const summaryQuery = toUsageSummaryQuery(filters, serverNow());
 
   const changeFilters = useCallback((next: UsageFilters) => {
     setRangeReset(null);
     setFilters(next);
   }, [setFilters]);
 
-  const summary = useUsageSummary(query, {
+  // Na aba Telas o resumo também é lido (fila: um pedido por vez), para o cruzamento "abriu × usou".
+  const summary = useUsageSummary(summaryQuery, {
     enabled: featureKey === null,
     refreshKey,
     onRangeInvalid: (max) => {
@@ -108,7 +112,7 @@ export function AdminUsagePage() {
           action={(
             <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
               {/* No detalhe o resumo não é lido: sem dado da tela para exportar. */}
-              {featureKey === null && (
+              {featureKey === null && activeTab !== 'screens' && (
                 <ExportSummaryButton summary={summary.data} loading={summary.loading} sort={filters.sort} />
               )}
               {refresh}
@@ -135,6 +139,7 @@ export function AdminUsagePage() {
             onChange={changeFilters}
             maxDays={maxDays}
             accountName={accountNames.nameOf(filters.tenantId)}
+            showRecurring={featureKey === null && activeTab !== 'screens'}
           />
           {rangeReset !== null && (
             <Alert severity="info">{rangeReset.max !== null ? S.rangeReset(rangeReset.max) : S.rangeResetNeutral}</Alert>
@@ -142,7 +147,8 @@ export function AdminUsagePage() {
 
           <Suspense fallback={loading}>
             {featureKey !== null ? <FeatureDetailTab key={featureKey} />
-              : activeTab === 'plans' ? <PlansTab /> : <OverviewTab />}
+              : activeTab === 'plans' ? <PlansTab />
+                : activeTab === 'screens' ? <ScreensTab /> : <OverviewTab />}
           </Suspense>
         </Stack>
       </Box>

@@ -12,11 +12,13 @@ import { useBlur } from '@/features/privacy/PrivacyContext';
 import {
   accountChipLabel, activeFiltersCount, clearUsageFilters, coerceGranularity, granularityOptions, kindLabel, planLabel, presetsWithin,
   productLabel, rangeErrorText, resolvePeriod, toggleKind, USAGE_DAY_GRANULARITY_MAX_DAYS, USAGE_FAMILY_PLANS, USAGE_KINDS, USAGE_PLAN_FAMILIES,
-  USAGE_PRODUCTS, USAGE_TENANT_STATUSES, validateCustomRange, withPeriod, type UsageRangeError,
+  USAGE_PRODUCTS, USAGE_RECURRING_DAYS, USAGE_TENANT_STATUSES, validateCustomRange, withPeriod, type UsageRangeError,
 } from '../rules';
 import { featureUsageStrings as S } from '../strings';
 import { BlurredAccountName } from './BlurredAccountName';
-import type { UsageFilters, UsageGranularity, UsageKind, UsagePeriodPreset, UsagePlan, UsageProduct, UsageTenantStatusFilter } from '../types';
+import type {
+  UsageFilters, UsageGranularity, UsageKind, UsagePeriodPreset, UsagePlan, UsageProduct, UsageRecurringDays, UsageTenantStatusFilter,
+} from '../types';
 
 const f = S.filters;
 
@@ -27,11 +29,13 @@ export interface UsageFiltersBarProps {
   maxDays: number;
   /** Nome da conta filtrada, se já carregado pela lista do detalhe (só em memória). */
   accountName?: string;
+  /** Mostra o N da recorrência (abas que leem o resumo: Visão geral e Por plano). */
+  showRecurring?: boolean;
 }
 
 interface CustomDraft { from: string; to: string }
 
-function PeriodControl({ filters, onChange, maxDays }: Omit<UsageFiltersBarProps, 'accountName'>) {
+function PeriodControl({ filters, onChange, maxDays }: Pick<UsageFiltersBarProps, 'filters' | 'onChange' | 'maxDays'>) {
   const [draft, setDraft] = usePersistedState<CustomDraft>('usage.customDraft', {
     from: filters.from ?? '', to: filters.to ?? '',
   }, { scope: 'tab' });
@@ -228,6 +232,26 @@ function SelectControls({ filters, onChange }: Pick<UsageFiltersBarProps, 'filte
   );
 }
 
+/** N da recorrência (2, 3 ou 5 dias). Persistido com os filtros; não conta como filtro ativo. */
+function RecurringDaysControl({ filters, onChange }: Pick<UsageFiltersBarProps, 'filters' | 'onChange'>) {
+  const r = S.retention;
+  return (
+    <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+      <TextField
+        select
+        size="small"
+        label={r.recurringDays}
+        value={filters.recurringDays}
+        onChange={(e) => onChange({ ...filters, recurringDays: Number(e.target.value) as UsageRecurringDays })}
+        sx={{ minWidth: { xs: '100%', sm: 160 } }}
+      >
+        {USAGE_RECURRING_DAYS.map((n) => <MenuItem key={n} value={n}>{r.recurringOption(n)}</MenuItem>)}
+      </TextField>
+      <HelpTip label={r.recurringDays} text={r.recurringDaysHint} />
+    </Stack>
+  );
+}
+
 /**
  * Chip removível da conta filtrada: nome já carregado ou id curto, sob `Blurred`. Com a flag ligada o chip se anuncia
  * pelo id curto (`aria-label`) e o nome fica fora da árvore acessível.
@@ -254,7 +278,7 @@ export function AccountChip({ tenantId, name, onRemove }: { tenantId: string; na
  * Filtros da tela de uso: período (preset ou personalizado), agrupamento, produto, tipo, plano, status, internas e
  * conta. No celular os controles ficam numa gaveta ("Filtros (n)"). Toda mudança vale na hora.
  */
-export function UsageFiltersBar({ filters, onChange, maxDays, accountName }: UsageFiltersBarProps) {
+export function UsageFiltersBar({ filters, onChange, maxDays, accountName, showRecurring = false }: UsageFiltersBarProps) {
   const theme = useTheme();
   const compact = useMediaQuery(theme.breakpoints.down('md'), { noSsr: true });
   const [open, setOpen] = useState(false);
@@ -294,6 +318,7 @@ export function UsageFiltersBar({ filters, onChange, maxDays, accountName }: Usa
               <PeriodControl filters={filters} onChange={onChange} maxDays={maxDays} />
               <GranularityControl filters={filters} onChange={onChange} />
               <SelectControls filters={filters} onChange={onChange} />
+              {showRecurring && <RecurringDaysControl filters={filters} onChange={onChange} />}
             </Stack>
             <Stack direction="row" spacing={1} sx={{ mt: 3, justifyContent: 'flex-end' }}>
               <Button onClick={() => onChange(clearUsageFilters(filters))} sx={{ minHeight: 44 }}>{f.reset}</Button>
@@ -313,6 +338,7 @@ export function UsageFiltersBar({ filters, onChange, maxDays, accountName }: Usa
       </Stack>
       <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1.5 }}>
         <SelectControls filters={filters} onChange={onChange} />
+        {showRecurring && <RecurringDaysControl filters={filters} onChange={onChange} />}
         {chip}
       </Stack>
     </Stack>

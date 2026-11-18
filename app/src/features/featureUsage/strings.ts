@@ -1,6 +1,9 @@
 import { navigationStrings } from '@/features/navigation/strings';
 import { linkRotationStrings } from '@/features/linkRotation/strings';
 import { planEntitlementsAdminStrings } from '@/features/planEntitlementsAdmin/strings';
+import { tutorialsStrings } from '@/features/tutorials/strings';
+import { plansStrings } from '@/features/plans/strings';
+import { saverStrings } from '@/features/saver/strings';
 import type {
   UsageCoverageReason, UsageFeatureKey, UsageGranularity, UsageKind, UsagePeriodPreset, UsagePlan, UsagePlanFamily,
   UsageProduct, UsageSort, UsageSource, UsageTenantStatus, UsageTenantStatusFilter,
@@ -133,6 +136,7 @@ export const featureUsageStrings = {
     aria: 'Visões do uso dos recursos',
     overview: 'Visão geral',
     plans: 'Por plano',
+    screens: 'Telas',
   },
 
   features,
@@ -323,7 +327,11 @@ export const featureUsageStrings = {
       reach: 'Alcance',
       trend: 'Tendência',
       lastUsed: 'Último uso',
+      adoption: 'Adoção',
+      recurring: 'Recorrência',
+      retention: 'Retenção',
     },
+    adoptionChip: (value: string) => `adoção ${value}`,
     empty: 'Nenhum recurso no recorte.',
   },
 
@@ -359,6 +367,69 @@ export const featureUsageStrings = {
     dataSince: (day: string) => `Dados desde ${day}.`,
     noData: 'Sem dados ainda.',
     retentionDays: (n: number) => `A fonte guarda ${days(n)}.`,
+  },
+
+  /** Adoção, recorrência e retenção (P3). */
+  retention: {
+    adoptionHelp: 'Contas que usaram ÷ contas com direito ao recurso hoje (produto ativo e recurso liberado no plano).',
+    recurringHelp: (n: number) => `Contas que usaram em ${days(n)} distintos ou mais ÷ contas que usaram no período.`,
+    retentionHelp: 'Das contas que usaram no período anterior, quantas usaram de novo neste período.',
+    adoptionOf: (active: string, eligible: string) => `${active} de ${accounts(eligible)} com direito`,
+    recurringOf: (recurring: string, active: string, n: number) => `${recurring} de ${accounts(active)} usaram em ${days(n)} ou mais`,
+    retainedOf: (retained: string, previous: string) => `${retained} de ${accounts(previous)} do período anterior voltaram`,
+    noEligible: 'Nenhuma conta tem direito a este recurso no recorte.',
+    noUse: 'Nenhuma conta usou o recurso no período.',
+    noBase: 'Sem base: nenhuma conta usou no período anterior ou ele começa antes do primeiro dado.',
+    recurringDays: 'Recorrência',
+    recurringOption: (n: number) => `${days(n)} ou mais`,
+    recurringDaysHint: 'Quantos dias distintos de uso no período fazem a conta contar como recorrente.',
+  },
+
+  /** Aba Telas (P3): visitas às telas do menu. Rótulos iguais aos do menu. */
+  screens: {
+    title: 'Telas abertas',
+    subtitle: 'Contas que abriram cada tela do menu no período. Uma marca por conta e dia, não o número de aberturas.',
+    aria: 'Ranking das telas por contas que abriram',
+    tableAria: 'Tabela das telas abertas',
+    tenantsAxis: 'Contas que abriram',
+    barValue: (tenants: string, tenantDays: string) => `${accounts(tenants)} · ${tenantDays} dias-conta`,
+    columns: {
+      screen: 'Tela',
+      product: 'Produto',
+      tenants: 'Contas que abriram',
+      share: 'Do recorte',
+      tenantDays: 'Dias-conta',
+      used: 'Usaram o recurso',
+    },
+    tenantDaysHelp: 'Soma, por conta, dos dias em que ela abriu a tela.',
+    shareHelp: (total: string) => `Contas que abriram ÷ ${accounts(total)} do recorte.`,
+    usedHelp: 'Contas que usaram o recurso desta tela no período, com os filtros atuais. Abrir não é usar: os dois números contam contas diferentes.',
+    usedNone: 'Tela sem um recurso único medido, ou recurso fora dos filtros de tipo.',
+    kindIgnored: 'O filtro de tipo não vale para as telas; produto, plano, status e internas valem.',
+    collectionNone: 'A coleta de visitas ainda não registrou nenhuma tela.',
+    collectionSince: (day: string) => `Visitas coletadas desde ${day}.`,
+    collectionPartial: (day: string) => `A coleta de visitas começou em ${day}: o período escolhido começa antes e os números ficam menores.`,
+    emptyTitle: 'Nenhuma tela aberta neste recorte',
+    emptyDescription: 'Amplie o período ou limpe os filtros. As visitas só são contadas desde o início da coleta.',
+    loading: 'Carregando as telas abertas',
+    loadFailed: 'Não foi possível carregar as telas abertas.',
+    labels: {
+      'view:dashboard': navigationStrings.dashboard,
+      'view:offers': nav.offers,
+      'view:monitoring': nav.monitoring,
+      'view:broadcast-groups': nav.broadcastGroups,
+      'view:link-rotation': linkRotationStrings.menuLabel,
+      'view:storefront': nav.storefront,
+      'view:offer-story': nav.offerStory,
+      'view:offer-hunter': nav.offerHunter,
+      'view:affiliate-credentials': nav.affiliateCredentials,
+      'view:affiliate-tutorials': tutorialsStrings.navLabel,
+      'view:affiliate-plans': plansStrings.menuLabel,
+      'view:saver-groups': saverStrings.menu.groups,
+      'view:saver-settings': saverStrings.menu.settings,
+      'view:saver-plans': saverStrings.menu.plans,
+      'view:settings': nav.settings,
+    },
   },
 
   plansTab: {

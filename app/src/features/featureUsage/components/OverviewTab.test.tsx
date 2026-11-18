@@ -112,6 +112,26 @@ describe('OverviewTab', () => {
     expect(within(table).getAllByRole('row')).toHaveLength(summary.features.length + 1);
   });
 
+  it('P3: tabela com adoção, recorrência e retenção; adoção null mostra "—" com explicação', async () => {
+    const user = userEvent.setup();
+    renderTab(summaryFixture());
+    const region = await ranking();
+    // Na barra só a adoção, com o denominador na dica.
+    expect(within(region).getByLabelText(new RegExp(S.retention.adoptionOf('8', '12')))).toBeInTheDocument();
+    await user.click(within(region).getByRole('button', { name: S.actions.showTable }));
+    const table = within(region).getByRole('table', { name: S.ranking.tableAria });
+    const headers = within(table).getAllByRole('columnheader').map((h) => h.textContent);
+    expect(headers).toEqual(expect.arrayContaining([S.ranking.columns.adoption, S.ranking.columns.recurring, S.ranking.columns.retention]));
+    const gen = within(table).getByRole('link', { name: S.actions.openDetail(label('offer_generator')) }).closest('tr') as HTMLElement;
+    expect(within(gen).getByLabelText(`${S.ranking.columns.adoption}: 67%. ${S.retention.adoptionOf('8', '12')}`)).toBeInTheDocument();
+    expect(within(gen).getByLabelText(`${S.ranking.columns.recurring}: 63%. ${S.retention.recurringOf('5', '8', 3)}`)).toBeInTheDocument();
+    expect(within(gen).getByLabelText(`${S.ranking.columns.retention}: 67%. ${S.retention.retainedOf('4', '6')}`)).toBeInTheDocument();
+    const tg = within(table).getByRole('link', { name: S.actions.openDetail(label('telegram_session')) }).closest('tr') as HTMLElement;
+    const missing = within(tg).getByLabelText(`${S.ranking.columns.adoption}: ${S.measures.noValue}. ${S.retention.noEligible}`);
+    await user.hover(missing);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(S.retention.noEligible);
+  });
+
   it('mais de 12 recursos mostra 12 barras e "ver todos" abre a tabela com todos', async () => {
     const user = userEvent.setup();
     const summary = summaryFixture();

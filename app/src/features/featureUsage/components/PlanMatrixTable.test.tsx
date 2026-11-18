@@ -29,7 +29,7 @@ describe('PlanMatrixTable', () => {
   it.each(['light', 'dark'] as const)('família Afiliados: colunas COPYSYNC_* + sem plano, células "x de y" (%s)', (mode) => {
     const table = renderMatrix('AFFILIATES', mode);
     const cols = headers(table);
-    expect(cols).toHaveLength(5);
+    expect(cols).toHaveLength(7);
     expect(cols[1]).toContain(S.plans.COPYSYNC_LITE);
     expect(cols[1]).toContain(t.planTenants('5'));
     expect(cols[4]).toContain(S.plans.NONE);
@@ -45,13 +45,16 @@ describe('PlanMatrixTable', () => {
   it('família Saver: plano sem conta mostra "—" e não "0%"; denominador de population.byPlan', () => {
     const table = renderMatrix('SAVER');
     const cols = headers(table);
-    expect(cols).toHaveLength(5);
+    expect(cols).toHaveLength(7);
     expect(cols[2]).toContain(t.planTenants('2'));
     expect(cols[4]).toContain(t.planTenants('13'));
     const row = within(table).getByRole('row', { name: new RegExp(S.features.saver_extraction.label) });
     expect(within(row).getAllByText(t.noTenants)).toHaveLength(2);
     const cells = within(row).getAllByRole('cell');
-    expect(cells.map((c) => c.textContent)).toEqual([t.noTenants, expect.stringContaining(t.cell('2', '2')), t.noTenants, expect.stringContaining(t.cell('0', '13'))]);
+    expect(cells.map((c) => c.textContent)).toEqual([
+      t.noTenants, expect.stringContaining(t.cell('2', '2')), t.noTenants, expect.stringContaining(t.cell('0', '13')),
+      '67%', expect.stringMatching(/%$/),
+    ]);
     // "0%" só onde há contas no plano (sem plano: 0 de 13), nunca no plano vazio.
     expect(cells[0].textContent).not.toContain('0%');
     expect(within(row).getByText(t.cell('2', '2'))).toBeInTheDocument();
@@ -69,7 +72,7 @@ describe('PlanMatrixTable', () => {
       </MemoryRouter>,
     );
     const table = screen.getByRole('table');
-    expect(headers(table)).toHaveLength(4);
+    expect(headers(table)).toHaveLength(6);
     // Com uma família só, o seletor some.
     expect(screen.queryByRole('group', { name: t.family })).toBeNull();
   });

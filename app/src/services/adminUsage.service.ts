@@ -1,12 +1,14 @@
 import { apiClient } from './apiClient';
 import type { ApiSuccess } from '@/types/api.types';
-import type { UsageFeatureDetailResponse, UsageQuery, UsageSummary, UsageTenantsPage } from '@/features/featureUsage/types';
+import type {
+  UsageFeatureDetailResponse, UsageQuery, UsageScreensResponse, UsageSummary, UsageTenantsPage,
+} from '@/features/featureUsage/types';
 
 /**
  * Canal de leitura: quem pede no mesmo canal substitui o pedido anterior ainda na fila (resumo da página, tendência
- * da visão geral, detalhe do recurso, lista de contas).
+ * da visão geral, detalhe do recurso, lista de contas, telas abertas).
  */
-export type UsageReadChannel = 'summary' | 'trend' | 'detail' | 'tenants';
+export type UsageReadChannel = 'summary' | 'trend' | 'detail' | 'tenants' | 'screens';
 
 /**
  * Pedido descartado antes de ir à rede: o mesmo canal já tem um pedido mais novo na fila. Não é erro de tela
@@ -124,5 +126,10 @@ export const adminUsageService = {
   getTenants(featureKey: string, query: UsageQuery, cursor?: string | null): Promise<UsageTenantsPage> {
     const params: UsageQuery = cursor ? { ...query, cursor } : { ...query };
     return read('tenants', `/admin/usage/features/${encodeURIComponent(featureKey)}/tenants`, params);
+  },
+
+  /** Telas do menu por contas que abriram (P3). Query comum: o tipo é ignorado pela API; produto e plano valem. */
+  getScreens(query: UsageQuery): Promise<UsageScreensResponse> {
+    return read('screens', '/admin/usage/screens', query);
   },
 };

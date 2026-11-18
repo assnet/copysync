@@ -113,10 +113,13 @@ export interface UsageFeatureItem {
   lastUsedDay: UsageDay | null;
   byKind: UsageKindBreakdown[];
   byPlan: UsagePlanBreakdown[];
-  /** P3. */
+  /** P3. Contas com direito ao recurso hoje (produto ativo + entitlement). `null` no detalhe. */
   eligibleTenants: number | null;
+  /** Contas que usaram ÷ contas com direito (0–1); `null` sem conta com direito (e no detalhe). */
   adoption: number | null;
+  /** Contas com uso em ≥ `recurringDays` dias distintos do período. `null` no detalhe. */
   recurringTenants: number | null;
+  /** Das contas que usaram no período anterior, quantas usaram de novo; `null` sem base (e no detalhe). */
   retainedTenants: number | null;
 }
 
@@ -181,6 +184,8 @@ export interface UsageTenantsPage {
 /** `180d`/`365d` só aparecem quando o teto em vigor (`range.maxDays`) os comporta (agregado diário, P2). */
 export type UsagePeriodPreset = 'today' | '7d' | '30d' | '90d' | '180d' | '365d' | 'custom';
 export type UsageSort = 'tenants' | 'uses' | 'trend';
+/** N da recorrência (contas com uso em ≥ N dias distintos do período). Só 2, 3 ou 5 (a API recusa outro). */
+export type UsageRecurringDays = 2 | 3 | 5;
 
 /**
  * Filtros persistidos (`usage.filters`, escopo `tab`). O período guarda o preset; datas só no `custom`.
@@ -200,7 +205,30 @@ export interface UsageFilters {
   includeInternal: boolean;
   tenantId: string | null;
   sort: UsageSort;
+  /** N da recorrência; só o resumo usa (`toUsageSummaryQuery`). Como a ordenação, não conta como filtro. */
+  recurringDays: UsageRecurringDays;
 }
 
 /** Query enviada à API: todo filtro explícito (`toUsageQuery`). */
 export type UsageQuery = Record<string, string>;
+
+/* ── Telas (P3, `GET /admin/usage/screens`) ────────────────────────── */
+
+/** Tela do menu medida por visita (`view:<chave do menu>`; lista em `screenViews.ts`). */
+export interface UsageScreenItem {
+  key: string;
+  product: UsageProduct;
+  planFamily: UsagePlanFamily;
+  /** Contas distintas que abriram a tela no período (não é número de aberturas). */
+  tenants: number;
+  /** Soma de dias × conta com a tela aberta (uma marca por dia e conta). */
+  tenantDays: number;
+}
+
+export interface UsageScreensResponse {
+  range: UsageRange;
+  /** Primeiro dia com visita registrada (início da coleta); `null` sem nenhuma ainda. */
+  firstDataDay: UsageDay | null;
+  population: { tenants: number };
+  screens: UsageScreenItem[];
+}

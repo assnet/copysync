@@ -3,15 +3,18 @@ import {
   catalogFixture as catalog,
   detailDailyFixture,
   detailFixture,
+  screensFixture,
   summaryDailyFixture,
   summaryFixture,
   summaryFixtureRaw as summaryRaw,
 } from './testFixtures';
 import { sourceState } from './rules';
+import { SCREEN_VIEW_KEYS } from './screenViews';
 import tenantsRaw from '../../../../contracts/feature-usage/feature-tenants.response.json?raw';
 import { featureUsageStrings as S } from './strings';
 import type {
-  UsageFeatureDetail, UsageFeatureItem, UsagePopulation, UsageRange, UsageSummary, UsageTenantItem, UsageTenantsPage, UsageTotals,
+  UsageFeatureDetail, UsageFeatureItem, UsagePopulation, UsageRange, UsageScreenItem, UsageScreensResponse, UsageSummary,
+  UsageTenantItem, UsageTenantsPage, UsageTotals,
 } from './types';
 
 /** Lista de contas de exemplo (`?raw`, como as outras fixtures em `testFixtures.ts`); cópia nova a cada chamada. */
@@ -87,6 +90,13 @@ const tenantItemShape = obj<UsageTenantItem>({
   tenantId: str, tenantName: str, plan: str, status: str, internal: ['boolean'], uses: num, activeDays: num, lastUsedDay: strOrNull,
 });
 const tenantsPageShape = obj<UsageTenantsPage>({ items: arr(tenantItemShape), nextCursor: strOrNull });
+const screenItemShape = obj<UsageScreenItem>({ key: str, product: str, planFamily: str, tenants: num, tenantDays: num });
+const screensShape = obj<UsageScreensResponse>({
+  range: rangeShape,
+  firstDataDay: strOrNull,
+  population: { object: { tenants: num } },
+  screens: arr(screenItemShape),
+});
 
 function leafOf(value: unknown): Leaf | 'other' {
   if (value === null) return 'null';
@@ -144,6 +154,32 @@ describe('contrato do uso dos recursos (fixtures compartilhadas)', () => {
     const page = tenantsFixture();
     expect(page.items.length).toBeGreaterThan(0);
     expect(shapeErrors(page, tenantsPageShape)).toEqual([]);
+  });
+
+  it('as telas de exemplo têm exatamente a forma de UsageScreensResponse, sem conta', () => {
+    const data = screensFixture();
+    expect(data.screens.length).toBeGreaterThan(0);
+    expect(shapeErrors(data, screensShape)).toEqual([]);
+    expect(JSON.stringify(data)).not.toMatch(/tenantId|tenantName/);
+    for (const sc of data.screens) expect(catalog.screenKeys, sc.key).toContain(sc.key);
+  });
+
+  it.each([
+    ['live', summaryFixture, detailFixture],
+    ['daily', summaryDailyFixture, detailDailyFixture],
+  ] as const)('P3 (%s): o resumo traz adoção, recorrência e retenção (adoção/retenção podem ser null); o detalhe os traz null', (_s, summaryOf, detailOf) => {
+    const features = summaryOf().features;
+    expect(features.some((f) => f.adoption !== null && f.eligibleTenants !== null && f.recurringTenants !== null)).toBe(true);
+    expect(features.some((f) => f.adoption === null)).toBe(true);
+    expect(features.some((f) => f.retainedTenants === null)).toBe(true);
+    const { feature } = detailOf();
+    expect([feature.eligibleTenants, feature.adoption, feature.recurringTenants, feature.retainedTenants]).toEqual([null, null, null, null]);
+  });
+
+  it('cada tela medida tem rótulo em strings.ts e a lista do painel é a do catálogo', () => {
+    const labels = S.screens.labels as Record<string, string | undefined>;
+    for (const key of catalog.screenKeys) expect(labels[key], key).toBeTruthy();
+    expect([...SCREEN_VIEW_KEYS].sort()).toEqual([...catalog.screenKeys].sort());
   });
 
   it('o validador acusa campo a mais e campo a menos', () => {

@@ -35,6 +35,7 @@ export default function PlansTab() {
               family={family}
               onFamilyChange={setSaved}
               sort={filters.sort}
+              recurringDays={filters.recurringDays}
             />
           </Stack>
         );

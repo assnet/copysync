@@ -170,7 +170,7 @@ describe('toUsageQuery', () => {
   it('padrão de DEFAULT_USAGE_FILTERS é o do schema da rota (design §5)', () => {
     expect(DEFAULT_USAGE_FILTERS).toEqual({
       preset: '30d', from: null, to: null, granularity: 'day', product: 'all', kinds: ['ACTION', 'AUTOMATIC'],
-      plan: 'all', tenantStatus: 'ACTIVE', includeInternal: false, tenantId: null, sort: 'tenants',
+      plan: 'all', tenantStatus: 'ACTIVE', includeInternal: false, tenantId: null, sort: 'tenants', recurringDays: 3,
     });
   });
 

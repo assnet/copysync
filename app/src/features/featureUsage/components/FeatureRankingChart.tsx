@@ -8,14 +8,16 @@ import { ChartBarBig, Minus, Table2, TrendingDown, TrendingUp } from 'lucide-rea
 import { AppIcon } from '@/components';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { chartColors } from '@/features/opsMetrics/chartColors';
+import { HeaderHint } from '@/features/infraCosts/components/costParts';
 import {
-  USAGE_SORTS, featureLabel, featureUsesTrend, formatCount, formatDay, formatInteger, formatReach, formatTrend,
+  USAGE_SORTS, adoptionCell, featureLabel, recurringCell, retentionCell, featureUsesTrend, formatCount, formatDay, formatInteger, formatReach, formatTrend,
   kindChipLabels, productLabel, rankingSlice, sortFeatures, trendTone,
 } from '../rules';
 import { featureUsageStrings as S } from '../strings';
 import { usageFeaturePath } from '../paths';
-import type { UsageFeatureItem, UsageSort } from '../types';
+import type { UsageFeatureItem, UsageRecurringDays, UsageSort } from '../types';
 import { CoverageChip } from './CoverageChip';
+import { RatioValue } from './RatioValue';
 
 const r = S.ranking;
 type RankingView = 'chart' | 'table';
@@ -93,6 +95,9 @@ function RankingLabel({ feature }: { feature: UsageFeatureItem }) {
           {r.barValue(formatCount(feature.activeTenants), formatCount(feature.uses))}
         </Box>
         <TrendText feature={feature} />
+        {feature.adoption !== null && (
+          <RatioValue cell={{ ...adoptionCell(feature), value: r.adoptionChip(adoptionCell(feature).value) }} label={r.columns.adoption} />
+        )}
         <KindChips feature={feature} />
       </Stack>
     </Stack>
@@ -144,7 +149,7 @@ function RankingRow({ feature, value, max, color }: { feature: UsageFeatureItem;
   );
 }
 
-function RankingTable({ features }: { features: UsageFeatureItem[] }) {
+function RankingTable({ features, recurringDays }: { features: UsageFeatureItem[]; recurringDays: UsageRecurringDays }) {
   const c = r.columns;
   const cell = { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } as const;
   return (
@@ -158,6 +163,9 @@ function RankingTable({ features }: { features: UsageFeatureItem[] }) {
             <TableCell align="right">{c.activeTenants}</TableCell>
             <TableCell align="right">{c.uses}</TableCell>
             <TableCell align="right">{c.reach}</TableCell>
+            <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}><HeaderHint label={c.adoption} hint={S.retention.adoptionHelp} /></TableCell>
+            <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}><HeaderHint label={c.recurring} hint={S.retention.recurringHelp(recurringDays)} /></TableCell>
+            <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}><HeaderHint label={c.retention} hint={S.retention.retentionHelp} /></TableCell>
             <TableCell align="right">{c.trend}</TableCell>
             <TableCell align="right">{c.lastUsed}</TableCell>
           </TableRow>
@@ -178,6 +186,9 @@ function RankingTable({ features }: { features: UsageFeatureItem[] }) {
               <TableCell align="right" sx={cell}>{formatInteger(f.activeTenants)}</TableCell>
               <TableCell align="right" sx={cell}>{formatInteger(f.uses)}</TableCell>
               <TableCell align="right" sx={cell}>{formatReach(f.reach)}</TableCell>
+              <TableCell align="right" sx={cell}><RatioValue cell={adoptionCell(f)} label={c.adoption} /></TableCell>
+              <TableCell align="right" sx={cell}><RatioValue cell={recurringCell(f, recurringDays)} label={c.recurring} /></TableCell>
+              <TableCell align="right" sx={cell}><RatioValue cell={retentionCell(f)} label={c.retention} /></TableCell>
               <TableCell align="right" sx={cell}><TrendText feature={f} /></TableCell>
               <TableCell align="right" sx={cell}>
                 {f.lastUsedDay ? formatDay(f.lastUsedDay, true) : S.measures.never}
@@ -193,16 +204,20 @@ function RankingTable({ features }: { features: UsageFeatureItem[] }) {
 /**
  * Ranking dos recursos (chunk próprio, `lazy`): barras horizontais numa cor só, no máximo 12 + "ver todos" (abre a
  * tabela com todos). Ordenação contas/usos/tendência pelos filtros (persistida com eles); na tendência a barra mostra
- * os usos. Clique na barra ou no nome abre o detalhe. A tabela alternativa tem os mesmos números (acessibilidade).
+ * os usos. Clique na barra ou no nome abre o detalhe. A tabela alternativa tem os mesmos números (acessibilidade) e
+ * as medidas da P3 (adoção, recorrência, retenção, com o denominador no `Tooltip`); a barra mostra só a adoção.
  */
 export default function FeatureRankingChart({
   features,
   sort,
   onSortChange,
+  recurringDays = 3,
 }: {
   features: readonly UsageFeatureItem[];
   sort: UsageSort;
   onSortChange: (sort: UsageSort) => void;
+  /** N da recorrência pedido ao resumo (texto da coluna e do denominador). */
+  recurringDays?: UsageRecurringDays;
 }) {
   const [view, setView] = usePersistedState<RankingView>('usage.rankingView', 'chart', { scope: 'tab', version: 1, deserialize: parseView });
   const sorted = useMemo(() => sortFeatures(features, sort), [features, sort]);
@@ -217,7 +232,7 @@ export default function FeatureRankingChart({
   if (sorted.length === 0) {
     body = <Typography variant="body2" color="text.secondary">{r.empty}</Typography>;
   } else if (asTable) {
-    body = <RankingTable features={sorted} />;
+    body = <RankingTable features={sorted} recurringDays={recurringDays} />;
   } else {
     body = (
       <>

@@ -105,6 +105,7 @@ function OverviewContent({ summary }: { summary: UsageSummary }) {
             features={features}
             sort={filters.sort}
             onSortChange={(sort: UsageSort) => setFilters({ ...filters, sort })}
+            recurringDays={filters.recurringDays}
           />
         </Suspense>
         <Suspense fallback={chartFallback}>

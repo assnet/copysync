@@ -1,8 +1,8 @@
 import { featureUsageStrings as S } from './strings';
 import type {
   UsageCoverageReason, UsageDay, UsageFeatureItem, UsageFeatureKey, UsageFilters, UsageGranularity, UsageKind,
-  UsagePeriodPreset, UsagePlan, UsagePlanFamily, UsageProduct, UsageQuery, UsageSort, UsageSummary,
-  UsageTenantStatusFilter,
+  UsagePeriodPreset, UsagePlan, UsagePlanFamily, UsageProduct, UsageQuery, UsageRecurringDays, UsageScreenItem,
+  UsageSort, UsageSummary, UsageTenantStatusFilter,
 } from './types';
 
 /**
@@ -48,6 +48,8 @@ export const USAGE_FAMILY_PLANS: Record<UsagePlanFamily, Exclude<UsagePlan, 'NON
 export const USAGE_PLANS: UsagePlan[] = [...USAGE_FAMILY_PLANS.AFFILIATES, ...USAGE_FAMILY_PLANS.SAVER, 'NONE'];
 export const USAGE_TENANT_STATUSES: UsageTenantStatusFilter[] = ['ACTIVE', 'SUSPENDED', 'CANCELLED', 'ALL'];
 export const USAGE_SORTS: UsageSort[] = ['tenants', 'uses', 'trend'];
+/** Opções do N da recorrência (as mesmas do schema da API). */
+export const USAGE_RECURRING_DAYS: UsageRecurringDays[] = [2, 3, 5];
 
 /** Padrões iguais aos do schema da rota (`design.md` §5). */
 export const DEFAULT_USAGE_FILTERS: UsageFilters = {
@@ -62,6 +64,7 @@ export const DEFAULT_USAGE_FILTERS: UsageFilters = {
   includeInternal: false,
   tenantId: null,
   sort: 'tenants',
+  recurringDays: 3,
 };
 
 /* ── Datas ─────────────────────────────────────────────────────────── */
@@ -226,6 +229,7 @@ export function parseUsageFilters(raw: unknown, nowMs: number, maxDays: number =
     includeInternal: typeof r.includeInternal === 'boolean' ? r.includeInternal : d.includeInternal,
     tenantId: typeof r.tenantId === 'string' && TENANT_ID_RE.test(r.tenantId) ? r.tenantId : null,
     sort: oneOf(r.sort, USAGE_SORTS, d.sort),
+    recurringDays: (USAGE_RECURRING_DAYS as unknown[]).includes(r.recurringDays) ? (r.recurringDays as UsageRecurringDays) : d.recurringDays,
   };
   const { days } = resolvePeriod(filters, nowMs);
   return { ...filters, granularity: coerceGranularity(filters.granularity, days) };
@@ -247,9 +251,9 @@ export function activeFiltersCount(filters: UsageFilters): number {
   ].filter(Boolean).length;
 }
 
-/** Limpa os filtros mantendo a ordenação do ranking. */
+/** Limpa os filtros mantendo a ordenação do ranking e o N da recorrência (medida, não filtro). */
 export function clearUsageFilters(filters: UsageFilters): UsageFilters {
-  return { ...DEFAULT_USAGE_FILTERS, kinds: [...DEFAULT_USAGE_FILTERS.kinds], sort: filters.sort };
+  return { ...DEFAULT_USAGE_FILTERS, kinds: [...DEFAULT_USAGE_FILTERS.kinds], sort: filters.sort, recurringDays: filters.recurringDays };
 }
 
 /**
@@ -285,6 +289,13 @@ export function toUsageQuery(filters: UsageFilters, nowMs: number): UsageQuery {
   if (filters.plan !== 'all') query.plan = filters.plan;
   if (filters.tenantId) query.tenantId = filters.tenantId;
   return query;
+}
+
+/**
+ * Query do resumo: a comum + `recurringDays` (só o resumo aceita; detalhe, contas e telas usam `toUsageQuery`).
+ */
+export function toUsageSummaryQuery(filters: UsageFilters, nowMs: number): UsageQuery {
+  return { ...toUsageQuery(filters, nowMs), recurringDays: String(filters.recurringDays) };
 }
 
 /* ── Planos e famílias ─────────────────────────────────────────────── */
@@ -671,4 +682,107 @@ export function summaryToCsv(summary: Pick<UsageSummary, 'features'>, sort: Usag
 /** Nome do arquivo do CSV pelo período da resposta. */
 export function summaryCsvFileName(range: Pick<UsageSummary['range'], 'from' | 'to'>): string {
   return S.csv.fileName(range.from, range.to);
+}
+
+/* ── Adoção, recorrência e retenção (P3) ───────────────────────────── */
+
+/** Contas recorrentes ÷ contas que usaram; `null` sem uso no período ou sem o dado (detalhe). */
+export function recurringShare(f: Pick<UsageFeatureItem, 'recurringTenants' | 'activeTenants'>): number | null {
+  if (f.recurringTenants === null || f.activeTenants <= 0) return null;
+  return f.recurringTenants / f.activeTenants;
+}
+
+/** Contas que voltaram ÷ contas do período anterior; `null` sem base (sem anterior ou anterior sem conta). */
+export function retentionShare(f: Pick<UsageFeatureItem, 'retainedTenants' | 'activeTenantsPrevious'>): number | null {
+  if (f.retainedTenants === null || f.activeTenantsPrevious === null || f.activeTenantsPrevious <= 0) return null;
+  return f.retainedTenants / f.activeTenantsPrevious;
+}
+
+/** Medida P3 pronta para a célula: valor ("67%" ou "—") e dica com o denominador ou o motivo do "—". */
+export interface UsageRatioCell {
+  value: string;
+  hint: string;
+  missing: boolean;
+}
+
+export function adoptionCell(f: Pick<UsageFeatureItem, 'adoption' | 'activeTenants' | 'eligibleTenants'>): UsageRatioCell {
+  if (f.adoption === null || f.eligibleTenants === null) return { value: S.measures.noValue, hint: S.retention.noEligible, missing: true };
+  return {
+    value: formatReach(f.adoption),
+    hint: S.retention.adoptionOf(formatInteger(f.activeTenants), formatInteger(f.eligibleTenants)),
+    missing: false,
+  };
+}
+
+export function recurringCell(f: Pick<UsageFeatureItem, 'recurringTenants' | 'activeTenants'>, recurringDays: UsageRecurringDays): UsageRatioCell {
+  const share = recurringShare(f);
+  if (share === null || f.recurringTenants === null) return { value: S.measures.noValue, hint: S.retention.noUse, missing: true };
+  return {
+    value: formatReach(share),
+    hint: S.retention.recurringOf(formatInteger(f.recurringTenants), formatInteger(f.activeTenants), recurringDays),
+    missing: false,
+  };
+}
+
+export function retentionCell(f: Pick<UsageFeatureItem, 'retainedTenants' | 'activeTenantsPrevious'>): UsageRatioCell {
+  const share = retentionShare(f);
+  if (share === null || f.retainedTenants === null || f.activeTenantsPrevious === null) {
+    return { value: S.measures.noValue, hint: S.retention.noBase, missing: true };
+  }
+  return {
+    value: formatReach(share),
+    hint: S.retention.retainedOf(formatInteger(f.retainedTenants), formatInteger(f.activeTenantsPrevious)),
+    missing: false,
+  };
+}
+
+/* ── Telas (P3) ────────────────────────────────────────────────────── */
+
+/**
+ * Recurso medido por trás de cada tela, para o cruzamento "abriu × usou". Telas sem um recurso único (painel,
+ * grupos de disparo, tutoriais, planos, configurações) ficam de fora.
+ */
+export const SCREEN_FEATURE: Readonly<Record<string, UsageFeatureKey>> = {
+  'view:offers': 'offer_generator',
+  'view:monitoring': 'group_monitoring',
+  'view:link-rotation': 'link_rotation',
+  'view:storefront': 'storefront',
+  'view:offer-story': 'offer_story',
+  'view:offer-hunter': 'offer_hunter',
+  'view:affiliate-credentials': 'affiliate_credentials',
+  'view:saver-groups': 'saver_extraction',
+};
+
+/** Rótulo da tela (o mesmo do menu); chave desconhecida (API mais nova) aparece crua. */
+export function screenLabel(key: string): string {
+  return (S.screens.labels as Record<string, string>)[key] ?? key;
+}
+
+/**
+ * Telas do recorte de produto e plano (o tipo não vale aqui), ordenadas por contas que abriram (não por aberturas),
+ * depois dias-conta e rótulo. A API já recorta; isto é defesa e ordem estável.
+ */
+export function visibleScreens<T extends Pick<UsageScreenItem, 'key' | 'product' | 'planFamily' | 'tenants' | 'tenantDays'>>(
+  screens: readonly T[],
+  filters: Pick<UsageFilters, 'plan' | 'product'>,
+): T[] {
+  return screens
+    .filter((sc) => (filters.product === 'all' || sc.product === filters.product) && featureMatchesPlan(sc, filters.plan))
+    .sort((a, b) => b.tenants - a.tenants || b.tenantDays - a.tenantDays
+      || screenLabel(a.key).localeCompare(screenLabel(b.key), 'pt-BR'));
+}
+
+/** Contas que usaram o recurso da tela no resumo carregado; `null` sem recurso ligado ou fora do recorte. */
+export function screenFeatureUse(screenKey: string, features: readonly Pick<UsageFeatureItem, 'key' | 'activeTenants'>[] | null): { feature: UsageFeatureKey; activeTenants: number } | null {
+  const feature = SCREEN_FEATURE[screenKey];
+  if (!feature || !features) return null;
+  const item = features.find((f) => f.key === feature);
+  return item ? { feature, activeTenants: item.activeTenants } : null;
+}
+
+/** Linha da coleta: sem dado ainda, período que começa antes do primeiro dia coletado, ou "coleta desde". */
+export function screensCollectionNotice(input: { firstDataDay: UsageDay | null; range: { from: UsageDay } }): string {
+  if (!input.firstDataDay) return S.screens.collectionNone;
+  const since = formatDay(input.firstDataDay, true);
+  return input.range.from < input.firstDataDay ? S.screens.collectionPartial(since) : S.screens.collectionSince(since);
 }

@@ -6,7 +6,8 @@ import { renderWithTheme } from '@/test/renderWithTheme';
 import { serviceUpdatingStrings } from '@/components/serviceUpdatingStrings';
 import { AdminUsagePage } from '@/pages/admin/AdminUsagePage';
 import { adminUsageService } from '@/services/adminUsage.service';
-import { USAGE_FEATURE_ROUTE, USAGE_PATH, USAGE_PLANS_PATH } from '../paths';
+import { USAGE_FEATURE_ROUTE, USAGE_PATH, USAGE_PLANS_PATH, USAGE_SCREENS_PATH } from '../paths';
+import { screensFixture } from '../testFixtures';
 import { featureUsageStrings as S } from '../strings';
 import { summaryFixture } from '../testFixtures';
 import type { UsageSummary } from '../types';
@@ -21,11 +22,12 @@ vi.mock('@/services/serverClock', async (importOriginal) => ({
 // O x-charts não carrega no jsdom (ESM do @mui/material/styles): o gráfico vira um marcador; os números estão nos rótulos e nas tabelas.
 vi.mock('@mui/x-charts/LineChart', () => ({ LineChart: () => <div data-testid="line-chart" /> }));
 vi.mock('@/services/adminUsage.service', () => ({
-  adminUsageService: { getSummary: vi.fn(), getDetail: vi.fn(), getTenants: vi.fn() },
+  adminUsageService: { getSummary: vi.fn(), getDetail: vi.fn(), getTenants: vi.fn(), getScreens: vi.fn() },
 }));
 
 const getSummary = vi.mocked(adminUsageService.getSummary);
 const getDetail = vi.mocked(adminUsageService.getDetail);
+const getScreens = vi.mocked(adminUsageService.getScreens);
 
 function renderAt(path: string, mode: 'light' | 'dark' = 'light') {
   return renderWithTheme(
@@ -33,6 +35,7 @@ function renderAt(path: string, mode: 'light' | 'dark' = 'light') {
       <Routes>
         <Route path={USAGE_PATH} element={<AdminUsagePage />} />
         <Route path={USAGE_PLANS_PATH} element={<AdminUsagePage />} />
+        <Route path={USAGE_SCREENS_PATH} element={<AdminUsagePage />} />
         <Route path={USAGE_FEATURE_ROUTE} element={<AdminUsagePage />} />
       </Routes>
     </MemoryRouter>,
@@ -51,6 +54,7 @@ beforeEach(() => {
   window.sessionStorage.clear();
   getSummary.mockResolvedValue(summaryFixture());
   getDetail.mockReturnValue(new Promise(() => {}));
+  getScreens.mockResolvedValue(screensFixture());
 });
 
 afterEach(() => {
@@ -59,6 +63,27 @@ afterEach(() => {
 });
 
 describe('AdminUsagePage', () => {
+  it('aba Telas pela URL: lê as telas sem o N da recorrência e não mostra o seletor nem o CSV', async () => {
+    renderAt(USAGE_SCREENS_PATH);
+    expect(await screen.findByRole('figure', { name: S.screens.aria })).toBeInTheDocument();
+    expect(screen.getAllByRole('tab', { name: S.tabs.screens, selected: true }).length).toBeGreaterThan(0);
+    expect(getScreens).toHaveBeenCalledWith({
+      from: '2026-10-19', to: '2026-11-17', granularity: 'day', kind: 'ACTION,AUTOMATIC', tenantStatus: 'ACTIVE', includeInternal: 'false',
+    });
+    expect(screen.queryByLabelText(S.retention.recurringDays)).toBeNull();
+    expect(screen.queryByRole('button', { name: S.csv.button })).toBeNull();
+  });
+
+  it('o N da recorrência vai só ao resumo e fica salvo com os filtros', async () => {
+    const user = userEvent.setup();
+    renderAt(USAGE_PATH);
+    await screen.findByText(S.kpis.activeTenants.value('9', '15'));
+    await user.click(screen.getByLabelText(S.retention.recurringDays));
+    await user.click(await screen.findByRole('option', { name: S.retention.recurringOption(5) }));
+    await waitFor(() => expect(getSummary).toHaveBeenLastCalledWith(expect.objectContaining({ recurringDays: '5' })));
+    expect(JSON.parse(window.sessionStorage.getItem('ui.usage.filters') ?? '{}').d.recurringDays).toBe(5);
+  });
+
   it('abre a visão geral com os três indicadores e envia todos os filtros explícitos', async () => {
     renderAt(USAGE_PATH);
     expect(await screen.findByText(S.kpis.activeTenants.value('9', '15'))).toBeInTheDocument();
@@ -70,6 +95,7 @@ describe('AdminUsagePage', () => {
     expect(within(screen.getByRole('group', { name: S.kpis.aria })).queryByText(/^Usos$/)).toBeNull();
     expect(getSummary).toHaveBeenCalledWith({
       from: '2026-10-19', to: '2026-11-17', granularity: 'day', kind: 'ACTION,AUTOMATIC', tenantStatus: 'ACTIVE', includeInternal: 'false',
+      recurringDays: '3',
     });
     expect(screen.getByText(/dados desde 02\/03\/2026/)).toBeInTheDocument();
   });

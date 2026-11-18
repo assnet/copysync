@@ -6,12 +6,13 @@ import { Link as RouterLink } from 'react-router-dom';
 import { HelpTip } from '@/features/opsMetrics/components/HelpTip';
 import { HeaderHint, srOnly, StickyFirstColumn } from '@/features/infraCosts/components/costParts';
 import {
-  buildPlanMatrix, featureLabel, formatInteger, formatPlanCell, formatReach, planLabel,
+  adoptionCell, buildPlanMatrix, featureLabel, recurringCell, formatInteger, formatPlanCell, formatReach, planLabel,
   type PlanMatrixCell,
 } from '../rules';
 import { usageFeaturePath } from '../paths';
 import { featureUsageStrings as S } from '../strings';
-import type { UsagePlanFamily, UsageSort, UsageSummary } from '../types';
+import type { UsagePlanFamily, UsageRecurringDays, UsageSort, UsageSummary } from '../types';
+import { RatioValue } from './RatioValue';
 
 const t = S.plansTab;
 
@@ -22,6 +23,8 @@ interface PlanMatrixTableProps {
   family: UsagePlanFamily;
   onFamilyChange: (family: UsagePlanFamily) => void;
   sort: UsageSort;
+  /** N da recorrência pedido ao resumo. */
+  recurringDays?: UsageRecurringDays;
 }
 
 /** Célula: "2 de 5" + alcance e usos; plano sem conta = "—" com dica (nunca "0%"). */
@@ -62,10 +65,12 @@ function MatrixCell({ feature, cell }: { feature: string; cell: PlanMatrixCell }
 
 /**
  * Recurso × plano de uma família por vez: contas que usaram ÷ contas do plano (denominador em
- * `population.byPlan` da mesma família) e usos. Primeira coluna fixa; nenhuma linha soma as famílias.
+ * `population.byPlan` da mesma família) e usos, mais adoção e recorrência do recurso (P3). Primeira coluna fixa;
+ * nenhuma linha soma as famílias.
  */
-export function PlanMatrixTable({ summary, families, family, onFamilyChange, sort }: PlanMatrixTableProps) {
+export function PlanMatrixTable({ summary, families, family, onFamilyChange, sort, recurringDays = 3 }: PlanMatrixTableProps) {
   const matrix = buildPlanMatrix(summary, family, sort);
+  const c = S.ranking.columns;
   const familyName = S.planFamilies[family];
   return (
     <Card>
@@ -98,7 +103,7 @@ export function PlanMatrixTable({ summary, families, family, onFamilyChange, sor
           <Typography variant="body2" color="text.secondary">{t.empty}</Typography>
         ) : (
           <StickyFirstColumn>
-            <Table size="small" aria-label={t.aria(familyName)} sx={{ minWidth: 120 + matrix.columns.length * 120 }}>
+            <Table size="small" aria-label={t.aria(familyName)} sx={{ minWidth: 120 + (matrix.columns.length + 2) * 120 }}>
               <TableHead>
                 <TableRow>
                   <TableCell component="th" scope="col">{t.featureColumn}</TableCell>
@@ -112,11 +117,19 @@ export function PlanMatrixTable({ summary, families, family, onFamilyChange, sor
                       </Typography>
                     </TableCell>
                   ))}
+                  {/* Medidas do recurso (não por plano): o direito e a recorrência vêm do recurso inteiro. */}
+                  <TableCell component="th" scope="col" align="right" sx={{ whiteSpace: 'nowrap' }}>
+                    <HeaderHint label={c.adoption} hint={S.retention.adoptionHelp} />
+                  </TableCell>
+                  <TableCell component="th" scope="col" align="right" sx={{ whiteSpace: 'nowrap' }}>
+                    <HeaderHint label={c.recurring} hint={S.retention.recurringHelp(recurringDays)} />
+                  </TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {matrix.rows.map((row) => {
                   const name = featureLabel(row.key);
+                  const feature = summary.features.find((f) => f.key === row.key);
                   return (
                     <TableRow key={row.key} hover>
                       <TableCell component="th" scope="row" sx={{ minWidth: 120, maxWidth: 200 }}>
@@ -125,6 +138,12 @@ export function PlanMatrixTable({ summary, families, family, onFamilyChange, sor
                         </Link>
                       </TableCell>
                       {row.cells.map((cell) => <MatrixCell key={cell.plan} feature={name} cell={cell} />)}
+                      <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                        {feature && <RatioValue cell={adoptionCell(feature)} label={c.adoption} />}
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                        {feature && <RatioValue cell={recurringCell(feature, recurringDays)} label={c.recurring} />}
+                      </TableCell>
                     </TableRow>
                   );
                 })}
