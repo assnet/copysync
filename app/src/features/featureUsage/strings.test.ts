@@ -17,3 +17,10 @@ describe('contagens no singular para 1', () => {
     expect(S.periodErrors.tooLong(366)).toBe('Escolha até 366 dias.');
   });
 });
+
+describe('motivos de cobertura', () => {
+  it('DROPPED (uso descartado por excesso momentâneo) tem texto próprio', () => {
+    expect(S.coverageReasons.DROPPED).toMatch(/excesso momentâneo/);
+    expect(new Set(Object.values(S.coverageReasons)).size).toBe(Object.keys(S.coverageReasons).length);
+  });
+});

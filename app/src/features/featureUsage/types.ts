@@ -38,7 +38,8 @@ export type UsageCoverageReason =
   | 'AI_HEADLINE_ONLY'
   | 'MIXED_EVENTS'
   | 'MIXED_TRIGGERS'
-  | 'TOKEN_CHANGE_ONLY';
+  | 'TOKEN_CHANGE_ONLY'
+  | 'DROPPED';
 export type UsageGranularity = 'day' | 'week' | 'month';
 export type UsageSource = 'live' | 'daily';
 export type UsageTenantStatus = 'ACTIVE' | 'SUSPENDED' | 'CANCELLED';

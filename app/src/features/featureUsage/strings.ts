@@ -87,6 +87,7 @@ const coverageReasons: Record<UsageCoverageReason, string> = {
   MIXED_EVENTS: 'Soma credenciais e etiquetas salvas.',
   MIXED_TRIGGERS: 'Conta como automático, mas inclui os disparados à mão: a fonte não separa os dois.',
   TOKEN_CHANGE_ONLY: 'Conta só quando a extensão troca o token: o uso real é maior.',
+  DROPPED: 'Parte do uso não foi registrada por excesso momentâneo: o número real pode ser maior.',
 };
 
 const statuses: Record<UsageTenantStatus, string> = {
