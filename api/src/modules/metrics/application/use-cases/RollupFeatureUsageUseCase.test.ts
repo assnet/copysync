@@ -442,8 +442,15 @@ describe('RollupFeatureUsageUseCase', () => {
       expect(t.replaced.filter((x) => x.keys.includes('a')).map((x) => x.day)).toEqual(['2026-11-11', '2026-11-12', '2026-11-14', '2026-11-15', '2026-11-16', '2026-11-17', '2026-11-15']);
       expect(t.state.value.retryQueue).toEqual([{ day: '2026-11-13', group: 'a' }]);
       expect(r2).toMatchObject({ failedGroups: 0, retryQueue: 1 });
-      // Reprocesso falho não tira o frescor do grupo (só a janela recente e o backfill tiram)
       expect(t.state.value.groups!['a']!.failureStreak).toBe(4);
+      // Grupo com (dia, grupo) pendente no reprocesso não fica fresco, mesmo com a janela recente boa
+      expect(t.state.value.groups!['a']!.lastSuccessAt).toBeNull();
+      expect(t.state.value.groups!['b']!.lastSuccessAt).toEqual(NOW);
+      // Reprocesso vazio: o grupo volta a ficar fresco
+      t.reader.read.mockImplementation(realRead);
+      await uc.execute();
+      expect(t.state.value.retryQueue).toEqual([]);
+      expect(t.state.value.groups!['a']!.lastSuccessAt).toEqual(NOW);
     });
 
     it('grupo A sempre falhando não impede B de avançar a marca, o frescor nem o backfill/marco de B', async () => {

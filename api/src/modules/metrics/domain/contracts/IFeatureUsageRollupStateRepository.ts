@@ -17,8 +17,8 @@ export interface FeatureUsageGroupState {
   /** Ticks seguidos com falha do grupo (janela recente ou reprocesso); `error` no log a partir de 3. */
   failureStreak: number;
   /**
-   * Frescor do grupo: último tick em que a janela recente do grupo chegou a hoje sem falha e o backfill dele não
-   * falhou. A leitura do agregado usa o menor frescor dos grupos dos recursos pedidos.
+   * Frescor do grupo: último tick em que a janela recente do grupo chegou a hoje sem falha, sem (dia, grupo) pendente
+   * no reprocesso e sem falha no backfill dele. A leitura do agregado usa o menor frescor dos grupos dos recursos pedidos.
    */
   lastSuccessAt: Date | null;
   /** Backfill do grupo: dia mais recente ainda a consolidar (anda para trás); `null` = não começou. */

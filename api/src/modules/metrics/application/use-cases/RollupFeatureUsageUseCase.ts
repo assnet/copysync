@@ -149,7 +149,8 @@ const emptyGroup = (): FeatureUsageGroupState => ({
  *    retenção). O marco é gravado quando todos os grupos concluíram ou os que falham 3+ vezes seguidas ficam
  *    registrados como pendentes (`backfillPendingKeys`): a leitura trata os recursos deles como não cobertos;
  * 5. retenção de 400 dias, 1×/24 h (lease que não é solto).
- * Frescor: `groups[].lastSuccessAt` quando a janela do grupo chegou a hoje sem falha e o backfill dele não falhou;
+ * Frescor: `groups[].lastSuccessAt` quando a janela do grupo chegou a hoje sem falha, o grupo não tem item pendente no
+ * reprocesso e o backfill dele não falhou;
  * `lastSuccessAt` (global) só quando o tick inteiro concluiu (nenhum grupo falho na janela e backfill não `failed`).
  * Nunca grava recurso `RECORDED` nem dia a partir do corte gravado pelo contador: os cortes são relidos antes de cada
  * gravação e o `replaceDay` ainda confere o corte no SQL, na mesma transação.
@@ -292,8 +293,10 @@ export class RollupFeatureUsageUseCase {
     for (const [id, g] of Object.entries(groups)) {
       if (failedNow.has(id)) g.failureStreak += 1;
       else g.failureStreak = 0;
+      // Fresco só sem falha na janela, sem (dia, grupo) pendente no reprocesso e sem falha no backfill do grupo
+      const pending = queue.some((i) => i.group === id);
       const backfillFailed = backfill.failedGroups.has(id);
-      if (!recentFailed.has(id) && !backfillFailed && windowLast === today) g.lastSuccessAt = now;
+      if (!recentFailed.has(id) && !pending && !backfillFailed && windowLast === today) g.lastSuccessAt = now;
       if (g.failureStreak >= FEATURE_USAGE_FAILURE_STREAK_ALERT) {
         this.alert(
           { group: id, failureStreak: g.failureStreak, days: queue.filter((i) => i.group === id).map((i) => i.day) },
