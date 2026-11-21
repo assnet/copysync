@@ -229,6 +229,26 @@ em São Paulo) e, em janela noturna, para o trecho após a meia-noite (dia de on
 sem `scheduledAt` respeita a janela e os dias do `offer_generator_configs` do tenant; com `scheduledAt`
 explícito ignora a janela. Padrão (0–1440, 127) = sem filtro. Ver `docs/grupos-de-disparo-e-horario.md`.
 
+### 2.2.3 Monitoramento desligado: perde a fila
+
+Decisão de produto (2026-11-21): desligar o monitoramento de uma sessão **descarta** os envios dele que ainda estão
+na fila. Religar **não** reenvia (fila parada custava processamento e atrasava quem está ligado). Antes, desligar só
+parava a captura e a fila acumulada continuava saindo por até horas (caso real: 26 envios em 34 min depois de
+desligar). Regra: todo envio `QUEUED` de oferta `origin MONITORING` cuja configuração de origem tem
+`enabled = false` vira **`SKIPPED` / `MONITOR_DISABLED`** (`domain/offerDispatchReasons.ts`), vencido ou futuro,
+de oferta em envio ou pausada. Configuração de origem = `offers.monitorConfigId` ou, em oferta antiga sem ele, a
+configuração da sessão que envia (mesma regra da janela de postagem). Dois pontos:
+
+1. **No claim**: o `NOT EXISTS` da janela do monitoramento também barra configuração desligada
+   (`NOT g."enabled" OR NOT <janela aberta>`). Nada sai entre o desligar e o lote.
+2. **No tick**: `skipForDisabledMonitors(500)` roda logo depois do `skipForDeletedSessions` (mesma CTE com
+   `FOR UPDATE OF d SKIP LOCKED`). Fecha no máximo um tick depois do desligar.
+
+Não fazer: guardar a fila para reenviar ao religar; fechar no use case de salvar (captura em processamento no
+instante do desligar enfileiraria depois e escaparia; o lote pega). `SENDING` não é tocado. Oferta sem envio
+aberto fecha pelo sweep de órfãs. O painel avisa ao desligar (`enabledOffQueue`) e a fila mostra "O monitoramento
+foi desligado antes do envio".
+
 ## 3. Leitura: `GET /campaigns/send-queue`
 
 ```json

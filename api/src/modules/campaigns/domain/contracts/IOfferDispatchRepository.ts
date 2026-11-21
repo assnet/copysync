@@ -96,6 +96,13 @@ export interface IOfferDispatchRepository {
    */
   skipForDeletedSessions(limit: number): Promise<number>;
   /**
+   * Worker, cross-tenant: fecha em lote (SKIPPED/MONITOR_DISABLED) até `limit` QUEUED de oferta do
+   * monitoramento cuja configuração de origem está desligada (`enabled = false`), de qualquer horário e
+   * de oferta SENDING ou PAUSED. Desligar perde a fila: religar não reenvia. O claim também ignora esses
+   * envios (nada sai entre o desligar e o lote). A oferta é finalizada pelo sweep de órfãs.
+   */
+  skipForDisabledMonitors(limit: number): Promise<number>;
+  /**
    * Sessão fora do ar na vez do envio: SENDING (com o token da posse, oferta SENDING/PAUSED) →
    * QUEUED com `notBefore = retryAt` e `waitingSessionSince` (mantém o primeiro). O claim dá prioridade a ele e não abre
    * outro envio da sessão antes: a ordem se mantém. false = posse perdida. `waitReason` vai para

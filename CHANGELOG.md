@@ -9,6 +9,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Unreleased]
 
+### Fixed — app 0.127.1 / api 0.104.1 — Monitoramento desligado descarta a fila
+
+#### app / api ([`docs/fila-de-envio.md`](docs/fila-de-envio.md) §2.2.3)
+
+- **`PrismaOfferDispatchRepository.ts`**, **`ProcessDueOfferDispatchesUseCase.ts`** — envios do monitoramento continuavam saindo depois de desligar (claim não olhava `enabled`). Claim barra configuração desligada e o lote `skipForDisabledMonitors` fecha a fila como `SKIPPED/MONITOR_DISABLED`; religar não reenvia.
+- **`MonitoringSettingsForm.tsx`**, **`strings.ts`** — aviso ao desligar e rótulo do motivo na fila.
+
 ### Added — app 0.127.0 / api 0.104.0 — Uso dos recursos (P3, super admin)
 
 #### app / api ([`docs/uso-dos-recursos.md`](docs/uso-dos-recursos.md))

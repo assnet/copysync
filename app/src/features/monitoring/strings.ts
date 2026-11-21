@@ -212,6 +212,7 @@ export const monitoringStrings = {
     enabledTitle: 'Monitoramento ativo',
     enabledOn: 'Capturando ofertas dos grupos monitorados e enviando nos grupos de disparo.',
     enabledOff: 'Nada é capturado nem enviado por esta sessão até você ligar.',
+    enabledOffQueue: 'Ao salvar desligado, as ofertas que estão na fila desta sessão são descartadas e não voltam quando você ligar de novo.',
     masterOn: 'Ligado',
     masterOff: 'Desligado',
     enabledMissingGroups: 'Escolha ao menos um grupo monitorado e um grupo de disparo para o monitoramento funcionar.',

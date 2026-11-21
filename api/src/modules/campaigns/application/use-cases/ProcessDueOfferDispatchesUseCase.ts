@@ -111,6 +111,9 @@ export class ProcessDueOfferDispatchesUseCase {
     // Sessão excluída não volta: fecha em lote em vez de esperar OFFLINE_MAX_WAIT_MS (o claim já a ignora)
     const dropped = await dispatches.skipForDeletedSessions(DELETED_SESSION_SWEEP_LIMIT);
     if (dropped > 0) logger.info({ dropped }, 'offer dispatches of deleted sessions skipped');
+    // Monitoramento desligado perde a fila: fecha em lote (o claim já não os pega)
+    const disabled = await dispatches.skipForDisabledMonitors(DELETED_SESSION_SWEEP_LIMIT);
+    if (disabled > 0) logger.info({ disabled }, 'offer dispatches of disabled monitors skipped');
     if (signal?.aborted) return { processed: 0 };
     if (ctx.concurrency === 2) return this.executeConcurrent(signal);
     const due = await dispatches.claimDue(now, this.deps.batchSize ?? DISPATCH_BATCH_SIZE);

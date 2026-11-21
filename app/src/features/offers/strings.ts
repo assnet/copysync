@@ -409,6 +409,7 @@ export const offerStrings = {
       SESSION_NOT_CONNECTED: 'Sessão desconectada',
       SESSION_NOT_FOUND: 'Sessão removida',
       SESSION_DELETED: 'A sessão foi excluída antes do envio',
+      MONITOR_DISABLED: 'O monitoramento foi desligado antes do envio',
       NOT_FOUND: 'O grupo não existe mais',
       OFFER_NOT_FOUND: 'A oferta não existe mais',
       MESSAGE_SEND_FAILED: 'O envio falhou',

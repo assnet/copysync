@@ -47,7 +47,8 @@ Tabelas: `group_monitor_configs` (uma por sessão), `monitored_groups`, `broadca
 3. **Processamento** (no tick do `OfferDispatchWorker`, flag `GROUP_MONITORING_ENABLED`): uma
    captura por vez, até 3 por tick e 10 s de orçamento; `PROCESSING` parado há 5 min é
    reivindicado de novo. Para cada captura:
-   - monitoramento desligado → `SKIPPED/MONITOR_DISABLED`; sem grupo de disparo →
+   - monitoramento desligado → `SKIPPED/MONITOR_DISABLED` (e os envios já na fila também são descartados,
+     sem reenvio ao religar: `fila-de-envio.md` §2.2.3); sem grupo de disparo →
      `NO_BROADCAST_GROUPS`; plano rebaixado → envia só até o limite atual;
    - cada link do texto (com protocolo, ou qualquer `dominio.tld/caminho` sem protocolo, inteiro,
      com subdomínio: `www.amazon…`, `bit.ly/…`) passa pelo `BuildTenantAffiliateLinkUseCase`: link

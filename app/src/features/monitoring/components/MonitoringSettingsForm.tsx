@@ -130,21 +130,28 @@ function MasterToggleCard({ enabled, missingGroups, onChange }: MasterProps) {
           sx={{ flexShrink: 0 }}
         />
       </Box>
-      {enabled && missingGroups && (
-        <Box
-          role="note"
-          sx={{
-            ...toneSurface(theme, 'warning'),
-            display: 'flex', alignItems: 'flex-start', gap: 1, mt: 2, px: 1.5, py: 1,
-            border: '1px solid', borderRadius: INNER_RADIUS,
-          }}
-        >
-          <Box component="span" aria-hidden sx={{ display: 'inline-flex', mt: '0.1em', flexShrink: 0 }}>
-            <AppIcon icon={AlertTriangle} size="inline" />
-          </Box>
-          <Typography variant="body2" sx={{ color: 'inherit', fontWeight: 500 }}>{t.enabledMissingGroups}</Typography>
-        </Box>
-      )}
+      {enabled && missingGroups && <WarningNote>{t.enabledMissingGroups}</WarningNote>}
+      {/* Desligar descarta a fila no servidor (MONITOR_DISABLED): avisa antes de salvar */}
+      {!enabled && <WarningNote>{t.enabledOffQueue}</WarningNote>}
+    </Box>
+  );
+}
+
+function WarningNote({ children }: { children: ReactNode }) {
+  const theme = useTheme();
+  return (
+    <Box
+      role="note"
+      sx={{
+        ...toneSurface(theme, 'warning'),
+        display: 'flex', alignItems: 'flex-start', gap: 1, mt: 2, px: 1.5, py: 1,
+        border: '1px solid', borderRadius: INNER_RADIUS,
+      }}
+    >
+      <Box component="span" aria-hidden sx={{ display: 'inline-flex', mt: '0.1em', flexShrink: 0 }}>
+        <AppIcon icon={AlertTriangle} size="inline" />
+      </Box>
+      <Typography variant="body2" sx={{ color: 'inherit', fontWeight: 500 }}>{children}</Typography>
     </Box>
   );
 }

@@ -142,6 +142,7 @@ export class InMemoryOfferDispatchRepository implements IOfferDispatchRepository
       .filter((d) => d.status === 'QUEUED' && d.notBefore <= now)
       .filter((d) => !d.sessionId || (!excluded.has(d.sessionId) && !this.deletedSessionIds.has(d.sessionId)))
       .filter((d) => this.offers.items.find((o) => o.id === d.offerId)?.status === 'SENDING')
+      .filter((d) => { const o = this.offers.items.find((x) => x.id === d.offerId); return !(o?.origin === 'MONITORING' && o.monitorConfigId && this.disabledMonitorConfigIds.has(o.monitorConfigId)); })
       .slice(0, limit);
     for (const d of due) Object.assign(d, { status: 'SENDING', claimedAt: now, claimToken: `tok-${++this.tokenSeq}` });
     return due.map((d) => ({ ...d }));
@@ -167,6 +168,16 @@ export class InMemoryOfferDispatchRepository implements IOfferDispatchRepository
     const gone = this.items.filter((d) => d.status === 'QUEUED' && d.sessionId && this.deletedSessionIds.has(d.sessionId)).slice(0, limit);
     for (const d of gone) Object.assign(d, { status: 'SKIPPED', failureReason: 'SESSION_DELETED' });
     return gone.length;
+  }
+  /** Configurações de monitoramento desligadas (espelho de `group_monitor_configs.enabled = false`). */
+  disabledMonitorConfigIds = new Set<string>();
+  async skipForDisabledMonitors(limit: number) {
+    const off = this.items.filter((d) => {
+      const o = this.offers.items.find((x) => x.id === d.offerId);
+      return d.status === 'QUEUED' && o?.origin === 'MONITORING' && !!o.monitorConfigId && this.disabledMonitorConfigIds.has(o.monitorConfigId);
+    }).slice(0, limit);
+    for (const d of off) Object.assign(d, { status: 'SKIPPED', failureReason: 'MONITOR_DISABLED' });
+    return off.length;
   }
   async skipExpired(now: Date) {
     let n = 0;

@@ -13,7 +13,7 @@ import { PrismaOfferDispatchMapper as Mapper, type OfferDispatchRawRow } from '.
 import { POSTING_TIME_ZONE, weekdayInZone } from '../../domain/services/postingWindow';
 import { LANE_TIMEOUT_HOLD_SECONDS } from '../../domain/offerTyping';
 import { excludeAffiliatesInactiveSql } from '../../../tenants/infrastructure/access/affiliatesInactiveFilter';
-import { SESSION_DELETED_REASON } from '../../domain/offerDispatchReasons';
+import { MONITOR_DISABLED_REASON, SESSION_DELETED_REASON } from '../../domain/offerDispatchReasons';
 
 /** Folga (s) no intervalo mínimo da faixa: o claim acontece até um tick depois do `notBefore`. */
 export const LANE_GAP_TOLERANCE_SECONDS = 5;
@@ -195,7 +195,8 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
                   -- Pausa global do tenant; suspenso/cancelado (billing) fica QUEUED até reativar
                   AND d."tenantId" IN (SELECT "id" FROM "tenants" WHERE "sendingPausedAt" IS NULL AND "status" = 'ACTIVE'::"TenantStatus")
                   ${excludeAffiliatesInactiveSql(Prisma.sql`d."tenantId"`, this.affiliatesGateEnforced)}
-                  -- Oferta do monitoramento fora do horário de postagem da configuração espera a janela abrir
+                  -- Oferta do monitoramento fora do horário de postagem da configuração espera a janela abrir;
+                  -- com a configuração desligada nunca sai (o lote de skipForDisabledMonitors fecha esses envios)
                   AND NOT EXISTS (
                     SELECT 1 FROM "offers" mo
                       -- Janela da configuração de ORIGEM (sessão cruzada envia por outra); oferta antiga sem
@@ -204,7 +205,7 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
                         ON g."id" = COALESCE(mo."monitorConfigId",
                              (SELECT c."id" FROM "group_monitor_configs" c WHERE c."sessionId" = d."sessionId" AND c."tenantId" = d."tenantId" LIMIT 1))
                      WHERE mo."id" = d."offerId" AND mo."origin" = 'MONITORING'::"OfferOrigin"
-                       AND NOT ${monitorOpen}
+                       AND (NOT g."enabled" OR NOT ${monitorOpen})
                   )
                   -- Oferta do gerador sem horário escolhido fora do horário do gerador espera a janela abrir
                   AND NOT EXISTS (
@@ -311,6 +312,29 @@ export class PrismaOfferDispatchRepository implements IOfferDispatchRepository {
              "updatedAt" = (now() AT TIME ZONE 'UTC')
         FROM gone
        WHERE u."id" = gone."id" AND u."status" = 'QUEUED'::"OfferDispatchStatus"`;
+  }
+
+  /**
+   * CROSS-TENANT por design (worker). Mesma resolução de configuração do claim: `monitorConfigId` da
+   * oferta ou, em oferta antiga sem ele, a configuração da sessão que envia.
+   */
+  async skipForDisabledMonitors(limit: number): Promise<number> {
+    if (limit <= 0) return 0;
+    return this.prisma.$executeRaw`
+      WITH off AS (
+        SELECT d."id" FROM "offer_dispatches" d
+          JOIN "offers" o ON o."id" = d."offerId" AND o."origin" = 'MONITORING'::"OfferOrigin"
+          JOIN "group_monitor_configs" g
+            ON g."id" = COALESCE(o."monitorConfigId",
+                 (SELECT c."id" FROM "group_monitor_configs" c WHERE c."sessionId" = d."sessionId" AND c."tenantId" = d."tenantId" LIMIT 1))
+         WHERE d."status" = 'QUEUED'::"OfferDispatchStatus" AND g."enabled" = false
+         LIMIT ${limit}
+           FOR UPDATE OF d SKIP LOCKED)
+      UPDATE "offer_dispatches" u
+         SET "status" = 'SKIPPED'::"OfferDispatchStatus", "failureReason" = ${MONITOR_DISABLED_REASON},
+             "updatedAt" = (now() AT TIME ZONE 'UTC')
+        FROM off
+       WHERE u."id" = off."id" AND u."status" = 'QUEUED'::"OfferDispatchStatus"`;
   }
 
   async laneState(tenantId: string, sessionId: string, now: Date): Promise<{ open: OfferDispatch[]; lastClaimedAt: Date | null }> {

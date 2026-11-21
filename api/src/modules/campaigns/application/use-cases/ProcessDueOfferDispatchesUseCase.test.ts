@@ -33,6 +33,21 @@ describe('ProcessDueOfferDispatchesUseCase', () => {
     expect(s.offers.items[0]!.status).toBe('FAILED');
   });
 
+  it('monitoramento desligado: QUEUED da configuração fecha SKIPPED MONITOR_DISABLED no tick, sem envio; outra configuração segue', async () => {
+    const s = setup([]);
+    s.offers.items[0]!.origin = 'MONITORING';
+    s.offers.items[0]!.monitorConfigId = 'cfg-off';
+    s.offers.items.push(makeOffer({ id: 'offer-2', status: 'SENDING', text: 'oferta', origin: 'MONITORING', monitorConfigId: 'cfg-on' }));
+    s.dispatches.add({ offerId: 'offer-1', conversationId: 'c1' });
+    s.dispatches.add({ offerId: 'offer-1', conversationId: 'c2', notBefore: new Date(NOW.getTime() + 3_600_000) });
+    s.dispatches.add({ offerId: 'offer-2', conversationId: 'c3' });
+    s.dispatches.disabledMonitorConfigIds.add('cfg-off');
+    expect(await s.uc.execute()).toEqual({ processed: 1 });
+    expect(s.sender.send).toHaveBeenCalledTimes(1);
+    expect(statuses(s)).toEqual([['SKIPPED', 'MONITOR_DISABLED'], ['SKIPPED', 'MONITOR_DISABLED'], ['SENT', 'm1']]);
+    expect(s.offers.items[0]!.status).toBe('FAILED');
+  });
+
   it('sessão excluída não afeta as outras: a viva envia no mesmo tick e a viva fora do ar segue esperando', async () => {
     const s = setup([]);
     s.dispatches.add({ offerId: 'offer-1', conversationId: 'c1', sessionId: 'gone' });

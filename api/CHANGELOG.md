@@ -17,6 +17,23 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.104.1] — 2026-11-21 — Monitoramento desligado descarta a fila (app 0.127.1)
+
+### Fixed
+
+#### Backend — `campaigns` ([`docs/fila-de-envio.md`](../docs/fila-de-envio.md) §2.2.3)
+
+- **`PrismaOfferDispatchRepository.ts`** — desligar o monitoramento não parava os envios já na fila: `claimDue` só olhava a janela de postagem da configuração, não `enabled` (cliente reclamou; 26 envios saíram em 34 min após desligar, só parou ao excluir a sessão). Claim agora barra configuração desligada e o novo `skipForDisabledMonitors(limit)` fecha os `QUEUED` como `SKIPPED/MONITOR_DISABLED` (CTE `FOR UPDATE OF d SKIP LOCKED`, cross-tenant, mesma resolução de configuração do claim).
+- **`ProcessDueOfferDispatchesUseCase.ts`** — lote chamado a cada tick depois do de sessão excluída. Decisão de produto: desligar perde a fila, religar não reenvia.
+- **`offerDispatchReasons.ts`**, **`IOfferDispatchRepository.ts`**, **`offerTestFakes.ts`** — motivo `MONITOR_DISABLED` e contrato; testes unitário e de integração (Postgres descartável). Sem migration.
+
+#### Frontend — `monitoring` / `offers`
+
+- **`MonitoringSettingsForm.tsx`**, **`monitoring/strings.ts`** — aviso ao desligar: a fila da sessão é descartada ao salvar.
+- **`offers/strings.ts`** — rótulo "O monitoramento foi desligado antes do envio" na fila.
+
+---
+
 ## [0.104.0] — 2026-11-17 — Uso dos recursos (P3): adoção, recorrência, retenção e visitas de tela (app 0.127.0)
 
 ### Added

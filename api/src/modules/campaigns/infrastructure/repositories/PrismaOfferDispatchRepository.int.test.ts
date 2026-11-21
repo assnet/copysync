@@ -190,6 +190,47 @@ describe('claimDue — janela da configuração de ORIGEM (sessão cruzada)', ()
   });
 });
 
+describe('monitoramento desligado — perde a fila', () => {
+  const setEnabled = (enabled: boolean) => prisma.groupMonitorConfig.updateMany({ where: { tenantId, sessionId }, data: { enabled } });
+
+  it('claim não pega envio de configuração desligada; o gerador segue saindo', async () => {
+    await reset();
+    const mon = await offer('MONITORING');
+    const gen = await offer('GENERATOR');
+    await queued(mon.id, convMon, spToUtc(8));
+    await queued(gen.id, convGen, spToUtc(8));
+    await setEnabled(false);
+    try {
+      expect((await repo.claimDue(spToUtc(9), 10)).map((d) => d.offerId)).toEqual([gen.id]);
+    } finally { await setEnabled(true); }
+  });
+
+  it('lote fecha SKIPPED/MONITOR_DISABLED só os QUEUED da configuração desligada (com e sem monitorConfigId); SENDING e ligada ficam', async () => {
+    await reset();
+    const cfg = await prisma.groupMonitorConfig.findFirstOrThrow({ where: { tenantId, sessionId } });
+    const legacy = await offer('MONITORING');
+    const linked = await prisma.offer.create({ data: { tenantId, provider: 'AMAZON', sourceUrl: 'x', affiliateUrl: 'x', text: 'x', status: 'PAUSED', origin: 'MONITORING', monitorConfigId: cfg.id } });
+    const gen = await offer('GENERATOR');
+    const a = await queued(legacy.id, convMon, spToUtc(8));
+    const b = await queued(linked.id, convMon, spToUtc(23));
+    const sending = await queued(linked.id, convGen, spToUtc(8));
+    await prisma.offerDispatch.update({ where: { id: sending.id }, data: { status: 'SENDING', claimedAt: new Date(), claimToken: 'tok' } });
+    const g = await queued(gen.id, convGen, spToUtc(8));
+    expect(await repo.skipForDisabledMonitors(500)).toBe(0);
+    await setEnabled(false);
+    try {
+      expect(await repo.skipForDisabledMonitors(1)).toBe(1);
+      expect(await repo.skipForDisabledMonitors(500)).toBe(1);
+      expect(await repo.skipForDisabledMonitors(500)).toBe(0);
+    } finally { await setEnabled(true); }
+    const st = async (id: string) => { const r = await prisma.offerDispatch.findUniqueOrThrow({ where: { id } }); return [r.status, r.failureReason]; };
+    expect(await st(a.id)).toEqual(['SKIPPED', 'MONITOR_DISABLED']);
+    expect(await st(b.id)).toEqual(['SKIPPED', 'MONITOR_DISABLED']);
+    expect(await st(sending.id)).toEqual(['SENDING', null]);
+    expect(await st(g.id)).toEqual(['QUEUED', null]);
+  });
+});
+
 describe('claimDue — pausa global', () => {
   it('tenant pausado não sai; retomado sai', async () => {
     await reset();
