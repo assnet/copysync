@@ -1,0 +1,66 @@
+# CopySync · afiliados.copysync.top (Hostinger, Apache/LiteSpeed)
+
+Options -Indexes
+DirectoryIndex index.html
+# a barra final das pastas é adicionada pela regra abaixo, já em HTTPS (um redirecionamento só)
+DirectorySlash Off
+
+# não deixa baixar este arquivo
+<Files ".htaccess">
+  Require all denied
+</Files>
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # 1) Força HTTPS (também atrás de proxy/CDN que informa o protocolo original)
+  RewriteCond %{HTTPS} off
+  RewriteCond %{HTTP:X-Forwarded-Proto} !https
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+  # 2) Pastas sem barra final (ex.: /privacidade → /privacidade/), direto em HTTPS
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^(.*[^/])$ https://%{HTTP_HOST}/$1/ [L,R=301]
+
+  # 3) Rotas internas: arquivos e pastas que existem são servidos direto
+  #    (/termos/ e /privacidade/ têm index.html próprio; /privacidade sem barra vira /privacidade/).
+  #    Qualquer outra rota cai no index.html da página principal.
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^ /index.html [L]
+</IfModule>
+
+# Compressão (deixa o HTML/CSS/JS bem menores no 4G)
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/css application/javascript text/javascript image/svg+xml application/json
+</IfModule>
+
+# Cache: só arquivos com hash no nome (ex.: index-BkyAmbRy.js, gerados pelo build) ficam 1 ano;
+# o HTML e as imagens sem hash (logo, favicon) sempre são revalidados
+<IfModule mod_headers.c>
+  <FilesMatch "-[\w-]{8}\.(js|css|woff2|png|svg|webp|jpg|mp4|webm)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+  <FilesMatch "(\.html|^favicon\.png|^copysync-logo\.png)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+  # /b.gif: contador anônimo do funil (src/lib/funnelBeacon.ts). Nunca guardar em cache, para cada pedido
+  # chegar ao servidor e aparecer no registro de acesso. Não grava nem lê cookies.
+  <Files "b.gif">
+    Header always set Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+    Header always set Pragma "no-cache"
+    Header always unset Set-Cookie
+    Header unset Last-Modified
+    Header unset ETag
+    FileETag None
+  </Files>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+<IfModule mod_mime.c>
+  AddType font/woff2 .woff2
+  AddType image/svg+xml .svg
+  AddType video/mp4 .mp4
+  AddType video/webm .webm
+</IfModule>
