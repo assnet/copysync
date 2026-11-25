@@ -99,7 +99,9 @@ export async function offerHuntRoutes(app: FastifyInstance): Promise<void> {
     '/finds/:findId/approve',
     { preHandler, schema: { tags, summary: 'Aprovar achado e enviar ao grupo', params: findIdParamSchema, response: { 200: approveFindResponse } } },
     async (request, reply) => {
-      const out = await c.approveHuntFind().execute({ tenantId: request.tenantContext.tenantId, findId: request.params.findId });
+      const out = await c.approveHuntFind().execute({
+        tenantId: request.tenantContext.tenantId, findId: request.params.findId, isSuperAdmin: request.tenantContext.isSuperAdmin,
+      });
       httpResponse.ok(reply, P.approved(out));
     },
   );
@@ -122,7 +124,9 @@ export async function offerHuntRoutes(app: FastifyInstance): Promise<void> {
       schema: { tags, summary: 'Reenviar achado já entregue ao grupo de destino atual (não conta no teto)', params: findIdParamSchema, response: { 200: findResponse } },
     },
     async (request, reply) => {
-      const find = await c.resendHuntFind().execute({ tenantId: request.tenantContext.tenantId, findId: request.params.findId });
+      const find = await c.resendHuntFind().execute({
+        tenantId: request.tenantContext.tenantId, findId: request.params.findId, isSuperAdmin: request.tenantContext.isSuperAdmin,
+      });
       httpResponse.ok(reply, P.find(find));
     },
   );
@@ -237,6 +241,7 @@ export async function offerHuntRoutes(app: FastifyInstance): Promise<void> {
       const { id, runId, productId } = request.params;
       const find = await c.sendRankingItem().execute({
         tenantId: request.tenantContext.tenantId, huntId: id, runId, productId, ignoreAgeLimit: request.user?.isSuperAdmin === true,
+        isSuperAdmin: request.tenantContext.isSuperAdmin,
       });
       httpResponse.ok(reply, { find: P.find(find) });
     },
@@ -255,6 +260,7 @@ export async function offerHuntRoutes(app: FastifyInstance): Promise<void> {
     async (request, reply) => {
       const out = await c.sendRankingRemainder().execute({
         tenantId: request.tenantContext.tenantId, huntId: request.params.id, runId: request.params.runId,
+        isSuperAdmin: request.tenantContext.isSuperAdmin,
       });
       httpResponse.ok(reply, P.rankingRemainder(out));
     },

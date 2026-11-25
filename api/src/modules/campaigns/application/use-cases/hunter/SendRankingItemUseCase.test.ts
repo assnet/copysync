@@ -60,7 +60,7 @@ function setup(opts: { ent?: Record<string, unknown>; runAgeMs?: number; ranking
     hunts, runs, finds, providers: testProviders(new FakeCatalog()), entitlements, credentials, riskGate, delivery, now: () => now,
   });
   const all = new SendRankingRemainderUseCase({ items: uc, finds, now: () => now });
-  const input = (productId: string) => ({ tenantId: TENANT, huntId: HUNT, runId: run.id, productId: pid(productId) });
+  const input = (productId: string) => ({ tenantId: TENANT, huntId: HUNT, runId: run.id, productId: pid(productId), isSuperAdmin: false });
   return { hunts, runs, finds, settings, offers, entitlements, credentials, riskGate, resolve, storeImage, enqueue, uc, all, run, input, now, delivery };
 }
 
@@ -78,7 +78,7 @@ describe('SendRankingItemUseCase', () => {
     expect(out.fromRanking).toBe(true);
     expect(out.offerId).toBe(offer.id);
     expect(s.storeImage).toHaveBeenCalledWith('https://img.ltwebstatic.com/p.jpg');
-    expect(s.resolve).toHaveBeenCalledWith(TENANT, expect.stringContaining(pid('2')), { riskScope: 'OFFER_HUNTER' });
+    expect(s.resolve).toHaveBeenCalledWith(TENANT, expect.stringContaining(pid('2')), { riskScope: 'OFFER_HUNTER', caller: { kind: 'user', isSuperAdmin: false } });
     // Teto do dia = 0 e nada de execução nova
     expect(s.runs.items).toHaveLength(1);
   });
@@ -162,7 +162,7 @@ describe('SendRankingItemUseCase', () => {
 
   it('teto do dia: reaproveitados não contam (uso do painel e saldo da próxima execução)', async () => {
     const s = await withDestination(setup({ ranking: ['2', '3', '4', '5', '6'].map((n) => item(n)) }));
-    expect((await s.all.execute({ tenantId: TENANT, huntId: HUNT, runId: s.run.id })).sent).toBe(5);
+    expect((await s.all.execute({ tenantId: TENANT, huntId: HUNT, runId: s.run.id, isSuperAdmin: true })).sent).toBe(5);
     expect(await s.finds.countCreatedSince(TENANT, new Date(0))).toBe(0);
     const fresh = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k'].map((n) => ({ ...s.finds.seed({ productId: `9${n}` }) }));
     s.finds.items = s.finds.items.filter((f) => f.fromRanking);
@@ -176,7 +176,7 @@ describe('SendRankingItemUseCase', () => {
     // Queda entre enfileirar e gravar o offerId: achado fica APPROVED sem oferta, preso
     Object.assign(s.finds.items[0]!, { status: 'APPROVED', offerId: null, updatedAt: new Date(s.now.getTime() - HUNT_FIND_STALE_APPROVED_MS - 1) });
     const approve = new ApproveHuntFindUseCase({ finds: s.finds, entitlements: s.entitlements, delivery: s.delivery, now: () => s.now });
-    const out = await approve.execute({ tenantId: TENANT, findId: sent.id });
+    const out = await approve.execute({ tenantId: TENANT, findId: sent.id, isSuperAdmin: false });
     expect(out.offerId).toBe(sent.offerId);
     expect(s.offers.items).toHaveLength(1);
   });
@@ -219,24 +219,24 @@ describe('SendRankingRemainderUseCase', () => {
     const s = await withDestination(setup({ ranking: [item('1', { chosen: true }), item('2'), item('3'), item('4'), item('5')] }));
     s.finds.seed({ runId: s.run.id, productId: pid('3'), createdAt: s.now });
     s.finds.seed({ runId: 'other', productId: pid('4'), createdAt: s.now });
-    const out = await s.all.execute({ tenantId: TENANT, huntId: HUNT, runId: s.run.id });
+    const out = await s.all.execute({ tenantId: TENANT, huntId: HUNT, runId: s.run.id, isSuperAdmin: true });
     expect(out).toEqual({ sent: 2, skipped: [{ productId: pid('4'), reason: 'REPEATED' }] });
     const sent = s.finds.items.filter((f) => f.fromRanking);
     expect(s.offers.items.map((o) => o.sourceKey)).toEqual(sent.map((f) => `hunt:${f.id}`));
     // De novo: nada a enviar (o repetido segue informado)
-    expect(await s.all.execute({ tenantId: TENANT, huntId: HUNT, runId: s.run.id })).toEqual({ sent: 0, skipped: [{ productId: pid('4'), reason: 'REPEATED' }] });
+    expect(await s.all.execute({ tenantId: TENANT, huntId: HUNT, runId: s.run.id, isSuperAdmin: true })).toEqual({ sent: 0, skipped: [{ productId: pid('4'), reason: 'REPEATED' }] });
     expect(s.offers.items).toHaveLength(2);
   });
 
   it('sem gastar o teto do dia (teto 0 não impede)', async () => {
     const s = await withDestination(setup({ ent: { [ENTITLEMENT_KEYS.OFFER_HUNTER_FINDS_PER_DAY]: 0 } }));
-    expect((await s.all.execute({ tenantId: TENANT, huntId: HUNT, runId: s.run.id })).sent).toBe(3);
+    expect((await s.all.execute({ tenantId: TENANT, huntId: HUNT, runId: s.run.id, isSuperAdmin: true })).sent).toBe(3);
   });
 
   it('erro de portão no 1º item → o erro sobe, nada enviado', async () => {
     const s = await withDestination(setup());
     s.riskGate.accepted = false;
-    await expect(s.all.execute({ tenantId: TENANT, huntId: HUNT, runId: s.run.id })).rejects.toMatchObject({ code: 'MARKETPLACE_RISK_NOT_ACCEPTED' });
+    await expect(s.all.execute({ tenantId: TENANT, huntId: HUNT, runId: s.run.id, isSuperAdmin: true })).rejects.toMatchObject({ code: 'MARKETPLACE_RISK_NOT_ACCEPTED' });
     expect(s.offers.items).toHaveLength(0);
   });
 
@@ -246,7 +246,7 @@ describe('SendRankingRemainderUseCase', () => {
       provider: 'SHEIN' as const, sourceUrl: url, affiliateUrl: 'https://onelink.shein.com/1/tenant', attributionVerified: true, linkRebuilt: true,
       product: { productRef: '1', title: null, priceCents: null, originalPriceCents: null, imageSourceUrl: null },
     })).mockRejectedValueOnce(new AffiliateCredentialRejectedError('SHEIN'));
-    const out = await s.all.execute({ tenantId: TENANT, huntId: HUNT, runId: s.run.id });
+    const out = await s.all.execute({ tenantId: TENANT, huntId: HUNT, runId: s.run.id, isSuperAdmin: true });
     expect(out).toEqual({ sent: 1, skipped: [{ productId: pid('3'), reason: 'AFFILIATE_CREDENTIAL_REJECTED' }] });
     expect(s.resolve).toHaveBeenCalledTimes(2);
   });
@@ -254,7 +254,7 @@ describe('SendRankingRemainderUseCase', () => {
   it('reenvia o FAILED desta execução (não é REPEATED)', async () => {
     const s = await withDestination(setup({ ranking: [item('2')] }));
     s.finds.seed({ runId: s.run.id, productId: pid('2'), status: 'FAILED', fromRanking: true, createdAt: s.now });
-    expect(await s.all.execute({ tenantId: TENANT, huntId: HUNT, runId: s.run.id })).toEqual({ sent: 1, skipped: [] });
+    expect(await s.all.execute({ tenantId: TENANT, huntId: HUNT, runId: s.run.id, isSuperAdmin: true })).toEqual({ sent: 1, skipped: [] });
   });
 
   it('erro não-AppError depois de enviar → para e devolve o feito com DELIVERY_FAILED; sem nada enviado sobe', async () => {
@@ -263,14 +263,14 @@ describe('SendRankingRemainderUseCase', () => {
     let n = 0;
     const items = { loadContext: s.uc.loadContext.bind(s.uc), send: async (...a: Parameters<typeof send>) => { if (++n === 2) throw new Error('db down'); return send(...a); } };
     const all = new SendRankingRemainderUseCase({ items, finds: s.finds, now: () => s.now });
-    expect(await all.execute({ tenantId: TENANT, huntId: HUNT, runId: s.run.id })).toEqual({ sent: 1, skipped: [{ productId: pid('3'), reason: 'DELIVERY_FAILED' }] });
+    expect(await all.execute({ tenantId: TENANT, huntId: HUNT, runId: s.run.id, isSuperAdmin: true })).toEqual({ sent: 1, skipped: [{ productId: pid('3'), reason: 'DELIVERY_FAILED' }] });
     n = 1;
-    await expect(all.execute({ tenantId: TENANT, huntId: HUNT, runId: s.run.id })).rejects.toThrow('db down');
+    await expect(all.execute({ tenantId: TENANT, huntId: HUNT, runId: s.run.id, isSuperAdmin: true })).rejects.toThrow('db down');
   });
 
   it('rota só de super admin: execução com mais de 48 h envia mesmo assim', async () => {
     const s = await withDestination(setup({ runAgeMs: 49 * HOUR }));
-    expect(await s.all.execute({ tenantId: TENANT, huntId: HUNT, runId: s.run.id })).toEqual({ sent: 3, skipped: [] });
+    expect(await s.all.execute({ tenantId: TENANT, huntId: HUNT, runId: s.run.id, isSuperAdmin: true })).toEqual({ sent: 3, skipped: [] });
   });
 });
 

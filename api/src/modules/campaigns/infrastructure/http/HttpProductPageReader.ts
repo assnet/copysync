@@ -42,6 +42,9 @@ export class HttpProductPageReader implements IProductPageReader {
     // Shein: a página do produto cai em desafio (`/risk/challenge`); os dados vêm do cliente de
     // afiliado. Segunda barreira: nenhum caminho lê essa página, antes de qualquer rede
     if (provider === 'SHEIN') return null;
+    // Kabum (catálogo), Magalu (vitrine do afiliado) e AliExpress (API de afiliados): dados pelo cliente
+    // da loja no `ResolveProductDataUseCase`; a página nunca é lida, antes de qualquer rede
+    if (provider === 'KABUM' || provider === 'MAGALU' || provider === 'ALIEXPRESS') return null;
     const ssid = safeCookieValue(input.mercadoLivreCookies?.ssid);
     const signal = AbortSignal.timeout(TIMEOUT_MS);
 

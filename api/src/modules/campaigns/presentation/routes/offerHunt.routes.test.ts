@@ -199,7 +199,7 @@ describe('reaproveitar o ranking', () => {
     const res = await call('POST', sendUrl);
     expect(res.statusCode).toBe(200);
     expect(res.json().data.find).toMatchObject({ id: 'f1', status: 'SENT', offerId: 'o1', productId: '12345678' });
-    expect(exec).toHaveBeenCalledWith({ tenantId: 'tenant-a', huntId: ID, runId: 'run-1', productId: '123', ignoreAgeLimit: false });
+    expect(exec).toHaveBeenCalledWith({ tenantId: 'tenant-a', huntId: ID, runId: 'run-1', productId: '123', ignoreAgeLimit: false, isSuperAdmin: false });
   });
 
   it('erros do envio: 409 OFFER_HUNT_ALREADY_SENT / OFFER_HUNT_RANKING_EXPIRED', async () => {
@@ -229,7 +229,7 @@ describe('reaproveitar o ranking', () => {
     const res = await call('POST', allUrl);
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ success: true, data: { sent: 2, skipped: [{ productId: '9', reason: 'REPEATED' }] } });
-    expect(exec).toHaveBeenCalledWith({ tenantId: 'tenant-a', huntId: ID, runId: 'run-1' });
+    expect(exec).toHaveBeenCalledWith({ tenantId: 'tenant-a', huntId: ID, runId: 'run-1', isSuperAdmin: true });
   });
 });
 
@@ -400,7 +400,7 @@ describe('POST /finds/:findId/resend e envio real do achado', () => {
       id: 'f1', status: 'SENT', offerId: 'offer-2', dispatchStatus: 'QUEUED', sentAt: null,
       destination: { groupName: 'Ofertas VIP', sessionName: 'Loja' }, resendCount: 1, lastResentAt: NOW.toISOString(),
     });
-    expect(exec).toHaveBeenCalledWith({ tenantId: 'tenant-a', findId: 'f1' });
+    expect(exec).toHaveBeenCalledWith({ tenantId: 'tenant-a', findId: 'f1', isSuperAdmin: true });
   });
 
   it('SENT com hora; sem oferta → dispatchStatus/destination null', async () => {

@@ -15,7 +15,7 @@ import {
 import { AiNotConfiguredError } from '../../../../shared/errors/internal/AiErrors';
 
 const TEMPLATE = OFFER_STORY_TEMPLATES[0].id;
-const base: RenderOfferStoryInput = { tenantId: TENANT, templateId: TEMPLATE, url: 'https://meli.la/abc' };
+const base: RenderOfferStoryInput = { tenantId: TENANT, isSuperAdmin: false, templateId: TEMPLATE, url: 'https://meli.la/abc' };
 
 function setup() {
   const { deps, fakes } = makeOfferStoryDeps();

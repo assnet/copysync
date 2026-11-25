@@ -171,7 +171,7 @@ describe('DeleteStorefrontUseCase (Postgres)', () => {
     });
     // A exclusão segura o tx aberto depois de listar: tempo de sobra para o INSERT tentar entrar
     afterList = async () => { listed(); await sleep(400); };
-    const creating = extract.execute({ tenantId: tenantA, url: 'https://meli.la/abc' }).then(() => 'created', (e: { code?: string }) => e.code);
+    const creating = extract.execute({ tenantId: tenantA, isSuperAdmin: false, url: 'https://meli.la/abc' }).then(() => 'created', (e: { code?: string }) => e.code);
     await run(SECRET);
     afterList = null;
 

@@ -8,6 +8,7 @@ import type { AffiliateProvider } from '../../../integrations/domain/enums/Affil
 import type { MarketplaceRiskScope } from '../../../integrations/domain/enums/MarketplaceRiskScope';
 import { DEFAULT_MARKETPLACE_RISK_SCOPE } from '../../../integrations/domain/enums/MarketplaceRiskScope';
 import type { TenantAffiliateLinkComposer } from '../services/TenantAffiliateLinkComposer';
+import type { MarketplaceAudienceGate } from '../services/MarketplaceAudienceGate';
 import { detectMarketplace, isSupportedProductUrl } from '../../domain/services/detectMarketplace';
 import { parseProductRef, type ProductRef } from '../../domain/services/parseProductRef';
 import { currentRiskNoticeVersion, requiresRiskAcceptance } from '../../../integrations/domain/services/marketplaceRiskNotice';
@@ -46,9 +47,18 @@ export interface ResolveAffiliateProductDeps {
   entitlements: IEntitlementReader;
   /** Aceite do aviso de risco; só consultado com credencial e para provider com aviso. */
   riskGate: IMarketplaceRiskGate;
+  /** Audiência "Só super admin" por loja: só cobrada de `caller.kind === 'user'`. */
+  audience: Pick<MarketplaceAudienceGate, 'isVisible'>;
 }
 
+/**
+ * Quem pede o link. Obrigatório: todo chamador declara. `user` passa pelo portão de audiência da loja
+ * (`isSuperAdmin` do token); `background` (jobs) não: plano e credencial decidem.
+ */
+export type ResolveAffiliateProductCaller = { kind: 'user'; isSuperAdmin: boolean } | { kind: 'background' };
+
 export interface ResolveAffiliateProductOptions {
+  caller: ResolveAffiliateProductCaller;
   /**
    * Aviso de risco cobrado (ausente = `AFFILIATE_LINK`). O caçador passa `OFFER_HUNTER`: só o aceite
    * dele é cobrado, aqui e no composer. Os demais chamadores não passam nada.
@@ -80,19 +90,24 @@ export interface ResolvedAffiliateProduct {
 export class ResolveAffiliateProductUseCase {
   constructor(private readonly deps: ResolveAffiliateProductDeps) {}
 
-  async execute(tenantId: string, rawUrl: string, options: ResolveAffiliateProductOptions = {}): Promise<ResolvedAffiliateProduct> {
+  async execute(tenantId: string, rawUrl: string, options: ResolveAffiliateProductOptions): Promise<ResolvedAffiliateProduct> {
     const riskScope = options.riskScope ?? DEFAULT_MARKETPLACE_RISK_SCOPE;
     // 1. URL: allowlist antes de qualquer requisição; expande e revalida
     const source = parseUrl(rawUrl);
     if (!isSupportedProductUrl(source)) throw new OfferUrlUnsupportedError();
     // Marketplace fora do plano: antes de qualquer rede (o encurtador do marketplace travado já é rede dele)
     const pasted = detectMarketplace(source);
+    // Loja oculta para quem pede: "não suportado", antes do plano e de qualquer rede ou credencial
+    if (pasted) await this.requireVisible(pasted, options.caller);
     if (pasted && marketplaceEntitlementKey(pasted)) await requireMarketplaceEnabled(this.deps.entitlements, tenantId, pasted);
     const final = await this.deps.expander.expand(source);
     const provider = detectMarketplace(final);
     if (!provider) throw new OfferUrlUnsupportedError();
     // De novo após o redirect: pode cair em outro marketplace; antes de ler credencial ou chamar a loja
-    if (provider !== pasted) await requireMarketplaceEnabled(this.deps.entitlements, tenantId, provider);
+    if (provider !== pasted) {
+      await this.requireVisible(provider, options.caller);
+      await requireMarketplaceEnabled(this.deps.entitlements, tenantId, provider);
+    }
     const ref = parseProductRef(provider, final);
     const mlSocial = provider === 'MERCADO_LIVRE' && final.pathname.startsWith('/social/');
     // Antes da credencial: cupom/lista sem produto segue "não suportado" mesmo sem loja conectada
@@ -155,6 +170,12 @@ export class ResolveAffiliateProductUseCase {
         }
       : { ...(await this.deps.products.resolve(provider, ref, final, cred)), productRef: composed.productRef };
     return { provider, sourceUrl, affiliateUrl: composed.affiliateUrl, attributionVerified: true, linkRebuilt: true, product };
+  }
+
+  /** Usuário que não enxerga a loja (flag "Só super admin"): mesmo erro de URL não suportada. Job: sem portão. */
+  private async requireVisible(provider: AffiliateProvider, caller: ResolveAffiliateProductCaller): Promise<void> {
+    if (caller.kind !== 'user') return;
+    if (!(await this.deps.audience.isVisible(provider, { isSuperAdmin: caller.isSuperAdmin }))) throw new OfferUrlUnsupportedError();
   }
 
   /**

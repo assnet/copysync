@@ -18,6 +18,8 @@ type Deps = Pick<
 
 export interface ExtractStorefrontOfferInput {
   tenantId: string;
+  /** Do token: loja com flag "Só super admin" só passa para super admin. */
+  isSuperAdmin: boolean;
   url: string;
   category?: string | null;
 }
@@ -45,7 +47,9 @@ export class ExtractStorefrontOfferUseCase {
     const counts = await offers.countByStorefront(tenantId, page.id);
     if (counts.total >= STOREFRONT_MAX_OFFERS) throw new StorefrontOfferLimitError(STOREFRONT_MAX_OFFERS);
 
-    const resolved = await this.deps.resolveProduct.execute(tenantId, input.url);
+    const resolved = await this.deps.resolveProduct.execute(tenantId, input.url, {
+      caller: { kind: 'user', isSuperAdmin: input.isSuperAdmin },
+    });
     const imageUrl = resolved.product.imageSourceUrl ? await this.storeImage(resolved.product.imageSourceUrl) : null;
 
     // Posição lida por último: extração lenta não pega a mesma posição de outra recém-criada

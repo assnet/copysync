@@ -87,7 +87,7 @@ describe('SendRankingItemUseCase + PrismaOfferHuntFindRepository.insertRankingFi
   it('dois pedidos simultâneos do mesmo item → 1 achado, 1 entrega; o outro 409 OFFER_HUNT_ALREADY_SENT', async () => {
     const { tenantId, huntId, runId } = await seed('race');
     const delivered: string[] = [];
-    const input = { tenantId, huntId, runId, productId: '20000001' };
+    const input = { tenantId, huntId, runId, productId: '20000001', isSuperAdmin: false };
     const r = await Promise.allSettled([useCase(prisma, delivered).execute(input), useCase(other, delivered).execute(input)]);
     expect(r.map((x) => x.status).sort()).toEqual(['fulfilled', 'rejected']);
     const rejected = r.find((x) => x.status === 'rejected') as PromiseRejectedResult;
@@ -105,9 +105,9 @@ describe('SendRankingItemUseCase + PrismaOfferHuntFindRepository.insertRankingFi
     const base = newFind(huntId);
     await finds.insertWithinDailyLimit(tenantId, [{ ...base, productId: '20000002' }], { since: new Date(0), limit: 10 });
     const delivered: string[] = [];
-    await expect(useCase(prisma, delivered).execute({ tenantId, huntId, runId, productId: '20000002' }))
+    await expect(useCase(prisma, delivered).execute({ tenantId, huntId, runId, productId: '20000002', isSuperAdmin: false }))
       .rejects.toMatchObject({ code: 'OFFER_HUNT_ALREADY_SENT', meta: { reason: 'REPEATED' } });
-    await expect(useCase(prisma, delivered).execute({ tenantId, huntId, runId, productId: '20000001' })).resolves.toMatchObject({ status: 'SENT' });
+    await expect(useCase(prisma, delivered).execute({ tenantId, huntId, runId, productId: '20000001', isSuperAdmin: false })).resolves.toMatchObject({ status: 'SENT' });
     expect(delivered).toHaveLength(1);
   });
 
@@ -127,7 +127,7 @@ describe('SendRankingItemUseCase + PrismaOfferHuntFindRepository.insertRankingFi
     const { tenantId, huntId, runId } = await seed('failed');
     const finds = new PrismaOfferHuntFindRepository(prisma);
     const delivered: string[] = [];
-    const input = { tenantId, huntId, runId, productId: '20000001' };
+    const input = { tenantId, huntId, runId, productId: '20000001', isSuperAdmin: false };
     await expect(useCase(prisma, delivered, new Set(['20000001'])).execute(input)).rejects.toMatchObject({ code: 'DELIVERY_FAILED' });
     expect(await finds.productIdsByRun(tenantId, runId)).toEqual([]);
     expect(await finds.recentProductIds(tenantId, huntId, 'SHEIN', new Date(0), { exceptUndeliveredInRun: runId })).toEqual(new Set());

@@ -41,7 +41,7 @@ export interface SendRankingRemainderDeps {
 export class SendRankingRemainderUseCase {
   constructor(private readonly deps: SendRankingRemainderDeps) {}
 
-  async execute(input: { tenantId: string; huntId: string; runId: string }): Promise<SendRankingRemainderOutput> {
+  async execute(input: { tenantId: string; huntId: string; runId: string; isSuperAdmin: boolean }): Promise<SendRankingRemainderOutput> {
     const now = this.deps.now?.() ?? new Date();
     // Rota só de super admin: sem a janela de 48 h
     const ctx = await this.deps.items.loadContext({ ...input, ignoreAgeLimit: true }, now);

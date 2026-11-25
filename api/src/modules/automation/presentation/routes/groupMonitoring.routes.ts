@@ -21,7 +21,9 @@ export async function groupMonitoringRoutes(app: FastifyInstance): Promise<void>
     '/config',
     { preHandler, schema: { tags, summary: 'Configuração do monitoramento da sessão', querystring: sessionQuerySchema, response: { 200: configResponse } } },
     async (request, reply) => {
-      const result = await automationContainer.getConfig().execute({ tenantId: request.tenantContext.tenantId, sessionId: request.query.sessionId });
+      const result = await automationContainer.getConfig().execute({
+        tenantId: request.tenantContext.tenantId, sessionId: request.query.sessionId, isSuperAdmin: request.tenantContext.isSuperAdmin,
+      });
       httpResponse.ok(reply, result);
     },
   );

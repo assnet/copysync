@@ -21,6 +21,8 @@ export interface SendRankingItemInput {
   productId: string;
   /** Super admin (token): sem a janela de 48 h. */
   ignoreAgeLimit?: boolean;
+  /** Do token: loja com flag "Só super admin" só passa para super admin. */
+  isSuperAdmin: boolean;
 }
 
 export interface SendRankingItemDeps extends HuntBrandGateDeps {
@@ -36,6 +38,8 @@ export interface SendRankingItemDeps extends HuntBrandGateDeps {
 export interface RankingContext {
   hunt: OfferHunt;
   run: OfferHuntRun;
+  /** Quem pede (envio é sempre ação de usuário). */
+  isSuperAdmin: boolean;
 }
 
 /**
@@ -59,7 +63,7 @@ export class SendRankingItemUseCase {
     const run = await this.deps.runs.findById(tenantId, huntId, runId);
     if (!run || !run.ranking) throw new OfferHuntNotFoundError('run');
     if (!input.ignoreAgeLimit && !isRankingWithinReuseWindow(run, now)) throw new OfferHuntRankingExpiredError(HUNT_RANKING_REUSE_MAX_AGE_HOURS);
-    return { hunt, run };
+    return { hunt, run, isSuperAdmin: input.isSuperAdmin };
   }
 
   async execute(input: SendRankingItemInput): Promise<OfferHuntFind> {
@@ -80,7 +84,7 @@ export class SendRankingItemUseCase {
     const inserted = await this.deps.finds.insertRankingFind(tenantId, toRankingFind(item, hunt.id, run.id), repeatSince);
     if (inserted.kind === 'ALREADY_SENT') throw new OfferHuntAlreadySentError(inserted.reason);
     const find = inserted.find;
-    const r = await this.deps.delivery.deliver(tenantId, find, destination);
+    const r = await this.deps.delivery.deliver(tenantId, find, destination, { kind: 'user', isSuperAdmin: ctx.isSuperAdmin });
     if (r.status === 'FAILED') throw deliveryError(r.error);
     logger.info({ tenantId, huntId: hunt.id, runId: run.id, findId: find.id, offerId: r.offerId }, 'offer hunt ranking item sent');
     return (await this.deps.finds.findById(tenantId, find.id)) ?? { ...find, status: 'SENT', offerId: r.offerId };

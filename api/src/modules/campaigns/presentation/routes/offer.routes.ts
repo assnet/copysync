@@ -76,9 +76,9 @@ export async function offerRoutes(app: FastifyInstance): Promise<void> {
       },
     },
     async (request, reply) => {
-      const { tenantId, userId } = request.tenantContext;
+      const { tenantId, userId, isSuperAdmin } = request.tenantContext;
       const { url, coupon, audience, scheduledAt } = request.body;
-      const result = await offersContainer.generateOffer().execute({ tenantId, userId, url, coupon, audience, scheduledAt });
+      const result = await offersContainer.generateOffer().execute({ tenantId, userId, isSuperAdmin, url, coupon, audience, scheduledAt });
       httpResponse.created(reply, result);
     },
   );

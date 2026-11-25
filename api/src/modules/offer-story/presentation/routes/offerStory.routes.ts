@@ -42,7 +42,9 @@ export async function offerStoryRoutes(app: FastifyInstance): Promise<void> {
       response: { 200: renderOfferStoryResponse },
     },
   }, async (request, reply) => {
-    const out = await uc().render.execute({ ...request.body, tenantId: request.tenantContext.tenantId });
+    const out = await uc().render.execute({
+      ...request.body, tenantId: request.tenantContext.tenantId, isSuperAdmin: request.tenantContext.isSuperAdmin,
+    });
     httpResponse.ok(reply, out);
   });
 }

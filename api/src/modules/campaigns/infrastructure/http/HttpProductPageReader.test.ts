@@ -140,4 +140,15 @@ describe('HttpProductPageReader', () => {
     expect(await new HttpProductPageReader().read({ url: new URL(url) })).toBeNull();
     expect(fn).not.toHaveBeenCalled();
   });
+
+  it.each([
+    'https://www.kabum.com.br/produto/123456/notebook-x',
+    'https://www.magazineluiza.com.br/produto-x/p/240552500/cat/sub/',
+    'https://www.magazinevoce.com.br/minhaloja/produto-x/p/dd90eh0e9b/cat/sub/',
+    'https://pt.aliexpress.com/item/1005001234567890.html',
+  ])('loja nova (%s) → null sem rede', async (url) => {
+    const fn = stubFetch(async () => html());
+    expect(await new HttpProductPageReader().read({ url: new URL(url) })).toBeNull();
+    expect(fn).not.toHaveBeenCalled();
+  });
 });

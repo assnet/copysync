@@ -314,7 +314,7 @@ describe('RunOfferHuntUseCase — AUTO e segredo', () => {
       ['HUNTER', `hunt:${out.finds[0]!.id}`, 'https://onelink.shein.com/1/t1001'],
       ['HUNTER', `hunt:${out.finds[1]!.id}`, 'https://onelink.shein.com/1/t1002'],
     ]);
-    expect(s.resolveCalls[0]).toEqual([TENANT, 'https://br.shein.com/product-p-1001.html', { riskScope: 'OFFER_HUNTER' }]);
+    expect(s.resolveCalls[0]).toEqual([TENANT, 'https://br.shein.com/product-p-1001.html', { riskScope: 'OFFER_HUNTER', caller: { kind: 'background' } }]);
     expect(s.finds.items.map((f) => [f.status, f.offerId])).toEqual([['SENT', s.offers.items[0]!.id], ['SENT', s.offers.items[1]!.id]]);
     expect(s.runs.items[0]).toMatchObject({ sentCount: 2, chosenCount: 2 });
   });

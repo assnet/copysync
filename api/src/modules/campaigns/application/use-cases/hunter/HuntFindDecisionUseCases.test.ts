@@ -53,8 +53,8 @@ describe('ApproveHuntFindUseCase', () => {
     await s.settings.upsert(TENANT, 'session-1', 'conv-1');
     const run = await s.runs.startWithinDailyLimit({ tenantId: TENANT, huntId: 'hunt-1', trigger: 'MANUAL', startedAt: NOW, provider: 'SHEIN' as const }, { since: NOW, limit: 24 });
     const find = s.finds.seed({ goodsId: '533885353', runId: run!.id });
-    const out = await s.approve.execute({ tenantId: TENANT, findId: find.id });
-    expect(s.resolve).toHaveBeenCalledWith(TENANT, 'https://br.shein.com/product-p-533885353.html', { riskScope: 'OFFER_HUNTER' });
+    const out = await s.approve.execute({ tenantId: TENANT, findId: find.id, isSuperAdmin: false });
+    expect(s.resolve).toHaveBeenCalledWith(TENANT, 'https://br.shein.com/product-p-533885353.html', { riskScope: 'OFFER_HUNTER', caller: { kind: 'user', isSuperAdmin: false } });
     const offer = s.offers.items[0]!;
     expect(offer).toMatchObject({
       origin: 'HUNTER', sourceKey: `hunt:${find.id}`, affiliateUrl: 'https://onelink.shein.com/1/tenant', imageUrl: '/media/offer.jpg',
@@ -75,7 +75,7 @@ describe('ApproveHuntFindUseCase', () => {
     s.images.storeImage = async (u: string) => { stored.push(u); return '/media/from-find.jpg'; };
     await s.settings.upsert(TENANT, 'session-1', 'conv-1');
     const find = s.finds.seed({ goodsId: '533885353', imageUrl: 'https://img.ltwebstatic.com/catalogo.jpg' });
-    await s.approve.execute({ tenantId: TENANT, findId: find.id });
+    await s.approve.execute({ tenantId: TENANT, findId: find.id, isSuperAdmin: false });
     expect(stored).toEqual(['https://img.ltwebstatic.com/catalogo.jpg']);
     expect(s.offers.items[0]).toMatchObject({ imageUrl: '/media/from-find.jpg', imageMode: 'LINK_PREVIEW' });
   });
@@ -90,7 +90,7 @@ describe('ApproveHuntFindUseCase', () => {
     s.images.storeImage = async (u: string) => { stored.push(u); return '/media/x.jpg'; };
     await s.settings.upsert(TENANT, 'session-1', 'conv-1');
     const find = s.finds.seed({ goodsId: '533885353', imageUrl: 'http://evil.example.com/a.jpg' });
-    await s.approve.execute({ tenantId: TENANT, findId: find.id });
+    await s.approve.execute({ tenantId: TENANT, findId: find.id, isSuperAdmin: false });
     expect(stored).toEqual([]);
     expect(s.offers.items[0]!.imageUrl).toBeNull();
   });
@@ -98,7 +98,7 @@ describe('ApproveHuntFindUseCase', () => {
   it('sem destino → OFFER_HUNT_DESTINATION_REQUIRED e o achado não muda', async () => {
     const s = setup();
     const find = s.finds.seed({});
-    await expect(s.approve.execute({ tenantId: TENANT, findId: find.id })).rejects.toMatchObject({ code: 'OFFER_HUNT_DESTINATION_REQUIRED' });
+    await expect(s.approve.execute({ tenantId: TENANT, findId: find.id, isSuperAdmin: false })).rejects.toMatchObject({ code: 'OFFER_HUNT_DESTINATION_REQUIRED' });
     expect(s.finds.items[0]!.status).toBe('PENDING_REVIEW');
     expect(s.resolve).not.toHaveBeenCalled();
   });
@@ -107,8 +107,8 @@ describe('ApproveHuntFindUseCase', () => {
     const s = setup();
     await s.settings.upsert(TENANT, 'session-1', 'conv-1');
     const sent = s.finds.seed({ status: 'SENT' });
-    await expect(s.approve.execute({ tenantId: TENANT, findId: sent.id })).rejects.toMatchObject({ code: 'OFFER_HUNT_FIND_INVALID_STATE', statusCode: 409 });
-    await expect(s.approve.execute({ tenantId: 'other', findId: sent.id })).rejects.toMatchObject({ code: 'OFFER_HUNT_NOT_FOUND' });
+    await expect(s.approve.execute({ tenantId: TENANT, findId: sent.id, isSuperAdmin: false })).rejects.toMatchObject({ code: 'OFFER_HUNT_FIND_INVALID_STATE', statusCode: 409 });
+    await expect(s.approve.execute({ tenantId: 'other', findId: sent.id, isSuperAdmin: false })).rejects.toMatchObject({ code: 'OFFER_HUNT_NOT_FOUND' });
     expect(s.offers.items).toHaveLength(0);
   });
 
@@ -117,10 +117,10 @@ describe('ApproveHuntFindUseCase', () => {
     await s.settings.upsert(TENANT, 'session-1', 'conv-1');
     const find = s.finds.seed({});
     s.resolve.mockRejectedValueOnce(new AffiliateCredentialRejectedError('SHEIN'));
-    await expect(s.approve.execute({ tenantId: TENANT, findId: find.id })).rejects.toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REJECTED' });
+    await expect(s.approve.execute({ tenantId: TENANT, findId: find.id, isSuperAdmin: false })).rejects.toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REJECTED' });
     expect(s.finds.items[0]).toMatchObject({ status: 'FAILED', failureReason: 'AFFILIATE_CREDENTIAL_REJECTED' });
-    await s.approve.execute({ tenantId: TENANT, findId: find.id });
-    await expect(s.approve.execute({ tenantId: TENANT, findId: find.id })).rejects.toMatchObject({ code: 'OFFER_HUNT_FIND_INVALID_STATE' });
+    await s.approve.execute({ tenantId: TENANT, findId: find.id, isSuperAdmin: false });
+    await expect(s.approve.execute({ tenantId: TENANT, findId: find.id, isSuperAdmin: false })).rejects.toMatchObject({ code: 'OFFER_HUNT_FIND_INVALID_STATE' });
     expect(s.offers.items).toHaveLength(1);
     expect(s.finds.items[0]).toMatchObject({ status: 'SENT', failureReason: null });
   });
@@ -131,12 +131,12 @@ describe('ApproveHuntFindUseCase', () => {
     const stuck = s.finds.seed({ status: 'APPROVED', updatedAt: NOW });
     const withOffer = s.finds.seed({ status: 'APPROVED', updatedAt: NOW, offerId: 'offer-x' });
     const early = s.at(HUNT_FIND_STALE_APPROVED_MS - 60_000);
-    await expect(early.approve.execute({ tenantId: TENANT, findId: stuck.id })).rejects.toMatchObject({ code: 'OFFER_HUNT_FIND_INVALID_STATE' });
+    await expect(early.approve.execute({ tenantId: TENANT, findId: stuck.id, isSuperAdmin: false })).rejects.toMatchObject({ code: 'OFFER_HUNT_FIND_INVALID_STATE' });
     const late = s.at(HUNT_FIND_STALE_APPROVED_MS + 60_000);
-    await expect(late.approve.execute({ tenantId: TENANT, findId: withOffer.id })).rejects.toMatchObject({ code: 'OFFER_HUNT_FIND_INVALID_STATE' });
+    await expect(late.approve.execute({ tenantId: TENANT, findId: withOffer.id, isSuperAdmin: false })).rejects.toMatchObject({ code: 'OFFER_HUNT_FIND_INVALID_STATE' });
     const results = await Promise.allSettled([
-      late.approve.execute({ tenantId: TENANT, findId: stuck.id }),
-      late.approve.execute({ tenantId: TENANT, findId: stuck.id }),
+      late.approve.execute({ tenantId: TENANT, findId: stuck.id, isSuperAdmin: false }),
+      late.approve.execute({ tenantId: TENANT, findId: stuck.id, isSuperAdmin: false }),
     ]);
     expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
     expect(s.offers.items).toHaveLength(1);
@@ -153,7 +153,7 @@ describe('ApproveHuntFindUseCase', () => {
       if (args[3] === 'SENT' && !failed) { failed = true; throw new Error('db down'); }
       return real(...args);
     });
-    const out = await s.approve.execute({ tenantId: TENANT, findId: find.id });
+    const out = await s.approve.execute({ tenantId: TENANT, findId: find.id, isSuperAdmin: false });
     expect(s.images.discardImage).not.toHaveBeenCalled();
     expect(s.offers.items[0]!.imageUrl).toBe('/media/offer.jpg');
     expect(out.offerId).toBe(s.offers.items[0]!.id);
@@ -164,7 +164,7 @@ describe('ApproveHuntFindUseCase', () => {
     const s = setup();
     s.entitlements.values[ENTITLEMENT_KEYS.OFFER_HUNTER_ENABLED] = false;
     const find = s.finds.seed({});
-    await expect(s.approve.execute({ tenantId: TENANT, findId: find.id })).rejects.toMatchObject({ code: 'PLAN_FEATURE_UNAVAILABLE' });
+    await expect(s.approve.execute({ tenantId: TENANT, findId: find.id, isSuperAdmin: false })).rejects.toMatchObject({ code: 'PLAN_FEATURE_UNAVAILABLE' });
   });
 });
 

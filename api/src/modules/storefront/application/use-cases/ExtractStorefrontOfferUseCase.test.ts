@@ -18,7 +18,7 @@ const SHOPEE_REBUILT = makeResolved({
 describe('ExtractStorefrontOfferUseCase', () => {
   let fakes: StorefrontFakes;
   let useCase: ExtractStorefrontOfferUseCase;
-  const input = { tenantId: TENANT, url: 'https://meli.la/abc' };
+  const input = { tenantId: TENANT, isSuperAdmin: false, url: 'https://meli.la/abc' };
 
   beforeEach(() => {
     const made = makeStorefrontDeps();

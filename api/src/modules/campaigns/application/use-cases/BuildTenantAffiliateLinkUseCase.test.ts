@@ -17,7 +17,7 @@ const SHARE = {
   imageUrl: 'https://img.ltwebstatic.com/images3/v.jpg',
 };
 
-function setup(creds = CREDS, opts: { ent?: Record<string, unknown>; accepted?: boolean } = {}) {
+function setup(creds = CREDS, opts: { ent?: Record<string, unknown>; accepted?: boolean; superAdminOnly?: AffiliateProvider[] } = {}) {
   const ent: Record<string, unknown> = opts.ent ?? { marketplace_shein_enabled: true };
   const deps = {
     expander: { expand: vi.fn(async (u: URL) => u) },
@@ -39,6 +39,7 @@ function setup(creds = CREDS, opts: { ent?: Record<string, unknown>; accepted?: 
       getBoolean: vi.fn(async (_t: string, k: string) => (typeof ent[k] === 'boolean' ? (ent[k] as boolean) : null)),
     },
     riskGate: { isAccepted: vi.fn(async () => opts.accepted ?? true) },
+    audience: { superAdminOnly: vi.fn(async (p: AffiliateProvider) => opts.superAdminOnly?.includes(p) ?? false) },
   };
   return { deps, uc: new BuildTenantAffiliateLinkUseCase({ ...deps, composer: new TenantAffiliateLinkComposer(deps) }) };
 }
@@ -226,5 +227,46 @@ describe('BuildTenantAffiliateLinkUseCase — etiquetas vinculadas (TLINK-35)', 
     s.deps.entitlements.getNumber.mockImplementation(async () => 10 as never);
     await s.uc.execute('t1', 'https://produto.mercadolivre.com.br/MLB-123456-fone-_JM?matt_word=segunda');
     expect(s.deps.mercadoLivre.createAffiliateLinks).toHaveBeenCalledWith({ ssid: 'x' }, ['https://produto.mercadolivre.com.br/MLB-123456'], 'minhaetq');
+  });
+});
+
+describe('BuildTenantAffiliateLinkUseCase — audiência "Só super admin" da loja', () => {
+  const KABUM = 'https://www.kabum.com.br/produto/123456/notebook-x';
+  const awin = (mid: string) =>
+    `https://www.awin1.com/cread.php?awinmid=${mid}&awinaffid=1234567&ued=${encodeURIComponent(KABUM)}`;
+
+  it('flag ligada e sem plano: unsupported (sem alerta), sem expandir nem ler credencial', async () => {
+    const s = setup(CREDS, { ent: {}, superAdminOnly: ['KABUM'] });
+    expect(await s.uc.execute('t1', KABUM)).toEqual({ kind: 'unsupported' });
+    expect(s.deps.expander.expand).not.toHaveBeenCalled();
+    expect(s.deps.credentials.resolveState).not.toHaveBeenCalled();
+  });
+
+  it('flag ligada, plano liberado e sem credencial: unsupported (sem alerta)', async () => {
+    const s = setup(CREDS, { ent: { marketplace_kabum_enabled: true }, superAdminOnly: ['KABUM'] });
+    expect(await s.uc.execute('t1', KABUM)).toEqual({ kind: 'unsupported' });
+    expect(s.deps.credentials.resolveState).toHaveBeenCalledWith('t1', 'KABUM');
+  });
+
+  it('flag desligada: plan_unavailable e credential_missing como a Shein', async () => {
+    const noPlan = setup(CREDS, { ent: {} });
+    expect(await noPlan.uc.execute('t1', KABUM)).toEqual({ kind: 'plan_unavailable', provider: 'KABUM' });
+    const noCred = setup(CREDS, { ent: { marketplace_kabum_enabled: true } });
+    expect(await noCred.uc.execute('t1', KABUM)).toEqual({ kind: 'credential_missing', provider: 'KABUM' });
+  });
+
+  it('awin1.com de outro anunciante: unsupported sem rede, com flag ligada ou desligada', async () => {
+    for (const superAdminOnly of [['KABUM'] as AffiliateProvider[], []]) {
+      const s = setup(CREDS, { ent: { marketplace_kabum_enabled: true }, superAdminOnly });
+      expect(await s.uc.execute('t1', awin('99999'))).toEqual({ kind: 'unsupported' });
+      expect(s.deps.expander.expand).not.toHaveBeenCalled();
+    }
+  });
+
+  it('lojas antigas não consultam a audiência no caminho feliz; Shein sem plano segue plan_unavailable', async () => {
+    const s = setup(CREDS, { ent: {} });
+    expect(await s.uc.execute('t1', 'https://www.amazon.com.br/dp/B0ABCDEFGH')).toMatchObject({ kind: 'ok' });
+    expect(await s.uc.execute('t1', 'https://br.shein.com/Vestido-Midi-p-12345678.html')).toEqual({ kind: 'plan_unavailable', provider: 'SHEIN' });
+    expect(s.deps.audience.superAdminOnly).toHaveBeenCalledTimes(1);
   });
 });

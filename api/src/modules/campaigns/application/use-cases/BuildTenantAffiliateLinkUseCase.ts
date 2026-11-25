@@ -7,6 +7,7 @@ import type { IShortLinkExpander } from '../../domain/contracts/IShortLinkExpand
 import { detectMarketplace, isSupportedProductUrl } from '../../domain/services/detectMarketplace';
 import { marketplaceEntitlementKey } from '../../domain/services/marketplaceEntitlement';
 import type { TenantAffiliateLinkComposer, TenantLinkProductData } from '../services/TenantAffiliateLinkComposer';
+import type { MarketplaceAudienceGate } from '../services/MarketplaceAudienceGate';
 import { AppError } from '../../../../shared/errors/AppError';
 import { logger } from '../../../../shared/logger/logger';
 
@@ -31,6 +32,11 @@ export interface BuildTenantAffiliateLinkDeps {
   entitlements: IEntitlementReader;
   /** Núcleo por marketplace (sem efeito colateral); a pausa por `markRejected` fica aqui. */
   composer: Pick<TenantAffiliateLinkComposer, 'compose'>;
+  /**
+   * Flag "Só super admin" da loja ligada: sem plano ou sem credencial vira `unsupported` (comportamento de antes da
+   * loja existir, sem alerta). Desligada: `plan_unavailable`/`credential_missing` como as demais.
+   */
+  audience: Pick<MarketplaceAudienceGate, 'superAdminOnly'>;
 }
 
 /**
@@ -57,7 +63,7 @@ export class BuildTenantAffiliateLinkUseCase {
     const pasted = detectMarketplace(url);
     if (pasted && marketplaceEntitlementKey(pasted)) {
       const blocked = await this.planBlocked(tenantId, pasted);
-      if (blocked) return blocked;
+      if (blocked) return this.hideIfAudienceRestricted(blocked);
     }
 
     let final: URL;
@@ -73,7 +79,7 @@ export class BuildTenantAffiliateLinkUseCase {
     // → credencial → aceite → chamada à loja
     if (provider !== pasted) {
       const blocked = await this.planBlocked(tenantId, provider);
-      if (blocked) return blocked;
+      if (blocked) return this.hideIfAudienceRestricted(blocked);
     }
 
     let cred: OfferAffiliateCredential;
@@ -81,7 +87,7 @@ export class BuildTenantAffiliateLinkUseCase {
       const state = await this.deps.credentials.resolveState(tenantId, provider);
       // Loja pausada: credencial recusada antes, sem rede até o usuário reconfigurar
       if (state.state === 'rejected') return { kind: 'credential_rejected', provider, since: state.since };
-      if (state.state === 'missing') return { kind: 'credential_missing', provider };
+      if (state.state === 'missing') return this.hideIfAudienceRestricted({ kind: 'credential_missing', provider });
       cred = state.cred;
     } catch (err) {
       return this.failure(provider, err, 'CREDENTIAL_UNREADABLE');
@@ -109,6 +115,16 @@ export class BuildTenantAffiliateLinkUseCase {
       return (await isMarketplaceEnabled(this.deps.entitlements, tenantId, provider)) ? null : { kind: 'plan_unavailable', provider };
     } catch (err) {
       return this.failure(provider, err, 'ENTITLEMENT_UNREADABLE');
+    }
+  }
+
+  /** Plano ou credencial ausente em loja com flag "Só super admin" ligada → `unsupported` (sem alerta). */
+  private async hideIfAudienceRestricted(out: TenantAffiliateLink): Promise<TenantAffiliateLink> {
+    if (out.kind !== 'plan_unavailable' && out.kind !== 'credential_missing') return out;
+    try {
+      return (await this.deps.audience.superAdminOnly(out.provider)) ? { kind: 'unsupported' } : out;
+    } catch (err) {
+      return this.failure(out.provider, err, 'FEATURE_AUDIENCE_UNREADABLE');
     }
   }
 

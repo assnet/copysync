@@ -70,6 +70,7 @@ function setup(
       getBoolean: vi.fn(async (_t: string, k: string) => (typeof ent[k] === 'boolean' ? (ent[k] as boolean) : null)),
     },
     riskGate,
+    audience: { isVisible: vi.fn(async () => true) },
   };
   vi.spyOn(deps.products, 'resolve');
   vi.spyOn(composer, 'compose');
@@ -84,6 +85,8 @@ const SHEIN_PRODUCT = 'https://br.shein.com/Vestido-Midi-p-12345678.html';
 const SHEIN_MINE = `${SHEIN_PRODUCT}?url_from=affiliate_koc_123456`;
 const SHEIN_OTHER = `${SHEIN_PRODUCT}?url_from=affiliate_koc_999999`;
 const SHOPEE_PLAIN = 'https://shopee.com.br/Fone-i.111.222';
+/** Usuário comum: as 4 lojas antigas não têm audiência, o portão não muda nada. */
+const USER = { caller: { kind: 'user', isSuperAdmin: false } } as const;
 
 // ---------- Matriz: marketplace × forma do link × estado da credencial ----------
 
@@ -176,7 +179,7 @@ describe('ResolveAffiliateProductUseCase — matriz (credencial ok)', () => {
     const c = MATRIX[provider];
     const pasted = c.links[shape];
     const s = setup(CREDS, { expand: c.expand });
-    const out = await s.uc.execute(TENANT, pasted);
+    const out = await s.uc.execute(TENANT, pasted, USER);
     const keep = KEEPS(provider, shape);
     expect(out).toMatchObject({
       provider, sourceUrl: pasted, attributionVerified: true, linkRebuilt: !keep,
@@ -191,7 +194,7 @@ describe('ResolveAffiliateProductUseCase — matriz (credencial ausente ou recus
   it.each(CELLS)('%s · %s sem credencial → AFFILIATE_CREDENTIAL_REQUIRED, nada pedido à loja', async (provider, shape) => {
     const c = MATRIX[provider];
     const s = setup({}, { expand: c.expand });
-    await expect(s.uc.execute(TENANT, c.links[shape])).rejects.toMatchObject({
+    await expect(s.uc.execute(TENANT, c.links[shape], USER)).rejects.toMatchObject({
       code: 'AFFILIATE_CREDENTIAL_REQUIRED', statusCode: 422, meta: { provider },
     });
     expect(s.deps.composer.compose).not.toHaveBeenCalled();
@@ -201,7 +204,7 @@ describe('ResolveAffiliateProductUseCase — matriz (credencial ausente ou recus
   it.each(CELLS)('%s · %s recusada → AFFILIATE_CREDENTIAL_REJECTED sem marcar', async (provider, shape) => {
     const c = MATRIX[provider];
     const s = setup(CREDS, { expand: c.expand, rejected: [provider] });
-    await expect(s.uc.execute(TENANT, c.links[shape])).rejects.toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REJECTED', meta: { provider } });
+    await expect(s.uc.execute(TENANT, c.links[shape], USER)).rejects.toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REJECTED', meta: { provider } });
     expect(s.deps.composer.compose).not.toHaveBeenCalled();
     expect(s.deps.shein.getProductShare).not.toHaveBeenCalled();
     expect(s.deps.credentials.markRejected).not.toHaveBeenCalled();
@@ -213,7 +216,7 @@ describe('ResolveAffiliateProductUseCase — matriz (credencial ausente ou recus
 describe('ResolveAffiliateProductUseCase', () => {
   it('Amazon do tenant: sempre reescrita na forma canônica com a tag; dados da página; foto só como URL externa', async () => {
     const s = setup();
-    const out = await s.uc.execute(TENANT, `  ${AMAZON}  `);
+    const out = await s.uc.execute(TENANT, `  ${AMAZON}  `, USER);
     expect(out).toEqual({
       provider: 'AMAZON',
       sourceUrl: AMAZON,
@@ -231,14 +234,14 @@ describe('ResolveAffiliateProductUseCase', () => {
 
   it('texto que não é URL ou domínio fora da allowlist → OFFER_URL_UNSUPPORTED sem rede', async () => {
     const s = setup();
-    await expect(s.uc.execute(TENANT, 'não é url')).rejects.toMatchObject({ code: 'OFFER_URL_UNSUPPORTED' });
-    await expect(s.uc.execute(TENANT, 'https://exemplo.com/produto')).rejects.toMatchObject({ code: 'OFFER_URL_UNSUPPORTED' });
+    await expect(s.uc.execute(TENANT, 'não é url', USER)).rejects.toMatchObject({ code: 'OFFER_URL_UNSUPPORTED' });
+    await expect(s.uc.execute(TENANT, 'https://exemplo.com/produto', USER)).rejects.toMatchObject({ code: 'OFFER_URL_UNSUPPORTED' });
     expect(s.deps.expander.expand).not.toHaveBeenCalled();
   });
 
   it('produto não reconhecido na URL final → OFFER_URL_UNSUPPORTED', async () => {
     const s = setup();
-    await expect(s.uc.execute(TENANT, 'https://amazon.com.br/s?k=fone&tag=loja-20')).rejects.toMatchObject({
+    await expect(s.uc.execute(TENANT, 'https://amazon.com.br/s?k=fone&tag=loja-20', USER)).rejects.toMatchObject({
       code: 'OFFER_URL_UNSUPPORTED',
     });
     expect(s.pageReader.read).not.toHaveBeenCalled();
@@ -252,26 +255,26 @@ describe('ResolveAffiliateProductUseCase', () => {
       'https://www.mercadolivre.com.br/cupons',
       'https://shopee.com.br/m/cupom-de-desconto',
     ]) {
-      await expect(s.uc.execute(TENANT, url)).rejects.toMatchObject({ code: 'OFFER_URL_UNSUPPORTED' });
+      await expect(s.uc.execute(TENANT, url, USER)).rejects.toMatchObject({ code: 'OFFER_URL_UNSUPPORTED' });
     }
     expect(s.deps.credentials.resolveState).not.toHaveBeenCalled();
   });
 
   it('tag de outra conta → recriado com a tag do tenant, sem a de terceiro', async () => {
     const s = setup();
-    const out = await s.uc.execute(TENANT, 'https://www.amazon.com.br/dp/B0ABCDEFGH?tag=outro-20');
+    const out = await s.uc.execute(TENANT, 'https://www.amazon.com.br/dp/B0ABCDEFGH?tag=outro-20', USER);
     expect(out).toMatchObject({ affiliateUrl: AMAZON_TENANT, linkRebuilt: true });
   });
 
   it('sem credencial → AFFILIATE_CREDENTIAL_REQUIRED (D1), sem ler a página', async () => {
     const s = setup({});
-    await expect(s.uc.execute(TENANT, AMAZON)).rejects.toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REQUIRED', meta: { provider: 'AMAZON' } });
+    await expect(s.uc.execute(TENANT, AMAZON, USER)).rejects.toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REQUIRED', meta: { provider: 'AMAZON' } });
     expect(s.pageReader.read).not.toHaveBeenCalled();
   });
 
   it('ML sem afiliação com sessão: gera o link pela URL canônica e a principal', async () => {
     const s = setup();
-    const out = await s.uc.execute(TENANT, ML_PLAIN);
+    const out = await s.uc.execute(TENANT, ML_PLAIN, USER);
     expect(out).toMatchObject({ provider: 'MERCADO_LIVRE', sourceUrl: ML_PLAIN, affiliateUrl: ML_LINK, attributionVerified: true, linkRebuilt: true });
     expect(s.mercadoLivre.createAffiliateLinks).toHaveBeenCalledWith({ ssid: 'SSID-TOKEN' }, [ML_CANON], 'minhaetq');
     expect(out.product.productRef).toBe('MLB123456');
@@ -280,47 +283,47 @@ describe('ResolveAffiliateProductUseCase', () => {
   it('ML: falha nunca vira NOT_AFFILIATE — vazio → REBUILD_FAILED; AppError da loja sobe; sem sessão → CREDENTIAL_REQUIRED', async () => {
     const s = setup();
     s.mercadoLivre.createAffiliateLinks.mockResolvedValueOnce({ success: [], errors: [{ originUrl: ML_CANON, errorCode: 100, errorMessage: 'x' }] });
-    await expect(s.uc.execute(TENANT, ML_PLAIN)).rejects.toMatchObject({
+    await expect(s.uc.execute(TENANT, ML_PLAIN, USER)).rejects.toMatchObject({
       code: 'OFFER_LINK_REBUILD_FAILED', meta: { provider: 'MERCADO_LIVRE', reason: 'ML_100' },
     });
     s.mercadoLivre.createAffiliateLinks.mockResolvedValueOnce({ success: [], errors: [] });
-    await expect(s.uc.execute(TENANT, ML_PLAIN)).rejects.toMatchObject({ code: 'OFFER_LINK_REBUILD_FAILED' });
+    await expect(s.uc.execute(TENANT, ML_PLAIN, USER)).rejects.toMatchObject({ code: 'OFFER_LINK_REBUILD_FAILED' });
     for (const code of ['AFFILIATE_API_RATE_LIMITED', 'AFFILIATE_API_UNAVAILABLE', 'AFFILIATE_CREDENTIAL_REJECTED']) {
       s.mercadoLivre.createAffiliateLinks.mockRejectedValueOnce(new AppError(code, 'x', 503));
-      await expect(s.uc.execute(TENANT, ML_PLAIN)).rejects.toMatchObject({ code });
+      await expect(s.uc.execute(TENANT, ML_PLAIN, USER)).rejects.toMatchObject({ code });
     }
     expect(s.deps.credentials.markRejected).not.toHaveBeenCalled();
 
     const noSession = setup({ MERCADO_LIVRE: { provider: 'MERCADO_LIVRE', publicIdentifier: 'minhaetq', secret: null } });
-    await expect(noSession.uc.execute(TENANT, ML_PLAIN)).rejects.toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REQUIRED' });
+    await expect(noSession.uc.execute(TENANT, ML_PLAIN, USER)).rejects.toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REQUIRED' });
     expect(noSession.mercadoLivre.createAffiliateLinks).not.toHaveBeenCalled();
   });
 
   it('ML: erro que não é AppError na geração propaga', async () => {
     const s = setup();
     s.mercadoLivre.createAffiliateLinks.mockRejectedValueOnce(new TypeError('bug'));
-    await expect(s.uc.execute(TENANT, ML_PLAIN)).rejects.toBeInstanceOf(TypeError);
+    await expect(s.uc.execute(TENANT, ML_PLAIN, USER)).rejects.toBeInstanceOf(TypeError);
   });
 
   it('link recriado fora da allowlist → OFFER_LINK_REBUILD_FAILED (Shopee, ML e Shein)', async () => {
     const s = setup();
     s.shopee.generateShortLink.mockResolvedValueOnce('https://evil.example/x');
-    await expect(s.uc.execute(TENANT, SHOPEE_PLAIN)).rejects.toMatchObject({
+    await expect(s.uc.execute(TENANT, SHOPEE_PLAIN, USER)).rejects.toMatchObject({
       code: 'OFFER_LINK_REBUILD_FAILED', meta: { provider: 'SHOPEE', reason: 'NOT_ALLOWED' },
     });
     s.mercadoLivre.createAffiliateLinks.mockResolvedValueOnce({ success: [{ originUrl: '', shortUrl: 'http://meli.la/x', longUrl: '' }], errors: [] });
-    await expect(s.uc.execute(TENANT, ML_PLAIN)).rejects.toMatchObject({ code: 'OFFER_LINK_REBUILD_FAILED', meta: { reason: 'NOT_ALLOWED' } });
+    await expect(s.uc.execute(TENANT, ML_PLAIN, USER)).rejects.toMatchObject({ code: 'OFFER_LINK_REBUILD_FAILED', meta: { reason: 'NOT_ALLOWED' } });
     s.deps.shein.getProductShare.mockResolvedValueOnce({ ...SHARE, affiliateUrl: 'https://evil.example/x' });
-    await expect(s.uc.execute(TENANT, SHEIN_PRODUCT)).rejects.toMatchObject({ code: 'OFFER_LINK_REBUILD_FAILED', meta: { provider: 'SHEIN' } });
+    await expect(s.uc.execute(TENANT, SHEIN_PRODUCT, USER)).rejects.toMatchObject({ code: 'OFFER_LINK_REBUILD_FAILED', meta: { provider: 'SHEIN' } });
   });
 
   it('Shopee: nunca mantém o colado; sem secret → AFFILIATE_CREDENTIAL_REQUIRED', async () => {
     const s = setup();
-    const out = await s.uc.execute(TENANT, 'https://shopee.com.br/Fone-i.111.222');
+    const out = await s.uc.execute(TENANT, 'https://shopee.com.br/Fone-i.111.222', USER);
     expect(out).toMatchObject({ affiliateUrl: SHOPEE_LINK, linkRebuilt: true, product: { productRef: '111.222', title: 'Air Fryer 4L' } });
     expect(s.shopee.generateShortLink).toHaveBeenCalledWith({ appId: 'APP1', secret: 'S3CR3T' }, 'https://shopee.com.br/product/111/222');
     const noSecret = setup({ SHOPEE: { provider: 'SHOPEE', publicIdentifier: 'APP1', secret: null } });
-    await expect(noSecret.uc.execute(TENANT, SHOPEE_PLAIN)).rejects.toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REQUIRED', meta: { provider: 'SHOPEE' } });
+    await expect(noSecret.uc.execute(TENANT, SHOPEE_PLAIN, USER)).rejects.toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REQUIRED', meta: { provider: 'SHOPEE' } });
   });
 
   it('ML vitrine social curta do tenant: mantém o colado e usa o productRef da página', async () => {
@@ -329,7 +332,7 @@ describe('ResolveAffiliateProductUseCase', () => {
       new URL('https://www.mercadolivre.com.br/social/minhaetq?matt_word=minhaetq&matt_tool=63844234'),
     );
     s.pageReader.read.mockResolvedValueOnce({ ...PAGE, productRef: 'MLB999' });
-    const out = await s.uc.execute(TENANT, 'https://meli.la/1Hb6zu6');
+    const out = await s.uc.execute(TENANT, 'https://meli.la/1Hb6zu6', USER);
     expect(out).toMatchObject({
       provider: 'MERCADO_LIVRE', affiliateUrl: 'https://meli.la/1Hb6zu6', attributionVerified: true, linkRebuilt: false,
       product: { productRef: 'MLB999' },
@@ -344,7 +347,7 @@ describe('ResolveAffiliateProductUseCase', () => {
       new URL('https://www.mercadolivre.com.br/social/apelidodoperfil?matt_word=minhaetq&matt_tool=63844234'),
     );
     s.pageReader.read.mockResolvedValueOnce({ ...PAGE, productRef: 'MLB999' });
-    const out = await s.uc.execute(TENANT, 'https://meli.la/2Xy9abc');
+    const out = await s.uc.execute(TENANT, 'https://meli.la/2Xy9abc', USER);
     expect(out).toMatchObject({
       provider: 'MERCADO_LIVRE', affiliateUrl: 'https://meli.la/2Xy9abc', attributionVerified: true, linkRebuilt: false,
       product: { productRef: 'MLB999' },
@@ -356,7 +359,7 @@ describe('ResolveAffiliateProductUseCase', () => {
     const s = setup();
     const pasted = 'https://www.mercadolivre.com.br/social/outro?matt_word=outraetq';
     s.pageReader.read.mockResolvedValueOnce({ ...PAGE, productRef: 'MLB777', productRefCatalog: true });
-    const out = await s.uc.execute(TENANT, pasted);
+    const out = await s.uc.execute(TENANT, pasted, USER);
     expect(out).toEqual({
       provider: 'MERCADO_LIVRE', sourceUrl: pasted, affiliateUrl: ML_LINK, attributionVerified: true, linkRebuilt: true,
       product: { productRef: 'MLB777', title: 'Air Fryer 4L', priceCents: 29990, originalPriceCents: 39990, imageSourceUrl: PAGE.imageUrl },
@@ -372,16 +375,16 @@ describe('ResolveAffiliateProductUseCase', () => {
     s.pageReader.read
       .mockResolvedValueOnce({ title: null, imageUrl: null, priceCents: null, originalPriceCents: null, productRef: 'MLB777' })
       .mockResolvedValueOnce({ ...PAGE, productRef: null });
-    const out = await s.uc.execute(TENANT, pasted);
+    const out = await s.uc.execute(TENANT, pasted, USER);
     expect(out).toMatchObject({ affiliateUrl: ML_LINK, product: { productRef: 'MLB777', title: 'Air Fryer 4L' } });
     expect(s.pageReader.read).toHaveBeenCalledTimes(2);
   });
 
   it('ML, Shopee e Amazon nunca passam pelo gate de plano nem de aceite', async () => {
     const s = setup(CREDS, { ent: {}, accepted: false });
-    await s.uc.execute(TENANT, AMAZON);
-    await s.uc.execute(TENANT, SHOPEE_PLAIN);
-    await s.uc.execute(TENANT, ML_PLAIN);
+    await s.uc.execute(TENANT, AMAZON, USER);
+    await s.uc.execute(TENANT, SHOPEE_PLAIN, USER);
+    await s.uc.execute(TENANT, ML_PLAIN, USER);
     expect(s.deps.entitlements.getBoolean).not.toHaveBeenCalled();
     expect(s.deps.riskGate.isAccepted).not.toHaveBeenCalled();
     expect(s.deps.shein.getProductShare).not.toHaveBeenCalled();
@@ -389,7 +392,7 @@ describe('ResolveAffiliateProductUseCase', () => {
 
   it('todos os marketplaces leem a credencial por resolveState; recusa registrada bloqueia sem marcar', async () => {
     const s = setup(CREDS, { rejected: ['AMAZON'] });
-    await expect(s.uc.execute(TENANT, AMAZON)).rejects.toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REJECTED' });
+    await expect(s.uc.execute(TENANT, AMAZON, USER)).rejects.toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REJECTED' });
     expect(s.deps.credentials.resolveState).toHaveBeenCalledWith(TENANT, 'AMAZON');
     expect(s.deps.credentials.markRejected).not.toHaveBeenCalled();
     expect(s.pageReader.read).not.toHaveBeenCalled();
@@ -406,7 +409,7 @@ describe('ResolveAffiliateProductUseCase — Shein', () => {
   it('chave do plano ausente ou false bloqueia (PLAN_FEATURE_UNAVAILABLE) antes de ler a credencial', async () => {
     for (const ent of [{}, { marketplace_shein_enabled: false }]) {
       const s = setup(WITH, { ent });
-      await expect(s.uc.execute(TENANT, SHEIN_MINE)).rejects.toMatchObject({ code: 'PLAN_FEATURE_UNAVAILABLE', statusCode: 403 });
+      await expect(s.uc.execute(TENANT, SHEIN_MINE, USER)).rejects.toMatchObject({ code: 'PLAN_FEATURE_UNAVAILABLE', statusCode: 403 });
       expect(s.deps.credentials.resolveState).not.toHaveBeenCalled();
       expect(s.deps.shein.getProductShare).not.toHaveBeenCalled();
     }
@@ -414,7 +417,7 @@ describe('ResolveAffiliateProductUseCase — Shein', () => {
 
   it('sem plano + link curto `onelink` colado: bloqueia sem expandir (nenhuma rede)', async () => {
     const s = setup(WITH, { ent: {} });
-    await expect(s.uc.execute(TENANT, 'https://onelink.shein.com/1/abc')).rejects.toMatchObject({ code: 'PLAN_FEATURE_UNAVAILABLE' });
+    await expect(s.uc.execute(TENANT, 'https://onelink.shein.com/1/abc', USER)).rejects.toMatchObject({ code: 'PLAN_FEATURE_UNAVAILABLE' });
     expect(s.deps.expander.expand).not.toHaveBeenCalled();
     expect(s.deps.shein.getProductShare).not.toHaveBeenCalled();
   });
@@ -422,14 +425,14 @@ describe('ResolveAffiliateProductUseCase — Shein', () => {
   it('link de outro marketplace que redireciona para a Shein: gate de plano depois do expand', async () => {
     const s = setup(WITH, { ent: {} });
     s.deps.expander.expand.mockResolvedValueOnce(new URL(SHEIN_MINE));
-    await expect(s.uc.execute(TENANT, 'https://amzn.to/abc')).rejects.toMatchObject({ code: 'PLAN_FEATURE_UNAVAILABLE' });
+    await expect(s.uc.execute(TENANT, 'https://amzn.to/abc', USER)).rejects.toMatchObject({ code: 'PLAN_FEATURE_UNAVAILABLE' });
     expect(s.deps.expander.expand).toHaveBeenCalledTimes(1);
     expect(s.deps.shein.getProductShare).not.toHaveBeenCalled();
   });
 
   it('link de outra conta → recriado com o shareLink do tenant', async () => {
     const s = setup(WITH);
-    const out = await s.uc.execute(TENANT, SHEIN_OTHER);
+    const out = await s.uc.execute(TENANT, SHEIN_OTHER, USER);
     expect(out).toEqual({
       provider: 'SHEIN', sourceUrl: SHEIN_OTHER, affiliateUrl: SHARE.affiliateUrl, attributionVerified: true, linkRebuilt: true, product: FROM_SHARE,
     });
@@ -438,7 +441,7 @@ describe('ResolveAffiliateProductUseCase — Shein', () => {
 
   it('com credencial e sem aceite do aviso → MARKETPLACE_RISK_NOT_ACCEPTED (403), sem chamar a Shein', async () => {
     const s = setup(WITH, { accepted: false });
-    await expect(s.uc.execute(TENANT, SHEIN_MINE)).rejects.toMatchObject({ code: 'MARKETPLACE_RISK_NOT_ACCEPTED', statusCode: 403 });
+    await expect(s.uc.execute(TENANT, SHEIN_MINE, USER)).rejects.toMatchObject({ code: 'MARKETPLACE_RISK_NOT_ACCEPTED', statusCode: 403 });
     expect(s.deps.riskGate.isAccepted).toHaveBeenCalledWith(TENANT, 'SHEIN', 'AFFILIATE_LINK');
     expect(s.deps.shein.getProductShare).not.toHaveBeenCalled();
   });
@@ -446,7 +449,7 @@ describe('ResolveAffiliateProductUseCase — Shein', () => {
   it('riskScope OFFER_HUNTER: cobra só o aceite do caçador (aqui e no composer)', async () => {
     const s = setup(WITH);
     s.deps.riskGate.isAccepted.mockImplementation(async (_t: string, _p: AffiliateProvider, scope?: string) => scope === 'OFFER_HUNTER');
-    const out = await s.uc.execute(TENANT, SHEIN_OTHER, { riskScope: 'OFFER_HUNTER' });
+    const out = await s.uc.execute(TENANT, SHEIN_OTHER, { ...USER, riskScope: 'OFFER_HUNTER' });
     expect(out).toMatchObject({ provider: 'SHEIN', affiliateUrl: SHARE.affiliateUrl, linkRebuilt: true });
     expect(s.deps.riskGate.isAccepted.mock.calls.map((c) => c[2])).toEqual(['OFFER_HUNTER', 'OFFER_HUNTER']);
     expect(s.deps.composer.compose).toHaveBeenCalledWith(expect.objectContaining({ riskScope: 'OFFER_HUNTER' }));
@@ -455,7 +458,7 @@ describe('ResolveAffiliateProductUseCase — Shein', () => {
   it('riskScope OFFER_HUNTER sem aceite do caçador → 403 com escopo e versão do caçador, sem chamar a Shein', async () => {
     const s = setup(WITH);
     s.deps.riskGate.isAccepted.mockImplementation(async (_t: string, _p: AffiliateProvider, scope?: string) => scope === 'AFFILIATE_LINK');
-    await expect(s.uc.execute(TENANT, SHEIN_OTHER, { riskScope: 'OFFER_HUNTER' })).rejects.toMatchObject({
+    await expect(s.uc.execute(TENANT, SHEIN_OTHER, { ...USER, riskScope: 'OFFER_HUNTER' })).rejects.toMatchObject({
       code: 'MARKETPLACE_RISK_NOT_ACCEPTED', statusCode: 403,
       meta: { provider: 'SHEIN', noticeVersion: OFFER_HUNTER_RISK_NOTICE_VERSION.SHEIN, scope: 'OFFER_HUNTER' },
     });
@@ -464,7 +467,7 @@ describe('ResolveAffiliateProductUseCase — Shein', () => {
 
   it('link longo do próprio tenant: recriado (D2), 1 chamada, produto da API (sem products.resolve)', async () => {
     const s = setup(WITH);
-    const out = await s.uc.execute(TENANT, SHEIN_MINE);
+    const out = await s.uc.execute(TENANT, SHEIN_MINE, USER);
     expect(s.deps.shein.getProductShare).toHaveBeenCalledTimes(1);
     expect(out).toEqual({
       provider: 'SHEIN', sourceUrl: SHEIN_MINE, affiliateUrl: SHARE.affiliateUrl, attributionVerified: true, linkRebuilt: true, product: FROM_SHARE,
@@ -475,7 +478,7 @@ describe('ResolveAffiliateProductUseCase — Shein', () => {
 
   it('link curto do próprio tenant: mantém o colado; 1 chamada só para os dados', async () => {
     const s = short();
-    const out = await s.uc.execute(TENANT, SHORT_MINE);
+    const out = await s.uc.execute(TENANT, SHORT_MINE, USER);
     expect(out).toEqual({
       provider: 'SHEIN', sourceUrl: SHORT_MINE, affiliateUrl: SHORT_MINE, attributionVerified: true, linkRebuilt: false, product: FROM_SHARE,
     });
@@ -486,7 +489,7 @@ describe('ResolveAffiliateProductUseCase — Shein', () => {
 
   it('link sem afiliação: usa o shareLink gerado', async () => {
     const s = setup(WITH);
-    const out = await s.uc.execute(TENANT, SHEIN_PRODUCT);
+    const out = await s.uc.execute(TENANT, SHEIN_PRODUCT, USER);
     expect(out).toMatchObject({ affiliateUrl: SHARE.affiliateUrl, linkRebuilt: true, product: { title: 'Vestido Midi' } });
     expect(s.deps.products.resolve).not.toHaveBeenCalled();
   });
@@ -494,16 +497,16 @@ describe('ResolveAffiliateProductUseCase — Shein', () => {
   it('cliente devolve null: curto mantido segue com produto vazio; recriar → OFFER_LINK_REBUILD_FAILED', async () => {
     const s = short();
     s.deps.shein.getProductShare.mockResolvedValue(null);
-    const out = await s.uc.execute(TENANT, SHORT_MINE);
+    const out = await s.uc.execute(TENANT, SHORT_MINE, USER);
     expect(out).toEqual({ provider: 'SHEIN', sourceUrl: SHORT_MINE, affiliateUrl: SHORT_MINE, attributionVerified: true, linkRebuilt: false, product: EMPTY });
-    await expect(s.uc.execute(TENANT, SHEIN_PRODUCT)).rejects.toMatchObject({
+    await expect(s.uc.execute(TENANT, SHEIN_PRODUCT, USER)).rejects.toMatchObject({
       code: 'OFFER_LINK_REBUILD_FAILED', meta: { provider: 'SHEIN', reason: 'SHEIN_LINK_NOT_CREATED' },
     });
   });
 
   it('sem credencial: AFFILIATE_CREDENTIAL_REQUIRED antes do aceite, sem chamar a Shein', async () => {
     const s = setup({}, { accepted: false });
-    await expect(s.uc.execute(TENANT, SHEIN_MINE)).rejects.toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REQUIRED', meta: { provider: 'SHEIN' } });
+    await expect(s.uc.execute(TENANT, SHEIN_MINE, USER)).rejects.toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REQUIRED', meta: { provider: 'SHEIN' } });
     expect(s.deps.riskGate.isAccepted).not.toHaveBeenCalled();
     expect(s.deps.shein.getProductShare).not.toHaveBeenCalled();
     expect(s.pageReader.read).not.toHaveBeenCalled();
@@ -512,22 +515,22 @@ describe('ResolveAffiliateProductUseCase — Shein', () => {
   it('credencial sem AT: curto mantido com produto vazio sem chamar; recriar → AFFILIATE_CREDENTIAL_REQUIRED', async () => {
     const noAt = { SHEIN: { ...SHEIN_CRED, session: { cookies: { memberId: '123456' } } } };
     const s = short(noAt);
-    await expect(s.uc.execute(TENANT, SHORT_MINE)).resolves.toMatchObject({ affiliateUrl: SHORT_MINE, product: EMPTY });
+    await expect(s.uc.execute(TENANT, SHORT_MINE, USER)).resolves.toMatchObject({ affiliateUrl: SHORT_MINE, product: EMPTY });
     expect(s.deps.shein.getProductShare).not.toHaveBeenCalled();
-    await expect(s.uc.execute(TENANT, SHEIN_PRODUCT)).rejects.toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REQUIRED' });
+    await expect(s.uc.execute(TENANT, SHEIN_PRODUCT, USER)).rejects.toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REQUIRED' });
   });
 
   it('sessão recusada pela Shein agora: AFFILIATE_CREDENTIAL_REJECTED propaga (sem pausar a loja aqui)', async () => {
     const s = setup(WITH);
     s.deps.shein.getProductShare.mockRejectedValueOnce(new AppError('AFFILIATE_CREDENTIAL_REJECTED', 'rejected', 401));
-    await expect(s.uc.execute(TENANT, SHEIN_MINE)).rejects.toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REJECTED' });
+    await expect(s.uc.execute(TENANT, SHEIN_MINE, USER)).rejects.toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REJECTED' });
     expect(s.deps.shein.getProductShare).toHaveBeenCalledTimes(1);
     expect(s.deps.credentials.markRejected).not.toHaveBeenCalled();
   });
 
   it('credencial já recusada: AFFILIATE_CREDENTIAL_REJECTED sem chamar a Shein nem marcar', async () => {
     const s = setup(WITH, { rejected: ['SHEIN'] });
-    await expect(s.uc.execute(TENANT, SHEIN_MINE)).rejects.toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REJECTED' });
+    await expect(s.uc.execute(TENANT, SHEIN_MINE, USER)).rejects.toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REJECTED' });
     expect(s.deps.shein.getProductShare).not.toHaveBeenCalled();
     expect(s.deps.riskGate.isAccepted).not.toHaveBeenCalled();
     expect(s.deps.credentials.markRejected).not.toHaveBeenCalled();
@@ -536,8 +539,8 @@ describe('ResolveAffiliateProductUseCase — Shein', () => {
   it('shareLink fora da allowlist: recriar → REBUILD_FAILED; curto do tenant segue com o colado', async () => {
     const s = short();
     s.deps.shein.getProductShare.mockResolvedValue({ ...SHARE, affiliateUrl: 'https://evil.example/x' });
-    await expect(s.uc.execute(TENANT, SHEIN_PRODUCT)).rejects.toMatchObject({ code: 'OFFER_LINK_REBUILD_FAILED' });
-    const out = await s.uc.execute(TENANT, SHORT_MINE);
+    await expect(s.uc.execute(TENANT, SHEIN_PRODUCT, USER)).rejects.toMatchObject({ code: 'OFFER_LINK_REBUILD_FAILED' });
+    const out = await s.uc.execute(TENANT, SHORT_MINE, USER);
     expect(out).toMatchObject({ affiliateUrl: SHORT_MINE, attributionVerified: true, linkRebuilt: false });
   });
 });
@@ -556,7 +559,7 @@ describe('ResolveAffiliateProductUseCase — etiquetas da conta ML por plano', (
 
   it('LITE (1) com etiqueta da conta não vinculada → PLAN_LIMIT_REACHED com a chave, sem ler a página nem recriar', async () => {
     const s = withLimit(mlCred([]), 1);
-    await expect(s.uc.execute(TENANT, link('segunda'))).rejects.toMatchObject({
+    await expect(s.uc.execute(TENANT, link('segunda'), USER)).rejects.toMatchObject({
       code: 'PLAN_LIMIT_REACHED', meta: { key: KEY, limit: 1 },
     });
     expect(s.deps.entitlements.getNumber).toHaveBeenCalledWith(TENANT, KEY);
@@ -566,7 +569,7 @@ describe('ResolveAffiliateProductUseCase — etiquetas da conta ML por plano', (
 
   it('PRO (2) sem vinculadas → AFFILIATE_IDENTIFIER_NOT_LINKED (limit 2, used 1), sem a etiqueta no meta', async () => {
     const s = withLimit(mlCred([]), 2);
-    const err = await s.uc.execute(TENANT, link('Segunda')).catch((e: unknown) => e);
+    const err = await s.uc.execute(TENANT, link('Segunda'), USER).catch((e: unknown) => e);
     expect(err).toMatchObject({ code: 'AFFILIATE_IDENTIFIER_NOT_LINKED', statusCode: 422, meta: { provider: 'MERCADO_LIVRE', limit: 2, used: 1 } });
     expect(JSON.stringify((err as AppError).meta)).not.toContain('egunda');
     expect(s.mercadoLivre.createAffiliateLinks).not.toHaveBeenCalled();
@@ -574,40 +577,40 @@ describe('ResolveAffiliateProductUseCase — etiquetas da conta ML por plano', (
 
   it('PRO com a 2ª vinculada, link longo → recriado com a etiqueta do link (mlTag), não a principal', async () => {
     const s = withLimit(mlCred(['segunda']), 2);
-    const out = await s.uc.execute(TENANT, link('Segunda'));
+    const out = await s.uc.execute(TENANT, link('Segunda'), USER);
     expect(out).toMatchObject({ provider: 'MERCADO_LIVRE', affiliateUrl: ML_LINK, attributionVerified: true, linkRebuilt: true });
     expect(s.mercadoLivre.createAffiliateLinks).toHaveBeenCalledWith({ ssid: 'SSID-TOKEN' }, [ML_CANON], 'segunda');
   });
 
   it('PRO com a 2ª vinculada, link curto → mantém o colado', async () => {
     const s = withLimit(mlCred(['segunda']), 2, { 'https://meli.la/seg': link('segunda') });
-    const out = await s.uc.execute(TENANT, 'https://meli.la/seg');
+    const out = await s.uc.execute(TENANT, 'https://meli.la/seg', USER);
     expect(out).toMatchObject({ affiliateUrl: 'https://meli.la/seg', linkRebuilt: false });
     expect(s.mercadoLivre.createAffiliateLinks).not.toHaveBeenCalled();
   });
 
   it('rebaixado (MAX→LITE) com 3 vinculadas gravadas: só a principal vale', async () => {
     const s = withLimit(mlCred(['segunda', 'terceira', 'quarta']), 1);
-    await expect(s.uc.execute(TENANT, link('minhaetq'))).resolves.toMatchObject({ attributionVerified: true, linkRebuilt: true });
+    await expect(s.uc.execute(TENANT, link('minhaetq'), USER)).resolves.toMatchObject({ attributionVerified: true, linkRebuilt: true });
     expect(s.mercadoLivre.createAffiliateLinks).toHaveBeenLastCalledWith({ ssid: 'SSID-TOKEN' }, [ML_CANON], 'minhaetq');
-    await expect(s.uc.execute(TENANT, link('segunda'))).rejects.toMatchObject({ code: 'PLAN_LIMIT_REACHED', meta: { key: KEY, limit: 1 } });
+    await expect(s.uc.execute(TENANT, link('segunda'), USER)).rejects.toMatchObject({ code: 'PLAN_LIMIT_REACHED', meta: { key: KEY, limit: 1 } });
   });
 
   it('etiqueta de terceiro (fora da conta) → recriado com a principal', async () => {
     const s = withLimit(mlCred([]), 10);
-    const out = await s.uc.execute(TENANT, link('alheia'));
+    const out = await s.uc.execute(TENANT, link('alheia'), USER);
     expect(out).toMatchObject({ affiliateUrl: ML_LINK, linkRebuilt: true });
     expect(s.mercadoLivre.createAffiliateLinks).toHaveBeenCalledWith({ ssid: 'SSID-TOKEN' }, [ML_CANON], 'minhaetq');
   });
 
   it('tenant sem a chave (getNumber null) → limite 1', async () => {
     const s = withLimit(mlCred(['segunda']), null);
-    await expect(s.uc.execute(TENANT, link('segunda'))).rejects.toMatchObject({ code: 'PLAN_LIMIT_REACHED', meta: { key: KEY, limit: 1 } });
+    await expect(s.uc.execute(TENANT, link('segunda'), USER)).rejects.toMatchObject({ code: 'PLAN_LIMIT_REACHED', meta: { key: KEY, limit: 1 } });
   });
 
   it('link sem afiliação com vinculadas: o link gerado usa a principal', async () => {
     const s = withLimit(mlCred(['segunda']), 2);
-    await s.uc.execute(TENANT, ML_PLAIN);
+    await s.uc.execute(TENANT, ML_PLAIN, USER);
     expect(s.mercadoLivre.createAffiliateLinks).toHaveBeenCalledWith({ ssid: 'SSID-TOKEN' }, [ML_CANON], 'minhaetq');
   });
 
@@ -615,14 +618,75 @@ describe('ResolveAffiliateProductUseCase — etiquetas da conta ML por plano', (
   // Com a F1 (D1, sem credencial bloqueia) este caso muda de propósito.
   it('ML com principal vazia (credencial não resolve) → AFFILIATE_CREDENTIAL_REQUIRED', async () => {
     const s = setup({});
-    await expect(s.uc.execute(TENANT, link('segunda'))).rejects.toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REQUIRED' });
+    await expect(s.uc.execute(TENANT, link('segunda'), USER)).rejects.toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REQUIRED' });
     expect(s.deps.entitlements.getNumber).not.toHaveBeenCalledWith(TENANT, KEY);
     expect(s.mercadoLivre.createAffiliateLinks).not.toHaveBeenCalled();
   });
 
   it('outro marketplace não consulta o limite de etiquetas', async () => {
     const s = setup();
-    await s.uc.execute(TENANT, AMAZON);
+    await s.uc.execute(TENANT, AMAZON, USER);
     expect(s.deps.entitlements.getNumber).not.toHaveBeenCalledWith(TENANT, KEY);
+  });
+});
+
+// ---------- Audiência "Só super admin" das lojas novas ----------
+
+describe('ResolveAffiliateProductUseCase — audiência da loja', () => {
+  const KABUM = 'https://www.kabum.com.br/produto/123456/notebook-x';
+  /** Flag ligada para Kabum: só super admin enxerga; demais lojas visíveis. */
+  const hidden = (s: ReturnType<typeof setup>) => {
+    const isVisible = vi.fn(async (p: AffiliateProvider, v: { isSuperAdmin: boolean }) => (p === 'KABUM' ? v.isSuperAdmin : true));
+    (s.deps as { audience: unknown }).audience = { isVisible };
+    return isVisible;
+  };
+
+  it('usuário comum com flag ligada → OFFER_URL_UNSUPPORTED sem rede, credencial nem plano', async () => {
+    const s = setup();
+    const isVisible = hidden(s);
+    await expect(s.uc.execute(TENANT, KABUM, USER)).rejects.toMatchObject({ code: 'OFFER_URL_UNSUPPORTED' });
+    expect(isVisible).toHaveBeenCalledWith('KABUM', { isSuperAdmin: false });
+    expect(s.deps.expander.expand).not.toHaveBeenCalled();
+    expect(s.deps.credentials.resolveState).not.toHaveBeenCalled();
+    expect(s.deps.entitlements.getBoolean).not.toHaveBeenCalled();
+    expect(s.pageReader.read).not.toHaveBeenCalled();
+    expect(s.deps.composer.compose).not.toHaveBeenCalled();
+  });
+
+  it('super admin passa o portão e cai no gate de plano (sem chave → PLAN_FEATURE_UNAVAILABLE, sem rede)', async () => {
+    const s = setup(CREDS, { ent: {} });
+    hidden(s);
+    await expect(s.uc.execute(TENANT, KABUM, { caller: { kind: 'user', isSuperAdmin: true } })).rejects.toMatchObject({
+      code: 'PLAN_FEATURE_UNAVAILABLE',
+    });
+    expect(s.deps.entitlements.getBoolean).toHaveBeenCalledWith(TENANT, 'marketplace_kabum_enabled');
+    expect(s.deps.expander.expand).not.toHaveBeenCalled();
+    expect(s.deps.credentials.resolveState).not.toHaveBeenCalled();
+  });
+
+  it('link curto que expande para loja oculta também recusa, antes da credencial', async () => {
+    const s = setup(CREDS, { expand: { 'https://amzn.to/x': KABUM } });
+    const isVisible = hidden(s);
+    await expect(s.uc.execute(TENANT, 'https://amzn.to/x', USER)).rejects.toMatchObject({ code: 'OFFER_URL_UNSUPPORTED' });
+    expect(isVisible.mock.calls.map((c) => c[0])).toEqual(['AMAZON', 'KABUM']);
+    expect(s.deps.credentials.resolveState).not.toHaveBeenCalled();
+    expect(s.deps.entitlements.getBoolean).not.toHaveBeenCalledWith(TENANT, 'marketplace_kabum_enabled');
+  });
+
+  it('segundo plano (job) não consulta a audiência: plano e credencial decidem', async () => {
+    const s = setup(CREDS, { ent: {} });
+    const isVisible = hidden(s);
+    await expect(s.uc.execute(TENANT, KABUM, { caller: { kind: 'background' } })).rejects.toMatchObject({
+      code: 'PLAN_FEATURE_UNAVAILABLE',
+    });
+    expect(isVisible).not.toHaveBeenCalled();
+  });
+
+  it('lojas antigas seguem iguais para usuário comum (portão visível)', async () => {
+    const s = setup();
+    const isVisible = hidden(s);
+    const out = await s.uc.execute(TENANT, AMAZON, USER);
+    expect(out).toMatchObject({ provider: 'AMAZON', affiliateUrl: AMAZON_TENANT });
+    expect(isVisible).toHaveBeenCalledWith('AMAZON', { isSuperAdmin: false });
   });
 });

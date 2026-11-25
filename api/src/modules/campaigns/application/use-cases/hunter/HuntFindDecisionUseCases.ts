@@ -63,7 +63,8 @@ async function claimApproved(finds: DecisionFinds, find: OfferHuntFind, now: Dat
 export class ApproveHuntFindUseCase {
   constructor(private readonly deps: ApproveHuntFindDeps) {}
 
-  async execute(input: HuntFindDecisionInput): Promise<ApproveHuntFindOutput> {
+  /** `isSuperAdmin` do token: loja com flag "Só super admin" só passa para super admin. */
+  async execute(input: HuntFindDecisionInput & { isSuperAdmin: boolean }): Promise<ApproveHuntFindOutput> {
     const { tenantId, findId } = input;
     if ((await this.deps.entitlements.getBoolean(tenantId, ENTITLEMENT_KEYS.OFFER_HUNTER_ENABLED)) !== true) {
       throw new PlanFeatureUnavailableError(ENTITLEMENT_KEYS.OFFER_HUNTER_ENABLED);
@@ -73,7 +74,9 @@ export class ApproveHuntFindUseCase {
     const destination = await this.deps.delivery.requireDestination(tenantId);
     // CAS: dois cliques não entregam duas vezes
     await claimApproved(this.deps.finds, find, now);
-    const r = await this.deps.delivery.deliver(tenantId, { ...find, status: 'APPROVED' }, destination);
+    const r = await this.deps.delivery.deliver(
+      tenantId, { ...find, status: 'APPROVED' }, destination, { kind: 'user', isSuperAdmin: input.isSuperAdmin },
+    );
     if (r.status === 'FAILED') throw r.error ?? new OfferHuntFindInvalidStateError('FAILED');
     const updated = await this.deps.finds.findById(tenantId, findId);
     return { find: updated ?? { ...find, status: 'SENT', offerId: r.offerId }, offerId: r.offerId };

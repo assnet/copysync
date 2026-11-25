@@ -134,7 +134,9 @@ export async function storefrontRoutes(app: FastifyInstance): Promise<void> {
     config: { rateLimit: perTenantRateLimit(rateLimitPresets.storefrontExtract) },
     schema: { tags, summary: 'Extrair oferta de um link (entra como rascunho)', body: extractOfferBodySchema, response: { 201: offerResponse } },
   }, async (request, reply) => {
-    const { offer, linkRebuilt } = await uc().extractOffer.execute({ ...request.body, tenantId: request.tenantContext.tenantId });
+    const { offer, linkRebuilt } = await uc().extractOffer.execute({
+      ...request.body, tenantId: request.tenantContext.tenantId, isSuperAdmin: request.tenantContext.isSuperAdmin,
+    });
     httpResponse.created(reply, { ...StorefrontPresenter.offer(offer), linkRebuilt });
   });
 

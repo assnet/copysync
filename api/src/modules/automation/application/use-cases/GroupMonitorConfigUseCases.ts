@@ -21,6 +21,7 @@ import { loadLiveGroups } from '../../../campaigns/application/services/loadLive
 import { countDistinctBroadcastGroups } from '../../../campaigns/domain/services/broadcastGroupUnion';
 import type { IBroadcastGroupUsageReader } from '../../../campaigns/domain/contracts/IBroadcastGroupUsageReader';
 import type { IMarketplaceRiskGate } from '../../../campaigns/domain/contracts/IMarketplaceRiskGate';
+import type { MarketplaceAudienceGate } from '../../../campaigns/application/services/MarketplaceAudienceGate';
 import type { CredentialAlertDTO, GroupMonitorConfigDTO } from '../dtos/GroupMonitorDTO';
 
 /** WhatsApp; Telegram em `telegram_*`. Chave por canal: `limitKeyOfChannel` (tenants/domain/channelLimits). */
@@ -42,6 +43,8 @@ export interface GroupMonitorConfigDeps {
   broadcastUsage: IBroadcastGroupUsageReader;
   /** Aceite vigente do aviso de risco: o alerta `RISK_NOT_ACCEPTED` só sai enquanto falta o aceite. */
   riskGate: IMarketplaceRiskGate;
+  /** Audiência "Só super admin" por loja: loja que o usuário não vê não gera alerta de credencial. */
+  audience: Pick<MarketplaceAudienceGate, 'isVisible'>;
   now?: () => Date;
 }
 
@@ -118,10 +121,14 @@ abstract class GroupMonitorConfigBase {
 }
 
 export class GetGroupMonitorConfigUseCase extends GroupMonitorConfigBase {
-  async execute(input: SessionInput): Promise<GroupMonitorConfigDTO> {
+  /** `isSuperAdmin` do token: decide quais lojas aparecem nos alertas de credencial. */
+  async execute(input: SessionInput & { isSuperAdmin: boolean }): Promise<GroupMonitorConfigDTO> {
     await this.assertSession(input);
     const dto = await this.load(input);
-    dto.credentialAlerts = await this.credentialAlerts(input.tenantId);
+    const alerts = await this.credentialAlerts(input.tenantId);
+    const viewer = { isSuperAdmin: input.isSuperAdmin };
+    const visible = await Promise.all(alerts.map((a) => this.deps.audience.isVisible(a.provider, viewer)));
+    dto.credentialAlerts = alerts.filter((_, i) => visible[i]);
     return dto;
   }
 

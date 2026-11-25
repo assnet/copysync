@@ -10,7 +10,7 @@ import { AppError } from '../../../../../shared/errors/AppError';
 import { OfferInvalidInputError } from '../../../../../shared/errors/internal/OfferErrors';
 import { logger } from '../../../../../shared/logger/logger';
 import type { EnqueueOfferUseCase } from '../../use-cases/EnqueueOfferUseCase';
-import type { ResolveAffiliateProductUseCase } from '../../use-cases/ResolveAffiliateProductUseCase';
+import type { ResolveAffiliateProductCaller, ResolveAffiliateProductUseCase } from '../../use-cases/ResolveAffiliateProductUseCase';
 import type { ResolveProductDataUseCase } from '../../use-cases/ResolveProductDataUseCase';
 import type { OfferTextComposer } from '../OfferTextComposer';
 import { DEFAULT_INTERVAL } from '../../use-cases/OfferGeneratorConfigUseCases';
@@ -84,11 +84,13 @@ export class HuntFindDelivery {
    * `sourceKey` sempre `hunt:<findId>` (aprovar, retomada e reaproveitamento do ranking: mesma chave, sem duplicar).
    * Reaproveitado do ranking (`fromRanking`) não soma no `sentCount` da execução original.
    */
-  async deliver(tenantId: string, find: OfferHuntFind, destination: HuntDestination): Promise<HuntDeliveryResult> {
+  async deliver(
+    tenantId: string, find: OfferHuntFind, destination: HuntDestination, caller: ResolveAffiliateProductCaller,
+  ): Promise<HuntDeliveryResult> {
     const image = { stored: null as string | null };
     let queuedOfferId: string | null = null;
     try {
-      const offerId = await this.enqueue(tenantId, find, destination, huntSourceKey(find.id), image);
+      const offerId = await this.enqueue(tenantId, find, destination, huntSourceKey(find.id), image, caller);
       if (!offerId) return this.fail(tenantId, find, 'EXPIRED', null, image.stored);
       queuedOfferId = offerId;
       await this.deps.finds.transition(tenantId, find.id, ['APPROVED'], 'SENT', { offerId, failureReason: null });
@@ -106,10 +108,12 @@ export class HuntFindDelivery {
    * `HUNTER`) com `sourceKey` do número do reenvio, para o destino atual. Não mexe no estado do achado: quem grava a oferta
    * nova é o chamador. Falha antes de enfileirar descarta a foto e lança o erro (código traduzido no painel).
    */
-  async resend(tenantId: string, find: OfferHuntFind, destination: HuntDestination, number: number): Promise<string> {
+  async resend(
+    tenantId: string, find: OfferHuntFind, destination: HuntDestination, number: number, caller: ResolveAffiliateProductCaller,
+  ): Promise<string> {
     const image = { stored: null as string | null };
     try {
-      const offerId = await this.enqueue(tenantId, find, destination, huntResendSourceKey(find.id, number), image);
+      const offerId = await this.enqueue(tenantId, find, destination, huntResendSourceKey(find.id, number), image, caller);
       if (!offerId) throw new OfferHuntResendPendingError();
       return offerId;
     } catch (err) {
@@ -122,10 +126,11 @@ export class HuntFindDelivery {
   /** Resolve → texto → foto → Enqueue. null = Enqueue não enfileirou (expirada). `image.stored` = foto gravada. */
   private async enqueue(
     tenantId: string, find: OfferHuntFind, destination: HuntDestination, sourceKey: string, image: { stored: string | null },
+    caller: ResolveAffiliateProductCaller,
   ): Promise<string | null> {
     const productUrl = this.deps.providers.get(find.provider).productUrl(find.productId);
     if (!productUrl) throw new OfferInvalidInputError('Invalid product id', 'productId');
-    const resolved = await this.deps.affiliateProducts.execute(tenantId, productUrl, { riskScope: 'OFFER_HUNTER' });
+    const resolved = await this.deps.affiliateProducts.execute(tenantId, productUrl, { riskScope: 'OFFER_HUNTER', caller });
     const p = resolved.product;
     const title = p.title ?? find.title;
     const composed = await this.deps.texts.compose({

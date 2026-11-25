@@ -69,7 +69,7 @@ describe('GET /subscription', () => {
     const execute = vi.spyOn(GetTenantSubscriptionUseCase.prototype, 'execute').mockResolvedValue(output());
     const res = await get(member);
     expect(res.statusCode).toBe(200);
-    expect(execute).toHaveBeenCalledWith('t1');
+    expect(execute).toHaveBeenCalledWith('t1', { isSuperAdmin: false });
     expect(res.json()).toEqual({
       success: true,
       data: {

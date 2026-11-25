@@ -28,11 +28,14 @@ function tenant(over: Partial<TenantProps> = {}): Tenant {
   });
 }
 
-function build(found: Tenant | null, values: Record<string, unknown> = {}, usage = USAGE, rows: TenantProduct[] = []) {
+/** Usuário comum; `hidden` = chaves com flag "Só super admin" ligada. */
+const USER = { isSuperAdmin: false };
+function build(found: Tenant | null, values: Record<string, unknown> = {}, usage = USAGE, rows: TenantProduct[] = [], hidden: string[] = []) {
   const repo = { findById: vi.fn().mockResolvedValue(found) } as unknown as ITenantRepository;
   const readAll = vi.fn().mockResolvedValue(values);
   const read = vi.fn().mockResolvedValue(usage);
-  return { uc: new GetTenantSubscriptionUseCase(repo, { readAll }, { read }, { findAll: async () => rows }), repo, readAll, read };
+  const audience = { isVisible: vi.fn(async (k: string, v: { isSuperAdmin: boolean }) => !hidden.includes(k) || v.isSuperAdmin) };
+  return { uc: new GetTenantSubscriptionUseCase(repo, { readAll }, { read }, { findAll: async () => rows }, audience), repo, readAll, read };
 }
 
 const item = (out: { limits: { key: string }[] }, key: string) => out.limits.find((l) => l.key === key);
@@ -40,13 +43,13 @@ const item = (out: { limits: { key: string }[] }, key: string) => out.limits.fin
 describe('GetTenantSubscriptionUseCase', () => {
   it('tenant inexistente → NotFoundError 404', async () => {
     const { uc } = build(null);
-    await expect(uc.execute('t1')).rejects.toBeInstanceOf(NotFoundError);
-    await expect(uc.execute('t1')).rejects.toMatchObject({ statusCode: 404 });
+    await expect(uc.execute('t1', USER)).rejects.toBeInstanceOf(NotFoundError);
+    await expect(uc.execute('t1', USER)).rejects.toMatchObject({ statusCode: 404 });
   });
 
   it('consulta as três fontes pelo tenantId', async () => {
     const { uc, repo, readAll, read } = build(tenant());
-    await uc.execute('t1');
+    await uc.execute('t1', USER);
     expect(repo.findById).toHaveBeenCalledWith('t1');
     expect(readAll).toHaveBeenCalledWith('t1');
     expect(read).toHaveBeenCalledWith('t1');
@@ -54,7 +57,7 @@ describe('GetTenantSubscriptionUseCase', () => {
 
   it('plano nulo e sem entitlements: tudo ilimitado, sem vencimento', async () => {
     const { uc } = build(tenant({ planSlug: null }));
-    const out = await uc.execute('t1');
+    const out = await uc.execute('t1', USER);
     expect(out).toMatchObject({ tenantName: 'Loja', planSlug: null, status: 'ACTIVE', suspendedAt: null, expiresAt: null });
     expect(item(out, 'whatsapp_sessions')).toMatchObject({ used: 2, limit: null, enabled: true });
     expect(item(out, 'offer_generations_per_day')).toMatchObject({ kind: 'daily', used: 12, limit: null });
@@ -63,7 +66,7 @@ describe('GetTenantSubscriptionUseCase', () => {
   it('SUSPENDED devolve suspendedAt', async () => {
     const at = new Date('2026-11-01T10:00:00Z');
     const { uc } = build(tenant({ status: 'SUSPENDED', suspendedAt: at }));
-    const out = await uc.execute('t1');
+    const out = await uc.execute('t1', USER);
     expect(out.status).toBe('SUSPENDED');
     expect(out.suspendedAt).toBe(at);
   });
@@ -71,27 +74,27 @@ describe('GetTenantSubscriptionUseCase', () => {
   it('repassa o vencimento quando o tenant tem', async () => {
     const exp = new Date('2026-12-01T00:00:00Z');
     const { uc } = build(tenant({ subscriptionExpiresAt: exp }));
-    expect((await uc.execute('t1')).expiresAt).toBe(exp);
+    expect((await uc.execute('t1', USER)).expiresAt).toBe(exp);
   });
 
   it('Telegram 0 = bloqueado; limite numérico e feature do snapshot', async () => {
     const { uc } = build(tenant(), { telegram_sessions: 0, whatsapp_sessions: '3', storefront_enabled: true });
-    const out = await uc.execute('t1');
+    const out = await uc.execute('t1', USER);
     expect(item(out, 'telegram_sessions')).toMatchObject({ channel: 'telegram', used: 0, limit: 0, enabled: false });
     expect(item(out, 'whatsapp_sessions')).toMatchObject({ channel: 'whatsapp', used: 2, limit: 3, enabled: true });
     expect(item(out, 'storefront_enabled')).toMatchObject({ kind: 'feature', used: null, enabled: true });
   });
 
   it('etiquetas do ML: uso × limite do plano; sem entitlement vale 1', async () => {
-    const pro = await build(tenant(), { mercado_livre_affiliate_tags: 2 }).uc.execute('t1');
+    const pro = await build(tenant(), { mercado_livre_affiliate_tags: 2 }).uc.execute('t1', USER);
     expect(item(pro, 'mercado_livre_affiliate_tags')).toMatchObject({ kind: 'count', channel: null, used: 2, limit: 2 });
-    const none = await build(tenant({ planSlug: null })).uc.execute('t1');
+    const none = await build(tenant({ planSlug: null })).uc.execute('t1', USER);
     expect(item(none, 'mercado_livre_affiliate_tags')).toMatchObject({ limit: 1 });
   });
 
   it('legado sem linha: products = Afiliados com plano e vencimento do tenant; sem itens do Saver', async () => {
     const exp = new Date('2026-12-01T00:00:00Z');
-    const out = await build(tenant({ subscriptionExpiresAt: exp })).uc.execute('t1');
+    const out = await build(tenant({ subscriptionExpiresAt: exp })).uc.execute('t1', USER);
     expect(out.products).toEqual([{ product: 'AFFILIATES', planSlug: 'COPYSYNC_PRO', expiresAt: exp, source: null }]);
     expect(out.limits.some((l) => l.product === 'SAVER')).toBe(false);
   });
@@ -99,8 +102,25 @@ describe('GetTenantSubscriptionUseCase', () => {
   it('só-Saver: products = Saver da linha; itens do Saver presentes', async () => {
     const row = (product: 'AFFILIATES' | 'SAVER', status: 'ACTIVE' | 'INACTIVE', planSlug: string | null): TenantProduct =>
       ({ tenantId: 't1', product, status, planSlug, expiresAt: null, source: 'ADMIN', inactiveSince: null, updatedAt: new Date(0) });
-    const out = await build(tenant({ planSlug: null }), {}, USAGE, [row('AFFILIATES', 'INACTIVE', null), row('SAVER', 'ACTIVE', 'SAVER_PRO')]).uc.execute('t1');
+    const out = await build(tenant({ planSlug: null }), {}, USAGE, [row('AFFILIATES', 'INACTIVE', null), row('SAVER', 'ACTIVE', 'SAVER_PRO')]).uc.execute('t1', USER);
     expect(out.products).toEqual([{ product: 'SAVER', planSlug: 'SAVER_PRO', expiresAt: null, source: 'ADMIN' }]);
     expect(out.limits.filter((l) => l.product === 'SAVER').map((l) => l.key)).toContain('saver_groups');
+  });
+});
+
+describe('GetTenantSubscriptionUseCase — audiência das lojas', () => {
+  const KEYS = ['marketplace_kabum_enabled', 'marketplace_magalu_enabled', 'marketplace_aliexpress_enabled'];
+
+  it('flag ligada: usuário comum não recebe o item da loja; demais itens iguais', async () => {
+    const shown = await build(tenant(), {}, USAGE, [], []).uc.execute('t1', USER);
+    const out = await build(tenant(), {}, USAGE, [], ['marketplace_kabum_enabled']).uc.execute('t1', USER);
+    expect(item(out, 'marketplace_kabum_enabled')).toBeUndefined();
+    expect(item(out, 'marketplace_shein_enabled')).toBeDefined();
+    expect(out.limits.map((l) => l.key)).toEqual(shown.limits.map((l) => l.key).filter((k) => k !== 'marketplace_kabum_enabled'));
+  });
+
+  it('super admin recebe os 3 itens com a flag ligada', async () => {
+    const out = await build(tenant(), {}, USAGE, [], KEYS).uc.execute('t1', { isSuperAdmin: true });
+    for (const k of KEYS) expect(item(out, k)).toBeDefined();
   });
 });

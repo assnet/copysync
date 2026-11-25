@@ -21,6 +21,8 @@ export const OFFER_GENERATIONS_PER_DAY = ENTITLEMENT_KEYS.OFFER_GENERATIONS_PER_
 export interface GenerateOfferInput {
   tenantId: string;
   userId: string;
+  /** Do token: loja com flag "Só super admin" só passa para super admin. */
+  isSuperAdmin: boolean;
   url: string;
   coupon?: string | null;
   audience?: OfferAudience;
@@ -86,7 +88,9 @@ export class GenerateOfferUseCase {
 
     // 2–4. URL, link do tenant e dados do produto (melhor esforço); foto no store
     const { provider, sourceUrl, affiliateUrl, attributionVerified, linkRebuilt, product: data } =
-      await this.deps.affiliateProducts.execute(tenantId, input.url);
+      await this.deps.affiliateProducts.execute(tenantId, input.url, {
+        caller: { kind: 'user', isSuperAdmin: input.isSuperAdmin },
+      });
     const imageUrl = data.imageSourceUrl ? await this.products.storeImage(data.imageSourceUrl) : null;
 
     // 5. Texto (modelo ou IA) e grava

@@ -35,6 +35,8 @@ const AI_SYSTEM = [
 
 export interface RenderOfferStoryInput {
   tenantId: string;
+  /** Do token: loja com flag "Só super admin" só passa para super admin. */
+  isSuperAdmin: boolean;
   templateId: string;
   url: string;
   coupon?: { code: string; discountPercent?: number | null } | null;
@@ -74,7 +76,9 @@ export class RenderOfferStoryUseCase {
     const coupon = this.parseCoupon(input.coupon);
 
     // Erros da extração (allowlist, credencial, recriação, API da loja) sobem com o status original
-    const resolved = await this.deps.resolveProduct.execute(tenantId, input.url);
+    const resolved = await this.deps.resolveProduct.execute(tenantId, input.url, {
+      caller: { kind: 'user', isSuperAdmin: input.isSuperAdmin },
+    });
     const { product } = resolved;
     const title = product.title?.trim();
     if (!title) throw new OfferStoryProductIncompleteError();

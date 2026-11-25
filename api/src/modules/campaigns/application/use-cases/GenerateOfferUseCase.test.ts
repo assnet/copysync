@@ -61,7 +61,7 @@ function setup(opts: { limit?: number | null; creds?: Partial<Record<AffiliatePr
   };
   const { expander, credentials, mercadoLivre, shein, riskGate } = resolveFakes;
   const affiliateProducts = new ResolveAffiliateProductUseCase({
-    expander, credentials, shein, entitlements, riskGate,
+    expander, credentials, shein, entitlements, riskGate, audience: { isVisible: async () => true },
     composer: new TenantAffiliateLinkComposer({ shopee, mercadoLivre, pageReader, shein, riskGate }),
     products: new ResolveProductDataUseCase({ shopee, pageReader, imageFetcher, mediaStore }),
   });
@@ -83,7 +83,7 @@ const AMAZON = 'https://www.amazon.com.br/Fone/dp/B0ABCDEFGH/ref=sr_1?tag=loja-2
 // Amazon é sempre reescrita na forma canônica com a tag do tenant (D2)
 const AMAZON_TENANT = 'https://www.amazon.com.br/dp/B0ABCDEFGH?tag=loja-20';
 const run = (s: ReturnType<typeof setup>, url: string, extra: { coupon?: string | null; audience?: 'STANDARD' | 'PET'; scheduledAt?: string | null } = {}) =>
-  s.uc.execute({ tenantId: TENANT, userId: USER, url, ...extra });
+  s.uc.execute({ tenantId: TENANT, userId: USER, isSuperAdmin: false, url, ...extra });
 const errorOf = (p: Promise<unknown>) => p.catch((e: unknown) => e);
 
 describe('GenerateOfferUseCase — limite diário', () => {

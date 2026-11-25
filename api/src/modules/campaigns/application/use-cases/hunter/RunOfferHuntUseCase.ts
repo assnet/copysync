@@ -188,7 +188,7 @@ export class RunOfferHuntUseCase {
 
       if (destination) {
         for (const [i, find] of inserted.entries()) {
-          const r = await this.deps.delivery.deliver(tenantId, find, destination);
+          const r = await this.deps.delivery.deliver(tenantId, find, destination, { kind: 'background' });
           if (r.status === 'SENT') counters.sentCount++;
           else if (r.error instanceof AffiliateCredentialRejectedError) {
             // Loja recusou: os demais não chamam a loja (ficariam APPROVED sem envio)

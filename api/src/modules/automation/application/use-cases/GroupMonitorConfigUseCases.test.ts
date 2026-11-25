@@ -3,16 +3,21 @@ import {
   GetGroupMonitorConfigUseCase, SaveBroadcastGroupsUseCase, SaveGroupMonitorSettingsUseCase, SaveMonitoredGroupsUseCase,
 } from './GroupMonitorConfigUseCases';
 import { DEFAULT_MONITOR_SETTINGS } from '../../domain/services/monitorSettings';
+import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
 import { FakeBroadcastGroupUsage, FakeCredentialStates, FakeDirectory, FakeEntitlements, InMemoryCapturedOfferRepository, InMemoryGroupMonitorRepository, SESSION, TENANT } from './monitorTestFakes';
 
-function setup(entitlements: Record<string, unknown> = {}) {
+function setup(entitlements: Record<string, unknown> = {}, hidden: AffiliateProvider[] = []) {
   const monitors = new InMemoryGroupMonitorRepository();
   const directory = new FakeDirectory();
   const credentialStates = new FakeCredentialStates();
   const captured = new InMemoryCapturedOfferRepository();
   const broadcastUsage = new FakeBroadcastGroupUsage(monitors);
   const riskGate = { isAccepted: vi.fn(async () => false) };
-  const deps = { monitors, directory, entitlements: new FakeEntitlements(entitlements), credentialStates, captured, broadcastUsage, riskGate, now: () => NOW };
+  /** Lojas com flag "Só super admin" ligada. */
+  const audience = { isVisible: vi.fn(async (p: AffiliateProvider, v: { isSuperAdmin: boolean }) => !hidden.includes(p) || v.isSuperAdmin) };
+  const deps = {
+    monitors, directory, entitlements: new FakeEntitlements(entitlements), credentialStates, captured, broadcastUsage, riskGate, audience, now: () => NOW,
+  };
   return {
     monitors, directory, credentialStates, captured, broadcastUsage, riskGate,
     get: new GetGroupMonitorConfigUseCase(deps),
@@ -21,7 +26,7 @@ function setup(entitlements: Record<string, unknown> = {}) {
     broadcast: new SaveBroadcastGroupsUseCase(deps),
   };
 }
-const base = { tenantId: TENANT, sessionId: SESSION };
+const base = { tenantId: TENANT, sessionId: SESSION, isSuperAdmin: false };
 const NOW = new Date('2026-10-28T12:00:00.000Z');
 
 describe('GroupMonitorConfigUseCases', () => {
@@ -38,7 +43,7 @@ describe('GroupMonitorConfigUseCases', () => {
 
   it('sessão de outro tenant: 404', async () => {
     const s = setup();
-    await expect(s.get.execute({ tenantId: 'outro', sessionId: SESSION })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(s.get.execute({ tenantId: 'outro', sessionId: SESSION, isSuperAdmin: false })).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 
   it('início 1440 (24:00 → 06:00) grava 0: mesmo dia na regra e no claim', async () => {
@@ -412,5 +417,31 @@ describe('GroupMonitorConfig — limite de disparo pela união com o gerador', (
     await s.broadcast.execute({ tenantId: TENANT, sessionId: 'session-2', groups: [{ groupJid: 'shared' }] });
     await expect(s.broadcast.execute({ ...base, groups: [{ groupJid: 'shared', sessionId: 'session-2' }] }))
       .rejects.toMatchObject({ code: 'GROUP_MONITOR_BROADCAST_TAKEN' });
+  });
+});
+
+describe('GetGroupMonitorConfigUseCase — credentialAlerts e audiência da loja', () => {
+  const REJ = new Date('2026-10-27T09:00:00.000Z');
+  const states = [
+    { provider: 'KABUM' as const, usable: true, rejectedAt: REJ, rejectedCode: 'AFFILIATE_CREDENTIAL_REJECTED' },
+    { provider: 'SHOPEE' as const, usable: true, rejectedAt: REJ, rejectedCode: 'AFFILIATE_CREDENTIAL_REJECTED' },
+  ];
+
+  it('usuário comum com flag ligada: sem alerta da loja oculta; lojas antigas seguem', async () => {
+    const s = setup({}, ['KABUM']);
+    s.credentialStates.states = states;
+    expect((await s.get.execute(base)).credentialAlerts?.map((a) => a.provider)).toEqual(['SHOPEE']);
+  });
+
+  it('super admin vê o alerta da loja oculta', async () => {
+    const s = setup({}, ['KABUM']);
+    s.credentialStates.states = states;
+    expect((await s.get.execute({ ...base, isSuperAdmin: true })).credentialAlerts?.map((a) => a.provider)).toEqual(['SHOPEE', 'KABUM']);
+  });
+
+  it('flag desligada: usuário comum vê o alerta da loja', async () => {
+    const s = setup();
+    s.credentialStates.states = states;
+    expect((await s.get.execute(base)).credentialAlerts?.map((a) => a.provider)).toEqual(['SHOPEE', 'KABUM']);
   });
 });

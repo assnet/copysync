@@ -155,6 +155,7 @@ const tenantLinkComposer = lazy(() => new TenantAffiliateLinkComposer({
 }));
 const tenantLinks = lazy(() => new BuildTenantAffiliateLinkUseCase({
   expander: new HttpShortLinkExpander(),
+  audience: marketplaceAudience(),
   credentials: credentialGateway(),
   entitlements: entitlements(),
   composer: tenantLinkComposer(),
@@ -166,7 +167,7 @@ const products    = lazy(() => new ResolveProductDataUseCase({
 // Link colado → marketplace, dono e dados do produto, sem foto (página de ofertas)
 const affiliateProduct = lazy(() => new ResolveAffiliateProductUseCase({
   expander: new HttpShortLinkExpander(), credentials: credentials(), composer: tenantLinkComposer(), products: products(),
-  shein: shein(), entitlements: entitlements(), riskGate: riskGate(),
+  shein: shein(), entitlements: entitlements(), riskGate: riskGate(), audience: marketplaceAudience(),
 }));
 const processDue  = lazy(() => new ProcessDueOfferDispatchesUseCase({
   offers: offers(), dispatches: dispatches(), sender: sender(),

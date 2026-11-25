@@ -46,7 +46,8 @@ function previousSendPending(d: OfferHuntFindDelivery | null, now: Date): boolea
 export class ResendHuntFindUseCase {
   constructor(private readonly deps: ResendHuntFindDeps) {}
 
-  async execute(input: { tenantId: string; findId: string }): Promise<OfferHuntFind> {
+  /** `isSuperAdmin` do token: loja com flag "Só super admin" só passa para super admin. */
+  async execute(input: { tenantId: string; findId: string; isSuperAdmin: boolean }): Promise<OfferHuntFind> {
     const { tenantId, findId } = input;
     const { entitlements, finds, delivery } = this.deps;
     for (const key of [ENTITLEMENT_KEYS.MARKETPLACE_SHEIN_ENABLED, ENTITLEMENT_KEYS.OFFER_HUNTER_ENABLED]) {
@@ -68,7 +69,7 @@ export class ResendHuntFindUseCase {
     if (claim.kind === 'DAILY_LIMIT') throw new OfferHuntResendDailyLimitError(HUNTER_LIMITS.resendsPerDayMax);
     let offerId: string;
     try {
-      offerId = await delivery.resend(tenantId, find, destination, claim.number);
+      offerId = await delivery.resend(tenantId, find, destination, claim.number, { kind: 'user', isSuperAdmin: input.isSuperAdmin });
     } catch (err) {
       await finds.releaseResend(tenantId, findId, claim.number, now).catch(() => undefined);
       throw err;

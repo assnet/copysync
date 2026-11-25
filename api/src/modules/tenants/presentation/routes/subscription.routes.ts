@@ -9,12 +9,15 @@ import { PrismaEntitlementReader } from '../../infrastructure/repositories/Prism
 import { PrismaTenantUsageReader } from '../../infrastructure/repositories/PrismaTenantUsageReader';
 import { SubscriptionPresenter } from '../presenters/SubscriptionPresenter';
 import { createTenantProductRepository } from '../../infrastructure/productAccessContainer';
+import { FeatureAudienceGate } from '../../application/services/FeatureAudienceGate';
+import { featureAudienceReader } from '../../infrastructure/featureAudience';
 
 const getSubscription = new GetTenantSubscriptionUseCase(
   new PrismaTenantRepository(),
   new PrismaEntitlementReader(prisma),
   new PrismaTenantUsageReader(prisma),
   createTenantProductRepository(),
+  new FeatureAudienceGate(featureAudienceReader()),
 );
 
 const nullableString = { type: ['string', 'null'] } as const;
@@ -90,7 +93,7 @@ export async function subscriptionRoutes(app: FastifyInstance): Promise<void> {
       },
     },
     async (request, reply) => {
-      const out = await getSubscription.execute(request.tenantContext.tenantId);
+      const out = await getSubscription.execute(request.tenantContext.tenantId, { isSuperAdmin: request.tenantContext.isSuperAdmin });
       httpResponse.ok(reply, SubscriptionPresenter.toResponse(out));
     },
   );

@@ -87,7 +87,7 @@ describe('POST /', () => {
     expect(res.statusCode).toBe(201);
     expect(res.json()).toEqual({ success: true, data });
     expect(execute).toHaveBeenCalledWith({
-      tenantId: 'tenant-a', userId: 'user-a', url: 'https://amzn.to/x', coupon: 'PROMO', audience: 'PET',
+      tenantId: 'tenant-a', userId: 'user-a', isSuperAdmin: false, url: 'https://amzn.to/x', coupon: 'PROMO', audience: 'PET',
     });
   });
 

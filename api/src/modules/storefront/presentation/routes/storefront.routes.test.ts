@@ -194,7 +194,7 @@ describe('POST /storefront/offers', () => {
       .mockResolvedValue({ offer: { ...offer, attributionVerified: true }, linkRebuilt });
     const res = await app.inject({ method: 'POST', url: `${PREFIX}/offers`, headers: AUTH, payload: { url: 'https://s.shopee.com.br/x' } });
     expect(res.statusCode).toBe(201);
-    expect(execute).toHaveBeenCalledWith({ url: 'https://s.shopee.com.br/x', tenantId: 'tenant-a' });
+    expect(execute).toHaveBeenCalledWith({ url: 'https://s.shopee.com.br/x', tenantId: 'tenant-a', isSuperAdmin: false });
     const data = res.json().data;
     expect(data).toMatchObject({ id: 'of-1', attributionVerified: true, linkRebuilt });
     expect(data.tenantId).toBeUndefined();
