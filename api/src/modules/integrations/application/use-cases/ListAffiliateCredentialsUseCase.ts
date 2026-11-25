@@ -9,6 +9,8 @@ import { marketplaceEntitlementKey } from '../../../campaigns/domain/services/ma
 import type { IEntitlementReader } from '../../../tenants/domain/contracts/IEntitlementReader';
 import type { IPlanEntitlementPresetRepository } from '../../../tenants/domain/contracts/IPlanEntitlementPresetRepository';
 import { PLAN_SLUGS, type PlanSlug } from '../../../tenants/domain/planPresets';
+import type { FeatureAudienceViewer } from '../../../tenants/application/services/FeatureAudienceGate';
+import type { MarketplaceAudienceGate } from '../../../campaigns/application/services/MarketplaceAudienceGate';
 
 export interface MarketplaceRiskNoticeState {
   version: string;
@@ -28,7 +30,8 @@ export interface MarketplaceAvailability {
 
 export interface AffiliateCredentialListResult {
   items: AffiliateCredential[];
-  marketplaceAvailability: Record<AffiliateProvider, MarketplaceAvailability>;
+  /** Só as lojas visíveis ao viewer: ausência = loja oculta (o painel esconde o card). */
+  marketplaceAvailability: Partial<Record<AffiliateProvider, MarketplaceAvailability>>;
   /** Limite efetivo de etiquetas vinculadas, só para provider com lista da conta (hoje o ML). */
   identifierLimits: Partial<Record<AffiliateProvider, number>>;
 }
@@ -36,6 +39,8 @@ export interface AffiliateCredentialListResult {
 export interface ListAffiliateCredentialsInput {
   tenantId: string;
   userId: string;
+  /** Loja com audiência "Só super admin" some de `items` e de `marketplaceAvailability` para quem não a vê. */
+  viewer: FeatureAudienceViewer;
 }
 
 /** Lista as credenciais do tenant. Não usa a cifra: responde mesmo sem chave configurada. */
@@ -45,18 +50,21 @@ export class ListAffiliateCredentialsUseCase {
     private readonly entitlements: IEntitlementReader,
     private readonly presets: IPlanEntitlementPresetRepository,
     private readonly riskAcceptances: IMarketplaceRiskAcceptanceRepository,
+    private readonly audience: Pick<MarketplaceAudienceGate, 'isVisible'>,
   ) {}
 
   async execute(input: ListAffiliateCredentialsInput): Promise<AffiliateCredentialListResult> {
-    const keys = AFFILIATE_PROVIDERS.map(marketplaceEntitlementKey).filter((k): k is NonNullable<typeof k> => k !== null);
-    const [items, presetRows, identifierLimits] = await Promise.all([
+    const visibility = await Promise.all(AFFILIATE_PROVIDERS.map((p) => this.audience.isVisible(p, input.viewer)));
+    const providers = AFFILIATE_PROVIDERS.filter((_, i) => visibility[i]);
+    const keys = providers.map(marketplaceEntitlementKey).filter((k): k is NonNullable<typeof k> => k !== null);
+    const [allItems, presetRows, identifierLimits] = await Promise.all([
       this.repo.listByTenant(input.tenantId),
       this.presets.listByKeys(keys),
       this.identifierLimits(input.tenantId),
     ]);
 
     const entries = await Promise.all(
-      AFFILIATE_PROVIDERS.map(async (provider): Promise<[AffiliateProvider, MarketplaceAvailability]> => {
+      providers.map(async (provider): Promise<[AffiliateProvider, MarketplaceAvailability]> => {
         const key = marketplaceEntitlementKey(provider);
         const enabled = key === null || (await this.entitlements.getBoolean(input.tenantId, key)) === true;
         const plans = key === null
@@ -67,8 +75,8 @@ export class ListAffiliateCredentialsUseCase {
     );
 
     return {
-      items,
-      marketplaceAvailability: Object.fromEntries(entries) as Record<AffiliateProvider, MarketplaceAvailability>,
+      items: allItems.filter((c) => providers.includes(c.provider)),
+      marketplaceAvailability: Object.fromEntries(entries) as Partial<Record<AffiliateProvider, MarketplaceAvailability>>,
       identifierLimits,
     };
   }

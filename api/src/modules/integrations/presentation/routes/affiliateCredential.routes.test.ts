@@ -7,6 +7,9 @@ import { PrismaEntitlementReader } from '../../../tenants/infrastructure/reposit
 import { PrismaPlanEntitlementPresetRepository } from '../../../tenants/infrastructure/repositories/PrismaPlanEntitlementPresetRepository';
 import { PrismaMarketplaceRiskAcceptanceRepository } from '../../infrastructure/repositories/PrismaMarketplaceRiskAcceptanceRepository';
 import { PrismaAffiliateCredentialRepository } from '../../infrastructure/repositories/PrismaAffiliateCredentialRepository';
+import { PrismaFeatureAudienceRepository } from '../../../tenants/infrastructure/repositories/PrismaFeatureAudienceRepository';
+import { SecretCipherFactory } from '../../../../shared/security/SecretCipherFactory';
+import { AesGcmSecretCipher } from '../../../../shared/security/AesGcmSecretCipher';
 import { MARKETPLACE_RISK_NOTICE_VERSION } from '../../domain/services/marketplaceRiskNotice';
 import { affiliateCredentialItemSchema } from '../schemas/affiliateCredential.schema';
 import { affiliateCredentialRoutes } from './affiliateCredential.routes';
@@ -14,22 +17,28 @@ import { affiliateCredentialRoutes } from './affiliateCredential.routes';
 vi.mock('../../../../shared/database/prisma.client', () => ({
   prisma: {
     userTenant: { findUnique: async () => ({ role: 'ADMIN', tenant: { status: 'ACTIVE' } }) },
+    tenant: { findUnique: async () => ({ id: 't1', status: 'ACTIVE' }) },
   },
 }));
 vi.mock('../../../../shared/http/hooks/authHook', () => ({
   authHook: async (request: { headers: Record<string, unknown>; user?: unknown }) => {
     const auth = request.headers.authorization;
     if (typeof auth !== 'string' || !auth.startsWith('Bearer ')) throw new UnauthorizedError('Invalid or expired access token');
-    request.user = { userId: auth.slice(7), isSuperAdmin: false };
+    // token `sa` = super admin (do token, não do papel no tenant)
+    request.user = { userId: auth.slice(7), isSuperAdmin: auth === 'Bearer sa' };
   },
 }));
 
 const VERSION = MARKETPLACE_RISK_NOTICE_VERSION.SHEIN!;
 const AT = new Date('2026-11-10T12:00:00.000Z');
 const headers = { authorization: 'Bearer u1', 'x-tenant-id': 't1' };
+const saHeaders = { authorization: 'Bearer sa', 'x-tenant-id': 't1' };
 let app: FastifyInstance;
+let audience: ReturnType<typeof vi.spyOn>;
 
 beforeEach(async () => {
+  // Nada gravado em `platform_settings.feature_audience`: Kabum/Magalu/AliExpress ficam "Só super admin".
+  audience = vi.spyOn(PrismaFeatureAudienceRepository.prototype, 'get').mockResolvedValue({});
   app = Fastify();
   app.setErrorHandler(errorHandler);
   app.addSchema(affiliateCredentialItemSchema);
@@ -42,8 +51,9 @@ afterEach(async () => {
   await app.close();
 });
 
-const call = (method: 'GET' | 'PUT' | 'DELETE', path: string, payload?: Record<string, unknown>) =>
-  app.inject({ method, url: `/api/integrations/affiliate-credentials${path}`, headers, ...(payload && { payload }) });
+type Method = 'GET' | 'PUT' | 'DELETE' | 'PATCH' | 'POST';
+const call = (method: Method, path: string, payload?: Record<string, unknown>, h: Record<string, string> = headers) =>
+  app.inject({ method, url: `/api/integrations/affiliate-credentials${path}`, headers: h, ...(payload && { payload }) });
 
 describe('rotas genéricas recusam a Shein (ID segue a sessão)', () => {
   it('PUT /SHEIN/session → 422, sem gravar', async () => {
@@ -86,10 +96,10 @@ describe('GET / — marketplaceAvailability', () => {
       { planSlug: 'COPYSYNC_MAX', key: 'marketplace_aliexpress_enabled', value: true },
     ]);
     vi.spyOn(PrismaMarketplaceRiskAcceptanceRepository.prototype, 'findCurrent').mockResolvedValue({
-      id: 'a1', tenantId: 't1', provider: 'SHEIN', scope: 'AFFILIATE_LINK', noticeVersion: VERSION, acceptedByUserId: 'u1', locale: 'pt-BR', acceptedAt: AT,
+      id: 'a1', tenantId: 't1', provider: 'SHEIN', scope: 'AFFILIATE_LINK', noticeVersion: VERSION, acceptedByUserId: 'sa', locale: 'pt-BR', acceptedAt: AT,
     });
 
-    const res = await call('GET', '/');
+    const res = await call('GET', '/', undefined, saHeaders);
     expect(res.statusCode).toBe(200);
     expect(presets).toHaveBeenCalledWith([
       'marketplace_shein_enabled', 'marketplace_kabum_enabled', 'marketplace_magalu_enabled', 'marketplace_aliexpress_enabled',
@@ -103,7 +113,7 @@ describe('GET / — marketplaceAvailability', () => {
         MERCADO_LIVRE: open,
         AMAZON: open,
         SHEIN: { enabled: false, plans: ['COPYSYNC_MAX'], riskNotice: { version: VERSION, acceptedAt: AT.toISOString(), acceptedByMe: true } },
-        // chave de plano igual à da Shein (só MAX); audiência/viewer na T6
+        // super admin vê as lojas "Só super admin"; chave de plano igual à da Shein (só MAX)
         KABUM: maxOnly,
         MAGALU: maxOnly,
         ALIEXPRESS: maxOnly,
@@ -179,5 +189,108 @@ describe('GET|PUT /:provider/identifiers', () => {
   it('provider sem lista da conta → 422', async () => {
     const res = await call('GET', '/SHOPEE/identifiers');
     expect([res.statusCode, res.json().error.code]).toEqual([422, 'AFFILIATE_CREDENTIAL_INVALID']);
+  });
+});
+
+const HIDDEN = ['KABUM', 'MAGALU', 'ALIEXPRESS'] as const;
+const record = (provider: (typeof HIDDEN)[number] | 'SHOPEE') => ({ ...mlRecord, provider, accountIdentifiers: [], linkedIdentifiers: [], hasSession: false });
+
+/** As 7 rotas por `:provider`, cada uma com corpo válido. */
+const PROVIDER_ROUTES: Array<[Method, string, Record<string, unknown> | undefined]> = [
+  ['PUT', '', { publicIdentifier: '1234567' }],
+  ['DELETE', '', undefined],
+  ['PATCH', '/status', { status: 'INACTIVE' }],
+  ['PUT', '/session', { cookies: { a: 'b' }, capturedAt: 'now' }],
+  ['GET', '/identifiers', undefined],
+  ['PUT', '/identifiers', { primary: 'x', linked: [] }],
+  ['POST', '/risk-acceptance', { noticeVersion: 'v1', locale: 'pt-BR' }],
+];
+
+describe('audiência "Só super admin" das lojas novas', () => {
+  const repoMethods = ['listByTenant', 'findByTenantAndProvider', 'upsert', 'upsertSession', 'delete', 'setStatus', 'setIdentifiers'] as const;
+
+  it('GET / usuário comum: nenhuma das 3 lojas em items nem em marketplaceAvailability', async () => {
+    vi.spyOn(PrismaAffiliateCredentialRepository.prototype, 'listByTenant').mockResolvedValue([record('SHOPEE'), record('KABUM'), record('ALIEXPRESS')]);
+    vi.spyOn(PrismaEntitlementReader.prototype, 'getBoolean').mockResolvedValue(true);
+    vi.spyOn(PrismaEntitlementReader.prototype, 'getNumber').mockResolvedValue(null);
+    const presets = vi.spyOn(PrismaPlanEntitlementPresetRepository.prototype, 'listByKeys').mockResolvedValue([]);
+    vi.spyOn(PrismaMarketplaceRiskAcceptanceRepository.prototype, 'findCurrent').mockResolvedValue(null);
+
+    const data = (await call('GET', '/')).json().data;
+    expect(data.items.map((i: { provider: string }) => i.provider)).toEqual(['SHOPEE']);
+    expect(Object.keys(data.marketplaceAvailability)).toEqual(['SHOPEE', 'MERCADO_LIVRE', 'AMAZON', 'SHEIN']);
+    expect(presets).toHaveBeenCalledWith(['marketplace_shein_enabled']);
+
+    const sa = (await call('GET', '/', undefined, saHeaders)).json().data;
+    expect(sa.items.map((i: { provider: string }) => i.provider)).toEqual(['SHOPEE', 'KABUM', 'ALIEXPRESS']);
+    expect(Object.keys(sa.marketplaceAvailability)).toHaveLength(7);
+  });
+
+  it('flag desligada pelo admin: usuário comum passa a ver a loja (só ela)', async () => {
+    audience.mockResolvedValue({ marketplace_kabum_enabled: false });
+    vi.spyOn(PrismaAffiliateCredentialRepository.prototype, 'listByTenant').mockResolvedValue([]);
+    vi.spyOn(PrismaEntitlementReader.prototype, 'getBoolean').mockResolvedValue(true);
+    vi.spyOn(PrismaEntitlementReader.prototype, 'getNumber').mockResolvedValue(null);
+    vi.spyOn(PrismaPlanEntitlementPresetRepository.prototype, 'listByKeys').mockResolvedValue([]);
+    vi.spyOn(PrismaMarketplaceRiskAcceptanceRepository.prototype, 'findCurrent').mockResolvedValue(null);
+    const keys = Object.keys((await call('GET', '/')).json().data.marketplaceAvailability);
+    expect(keys).toEqual(['SHOPEE', 'MERCADO_LIVRE', 'AMAZON', 'SHEIN', 'KABUM']);
+  });
+
+  it.each(PROVIDER_ROUTES)('%s /:provider%s — loja oculta responde igual a provider inexistente, sem tocar o banco', async (method, suffix, body) => {
+    const spies = repoMethods.map((m) => vi.spyOn(PrismaAffiliateCredentialRepository.prototype, m));
+    const unknown = await call(method, `/FOO${suffix}`, body);
+    expect(unknown.statusCode).toBe(400);
+    expect(unknown.json()).toEqual({
+      success: false,
+      error: { code: 'HTTP_ERROR', message: 'params/provider must be equal to one of the allowed values' },
+    });
+    for (const provider of HIDDEN) {
+      const res = await call(method, `/${provider}${suffix}`, body);
+      expect([res.statusCode, res.json()]).toEqual([400, unknown.json()]);
+    }
+    for (const spy of spies) expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('super admin salva AliExpress e lista; resposta nunca traz segredo nem App Key', async () => {
+    vi.spyOn(SecretCipherFactory, 'get').mockReturnValue(new AesGcmSecretCipher(new Map([[1, Buffer.alloc(32, 7)]]), 1));
+    vi.spyOn(PrismaAffiliateCredentialRepository.prototype, 'findByTenantAndProvider').mockResolvedValue(null);
+    const upsert = vi.spyOn(PrismaAffiliateCredentialRepository.prototype, 'upsert')
+      .mockResolvedValue({ ...record('ALIEXPRESS'), publicIdentifier: 'meu_tracking', hasSecret: true });
+    const audit = vi.spyOn(PrismaAuditLogRepository.prototype, 'create').mockResolvedValue(undefined);
+    const body = { publicIdentifier: 'meu_tracking', appKey: '512345', secret: 'AbCdEf0123456789AbCdEf0123456789' };
+
+    const res = await call('PUT', '/ALIEXPRESS', body, saHeaders);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toMatchObject({ provider: 'ALIEXPRESS', hasSecret: true });
+    expect(res.body).not.toContain(body.secret);
+    expect(res.body).not.toContain(body.appKey);
+    expect(res.json().data).not.toHaveProperty('appKey');
+    expect(res.json().data).not.toHaveProperty('secret');
+    expect(upsert.mock.calls[0]![0].secret).toBeDefined();
+    expect(JSON.stringify(audit.mock.calls)).not.toContain(body.secret);
+
+    const missing = await call('PUT', '/ALIEXPRESS', { publicIdentifier: 'meu_tracking', secret: body.secret }, saHeaders);
+    expect([missing.statusCode, missing.json().error.code]).toEqual([422, 'AFFILIATE_CREDENTIAL_INVALID']);
+  });
+
+  it('super admin: Magalu com URL da loja grava o slug', async () => {
+    vi.spyOn(PrismaAffiliateCredentialRepository.prototype, 'findByTenantAndProvider').mockResolvedValue(null);
+    const upsert = vi.spyOn(PrismaAffiliateCredentialRepository.prototype, 'upsert')
+      .mockImplementation(async (i) => ({ ...record('MAGALU'), publicIdentifier: i.publicIdentifier }));
+    vi.spyOn(PrismaAuditLogRepository.prototype, 'create').mockResolvedValue(undefined);
+    const res = await call('PUT', '/MAGALU', { publicIdentifier: 'https://www.magazinevoce.com.br/minhaloja/' }, saHeaders);
+    expect(res.statusCode).toBe(200);
+    expect(upsert.mock.calls[0]![0].publicIdentifier).toBe('minhaloja');
+  });
+
+  it('appKey fora do limite do schema → 400; lojas antigas não leem a flag de audiência', async () => {
+    const res = await call('PUT', '/ALIEXPRESS', { publicIdentifier: 'x', appKey: '1'.repeat(65) }, saHeaders);
+    expect(res.statusCode).toBe(400);
+    audience.mockClear();
+    vi.spyOn(PrismaAffiliateCredentialRepository.prototype, 'delete').mockResolvedValue(true);
+    vi.spyOn(PrismaAuditLogRepository.prototype, 'create').mockResolvedValue(undefined);
+    expect((await call('DELETE', '/AMAZON')).statusCode).toBe(204);
+    expect(audience).not.toHaveBeenCalled();
   });
 });

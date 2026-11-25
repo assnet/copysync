@@ -5,6 +5,8 @@ import { ClearAffiliateSessionUseCase } from './ClearAffiliateSessionUseCase';
 import { SetAffiliateCredentialStatusUseCase } from './SetAffiliateCredentialStatusUseCase';
 import { ResolveAffiliateCredentialUseCase } from './ResolveAffiliateCredentialUseCase';
 import { MarkAffiliateCredentialRejectedUseCase } from './MarkAffiliateCredentialRejectedUseCase';
+import { ListAffiliateCredentialsUseCase } from './ListAffiliateCredentialsUseCase';
+import type { AffiliateProvider } from '../../domain/enums/AffiliateProvider';
 import { AesGcmSecretCipher } from '../../../../shared/security/AesGcmSecretCipher';
 import type { IAffiliateCredentialRepository } from '../../domain/contracts/IAffiliateCredentialRepository';
 import type { AffiliateCredentialRecord } from '../../domain/contracts/AffiliateCredentialRecords';
@@ -103,6 +105,116 @@ describe('UpsertAffiliateCredentialUseCase', () => {
     const d = makeDeps(null);
     const err = await errorOf(upsert(d).execute({ tenantId: TENANT, userId: USER, provider: 'AMAZON', publicIdentifier: 'sem-sufixo' }));
     expect(err).toMatchObject({ statusCode: 422, meta: { field: 'publicIdentifier' } });
+  });
+});
+
+describe('UpsertAffiliateCredentialUseCase — lojas novas', () => {
+  const upsert = (d: ReturnType<typeof makeDeps>) => new UpsertAffiliateCredentialUseCase(d.repo, d.getCipher, d.audit);
+  const APP_KEY = '512345';
+  const APP_SECRET = 'AbCdEf0123456789AbCdEf0123456789';
+  const ali = (over: { appKey?: string; secret?: string }) =>
+    ({ tenantId: TENANT, userId: USER, provider: 'ALIEXPRESS' as const, publicIdentifier: 'meu_tracking', ...over });
+
+  it('AliExpress: junta appKey:appSecret, cifra com AAD do tenant; auditoria sem App Key nem segredo', async () => {
+    const d = makeDeps(null);
+    await upsert(d).execute(ali({ appKey: ` ${APP_KEY} `, secret: APP_SECRET }));
+    const call = d.repo.upsert.mock.calls[0]![0];
+    expect(cipher.decrypt(call.secret, `${TENANT}:ALIEXPRESS:secret`)).toBe(`${APP_KEY}:${APP_SECRET}`);
+    expect(call).not.toHaveProperty('appKey');
+    const audited = JSON.stringify(d.audit.create.mock.calls);
+    expect(audited).not.toContain(APP_SECRET);
+    expect(audited).not.toContain(APP_KEY);
+  });
+
+  it.each([
+    ['sem App Key', { secret: APP_SECRET }, 'appKey'],
+    ['sem Secret', { appKey: APP_KEY }, 'secret'],
+    ['sem os dois', {}, 'secret'],
+    ['App Key fora do formato', { appKey: 'abc', secret: APP_SECRET }, 'appKey'],
+    ['Secret fora do formato', { appKey: APP_KEY, secret: 'curto' }, 'secret'],
+  ])('AliExpress criação %s → 422 com field', async (_, over, field) => {
+    const d = makeDeps(null);
+    const err = await errorOf(upsert(d).execute(ali(over)));
+    expect(err).toMatchObject({ code: 'AFFILIATE_CREDENTIAL_INVALID', statusCode: 422, meta: { field } });
+    expect(d.repo.upsert).not.toHaveBeenCalled();
+  });
+
+  it('AliExpress edição: os dois vazios mantém o segredo; só um preenchido → 422', async () => {
+    const existing = makeRecord({ provider: 'ALIEXPRESS', publicIdentifier: 'meu_tracking' });
+    const keep = makeDeps(existing);
+    await upsert(keep).execute(ali({ appKey: ' ', secret: '' }));
+    expect(keep.repo.upsert.mock.calls[0]![0]).not.toHaveProperty('secret');
+    expect(keep.getCipher).not.toHaveBeenCalled();
+
+    for (const [over, field] of [[{ appKey: APP_KEY }, 'secret'], [{ secret: APP_SECRET }, 'appKey']] as const) {
+      const d = makeDeps(existing);
+      expect(await errorOf(upsert(d).execute(ali(over)))).toMatchObject({ statusCode: 422, meta: { field } });
+      expect(d.repo.upsert).not.toHaveBeenCalled();
+    }
+  });
+
+  it('App Key em loja sem esse campo → 422 appKey', async () => {
+    const d = makeDeps(null);
+    const err = await errorOf(upsert(d).execute({ tenantId: TENANT, userId: USER, provider: 'SHOPEE', publicIdentifier: '18301234567', secret: SECRET, appKey: APP_KEY }));
+    expect(err).toMatchObject({ statusCode: 422, meta: { field: 'appKey' } });
+  });
+
+  it.each([
+    'minhaloja',
+    'https://www.magazinevoce.com.br/minhaloja/',
+    'https://www.magazinevoce.com.br/minhaloja/notebook/p/237805300/in/note/?x=1',
+    'magazinevoce.com.br/minhaloja',
+    ' www.magazinevoce.com.br/minhaloja ',
+  ])('Magalu: %s → slug', async (value) => {
+    const d = makeDeps(null);
+    await upsert(d).execute({ tenantId: TENANT, userId: USER, provider: 'MAGALU', publicIdentifier: value });
+    expect(d.repo.upsert.mock.calls[0]![0].publicIdentifier).toBe('minhaloja');
+    expect(d.getCipher).not.toHaveBeenCalled();
+  });
+
+  it('Magalu: URL de outro host ou sem slug → 422 publicIdentifier', async () => {
+    for (const value of ['https://www.magazineluiza.com.br/minhaloja', 'https://www.magazinevoce.com.br/', 'https://evil.magazinevoce.com.br.x.io/minhaloja']) {
+      const d = makeDeps(null);
+      expect(await errorOf(upsert(d).execute({ tenantId: TENANT, userId: USER, provider: 'MAGALU', publicIdentifier: value })))
+        .toMatchObject({ statusCode: 422, meta: { field: 'publicIdentifier' } });
+    }
+  });
+
+  it('Kabum: só Publisher ID; segredo recusado', async () => {
+    const d = makeDeps(null);
+    await upsert(d).execute({ tenantId: TENANT, userId: USER, provider: 'KABUM', publicIdentifier: '1234567' });
+    expect(d.repo.upsert.mock.calls[0]![0]).toMatchObject({ publicIdentifier: '1234567' });
+    const err = await errorOf(upsert(makeDeps(null)).execute({ tenantId: TENANT, userId: USER, provider: 'KABUM', publicIdentifier: '1234567', secret: SECRET }));
+    expect(err).toMatchObject({ statusCode: 422, meta: { field: 'secret' } });
+  });
+});
+
+describe('ListAffiliateCredentialsUseCase — audiência', () => {
+  const HIDDEN: AffiliateProvider[] = ['KABUM', 'MAGALU', 'ALIEXPRESS'];
+  function makeList(items: AffiliateProvider[]) {
+    const d = makeDeps(null);
+    d.repo.listByTenant.mockResolvedValue(items.map((provider) => makeRecord({ provider })));
+    const isVisible = vi.fn(async (p: AffiliateProvider, v: { isSuperAdmin: boolean }) => v.isSuperAdmin || !HIDDEN.includes(p));
+    const entitlements = { getBoolean: vi.fn().mockResolvedValue(true), getNumber: vi.fn().mockResolvedValue(null) };
+    const presets = { listByKeys: vi.fn().mockResolvedValue([]) };
+    const risk = { findCurrent: vi.fn().mockResolvedValue(null) };
+    const uc = new ListAffiliateCredentialsUseCase(d.repo, entitlements as never, presets as never, risk as never, { isVisible });
+    return { uc, presets };
+  }
+
+  it('usuário comum: loja oculta some de items e de marketplaceAvailability', async () => {
+    const { uc, presets } = makeList(['SHOPEE', 'KABUM', 'ALIEXPRESS']);
+    const r = await uc.execute({ tenantId: TENANT, userId: USER, viewer: { isSuperAdmin: false } });
+    expect(r.items.map((c) => c.provider)).toEqual(['SHOPEE']);
+    expect(Object.keys(r.marketplaceAvailability)).toEqual(['SHOPEE', 'MERCADO_LIVRE', 'AMAZON', 'SHEIN']);
+    expect(presets.listByKeys).toHaveBeenCalledWith(['marketplace_shein_enabled']);
+  });
+
+  it('super admin: vê as 7 lojas e as credenciais delas', async () => {
+    const { uc } = makeList(['SHOPEE', 'KABUM', 'ALIEXPRESS']);
+    const r = await uc.execute({ tenantId: TENANT, userId: USER, viewer: { isSuperAdmin: true } });
+    expect(r.items.map((c) => c.provider)).toEqual(['SHOPEE', 'KABUM', 'ALIEXPRESS']);
+    expect(Object.keys(r.marketplaceAvailability)).toHaveLength(7);
   });
 });
 

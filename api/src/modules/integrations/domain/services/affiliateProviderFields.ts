@@ -16,6 +16,8 @@ import type { AffiliateProvider } from '../enums/AffiliateProvider';
 export interface AffiliateProviderFields {
   publicIdentifier: { pattern: RegExp; maxLength: number };
   secret: { pattern: RegExp; maxLength: number } | null;
+  /** Só AliExpress: App Key digitada à parte; o use case junta `appKey:appSecret` antes de cifrar. */
+  appKey?: { pattern: RegExp; maxLength: number };
   /** Usa sessão do navegador (extensão) no uso da credencial; só então ela é decifrada. */
   usesSession: boolean;
 }
@@ -53,6 +55,7 @@ export const AFFILIATE_PROVIDER_FIELDS: Record<AffiliateProvider, AffiliateProvi
   },
   ALIEXPRESS: {
     publicIdentifier: { pattern: /^[A-Za-z0-9_-]{1,64}$/, maxLength: 64 },
+    appKey: { pattern: /^\d{5,12}$/, maxLength: 12 },
     // `appKey:appSecret` num campo só: a chave é numérica, o segredo alfanumérico
     secret: { pattern: /^\d{5,12}:[A-Za-z0-9]{16,64}$/, maxLength: 77 },
     usesSession: false,
@@ -70,6 +73,39 @@ export function providerUsesSession(provider: AffiliateProvider): boolean {
 /** O identificador público é o da conta da sessão (troca de conta troca o ID); só a Shein. */
 export function providerIdentifierFollowsSession(provider: AffiliateProvider): boolean {
   return provider === 'SHEIN';
+}
+
+/** O painel manda a App Key num campo próprio (hoje só AliExpress). */
+export function providerTakesAppKey(provider: AffiliateProvider): boolean {
+  return AFFILIATE_PROVIDER_FIELDS[provider].appKey !== undefined;
+}
+
+/** Valor já com `trim`, ou null se vazio, fora do formato ou se o provider não tem App Key. */
+export function validateAppKey(provider: AffiliateProvider, value: string): string | null {
+  const rule = AFFILIATE_PROVIDER_FIELDS[provider].appKey;
+  if (!rule) return null;
+  const v = value.trim();
+  return v.length <= rule.maxLength && rule.pattern.test(v) ? v : null;
+}
+
+const MAGALU_STORE_HOSTS = new Set(['magazinevoce.com.br', 'www.magazinevoce.com.br']);
+
+/**
+ * Valor digitado → identificador a validar. Magalu aceita a URL da loja colada
+ * (`https://www.magazinevoce.com.br/{slug}/…` ou `magazinevoce.com.br/{slug}`) e fica com o slug.
+ * Fora disso devolve o valor como veio (a validação recusa o que não casar).
+ */
+export function normalizePublicIdentifierInput(provider: AffiliateProvider, value: string): string {
+  const v = value.trim();
+  if (provider !== 'MAGALU' || !/magazinevoce\.com\.br/i.test(v)) return v;
+  let url: URL;
+  try {
+    url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(v) ? v : `https://${v}`);
+  } catch {
+    return v;
+  }
+  if (!['https:', 'http:'].includes(url.protocol) || !MAGALU_STORE_HOSTS.has(url.hostname.toLowerCase())) return v;
+  return url.pathname.split('/').find((segment) => segment.length > 0) ?? v;
 }
 
 /** Valor já com `trim`, ou null se vazio/fora do formato. */

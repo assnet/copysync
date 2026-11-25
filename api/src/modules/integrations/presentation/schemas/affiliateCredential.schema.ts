@@ -40,6 +40,8 @@ export const upsertAffiliateCredentialBodySchema = {
   properties: {
     publicIdentifier: { type: 'string', maxLength: 256 },
     secret: { type: 'string', maxLength: 512 },
+    /** Só AliExpress (App Key); entra cifrada junto do segredo e nunca volta em resposta. */
+    appKey: { type: 'string', maxLength: 64 },
   },
   additionalProperties: false,
 } as const;

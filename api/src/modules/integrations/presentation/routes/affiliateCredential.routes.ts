@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import { AppError } from '../../../../shared/errors/AppError';
 import { authHook } from '../../../../shared/http/hooks/authHook';
 import { tenantHook } from '../../../../shared/http/hooks/tenantHook';
 import { httpResponse } from '../../../../shared/http/httpResponse';
@@ -29,6 +30,9 @@ import { AcceptMarketplaceRiskUseCase } from '../../application/use-cases/Accept
 import { MarketplaceRiskPresenter } from '../presenters/MarketplaceRiskPresenter';
 import { acceptMarketplaceRiskBodySchema, acceptMarketplaceRiskResponse } from '../schemas/marketplaceRisk.schema';
 import type { AffiliateProvider } from '../../domain/enums/AffiliateProvider';
+import { MarketplaceAudienceGate } from '../../../campaigns/application/services/MarketplaceAudienceGate';
+import { FeatureAudienceGate } from '../../../tenants/application/services/FeatureAudienceGate';
+import { featureAudienceReader } from '../../../tenants/infrastructure/featureAudience';
 import type { AffiliateCredentialStatus } from '../../domain/enums/AffiliateCredentialStatus';
 import {
   affiliateCredentialItemResponse,
@@ -48,11 +52,14 @@ const auditRepo = new PrismaAuditLogRepository();
 const cipher = () => SecretCipherFactory.get();
 
 const entitlements = createAffiliateEntitlementReader();
+// Instância própria (o container de ofertas é de outro módulo). Criar não toca o banco; lê a flag a cada pedido.
+const marketplaceAudience = new MarketplaceAudienceGate(new FeatureAudienceGate(featureAudienceReader()));
 const listUseCase = new ListAffiliateCredentialsUseCase(
   repo,
   entitlements,
   new PrismaPlanEntitlementPresetRepository(),
   createMarketplaceRiskAcceptanceRepository(),
+  marketplaceAudience,
 );
 const upsertUseCase = new UpsertAffiliateCredentialUseCase(repo, cipher, auditRepo);
 const deleteUseCase = new DeleteAffiliateCredentialUseCase(repo, auditRepo);
@@ -62,10 +69,25 @@ const getIdentifiersUseCase = new GetAffiliateIdentifiersUseCase(repo, entitleme
 const setIdentifiersUseCase = new SetLinkedAffiliateIdentifiersUseCase(repo, entitlements, auditRepo);
 const acceptRiskUseCase = new AcceptMarketplaceRiskUseCase(prismaMarketplaceRiskAcceptTransaction);
 
-const preHandler = [authHook, tenantHook];
 const tags = ['Integrations'];
 
 type ProviderParams = { Params: { provider: AffiliateProvider } };
+
+/** Mesma mensagem que o ajv gera para `:provider` fora do enum (validação de `params`, antes do `preHandler`). */
+export const UNKNOWN_PROVIDER_MESSAGE = 'params/provider must be equal to one of the allowed values';
+
+/**
+ * Portão único de audiência das rotas por `:provider`, após o `tenantHook`: loja oculta ao viewer responde
+ * exatamente como provider inexistente (400 `HTTP_ERROR`), nunca como "fora do plano". Lança (§14), nunca `send`.
+ */
+async function marketplaceAudienceHook(request: FastifyRequest): Promise<void> {
+  const { provider } = request.params as { provider: AffiliateProvider };
+  const visible = await marketplaceAudience.isVisible(provider, { isSuperAdmin: request.tenantContext.isSuperAdmin });
+  if (!visible) throw new AppError('HTTP_ERROR', UNKNOWN_PROVIDER_MESSAGE, 400);
+}
+
+const listPreHandler = [authHook, tenantHook];
+const preHandler = [authHook, tenantHook, marketplaceAudienceHook];
 
 /**
  * Credenciais de afiliado por marketplace. Registrado em /api/integrations/affiliate-credentials.
@@ -75,7 +97,7 @@ export async function affiliateCredentialRoutes(app: FastifyInstance): Promise<v
   app.get(
     '/',
     {
-      preHandler,
+      preHandler: listPreHandler,
       schema: {
         tags,
         summary: 'Listar credenciais de afiliado do tenant (mascaradas)',
@@ -83,13 +105,13 @@ export async function affiliateCredentialRoutes(app: FastifyInstance): Promise<v
       },
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
-      const { tenantId, userId } = request.tenantContext;
-      const result = await listUseCase.execute({ tenantId, userId });
+      const { tenantId, userId, isSuperAdmin } = request.tenantContext;
+      const result = await listUseCase.execute({ tenantId, userId, viewer: { isSuperAdmin } });
       httpResponse.ok(reply, AffiliateCredentialPresenter.toList(result));
     },
   );
 
-  app.put<ProviderParams & { Body: { publicIdentifier: string; secret?: string } }>(
+  app.put<ProviderParams & { Body: { publicIdentifier: string; secret?: string; appKey?: string } }>(
     '/:provider',
     {
       preHandler,
@@ -109,6 +131,7 @@ export async function affiliateCredentialRoutes(app: FastifyInstance): Promise<v
         provider: request.params.provider,
         publicIdentifier: request.body.publicIdentifier,
         secret: request.body.secret,
+        appKey: request.body.appKey,
       });
       httpResponse.ok(reply, AffiliateCredentialPresenter.toItem(credential));
     },

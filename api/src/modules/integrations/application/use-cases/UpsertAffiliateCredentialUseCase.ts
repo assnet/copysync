@@ -3,8 +3,11 @@ import type { AffiliateCredential } from '../../domain/entities/AffiliateCredent
 import type { IAuditLogRepository } from '../../../../shared/audit/IAuditLogRepository';
 import type { ISecretCipher } from '../../../../shared/security/ISecretCipher';
 import {
+  normalizePublicIdentifierInput,
   providerIdentifierFollowsSession,
   providerRequiresSecret,
+  providerTakesAppKey,
+  validateAppKey,
   providerUsesSession,
   validatePublicIdentifier,
   validateSecret,
@@ -30,12 +33,15 @@ export class UpsertAffiliateCredentialUseCase {
     if (providerIdentifierFollowsSession(input.provider)) {
       throw new AffiliateCredentialInvalidError('Provider is connected through the browser extension', 'provider');
     }
-    const publicIdentifier = validatePublicIdentifier(input.provider, input.publicIdentifier);
+    const publicIdentifier = validatePublicIdentifier(
+      input.provider,
+      normalizePublicIdentifierInput(input.provider, input.publicIdentifier),
+    );
     if (!publicIdentifier) {
       throw new AffiliateCredentialInvalidError('Invalid public identifier', 'publicIdentifier');
     }
 
-    const rawSecret = input.secret?.trim() ?? '';
+    const rawSecret = this.rawSecret(input);
     let secret: string | null = null;
     if (rawSecret) {
       if (!providerRequiresSecret(input.provider)) {
@@ -73,5 +79,24 @@ export class UpsertAffiliateCredentialUseCase {
     });
 
     return credential;
+  }
+
+  /**
+   * Segredo digitado. AliExpress: App Key e App Secret vêm separados e viram `appKey:appSecret` (formato validado e
+   * cifrado como um só); os dois vazios = mantém o atual; só um preenchido = 422 no que falta.
+   */
+  private rawSecret(input: UpsertAffiliateCredentialInput): string {
+    const appSecret = input.secret?.trim() ?? '';
+    const rawAppKey = input.appKey?.trim() ?? '';
+    if (!providerTakesAppKey(input.provider)) {
+      if (rawAppKey) throw new AffiliateCredentialInvalidError('Provider does not take an app key', 'appKey');
+      return appSecret;
+    }
+    if (!rawAppKey && !appSecret) return '';
+    if (!rawAppKey) throw new AffiliateCredentialInvalidError('App key is required', 'appKey');
+    if (!appSecret) throw new AffiliateCredentialInvalidError('Secret is required', 'secret');
+    const appKey = validateAppKey(input.provider, rawAppKey);
+    if (!appKey) throw new AffiliateCredentialInvalidError('Invalid app key', 'appKey');
+    return `${appKey}:${appSecret}`;
   }
 }

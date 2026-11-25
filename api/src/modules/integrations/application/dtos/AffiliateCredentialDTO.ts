@@ -8,6 +8,8 @@ export interface UpsertAffiliateCredentialInput {
   publicIdentifier: string;
   /** Ausente ou vazio em registro existente = mantém o atual. */
   secret?: string;
+  /** Só AliExpress (App Key); vai junto do `secret` (App Secret) e nunca é devolvida. */
+  appKey?: string;
 }
 
 export interface AffiliateCredentialKeyInput {
