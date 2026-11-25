@@ -22,7 +22,8 @@ import { countDistinctBroadcastGroups } from '../../../campaigns/domain/services
 import type { IBroadcastGroupUsageReader } from '../../../campaigns/domain/contracts/IBroadcastGroupUsageReader';
 import type { IMarketplaceRiskGate } from '../../../campaigns/domain/contracts/IMarketplaceRiskGate';
 import type { MarketplaceAudienceGate } from '../../../campaigns/application/services/MarketplaceAudienceGate';
-import type { CredentialAlertDTO, GroupMonitorConfigDTO } from '../dtos/GroupMonitorDTO';
+import type { FeatureAudienceGate } from '../../../tenants/application/services/FeatureAudienceGate';
+import type { CredentialAlertDTO, GroupMonitorConfigDTO, GroupMonitorSettingsDTO } from '../dtos/GroupMonitorDTO';
 
 /** WhatsApp; Telegram em `telegram_*`. Chave por canal: `limitKeyOfChannel` (tenants/domain/channelLimits). */
 export const MONITORED_GROUPS = ENTITLEMENT_KEYS.MONITORED_GROUPS;
@@ -32,6 +33,7 @@ export const CROSS_SESSION_DISPATCH = ENTITLEMENT_KEYS.CROSS_SESSION_DISPATCH;
 export const ENRICH_LINK_ONLY_ENABLED = ENTITLEMENT_KEYS.ENRICH_LINK_ONLY_ENABLED;
 export const CAPTURE_OUTSIDE_WINDOW_ENABLED = ENTITLEMENT_KEYS.CAPTURE_OUTSIDE_WINDOW_ENABLED;
 export const AI_REWRITE_ENABLED = ENTITLEMENT_KEYS.AI_REWRITE_ENABLED;
+export const OFFER_CLEAN_IMAGE_ENABLED = ENTITLEMENT_KEYS.OFFER_CLEAN_IMAGE_ENABLED;
 
 export interface GroupMonitorConfigDeps {
   monitors: IGroupMonitorRepository;
@@ -45,6 +47,8 @@ export interface GroupMonitorConfigDeps {
   riskGate: IMarketplaceRiskGate;
   /** Audiência "Só super admin" por loja: loja que o usuário não vê não gera alerta de credencial. */
   audience: Pick<MarketplaceAudienceGate, 'isVisible'>;
+  /** Audiência por chave (flag "Só super admin"): decide se a opção "foto oficial do produto" existe para quem pede. */
+  featureAudience: Pick<FeatureAudienceGate, 'isVisible'>;
   now?: () => Date;
 }
 
@@ -54,6 +58,8 @@ export const CREDENTIAL_MISSING_WINDOW_MS = 7 * 24 * 60 * 60_000;
 interface SessionInput {
   tenantId: string;
   sessionId: string;
+  /** Do token: decide se `useProductImage` é lido/gravado com a flag "Só super admin" ligada. Ausente = usuário comum. */
+  isSuperAdmin?: boolean;
 }
 
 /** Base: sessão do tenant + leitura completa (configuração, grupos, limites e uso no tenant). */
@@ -64,10 +70,16 @@ abstract class GroupMonitorConfigBase {
     if (!(await this.deps.monitors.sessionExists(tenantId, sessionId))) throw new NotFoundError('Session', sessionId);
   }
 
-  protected async load({ tenantId, sessionId }: SessionInput): Promise<GroupMonitorConfigDTO> {
+  /** Opção "foto oficial do produto" visível para quem pede (flag "Só super admin" da chave, lida a cada uso). */
+  protected cleanImageVisible({ isSuperAdmin }: SessionInput): Promise<boolean> {
+    return this.deps.featureAudience.isVisible(OFFER_CLEAN_IMAGE_ENABLED, { isSuperAdmin: isSuperAdmin === true });
+  }
+
+  protected async load(input: SessionInput): Promise<GroupMonitorConfigDTO> {
+    const { tenantId, sessionId } = input;
     const { monitors, entitlements } = this.deps;
     const num = (kind: 'monitoredGroups' | 'broadcastGroups', ch: LimitChannel) => entitlements.getNumber(tenantId, limitKeyOfChannel(kind, ch));
-    const [config, monitored, broadcast, jids, engines, waMon, waBc, tgMon, tgBc, mentionAll, crossSession, enrichLinkOnly, captureOutside, aiRewrite, unionRows] = await Promise.all([
+    const [config, monitored, broadcast, jids, engines, waMon, waBc, tgMon, tgBc, mentionAll, crossSession, enrichLinkOnly, captureOutside, aiRewrite, unionRows, cleanVisible, cleanImage] = await Promise.all([
       monitors.findConfig(tenantId, sessionId),
       monitors.listMonitored(tenantId, sessionId),
       monitors.listBroadcast(tenantId, sessionId),
@@ -83,13 +95,17 @@ abstract class GroupMonitorConfigBase {
       entitlements.getBoolean(tenantId, CAPTURE_OUTSIDE_WINDOW_ENABLED),
       entitlements.getBoolean(tenantId, AI_REWRITE_ENABLED),
       this.deps.broadcastUsage.listRows(tenantId),
+      this.cleanImageVisible(input),
+      entitlements.getBoolean(tenantId, OFFER_CLEAN_IMAGE_ENABLED),
     ]);
     const live = broadcast.length > 0
       ? await loadLiveGroups(broadcast.map((g) => g.sessionId), (id) => this.deps.directory.listParticipating(id))
       : new Map();
-    const settings: GroupMonitorSettings = config
+    const settings: GroupMonitorSettingsDTO = config
       ? (({ id: _id, tenantId: _t, sessionId: _s, ...rest }) => rest)(config)
       : { ...DEFAULT_MONITOR_SETTINGS };
+    // Opção oculta pela audiência: nem o valor salvo sai (IMG-12)
+    if (!cleanVisible) delete settings.useProductImage;
     // Grupos de sessão apagada não ocupam cota
     const mon = countByChannel(jids.monitored.filter((g) => g.live), (g) => g.engine);
     // Disparo: grupos distintos do gerador + todos os monitoramentos (D4: configurado conta, sem consulta à engine)
@@ -109,6 +125,7 @@ abstract class GroupMonitorConfigBase {
         enrichLinkOnlyEnabled: enrichLinkOnly === true,
         captureOutsideWindowEnabled: captureOutside === true,
         aiRewriteEnabled: aiRewrite !== false,
+        ...(cleanVisible && { cleanImageEnabled: cleanImage === true }),
         whatsapp, telegram: { monitoredGroups: tgMon, broadcastGroups: tgBc },
       },
       usage: { ...usageWa, whatsapp: usageWa, telegram: { monitoredGroups: mon.telegram, broadcastGroups: bc.telegram } },
@@ -162,20 +179,23 @@ export class GetGroupMonitorConfigUseCase extends GroupMonitorConfigBase {
 }
 
 /** Campos opcionais (cliente anterior a eles): mantém o valor salvo, senão o padrão. */
-export type GroupMonitorSettingsInput = Omit<GroupMonitorSettings, 'captureOutsideWindow' | 'imageMode'>
-  & Partial<Pick<GroupMonitorSettings, 'captureOutsideWindow' | 'imageMode'>>;
+export type GroupMonitorSettingsInput = Omit<GroupMonitorSettings, 'captureOutsideWindow' | 'imageMode' | 'useProductImage'>
+  & Partial<Pick<GroupMonitorSettings, 'captureOutsideWindow' | 'imageMode' | 'useProductImage'>>;
 
 export class SaveGroupMonitorSettingsUseCase extends GroupMonitorConfigBase {
   async execute(input: SessionInput & { settings: GroupMonitorSettingsInput }): Promise<GroupMonitorConfigDTO> {
     await this.assertSession(input);
-    const { captureOutsideWindow, imageMode } = input.settings;
-    const saved = captureOutsideWindow === undefined || imageMode === undefined
+    const { captureOutsideWindow, imageMode, useProductImage } = input.settings;
+    const productImageAccepted = useProductImage !== undefined && (await this.acceptsProductImage(input, useProductImage));
+    const saved = captureOutsideWindow === undefined || imageMode === undefined || !productImageAccepted
       ? await this.deps.monitors.findConfig(input.tenantId, input.sessionId)
       : null;
     const settings: GroupMonitorSettings = {
       ...input.settings,
       captureOutsideWindow: captureOutsideWindow ?? saved?.captureOutsideWindow ?? DEFAULT_MONITOR_SETTINGS.captureOutsideWindow,
       imageMode: effectiveImageMode(imageMode ?? saved?.imageMode ?? DEFAULT_MONITOR_SETTINGS.imageMode),
+      // Ausente (painel antigo) ou recusado: mantém o salvo, sem erro (IMG-12)
+      useProductImage: productImageAccepted ? useProductImage! : saved?.useProductImage ?? DEFAULT_MONITOR_SETTINGS.useProductImage,
     };
     const problem = monitorSettingsProblem(settings);
     if (problem) throw new GroupMonitorInvalidInputError(problem.reason, problem.field);
@@ -200,6 +220,15 @@ export class SaveGroupMonitorSettingsUseCase extends GroupMonitorConfigBase {
     settings.windowStartMinute = normalizeWindowStartMinute(settings.windowStartMinute, settings.windowEndMinute);
     await this.deps.monitors.saveSettings(input.tenantId, input.sessionId, settings);
     return this.load(input);
+  }
+
+  /**
+   * "Foto oficial do produto": oculta pela audiência → ignorada; desligar não exige plano; ligar exige
+   * `offer_clean_image_enabled === true` (PRO/MAX). Recusa não é erro: o valor salvo fica.
+   */
+  private async acceptsProductImage(input: SessionInput, value: boolean): Promise<boolean> {
+    if (!(await this.cleanImageVisible(input))) return false;
+    return !value || (await this.deps.entitlements.getBoolean(input.tenantId, OFFER_CLEAN_IMAGE_ENABLED)) === true;
   }
 }
 

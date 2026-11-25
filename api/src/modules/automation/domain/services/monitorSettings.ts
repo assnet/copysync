@@ -24,7 +24,7 @@ export type MonitorSettingsWithWeekdays = GroupMonitorSettings & { weekdays?: re
 
 /**
  * Padrões (espelham os `@default` do Prisma): 06:00–18:00, sem intervalo, "digitando" 3 s, validade 24 h,
- * prévia do link e sem montar oferta só com link (recurso Pro/Max, `enrich_link_only_enabled`).
+ * prévia do link, sem montar oferta só com link (recurso Pro/Max, `enrich_link_only_enabled`) e com a foto capturada.
  */
 export const DEFAULT_MONITOR_SETTINGS: GroupMonitorSettings = {
   enabled: false,
@@ -43,6 +43,7 @@ export const DEFAULT_MONITOR_SETTINGS: GroupMonitorSettings = {
   audience: 'STANDARD',
   enrichLinkOnly: false,
   imageMode: DEFAULT_OFFER_IMAGE_MODE,
+  useProductImage: false,
 };
 
 const inRange = (v: number, r: { min: number; max: number }) => Number.isInteger(v) && v >= r.min && v <= r.max;

@@ -1771,6 +1771,9 @@ model GroupMonitorConfig {
   /// Formato da foto nas ofertas criadas por esta configuração (copiado para Offer.imageMode).
   /// MEDIA desligado no envio até nova decisão (`effectiveImageMode`).
   imageMode            OfferImageMode  @default(LINK_PREVIEW)
+  /// Troca a foto capturada pela foto oficial do produto (sem foto oficial segue a capturada).
+  /// Vale só com `offer_clean_image_enabled === true` (PRO/MAX); ver docs/imagem-das-ofertas.md.
+  useProductImage      Boolean         @default(false)
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt
 

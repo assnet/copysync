@@ -19,6 +19,7 @@ export const PrismaGroupMonitorMapper = {
       startDelaySeconds: r.startDelaySeconds, maxOfferAgeMinutes: r.maxOfferAgeMinutes, couponMaxAgeMinutes: r.couponMaxAgeMinutes,
       mentionAll: r.mentionAll, simulateTyping: r.simulateTyping, typingSeconds: r.typingSeconds,
       textMode: r.textMode, audience: r.audience, enrichLinkOnly: r.enrichLinkOnly, imageMode: r.imageMode,
+      useProductImage: r.useProductImage,
     };
   },
 
@@ -30,6 +31,7 @@ export const PrismaGroupMonitorMapper = {
       startDelaySeconds: s.startDelaySeconds, maxOfferAgeMinutes: s.maxOfferAgeMinutes, couponMaxAgeMinutes: s.couponMaxAgeMinutes,
       mentionAll: s.mentionAll, simulateTyping: s.simulateTyping, typingSeconds: s.typingSeconds,
       textMode: s.textMode, audience: s.audience, enrichLinkOnly: s.enrichLinkOnly, imageMode: s.imageMode,
+      useProductImage: s.useProductImage,
     };
     if (s.weekdays !== undefined) data.weekdaysMask = weekdaysMask(s.weekdays);
     return data;

@@ -34,10 +34,11 @@ const settingsProperties = {
   audience: { type: 'string', enum: [...OFFER_AUDIENCES] },
   enrichLinkOnly: { type: 'boolean' },
   imageMode: { type: 'string', enum: [...OFFER_IMAGE_MODES] },
+  useProductImage: { type: 'boolean' },
 } as const;
-// Campos que entraram depois (`captureOutsideWindow` app 0.50.0, `imageMode`, `weekdays`): cliente antigo
-// salva sem eles → o use case mantém o valor salvo
-const OPTIONAL_SETTINGS = new Set(['captureOutsideWindow', 'imageMode', 'weekdays']);
+// Campos que entraram depois (`captureOutsideWindow` app 0.50.0, `imageMode`, `weekdays`, `useProductImage`): cliente
+// antigo salva sem eles → o use case mantém o valor salvo. `useProductImage` também some da resposta para quem não o vê
+const OPTIONAL_SETTINGS = new Set(['captureOutsideWindow', 'imageMode', 'weekdays', 'useProductImage']);
 const settingsKeys = Object.keys(settingsProperties).filter((k) => !OPTIONAL_SETTINGS.has(k));
 
 export const sessionQuerySchema = {
@@ -123,6 +124,7 @@ const configSchema = {
       type: 'object',
       properties: {
         monitoredGroups: nullableInt, broadcastGroups: nullableInt, mentionAllEnabled: { type: 'boolean' }, crossSessionDispatch: { type: 'boolean' }, enrichLinkOnlyEnabled: { type: 'boolean' }, captureOutsideWindowEnabled: { type: 'boolean' }, aiRewriteEnabled: { type: 'boolean' },
+        cleanImageEnabled: { type: 'boolean' },
         whatsapp: channelLimitsSchema, telegram: channelLimitsSchema,
       },
     },

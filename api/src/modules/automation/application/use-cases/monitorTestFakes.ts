@@ -163,7 +163,7 @@ export class FakeTextComposer implements IMonitorTextComposer {
 
 export class FakeImageStore implements IMonitorImageStore {
   stored: string[] = [];
-  async store(url: string) { this.stored.push(url); return `https://api/media/stored-${this.stored.length}.jpg`; }
+  async store(url: string): Promise<string | null> { this.stored.push(url); return `https://api/media/stored-${this.stored.length}.jpg`; }
 }
 
 export class FakeCredentialStates implements ICredentialStateSource {

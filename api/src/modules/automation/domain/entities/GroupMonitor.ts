@@ -27,6 +27,11 @@ export interface GroupMonitorSettings {
   enrichLinkOnly: boolean;
   /** Foto das ofertas criadas: mídia com legenda ou prévia do link. */
   imageMode: OfferImageMode;
+  /**
+   * Troca a foto capturada pela foto oficial do produto (sem foto oficial segue a capturada; a capturada nunca é
+   * editada). Vale só com `offer_clean_image_enabled === true` (PRO/MAX).
+   */
+  useProductImage: boolean;
 }
 
 export interface GroupMonitorConfig extends GroupMonitorSettings {

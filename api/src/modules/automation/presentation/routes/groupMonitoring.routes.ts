@@ -32,9 +32,11 @@ export async function groupMonitoringRoutes(app: FastifyInstance): Promise<void>
     '/config',
     { preHandler, schema: { tags, summary: 'Salvar horário, envio e validade', body: saveSettingsBodySchema, response: { 200: configResponse } } },
     async (request, reply) => {
-      // `captureOutsideWindow`/`imageMode` ausentes (cliente antigo): o use case mantém o valor salvo
+      // `captureOutsideWindow`/`imageMode`/`useProductImage` ausentes (cliente antigo): o use case mantém o valor salvo.
+      // `isSuperAdmin`: com a flag "Só super admin" ligada, só ele grava e lê `useProductImage`
       const { sessionId, ...settings } = request.body;
-      const result = await automationContainer.saveSettings().execute({ tenantId: request.tenantContext.tenantId, sessionId, settings });
+      const { tenantId, isSuperAdmin } = request.tenantContext;
+      const result = await automationContainer.saveSettings().execute({ tenantId, isSuperAdmin, sessionId, settings });
       httpResponse.ok(reply, result);
     },
   );
@@ -43,7 +45,9 @@ export async function groupMonitoringRoutes(app: FastifyInstance): Promise<void>
     '/config/monitored-groups',
     { preHandler, schema: { tags, summary: 'Substituir grupos monitorados', body: saveMonitoredBodySchema, response: { 200: configResponse } } },
     async (request, reply) => {
-      const result = await automationContainer.saveMonitored().execute({ tenantId: request.tenantContext.tenantId, ...request.body });
+      const result = await automationContainer.saveMonitored().execute({
+        tenantId: request.tenantContext.tenantId, isSuperAdmin: request.tenantContext.isSuperAdmin, ...request.body,
+      });
       httpResponse.ok(reply, result);
     },
   );
@@ -52,7 +56,9 @@ export async function groupMonitoringRoutes(app: FastifyInstance): Promise<void>
     '/config/broadcast-groups',
     { preHandler, schema: { tags, summary: 'Substituir grupos de disparo (ordem = envio; grupo de outra sessão exige cross_session_dispatch)', body: saveBroadcastBodySchema, response: { 200: configResponse } } },
     async (request, reply) => {
-      const result = await automationContainer.saveBroadcast().execute({ tenantId: request.tenantContext.tenantId, ...request.body });
+      const result = await automationContainer.saveBroadcast().execute({
+        tenantId: request.tenantContext.tenantId, isSuperAdmin: request.tenantContext.isSuperAdmin, ...request.body,
+      });
       httpResponse.ok(reply, result);
     },
   );

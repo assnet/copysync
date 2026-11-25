@@ -623,3 +623,114 @@ describe('ProcessPendingCapturedOffersUseCase — parada cooperativa e observaç
     expect(call?.[0]).toMatchObject({ status: 'SKIPPED', reason: 'CREDENTIAL_MISSING' });
   });
 });
+
+describe('ProcessPendingCapturedOffersUseCase — foto oficial do produto (useProductImage)', () => {
+  const ON = { useProductImage: true };
+  const PLAN = { offer_clean_image_enabled: true };
+  const PRODUCT_PHOTO = 'https://m.media-amazon.com/images/I/fone.jpg';
+  const CAPTURED_PHOTO = 'https://api/media/1.jpg';
+
+  it('ORIGINAL ligada + plano: sai a foto do produto (uma leitura na loja), a capturada fica de reserva', async () => {
+    const s = await setup({ settings: ON, entitlements: PLAN });
+    await s.msg();
+    await s.process.execute();
+    expect(s.products.calls).toHaveLength(1);
+    expect(s.images.stored).toEqual([PRODUCT_PHOTO]);
+    expect(s.queue.inputs[0]!.imageUrl).toBe('https://api/media/stored-1.jpg');
+    expect(s.captured.items[0]).toMatchObject({ status: 'QUEUED', textSource: 'ORIGINAL' });
+  });
+
+  it('ORIGINAL ligada + plano: loja sem foto, erro na leitura ou falha ao guardar → foto capturada', async () => {
+    const noPhoto = await setup({ settings: ON, entitlements: PLAN });
+    noPhoto.products.data = { title: 'Fone', priceCents: 9900, originalPriceCents: null, imageUrl: null };
+    await noPhoto.msg();
+    await noPhoto.process.execute();
+    expect(noPhoto.queue.inputs[0]!.imageUrl).toBe(CAPTURED_PHOTO);
+
+    const failing = await setup({ settings: ON, entitlements: PLAN });
+    failing.products.read = async () => { throw new Error('boom'); };
+    await failing.msg();
+    await failing.process.execute();
+    expect(failing.queue.inputs[0]!.imageUrl).toBe(CAPTURED_PHOTO);
+    expect(failing.captured.items[0]).toMatchObject({ status: 'QUEUED' });
+
+    const storeDown = await setup({ settings: ON, entitlements: PLAN });
+    storeDown.images.store = async () => null;
+    await storeDown.msg();
+    await storeDown.process.execute();
+    expect(storeDown.queue.inputs[0]!.imageUrl).toBe(CAPTURED_PHOTO);
+  });
+
+  it('desligada, ou ligada no LITE (false/ausente): foto capturada, sem leitura extra na loja', async () => {
+    for (const opts of [
+      { settings: { useProductImage: false }, entitlements: PLAN },
+      { settings: ON, entitlements: { offer_clean_image_enabled: false } },
+      { settings: ON, entitlements: {} },
+    ]) {
+      const s = await setup(opts);
+      await s.msg();
+      await s.process.execute();
+      expect(s.products.calls).toHaveLength(0);
+      expect(s.images.stored).toHaveLength(0);
+      expect(s.queue.inputs[0]!.imageUrl).toBe(CAPTURED_PHOTO);
+    }
+  });
+
+  it('TEMPLATE e AI ligada + plano: foto do produto já lido, sem segunda leitura', async () => {
+    for (const [settings, source] of [[{ textMode: 'TEMPLATE' }, 'TEMPLATE'], [{ textMode: 'AI', audience: 'MOMS' }, 'AI']] as const) {
+      const s = await setup({ settings: { ...ON, ...settings }, entitlements: PLAN });
+      await s.msg();
+      await s.process.execute();
+      expect(s.products.calls).toHaveLength(1);
+      expect(s.images.stored).toEqual([PRODUCT_PHOTO]);
+      expect(s.queue.inputs[0]!.imageUrl).toBe('https://api/media/stored-1.jpg');
+      expect(s.captured.items[0]).toMatchObject({ status: 'QUEUED', textSource: source });
+    }
+  });
+
+  it('TEMPLATE ligada + plano e produto sem foto: foto capturada; desligada: capturada sem guardar a do produto', async () => {
+    const noPhoto = await setup({ settings: { ...ON, textMode: 'TEMPLATE' }, entitlements: PLAN });
+    noPhoto.products.data = { title: 'Fone', priceCents: 9900, originalPriceCents: null, imageUrl: null };
+    await noPhoto.msg();
+    await noPhoto.process.execute();
+    expect(noPhoto.queue.inputs[0]!.imageUrl).toBe(CAPTURED_PHOTO);
+
+    const off = await setup({ settings: { textMode: 'TEMPLATE' }, entitlements: PLAN });
+    await off.msg();
+    await off.process.execute();
+    expect(off.products.calls).toHaveLength(1);
+    expect(off.images.stored).toHaveLength(0);
+    expect(off.queue.inputs[0]!.imageUrl).toBe(CAPTURED_PHOTO);
+  });
+
+  it('produto sem título nem preço (texto original): ligada usa a foto do produto; sem ela, a capturada', async () => {
+    const s = await setup({ settings: { ...ON, textMode: 'TEMPLATE' }, entitlements: PLAN });
+    s.products.data = { title: null, priceCents: null, originalPriceCents: null, imageUrl: PRODUCT_PHOTO };
+    await s.msg();
+    await s.process.execute();
+    expect(s.products.calls).toHaveLength(1);
+    expect(s.queue.inputs[0]!.imageUrl).toBe('https://api/media/stored-1.jpg');
+    expect(s.captured.items[0]).toMatchObject({ textSource: 'ORIGINAL' });
+
+    const off = await setup({ settings: { textMode: 'TEMPLATE' }, entitlements: PLAN });
+    off.products.data = { title: null, priceCents: null, originalPriceCents: null, imageUrl: PRODUCT_PHOTO };
+    await off.msg();
+    await off.process.execute();
+    expect(off.queue.inputs[0]!.imageUrl).toBe(CAPTURED_PHOTO);
+    expect(off.images.stored).toHaveLength(0);
+  });
+
+  it('mensagem sem foto: comportamento atual (foto do produto; sem ela, só texto)', async () => {
+    const s = await setup({ settings: ON, entitlements: PLAN });
+    await s.msg({ msgType: 'TEXT', mediaUrl: null, mimeType: null });
+    await s.process.execute();
+    expect(s.products.calls).toHaveLength(1);
+    expect(s.queue.inputs[0]!.imageUrl).toBe('https://api/media/stored-1.jpg');
+
+    const failing = await setup({ settings: ON, entitlements: PLAN });
+    failing.products.read = async () => { throw new Error('boom'); };
+    await failing.msg({ msgType: 'TEXT', mediaUrl: null, mimeType: null });
+    await failing.process.execute();
+    expect(failing.queue.inputs[0]!.imageUrl).toBeNull();
+  });
+});

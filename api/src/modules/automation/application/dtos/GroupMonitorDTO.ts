@@ -19,8 +19,11 @@ export interface CredentialAlertDTO {
 export interface ChannelGroupLimitsDTO { monitoredGroups: number | null; broadcastGroups: number | null }
 export interface ChannelGroupUsageDTO { monitoredGroups: number; broadcastGroups: number }
 
-/** Configuração devolvida: `weekdays` = dias de postagem (0 = domingo … 6 = sábado), ordenados; ausente = todos. */
-export type GroupMonitorSettingsDTO = GroupMonitorSettings & { weekdays?: number[] };
+/**
+ * Configuração devolvida: `weekdays` = dias de postagem (0 = domingo … 6 = sábado), ordenados; ausente = todos.
+ * `useProductImage` só sai para quem enxerga a opção (flag "Só super admin" de `offer_clean_image_enabled`).
+ */
+export type GroupMonitorSettingsDTO = Omit<GroupMonitorSettings, 'useProductImage'> & { useProductImage?: boolean; weekdays?: number[] };
 
 export interface GroupMonitorConfigDTO {
   sessionId: string;
@@ -44,6 +47,8 @@ export interface GroupMonitorConfigDTO {
     captureOutsideWindowEnabled: boolean;
     /** Entitlement `ai_rewrite_enabled` (só `false` trava, LITE): modo IA vale como Modelo. */
     aiRewriteEnabled: boolean;
+    /** Entitlement `offer_clean_image_enabled` (PRO/MAX, só `true` libera); ausente quando a opção está oculta pela audiência. */
+    cleanImageEnabled?: boolean;
     whatsapp: ChannelGroupLimitsDTO;
     telegram: ChannelGroupLimitsDTO;
   };

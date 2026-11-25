@@ -15,11 +15,14 @@ function setup(entitlements: Record<string, unknown> = {}, hidden: AffiliateProv
   const riskGate = { isAccepted: vi.fn(async () => false) };
   /** Lojas com flag "Só super admin" ligada. */
   const audience = { isVisible: vi.fn(async (p: AffiliateProvider, v: { isSuperAdmin: boolean }) => !hidden.includes(p) || v.isSuperAdmin) };
+  /** Flag "Só super admin" por chave (`offer_clean_image_enabled`); desligada por padrão nos cenários. */
+  const superAdminOnly = new Set<string>();
+  const featureAudience = { isVisible: vi.fn(async (k: string, v: { isSuperAdmin: boolean }) => !superAdminOnly.has(k) || v.isSuperAdmin) };
   const deps = {
-    monitors, directory, entitlements: new FakeEntitlements(entitlements), credentialStates, captured, broadcastUsage, riskGate, audience, now: () => NOW,
+    monitors, directory, entitlements: new FakeEntitlements(entitlements), credentialStates, captured, broadcastUsage, riskGate, audience, featureAudience, now: () => NOW,
   };
   return {
-    monitors, directory, credentialStates, captured, broadcastUsage, riskGate,
+    monitors, directory, credentialStates, captured, broadcastUsage, riskGate, superAdminOnly,
     get: new GetGroupMonitorConfigUseCase(deps),
     settings: new SaveGroupMonitorSettingsUseCase(deps),
     monitored: new SaveMonitoredGroupsUseCase(deps),
@@ -36,6 +39,7 @@ describe('GroupMonitorConfigUseCases', () => {
     expect(out.settings).toEqual(DEFAULT_MONITOR_SETTINGS);
     expect(out.limits).toEqual({
       monitoredGroups: 2, broadcastGroups: 10, mentionAllEnabled: true, crossSessionDispatch: false, enrichLinkOnlyEnabled: false, captureOutsideWindowEnabled: false, aiRewriteEnabled: true,
+      cleanImageEnabled: false,
       whatsapp: { monitoredGroups: 2, broadcastGroups: 10 }, telegram: { monitoredGroups: null, broadcastGroups: null },
     });
     expect(out.channel).toBe('whatsapp');
@@ -443,5 +447,63 @@ describe('GetGroupMonitorConfigUseCase — credentialAlerts e audiência da loja
     const s = setup();
     s.credentialStates.states = states;
     expect((await s.get.execute(base)).credentialAlerts?.map((a) => a.provider)).toEqual(['SHOPEE', 'KABUM']);
+  });
+});
+
+describe('GroupMonitorConfig — foto oficial do produto (useProductImage)', () => {
+  const CLEAN = 'offer_clean_image_enabled';
+  const settings = (o: Record<string, unknown> = {}) => ({ ...DEFAULT_MONITOR_SETTINGS, ...o });
+  /** Sem `useProductImage` no corpo: painel antigo. */
+  const legacy = () => (({ useProductImage: _u, ...rest }) => rest)(DEFAULT_MONITOR_SETTINGS);
+
+  it('PUT sem useProductImage (painel antigo) salva e mantém o valor salvo', async () => {
+    const s = setup({ [CLEAN]: true });
+    await s.settings.execute({ ...base, settings: settings({ useProductImage: true }) });
+    const out = await s.settings.execute({ ...base, settings: { ...legacy(), enabled: true } });
+    expect(out.settings).toMatchObject({ enabled: true, useProductImage: true });
+    const fresh = setup({ [CLEAN]: true });
+    expect((await fresh.settings.execute({ ...base, settings: legacy() })).settings.useProductImage).toBe(false);
+  });
+
+  it('com plano (PRO/MAX) e flag desligada: grava e lê; GET expõe cleanImageEnabled', async () => {
+    const s = setup({ [CLEAN]: true });
+    const out = await s.settings.execute({ ...base, settings: settings({ useProductImage: true }) });
+    expect(out.settings.useProductImage).toBe(true);
+    expect(out.limits.cleanImageEnabled).toBe(true);
+    expect((await s.monitors.findConfig(base.tenantId, base.sessionId))!.useProductImage).toBe(true);
+    // Desligar também grava
+    expect((await s.settings.execute({ ...base, settings: settings({ useProductImage: false }) })).settings.useProductImage).toBe(false);
+  });
+
+  it('LITE (false/ausente): ligar é ignorado sem erro (mantém o salvo); opção visível com cleanImageEnabled false', async () => {
+    for (const ent of [{}, { [CLEAN]: false }]) {
+      const s = setup(ent);
+      const out = await s.settings.execute({ ...base, settings: settings({ useProductImage: true, enabled: true }) });
+      expect(out.settings).toMatchObject({ enabled: true, useProductImage: false });
+      expect(out.limits.cleanImageEnabled).toBe(false);
+    }
+    // Plano rebaixado com a opção salva: desligar não exige plano
+    const down = setup({ [CLEAN]: false });
+    await down.monitors.saveSettings(base.tenantId, base.sessionId, { ...DEFAULT_MONITOR_SETTINGS, useProductImage: true });
+    expect((await down.settings.execute({ ...base, settings: settings({ useProductImage: false }) })).settings.useProductImage).toBe(false);
+  });
+
+  it('flag "Só super admin" ligada: usuário comum não grava true nem lê o campo; super admin grava e lê', async () => {
+    const s = setup({ [CLEAN]: true });
+    s.superAdminOnly.add(CLEAN);
+    const out = await s.settings.execute({ ...base, settings: settings({ useProductImage: true }) });
+    expect(out.settings).not.toHaveProperty('useProductImage');
+    expect(out.limits).not.toHaveProperty('cleanImageEnabled');
+    expect((await s.monitors.findConfig(base.tenantId, base.sessionId))!.useProductImage).toBe(false);
+
+    const admin = { ...base, isSuperAdmin: true };
+    expect((await s.settings.execute({ ...admin, settings: settings({ useProductImage: true }) })).settings.useProductImage).toBe(true);
+    expect((await s.get.execute(admin)).settings.useProductImage).toBe(true);
+    // Valor salvo pelo super admin não aparece nem é desfeito pelo usuário comum
+    expect((await s.get.execute(base)).settings).not.toHaveProperty('useProductImage');
+    await s.settings.execute({ ...base, settings: settings({ useProductImage: false }) });
+    expect((await s.monitors.findConfig(base.tenantId, base.sessionId))!.useProductImage).toBe(true);
+    // Save de grupos também omite para o usuário comum
+    expect((await s.monitored.execute({ ...base, groups: [] })).settings).not.toHaveProperty('useProductImage');
   });
 });

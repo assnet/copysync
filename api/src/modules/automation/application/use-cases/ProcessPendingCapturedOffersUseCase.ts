@@ -12,7 +12,9 @@ import { detectCoupon, extractUrls, hasTextBeyondLinks, rewriteOfferLinks } from
 import { resolveStartWithinWindow, type OperatingWindow } from '../../domain/services/operatingWindow';
 import { weekdaysMask } from '../../../campaigns/domain/services/postingWindow';
 import { logger } from '../../../../shared/logger/logger';
-import { AI_REWRITE_ENABLED, CROSS_SESSION_DISPATCH, ENRICH_LINK_ONLY_ENABLED, MENTION_ALL_ENABLED } from './GroupMonitorConfigUseCases';
+import {
+  AI_REWRITE_ENABLED, CROSS_SESSION_DISPATCH, ENRICH_LINK_ONLY_ENABLED, MENTION_ALL_ENABLED, OFFER_CLEAN_IMAGE_ENABLED,
+} from './GroupMonitorConfigUseCases';
 import { keepOneSessionPerChannel, limitKeyOfChannel, requiresCrossSession, sliceByChannel } from '../../../tenants/domain/channelLimits';
 
 /** Capturas por tick (cada uma pode ir à rede: expandir link, API do marketplace). */
@@ -189,9 +191,15 @@ export class ProcessPendingCapturedOffersUseCase {
     const enrichAllowed = config.enrichLinkOnly && (await entitlements.getBoolean(c.tenantId, ENRICH_LINK_ONLY_ENABLED)) === true;
     // Reescrita com IA é PRO/MAX: LITE com IA salva cai no Modelo (sem chamar a IA, sem selo de falha)
     const aiLocked = config.textMode === 'AI' && (await entitlements.getBoolean(c.tenantId, AI_REWRITE_ENABLED)) === false;
-    const effective = enrichAllowed === config.enrichLinkOnly && !aiLocked
+    // Foto oficial é PRO/MAX (só `true` libera): opção salva em plano rebaixado segue com a foto capturada.
+    // Sem ler a audiência: o envio em segundo plano obedece plano + configuração salva (IMG-13)
+    const productImage = config.useProductImage && (await entitlements.getBoolean(c.tenantId, OFFER_CLEAN_IMAGE_ENABLED)) === true;
+    const effective = enrichAllowed === config.enrichLinkOnly && !aiLocked && productImage === config.useProductImage
       ? config
-      : { ...config, enrichLinkOnly: enrichAllowed, ...(aiLocked && { textMode: 'TEMPLATE' as const, audience: 'STANDARD' as const }) };
+      : {
+          ...config, enrichLinkOnly: enrichAllowed, useProductImage: productImage,
+          ...(aiLocked && { textMode: 'TEMPLATE' as const, audience: 'STANDARD' as const }),
+        };
     const built = await this.buildText(c, effective, first, coupon, finalText, tenantLinks);
     const base: CapturedOfferResolution = {
       marketplace: first.provider, sourceUrl: first.sourceUrl, affiliateUrl: first.affiliateUrl, coupon,
@@ -259,7 +267,8 @@ interface BuiltText {
  * links trocados (como sempre). `TEMPLATE`/`AI`, ou captura só com link(s) com `enrichLinkOnly`:
  * lê o produto e compõe pelo mesmo compositor do gerador (a IA só vê JSON de dados, nunca o texto
  * do concorrente). Degrada em cascata: IA falha → modelo; sem dados → original. Foto: da mensagem,
- * senão a do produto no store. Nunca bloqueia a captura.
+ * senão a do produto no store; com `useProductImage` efetivo (opção + plano), a do produto primeiro e a da
+ * mensagem como reserva (a capturada nunca é editada). Nunca bloqueia a captura.
  */
 async function buildMonitorText(
   deps: Pick<ProcessPendingCapturedOffersDeps, 'products' | 'texts' | 'images'>,
@@ -274,6 +283,8 @@ async function buildMonitorText(
   const linkOnly = !hasTextBeyondLinks(c.sourceText);
   const wantsProduct = config.textMode !== 'ORIGINAL' || (config.enrichLinkOnly && linkOnly);
   if (!wantsProduct) {
+    // Foto oficial: uma leitura a mais na loja (R9); sem foto ou erro → a capturada
+    if (config.useProductImage) return { ...original, imageUrl: (await productImageOnly(deps, c, link)) ?? c.sourceMediaUrl };
     // Texto original sem foto na mensagem (link com prévia, vídeo): a foto vem do produto
     return c.sourceMediaUrl ? original : { ...original, imageUrl: await productImageOnly(deps, c, link) };
   }
@@ -282,7 +293,9 @@ async function buildMonitorText(
   const product = link.product ?? (await deps.products.read(c.tenantId, link.provider, link.sourceUrl));
   if (!product || (!product.title && product.priceCents == null)) {
     logger.info({ capturedOfferId: c.id, tenantId: c.tenantId, marketplace: link.provider }, 'captured offer product data unavailable');
-    if (c.sourceMediaUrl || !product?.imageUrl) return original;
+    if (!product?.imageUrl) return original;
+    if (config.useProductImage) return { ...original, imageUrl: (await deps.images.store(product.imageUrl)) ?? c.sourceMediaUrl };
+    if (c.sourceMediaUrl) return original;
     return { ...original, imageUrl: await deps.images.store(product.imageUrl) };
   }
   const audience = config.textMode === 'AI' ? config.audience : 'STANDARD';
@@ -295,7 +308,10 @@ async function buildMonitorText(
     logger.warn({ capturedOfferId: c.id, tenantId: c.tenantId }, 'captured offer composed text had foreign link');
     return original;
   }
-  const imageUrl = c.sourceMediaUrl ?? (product.imageUrl ? await deps.images.store(product.imageUrl) : null);
+  // Produto já lido acima: a foto oficial não faz segunda leitura na loja
+  const imageUrl = config.useProductImage
+    ? (product.imageUrl ? await deps.images.store(product.imageUrl) : null) ?? c.sourceMediaUrl
+    : c.sourceMediaUrl ?? (product.imageUrl ? await deps.images.store(product.imageUrl) : null);
   const usedAi = audience !== 'STANDARD' && !composed.aiFallback;
   return { text: composed.text, textSource: usedAi ? 'AI' : 'TEMPLATE', aiErrorCode: composed.aiErrorCode ?? null, imageUrl };
 }

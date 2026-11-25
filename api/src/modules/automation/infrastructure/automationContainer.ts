@@ -15,6 +15,8 @@ import { RegisterCapturedMessageUseCase } from '../application/use-cases/Registe
 import { ProcessPendingCapturedOffersUseCase } from '../application/use-cases/ProcessPendingCapturedOffersUseCase';
 import { ListCapturedOffersUseCase, RetryCapturedOfferUseCase } from '../application/use-cases/CapturedOffersUseCases';
 import { backgroundProductAccessReader } from '../../tenants/infrastructure/productAccessContainer';
+import { featureAudienceReader } from '../../tenants/infrastructure/featureAudience';
+import { FeatureAudienceGate } from '../../tenants/application/services/FeatureAudienceGate';
 
 /* Composição do monitoramento de grupos. Tudo lazy: importar não toca banco nem rede. */
 function lazy<T>(make: () => T): () => T {
@@ -26,10 +28,13 @@ const monitors  = lazy(() => new PrismaGroupMonitorRepository(prisma));
 const captured  = lazy(() => new PrismaCapturedOfferRepository(prisma, { fairClaim: env.MONITORING_FAIR_CLAIM_ENABLED }));
 const directory = lazy(() => new ChatMonitorGroupDirectory());
 const broadcastUsage = lazy(() => new PrismaBroadcastGroupUsageReader(prisma));
+// Portão próprio (sem estado: lê a flag a cada uso), sobre o leitor do tenants: o tenants não importa automation,
+// então não há ciclo; não reaproveita o do offersContainer, que só expõe a casca por loja
+const featureAudience = lazy(() => new FeatureAudienceGate(featureAudienceReader()));
 const configDeps = () => ({
   monitors: monitors(), directory: directory(), entitlements: offersContainer.entitlements(),
   credentialStates: new CampaignsCredentialStateSource(), captured: captured(), broadcastUsage: broadcastUsage(),
-  riskGate: offersContainer.riskGate(), audience: offersContainer.marketplaceAudience(),
+  riskGate: offersContainer.riskGate(), audience: offersContainer.marketplaceAudience(), featureAudience: featureAudience(),
 });
 
 export const automationContainer = {
