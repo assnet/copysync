@@ -33,6 +33,7 @@ export const navigationStrings = {
     storefront: 'Página de Ofertas',
     offerStory: 'Story de Oferta',
     offerHunter: 'Caçador de Ofertas',
+    offerWatermark: 'Marca d\'água',
     affiliateCredentials: 'Credenciais de afiliado',
     chat: 'Chat',
     settings: 'Configurações',

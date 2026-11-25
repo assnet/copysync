@@ -5,7 +5,7 @@ import { renderWithTheme } from '@/test/renderWithTheme';
 import { ProductNavItem } from './ProductNavItem';
 import { CollapsedProductNavItem } from './CollapsedProductNavItem';
 
-const locked = buildNavigation({ isSuperAdmin: false, offerHunterVisible: false, saverVisible: false, products: ['SAVER'] }).products[0];
+const locked = buildNavigation({ isSuperAdmin: false, offerHunterVisible: false, watermarkVisible: false, saverVisible: false, products: ['SAVER'] }).products[0];
 
 describe('produto travado no menu', () => {
   for (const mode of ['light', 'dark'] as const) {
@@ -37,7 +37,7 @@ describe('produto travado no menu', () => {
   });
 
   it('produto liberado não mostra cadeado', () => {
-    const open = buildNavigation({ isSuperAdmin: false, offerHunterVisible: false, saverVisible: false, products: ['AFFILIATES'] }).products[0];
+    const open = buildNavigation({ isSuperAdmin: false, offerHunterVisible: false, watermarkVisible: false, saverVisible: false, products: ['AFFILIATES'] }).products[0];
     renderWithTheme(<ProductNavItem product={open} expanded={false} idPrefix="mobile" onToggle={() => undefined} onNavigate={() => undefined} />);
     expect(screen.queryByTestId('nav-product-lock')).toBeNull();
   });

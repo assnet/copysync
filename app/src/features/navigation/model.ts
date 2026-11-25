@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   BadgePercent, Bookmark, ChartColumn, Send, Bot, Crown, EyeOff, Flame, Globe, LayoutDashboard, Link2,
-  Contact, GraduationCap, KeyRound, MessagesSquare, Receipt, SlidersHorizontal, Server, Settings, Settings2, Signpost, Tag, UserRoundPlus,
+  Contact, GraduationCap, KeyRound, MessagesSquare, Receipt, SlidersHorizontal, Server, Settings, Settings2, Signpost, Stamp, Tag, UserRoundPlus,
   Users, UsersRound, Workflow,
 } from 'lucide-react';
 import { MODULE_ICONS } from './icons';
@@ -70,6 +70,8 @@ export interface BuildNavigationInput {
    * Os filhos de Afiliados não passam por `onlyAllowed`; por isso entrada própria e não `superAdminOnly`.
    */
   offerHunterVisible: boolean;
+  /** Marca d'água no menu: vem de `GET /offer-watermark/access` (`useOfferWatermarkAccess`), mesmo padrão do Caçador. */
+  watermarkVisible: boolean;
   /**
    * Saver no menu (SAVER-47): vem de `GET /saver/access` (`useSaverAccess`). `false` some com o produto
    * inteiro; `true` sem o produto no plano = cadeado (só a vitrine).
@@ -96,6 +98,8 @@ export function linkMatches(link: NavLink, pathname: string): boolean {
 
 /** Credenciais de afiliado moram no produto Afiliados (antes em Configurações; rota antiga redireciona). */
 export const AFFILIATE_CREDENTIALS_PATH = '/affiliates/credentials';
+/** Marca d'água própria das ofertas (MAX; audiência pela API). */
+export const OFFER_WATERMARK_PATH = '/offer-watermark';
 /** Central de tutoriais em vídeo (docs/tutoriais.md). */
 export const AFFILIATE_TUTORIALS_PATH = '/affiliates/tutorials';
 /** Planos são por produto: a vitrine de Afiliados mora em `features/products` (fonte única). */
@@ -117,7 +121,7 @@ function lockIfMissing(product: NavProduct, products: readonly ProductKey[], pla
   return { ...product, locked: true, children: product.children.filter((c) => c.key === plansKey) };
 }
 
-export function buildNavigation({ isSuperAdmin, offerHunterVisible, saverVisible, products }: BuildNavigationInput): NavigationModel {
+export function buildNavigation({ isSuperAdmin, offerHunterVisible, watermarkVisible, saverVisible, products }: BuildNavigationInput): NavigationModel {
   const onlyAllowed = (links: NavLink[]) => links.filter((l) => !l.superAdminOnly || isSuperAdmin);
 
   const affiliatesFull: NavProduct = {
@@ -136,6 +140,10 @@ export function buildNavigation({ isSuperAdmin, offerHunterVisible, saverVisible
       // Selo MAX (exclusivo do plano). Nome + selo não cabem numa linha: o item quebra em 2 (ProductNavItem).
       ...(offerHunterVisible
         ? [{ key: 'offer-hunter', label: s.links.offerHunter, path: '/offer-hunter', icon: MODULE_ICONS.offerHunter, badge: plansStrings.badgeBusiness, matchPrefix: '/offer-hunter' }]
+        : []),
+      // Selo MAX como o Caçador (exclusivo do plano); fora da audiência o item some
+      ...(watermarkVisible
+        ? [{ key: 'offer-watermark', label: s.links.offerWatermark, path: OFFER_WATERMARK_PATH, icon: Stamp, badge: plansStrings.badgeBusiness }]
         : []),
       { key: 'affiliate-credentials', label: s.links.affiliateCredentials, path: AFFILIATE_CREDENTIALS_PATH, icon: KeyRound },
       { key: 'affiliate-tutorials', label: tutorialsStrings.navLabel, path: AFFILIATE_TUTORIALS_PATH, icon: GraduationCap },

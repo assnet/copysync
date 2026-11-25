@@ -42,6 +42,7 @@ export const plansStrings = {
     storefront: 'Faça upgrade agora mesmo e acesse a Página de Ofertas, exclusiva dos planos PRO e MAX',
     offerStory: 'Faça upgrade e crie stories de oferta para o Instagram, exclusivo do plano MAX.',
     mercadoLivreTags: 'Faça upgrade e use mais etiquetas do Mercado Livre nos seus links, nos planos PRO e MAX.',
+    offerWatermark: 'Faça upgrade e coloque seu logo ou o nome da sua marca em todas as ofertas, exclusivo do plano MAX.',
   },
 
   page: {

@@ -217,7 +217,7 @@ describe('PlatformContactsPage', () => {
 describe('acesso só de super admin', () => {
   it('item de menu ausente para quem não é super admin', () => {
     const paths = (isSuperAdmin: boolean) =>
-      buildNavigation({ isSuperAdmin, offerHunterVisible: false, saverVisible: true, products: LEGACY_PRODUCTS }).platform.map((l) => l.path);
+      buildNavigation({ isSuperAdmin, offerHunterVisible: false, watermarkVisible: false, saverVisible: true, products: LEGACY_PRODUCTS }).platform.map((l) => l.path);
     expect(paths(false)).not.toContain(SAVER_ADMIN_PATH);
     expect(paths(true)).toContain(SAVER_ADMIN_PATH);
   });

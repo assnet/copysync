@@ -6,6 +6,10 @@ export const PLAN_FEATURE_KEYS = {
   kabum: 'marketplace_kabum_enabled',
   magalu: 'marketplace_magalu_enabled',
   aliexpress: 'marketplace_aliexpress_enabled',
+  /** Foto oficial do produto no monitoramento (PRO/MAX): o switch trava por `limits.cleanImageEnabled`. */
+  offerCleanImage: 'offer_clean_image_enabled',
+  /** Marca d'água própria (MAX): 403 em `/offer-watermark` vira o estado "fora do plano" da página. */
+  offerWatermark: 'offer_watermark_enabled',
 } as const;
 
 /** `meta.key` do erro, quando vier como texto. */
@@ -31,6 +35,9 @@ export function isPlanFeatureUnavailable(err: unknown, featureKey?: string): boo
 /** Shein fora do plano (403 ao usar link da Shein). */
 export const isSheinUnavailable = (err: unknown): boolean =>
   typeof err === 'object' && err !== null && (err as { code?: unknown }).code === 'PLAN_FEATURE_UNAVAILABLE' && planFeatureKeyOf(err) === PLAN_FEATURE_KEYS.shein;
+
+/** Marca d'água própria fora do plano (403 em `/offer-watermark` com a chave dela ou sem chave). */
+export const isOfferWatermarkUnavailable = (err: unknown): boolean => isPlanFeatureUnavailable(err, PLAN_FEATURE_KEYS.offerWatermark);
 
 /** Lojas novas com chave de plano própria (MKT-06). A Shein segue com `isSheinUnavailable` e texto fixo. */
 export type PlanGatedMarketplace = 'KABUM' | 'MAGALU' | 'ALIEXPRESS';

@@ -109,6 +109,13 @@ export const PRIVACY_SCREENS = [
     ],
   },
   {
+    id: 'offerWatermark',
+    label: 'Marca d\'água',
+    flags: [
+      { id: 'offerWatermark.logo', label: 'Logo e texto da marca' },
+    ],
+  },
+  {
     id: 'affiliateCredentials',
     label: 'Credenciais de afiliado',
     flags: [

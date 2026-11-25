@@ -5,11 +5,11 @@ import { buildNavigation, findActiveEntry, linkMatches } from './model';
 
 describe('buildNavigation', () => {
   it('ordena os produtos com Afiliados primeiro; Saver só com saverVisible', () => {
-    const model = buildNavigation({ isSuperAdmin: false, offerHunterVisible: false, saverVisible: false, products: LEGACY });
+    const model = buildNavigation({ isSuperAdmin: false, offerHunterVisible: false, watermarkVisible: false, saverVisible: false, products: LEGACY });
     expect(model.products.map((p) => p.key)).toEqual([
       'affiliates', 'crm-automation', 'group-manager', 'chip-warmer', 'group-filler',
     ]);
-    const visible = buildNavigation({ isSuperAdmin: false, offerHunterVisible: false, saverVisible: true, products: LEGACY });
+    const visible = buildNavigation({ isSuperAdmin: false, offerHunterVisible: false, watermarkVisible: false, saverVisible: true, products: LEGACY });
     expect(visible.products.map((p) => p.key)).toEqual([
       'affiliates', 'crm-automation', 'group-manager', 'saver', 'chip-warmer', 'group-filler',
     ]);
@@ -21,13 +21,13 @@ describe('buildNavigation', () => {
   });
 
   it('Dashboard no topo; bloco inferior com planos, privacidade e configurações', () => {
-    const model = buildNavigation({ isSuperAdmin: false, offerHunterVisible: false, saverVisible: false, products: LEGACY });
+    const model = buildNavigation({ isSuperAdmin: false, offerHunterVisible: false, watermarkVisible: false, saverVisible: false, products: LEGACY });
     expect(model.top.map((l) => l.path)).toEqual(['/dashboard']);
     expect(model.bottom.map((e) => e.key)).toEqual(['privacy', 'settings']);
   });
 
   it('usuário comum: CRM & Automação é "soon", sem Chat, e não vê Plataforma', () => {
-    const model = buildNavigation({ isSuperAdmin: false, offerHunterVisible: false, saverVisible: false, products: LEGACY });
+    const model = buildNavigation({ isSuperAdmin: false, offerHunterVisible: false, watermarkVisible: false, saverVisible: false, products: LEGACY });
     const crm = model.products.find((p) => p.key === 'crm-automation')!;
     expect(crm.status).toBe('soon');
     expect(crm.children).toEqual([]);
@@ -35,14 +35,14 @@ describe('buildNavigation', () => {
   });
 
   it('Chat só de super admin enquanto o uso do chat contar só conta interna (contrato `internalOnlyFeatures`)', () => {
-    const model = buildNavigation({ isSuperAdmin: true, offerHunterVisible: false, saverVisible: false, products: LEGACY });
+    const model = buildNavigation({ isSuperAdmin: true, offerHunterVisible: false, watermarkVisible: false, saverVisible: false, products: LEGACY });
     const chat = model.products.flatMap((p) => p.children).find((c) => c.key === 'chat')!;
     // Chat aberto aos planos: tirar `chat_send` de INTERNAL_ONLY_FEATURES (api) e de `internalOnlyFeatures` no contrato
     expect(chat.superAdminOnly === true).toBe(catalogFixture.internalOnlyFeatures.includes('chat_send'));
   });
 
   it('super admin: CRM & Automação disponível com Chat e seção Plataforma', () => {
-    const model = buildNavigation({ isSuperAdmin: true, offerHunterVisible: false, saverVisible: false, products: LEGACY });
+    const model = buildNavigation({ isSuperAdmin: true, offerHunterVisible: false, watermarkVisible: false, saverVisible: false, products: LEGACY });
     const crm = model.products.find((p) => p.key === 'crm-automation')!;
     expect(crm.status).toBe('available');
     expect(crm.children.map((c) => c.path)).toEqual(['/chat']);
@@ -50,17 +50,26 @@ describe('buildNavigation', () => {
   });
 
   it('uso dos recursos: só super admin, logo depois de custos, sem produto novo', () => {
-    const common = buildNavigation({ isSuperAdmin: false, offerHunterVisible: true, saverVisible: true, products: LEGACY });
+    const common = buildNavigation({ isSuperAdmin: false, offerHunterVisible: true, watermarkVisible: false, saverVisible: true, products: LEGACY });
     const allKeys = [...common.top, ...common.platform, ...common.products.flatMap((p) => p.children)].map((l) => l.key);
     expect(allKeys).not.toContain('admin-usage');
-    const admin = buildNavigation({ isSuperAdmin: true, offerHunterVisible: false, saverVisible: false, products: LEGACY });
+    const admin = buildNavigation({ isSuperAdmin: true, offerHunterVisible: false, watermarkVisible: false, saverVisible: false, products: LEGACY });
     const keys = admin.platform.map((l) => l.key);
     expect(keys.indexOf('admin-usage')).toBe(keys.indexOf('admin-costs') + 1);
     expect(admin.platform.find((l) => l.key === 'admin-usage')?.label).toBe('Uso dos recursos');
   });
 
+  it('marca d\'água: item em Afiliados só com watermarkVisible, com selo MAX', () => {
+    const affiliateKeys = (watermarkVisible: boolean) =>
+      buildNavigation({ isSuperAdmin: false, offerHunterVisible: false, watermarkVisible, saverVisible: false, products: LEGACY })
+        .products.find((p) => p.key === 'affiliates')!.children;
+    expect(affiliateKeys(false).map((l) => l.key)).not.toContain('offer-watermark');
+    const item = affiliateKeys(true).find((l) => l.key === 'offer-watermark');
+    expect(item).toMatchObject({ label: 'Marca d\'água', path: '/offer-watermark', badge: 'MAX' });
+  });
+
   it('nenhum rótulo leva nome de marca', () => {
-    const model = buildNavigation({ isSuperAdmin: true, offerHunterVisible: false, saverVisible: false, products: LEGACY });
+    const model = buildNavigation({ isSuperAdmin: true, offerHunterVisible: false, watermarkVisible: false, saverVisible: false, products: LEGACY });
     const labels = [
       ...model.top.map((l) => l.label),
       ...model.products.flatMap((p) => [p.label, p.tagline, ...p.children.map((c) => c.label)]),
@@ -72,14 +81,14 @@ describe('buildNavigation', () => {
 
   it('Caçador de Ofertas: some com offerHunterVisible false, mesmo para super admin', () => {
     for (const isSuperAdmin of [false, true]) {
-      const model = buildNavigation({ isSuperAdmin, offerHunterVisible: false, saverVisible: false, products: LEGACY });
+      const model = buildNavigation({ isSuperAdmin, offerHunterVisible: false, watermarkVisible: false, saverVisible: false, products: LEGACY });
       expect(model.products[0].children.some((c) => c.key === 'offer-hunter')).toBe(false);
       expect(findActiveEntry(model, '/offer-hunter')).toBeUndefined();
     }
   });
 
   it('Caçador de Ofertas: aparece em Afiliados com offerHunterVisible true, mesmo sem super admin', () => {
-    const model = buildNavigation({ isSuperAdmin: false, offerHunterVisible: true, saverVisible: false, products: LEGACY });
+    const model = buildNavigation({ isSuperAdmin: false, offerHunterVisible: true, watermarkVisible: false, saverVisible: false, products: LEGACY });
     const children = model.products[0].children;
     expect(children.map((c) => c.path)).toEqual([
       '/offers', '/monitoring', '/broadcast-groups', '/link-rotation', '/storefront', '/offer-story', '/offer-hunter',
@@ -104,7 +113,7 @@ describe('linkMatches', () => {
 });
 
 describe('findActiveEntry', () => {
-  const model = buildNavigation({ isSuperAdmin: true, offerHunterVisible: false, saverVisible: false, products: LEGACY });
+  const model = buildNavigation({ isSuperAdmin: true, offerHunterVisible: false, watermarkVisible: false, saverVisible: false, products: LEGACY });
 
   it('rota de filho devolve o link e o produto', () => {
     const entry = findActiveEntry(model, '/storefront');
@@ -148,7 +157,7 @@ describe('findActiveEntry', () => {
 
 describe('buildNavigation — produtos do tenant', () => {
   const affiliatesOf = (products: Parameters<typeof buildNavigation>[0]['products']) =>
-    buildNavigation({ isSuperAdmin: false, offerHunterVisible: true, saverVisible: false, products }).products[0];
+    buildNavigation({ isSuperAdmin: false, offerHunterVisible: true, watermarkVisible: false, saverVisible: false, products }).products[0];
 
   it('legado: Afiliados sem cadeado e com todos os itens', () => {
     const affiliates = affiliatesOf(LEGACY);
@@ -163,7 +172,7 @@ describe('buildNavigation — produtos do tenant', () => {
   });
 
   it('ambos: Afiliados e Saver liberados', () => {
-    const model = buildNavigation({ isSuperAdmin: false, offerHunterVisible: false, saverVisible: true, products: ['AFFILIATES', 'CHAT', 'SAVER'] });
+    const model = buildNavigation({ isSuperAdmin: false, offerHunterVisible: false, watermarkVisible: false, saverVisible: true, products: ['AFFILIATES', 'CHAT', 'SAVER'] });
     expect(model.products[0].locked).toBeUndefined();
     expect(model.products[0].children.map((c) => c.key)).toContain('offers');
     const saver = model.products.find((p) => p.key === 'saver')!;
@@ -175,7 +184,7 @@ describe('buildNavigation — produtos do tenant', () => {
   });
 
   it('produto travado não casa rotas internas: só a vitrine fica ativa', () => {
-    const model = buildNavigation({ isSuperAdmin: false, offerHunterVisible: false, saverVisible: false, products: [] });
+    const model = buildNavigation({ isSuperAdmin: false, offerHunterVisible: false, watermarkVisible: false, saverVisible: false, products: [] });
     expect(findActiveEntry(model, '/offers')).toBeUndefined();
     expect(findActiveEntry(model, '/affiliates/plans')?.product?.key).toBe('affiliates');
   });
@@ -183,7 +192,7 @@ describe('buildNavigation — produtos do tenant', () => {
 
 describe('buildNavigation — Saver (audiência SAVER-47)', () => {
   const saverOf = (input: Partial<Parameters<typeof buildNavigation>[0]>) =>
-    buildNavigation({ isSuperAdmin: false, offerHunterVisible: false, saverVisible: false, products: LEGACY, ...input })
+    buildNavigation({ isSuperAdmin: false, offerHunterVisible: false, watermarkVisible: false, saverVisible: false, products: LEGACY, ...input })
       .products.find((p) => p.key === 'saver');
 
   it('audiência "Só super admin": usuário comum não vê (API devolve false), super admin vê', () => {
@@ -199,16 +208,16 @@ describe('buildNavigation — Saver (audiência SAVER-47)', () => {
 
   it('item legado fora do Saver não muda com saverVisible', () => {
     const strip = (visible: boolean) => {
-      const m = buildNavigation({ isSuperAdmin: false, offerHunterVisible: false, saverVisible: visible, products: LEGACY });
+      const m = buildNavigation({ isSuperAdmin: false, offerHunterVisible: false, watermarkVisible: false, saverVisible: visible, products: LEGACY });
       return { ...m, products: m.products.filter((p) => p.key !== 'saver') };
     };
     expect(strip(true)).toEqual(strip(false));
   });
 
   it('Base de contatos só para super admin', () => {
-    const normal = buildNavigation({ isSuperAdmin: false, offerHunterVisible: false, saverVisible: true, products: ['SAVER'] });
+    const normal = buildNavigation({ isSuperAdmin: false, offerHunterVisible: false, watermarkVisible: false, saverVisible: true, products: ['SAVER'] });
     expect(normal.platform.some((l) => l.path === '/admin/saver')).toBe(false);
-    const admin = buildNavigation({ isSuperAdmin: true, offerHunterVisible: false, saverVisible: false, products: LEGACY });
+    const admin = buildNavigation({ isSuperAdmin: true, offerHunterVisible: false, watermarkVisible: false, saverVisible: false, products: LEGACY });
     expect(findActiveEntry(admin, '/admin/saver')?.link.key).toBe('admin-saver');
   });
 });

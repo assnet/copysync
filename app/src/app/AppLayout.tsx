@@ -24,6 +24,7 @@ import {
   type NavLink, type NavigationModel, type NavigationState,
 } from '@/features/navigation';
 import { useOfferHunterAccess } from '@/features/offerHunter/hooks/useOfferHunterAccess';
+import { useOfferWatermarkAccess } from '@/features/offerWatermark/hooks/useOfferWatermarkAccess';
 import { useSaverAccess } from '@/features/saver/hooks/useSaverAccess';
 import { usePageViewReporter } from '@/features/featureUsage/hooks/usePageViewReporter';
 import { NavLinkItem } from './nav/NavLinkItem';
@@ -336,13 +337,15 @@ export function AppLayout() {
   const isSuperAdmin = Boolean(user?.isSuperAdmin);
   // Caçador de Ofertas: visibilidade pela API (mesma consulta do guard `OfferHunterRoute`)
   const { visible: offerHunterVisible } = useOfferHunterAccess();
+  // Marca d'água: visibilidade pela API (mesma consulta do guard `OfferWatermarkRoute`)
+  const { visible: watermarkVisible } = useOfferWatermarkAccess();
   // Saver: audiência pela API (mesma consulta do guard `SaverRoute`); falso some com o produto inteiro.
   const { visible: saverVisible } = useSaverAccess();
   // Produtos do tenant ativo: produto fora do plano aparece com cadeado (só a vitrine).
   const productAccess = useProductAccess();
   const navModel = useMemo(
-    () => buildNavigation({ isSuperAdmin, offerHunterVisible, saverVisible, products: productAccess.products }),
-    [isSuperAdmin, offerHunterVisible, saverVisible, productAccess.products],
+    () => buildNavigation({ isSuperAdmin, offerHunterVisible, watermarkVisible, saverVisible, products: productAccess.products }),
+    [isSuperAdmin, offerHunterVisible, watermarkVisible, saverVisible, productAccess.products],
   );
   const nav = useNavigationState(navModel, location.pathname);
   // Visita de tela (uso dos recursos): só item do menu, 1 por dia × conta × tela por aba; nunca bloqueia.

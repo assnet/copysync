@@ -46,13 +46,15 @@ import { StorefrontPage } from '@/features/storefront/StorefrontPage';
 import { OfferStoryPage } from '@/features/offerStory/OfferStoryPage';
 import { TutorialsPage } from '@/features/tutorials/TutorialsPage';
 import { OfferHunterRoute } from '@/features/offerHunter/components/OfferHunterRoute';
+import { OfferWatermarkRoute } from '@/features/offerWatermark/components/OfferWatermarkRoute';
+import { OfferWatermarkPage } from '@/features/offerWatermark/OfferWatermarkPage';
 import { OfferHunterPage } from '@/pages/OfferHunterPage';
 import { OfferHunterDetailPage } from '@/pages/OfferHunterDetailPage';
 import { MonitoringPage } from '@/pages/monitoring/MonitoringPage';
 import { LinkRotationPage } from '@/pages/link-rotation/LinkRotationPage';
 import { BroadcastGroupsPage } from '@/pages/broadcast-groups/BroadcastGroupsPage';
 import { PlansPage } from '@/pages/plans/PlansPage';
-import { AFFILIATE_CREDENTIALS_PATH, AFFILIATE_TUTORIALS_PATH, SAVER_ADMIN_PATH } from '@/features/navigation';
+import { AFFILIATE_CREDENTIALS_PATH, AFFILIATE_TUTORIALS_PATH, OFFER_WATERMARK_PATH, SAVER_ADMIN_PATH } from '@/features/navigation';
 import { PRODUCT_PLANS_PATH, ProductHomeRedirect, ProductRoute, SAVER_HOME_PATH, SAVER_PLANS_PATH } from '@/features/products';
 
 function LegacyAffiliateCredentialsRedirect() {
@@ -120,6 +122,10 @@ export function AppRoutes() {
             <Route element={<OfferHunterRoute />}>
               <Route path="/offer-hunter" element={<OfferHunterPage />} />
               <Route path="/offer-hunter/:huntId" element={<OfferHunterDetailPage />} />
+            </Route>
+            {/* Marca d'água: visibilidade pela API (`/offer-watermark/access`); plano tratado na página */}
+            <Route element={<OfferWatermarkRoute />}>
+              <Route path={OFFER_WATERMARK_PATH} element={<OfferWatermarkPage />} />
             </Route>
             <Route path={AFFILIATE_CREDENTIALS_PATH} element={<AffiliateCredentialsPage />} />
             <Route path={AFFILIATE_TUTORIALS_PATH} element={<TutorialsPage />} />

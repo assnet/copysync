@@ -128,7 +128,7 @@ describe('telas medidas por visita', () => {
   });
 
   it('toda chave do menu da conta tem view:* correspondente', () => {
-    const model = buildNavigation({ isSuperAdmin: false, offerHunterVisible: true, saverVisible: true, products: ['AFFILIATES', 'CHAT', 'SAVER'] });
+    const model = buildNavigation({ isSuperAdmin: false, offerHunterVisible: true, watermarkVisible: false, saverVisible: true, products: ['AFFILIATES', 'CHAT', 'SAVER'] });
     const keys = [
       ...model.top,
       ...model.products.flatMap((p) => p.children),
