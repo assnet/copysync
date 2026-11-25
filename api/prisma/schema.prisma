@@ -213,6 +213,7 @@ model Tenant {
   saverExportGrants          SaverExportGrant[]
   saverExtractions           SaverExtraction[]
   saverExtractionItems       SaverExtractionItem[]
+  offerWatermark             OfferWatermark?
   saverSessionStates         SaverSessionState[]
   featureUsageDaily          FeatureUsageDaily[]
 
@@ -2323,4 +2324,50 @@ model SaverSessionState {
 
   @@index([tenantId])
   @@map("saver_session_states")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MARCA D'ÁGUA PRÓPRIA DAS OFERTAS (só MAX, `offer_watermark_enabled`)
+// Um registro por tenant. `kind` escolhe UMA fonte da marca (logo OU texto); trocar o tipo
+// preserva o outro dado. Aplicada no envio, sobre a foto limpa (nunca gravada na oferta).
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum OfferWatermarkKind {
+  IMAGE
+  TEXT
+}
+
+enum OfferWatermarkPosition {
+  TOP_LEFT
+  TOP_RIGHT
+  BOTTOM_LEFT
+  BOTTOM_RIGHT
+  CENTER
+}
+
+enum OfferWatermarkSize {
+  SMALL
+  MEDIUM
+  LARGE
+}
+
+model OfferWatermark {
+  id        String                 @id @default(cuid())
+  tenantId  String                 @unique
+  kind      OfferWatermarkKind     @default(IMAGE)
+  /// Chave do logo normalizado no storage; null = sem logo. Nunca vai na resposta HTTP.
+  imageKey  String?
+  /// Nome da marca (1–32 caracteres, uma linha); null = sem texto.
+  text      String?                @db.VarChar(32)
+  enabled   Boolean                @default(false)
+  position  OfferWatermarkPosition @default(BOTTOM_RIGHT)
+  size      OfferWatermarkSize     @default(MEDIUM)
+  /// Opacidade em % (20–100, validada no domínio).
+  opacity   Int                    @default(80)
+  createdAt DateTime               @default(now())
+  updatedAt DateTime               @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("offer_watermarks")
 }
