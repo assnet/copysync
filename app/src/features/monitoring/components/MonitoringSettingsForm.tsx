@@ -1,10 +1,10 @@
 import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import {
-  Alert, Box, Button, ButtonBase, Chip, CircularProgress, Paper, Slider, Snackbar, Stack, Switch, Tooltip, Typography,
+  Alert, Box, Button, ButtonBase, CircularProgress, Paper, Slider, Snackbar, Stack, Switch, Tooltip, Typography,
 } from '@mui/material';
 import { alpha, useTheme } from '@mui/material/styles';
 import {
-  AlertTriangle, Bot, Check, Clock, FileText, Hourglass, ImagePlus, Info, LayoutTemplate, Power, Quote, Timer, type LucideIcon,
+  AlertTriangle, Bot, Check, Clock, FileText, Hourglass, Info, LayoutTemplate, Power, Quote, Timer, type LucideIcon,
 } from 'lucide-react';
 import { AppIcon, PostingWindowField, RangeSlider, ToggleOption } from '@/components';
 import { usePersistedState } from '@/hooks/usePersistedState';
@@ -489,18 +489,6 @@ export function MonitoringSettingsForm({ sessionId, config, onSave, telegramInvo
             </Box>
           </Tooltip>
           <Note>{t.textProductNote}</Note>
-          <Box
-            sx={{
-              display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', pt: 1.5,
-              borderTop: '1px solid', borderColor: 'divider', color: 'text.secondary',
-            }}
-          >
-            <Box component="span" aria-hidden sx={{ display: 'inline-flex' }}>
-              <AppIcon icon={ImagePlus} size="sm" />
-            </Box>
-            <Chip size="small" variant="outlined" color="primary" label={t.soon} />
-            <Typography variant="caption" component="p" sx={{ flex: 1, minWidth: 0 }}>{t.upcomingInline}</Typography>
-          </Box>
         </Stack>
       </MonitorCard>
 

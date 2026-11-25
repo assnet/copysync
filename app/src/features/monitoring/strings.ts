@@ -274,8 +274,6 @@ export const monitoringStrings = {
       'A foto do grupo pode trazer a marca de outro afiliado. Ligado, a oferta sai com a foto oficial da loja; se a loja não tiver foto, segue a do grupo.',
     productImageLocked: 'Disponível nos planos PRO e MAX.',
 
-    upcomingInline: 'Imagem nova para a oferta quando a original não puder ser usada',
-    soon: 'Em breve',
 
     unsaved: 'Alterações não salvas',
     discard: 'Descartar',

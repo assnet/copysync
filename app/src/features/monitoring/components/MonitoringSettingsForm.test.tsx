@@ -61,15 +61,14 @@ describe('MonitoringSettingsForm', () => {
     expect(sessionStorage.getItem('ui.monitoring.settings.s1')).toBeNull();
   });
 
-  it('card mestre: switch "Monitoramento ativo" e aviso de grupos faltando ao ligar; próximos recursos sem switch', () => {
+  it('card mestre: switch "Monitoramento ativo" e aviso de grupos faltando ao ligar; sem aviso "Em breve"', () => {
     renderForm();
     const master = screen.getByRole('checkbox', { name: 'Monitoramento ativo' });
     expect(screen.queryByText(/Escolha ao menos um grupo/)).not.toBeInTheDocument();
     fireEvent.click(master);
     expect(master).toBeChecked();
     expect(screen.getByText(/Escolha ao menos um grupo/)).toBeInTheDocument();
-    expect(screen.getByText('Em breve')).toBeInTheDocument();
-    expect(screen.queryByRole('checkbox', { name: /Imagem/ })).not.toBeInTheDocument();
+    expect(screen.queryByText('Em breve')).not.toBeInTheDocument();
   });
 
   it('textos congelados da página: janela 24 h, captura travada e barra Salvar → "Configuração salva."', async () => {
