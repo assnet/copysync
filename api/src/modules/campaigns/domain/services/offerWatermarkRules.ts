@@ -83,3 +83,8 @@ export function isWatermarkPosition(raw: unknown): raw is OfferWatermarkPosition
 export function isWatermarkSize(raw: unknown): raw is OfferWatermarkSize {
   return (OFFER_WATERMARK_SIZES as readonly unknown[]).includes(raw);
 }
+
+/** Gravar a marca (ajustes, logo, remoção): admin do tenant ou super admin; operador só lê. */
+export function canEditOfferWatermark(role: 'SUPER_ADMIN' | 'ADMIN' | 'OPERATOR', isSuperAdmin: boolean): boolean {
+  return isSuperAdmin || role === 'ADMIN';
+}

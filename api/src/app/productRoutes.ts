@@ -30,6 +30,7 @@ export const ROUTE_PRODUCT_MAP: Readonly<Record<string, RouteProductClass>> = {
   offerRoutes: 'AFFILIATES',
   offerHuntRoutes: 'AFFILIATES',
   offerHuntAiSuggestRoutes: 'AFFILIATES',
+  offerWatermarkRoutes: 'AFFILIATES',
   sendQueueRoutes: 'AFFILIATES',
   broadcastGroupsRoutes: 'AFFILIATES',
   groupMonitoringRoutes: 'AFFILIATES',
@@ -106,6 +107,7 @@ export function listUngatedProductRoutes(): readonly UngatedProductRoute[] {
  * - Extensão com Bearer sem tenant (sessões da extensão do usuário) e ciclo de vida (público): sem tenant.
  * - `GET /offer-hunts/access`: só diz se o menu do caçador aparece (nunca 403, sem dado do tenant).
  * - `GET /saver/access`: idem para o item Saver (audiência do produto, design §2.3 do Saver).
+ * - `GET /offer-watermark/access`: idem para o item Marca d'água (audiência + plano, nunca 403).
  * `HEAD` automático do Fastify não entra (o teste ignora).
  */
 export const UNGATED_PRODUCT_ROUTE_EXCEPTIONS: ReadonlySet<string> = new Set<string>([
@@ -120,6 +122,7 @@ export const UNGATED_PRODUCT_ROUTE_EXCEPTIONS: ReadonlySet<string> = new Set<str
   'POST /extension/lifecycle/uninstall',
   'POST /extension/lifecycle/feedback',
   'GET /offer-hunts/access',
+  'GET /offer-watermark/access',
   'GET /saver/access',
 ]);
 

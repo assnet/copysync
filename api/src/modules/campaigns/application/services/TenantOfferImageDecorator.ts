@@ -12,7 +12,7 @@ const log = logger.child({ module: 'TenantOfferImageDecorator' });
 export interface TenantOfferImageDecoratorDeps {
   entitlements: Pick<IEntitlementReader, 'getBoolean'>;
   watermarks: Pick<IOfferWatermarkRepository, 'findByTenant'>;
-  logos: IOfferWatermarkMediaStore;
+  logos: Pick<IOfferWatermarkMediaStore, 'read'>;
   compositor: IOfferWatermarkCompositor;
 }
 

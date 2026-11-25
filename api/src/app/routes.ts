@@ -26,6 +26,7 @@ import { marketplaceRiskAdminRoutes } from '../modules/integrations/presentation
 import { offerRoutes } from '../modules/campaigns/presentation/routes/offer.routes';
 import { offerHuntRoutes } from '../modules/campaigns/presentation/routes/offerHunt.routes';
 import { offerHuntAiSuggestRoutes } from '../modules/campaigns/presentation/routes/offerHuntAiSuggest.routes';
+import { offerWatermarkRoutes } from '../modules/campaigns/presentation/routes/offerWatermark.routes';
 import { sendQueueRoutes } from '../modules/campaigns/presentation/routes/sendQueue.routes';
 import { broadcastGroupsRoutes } from '../modules/campaigns/presentation/routes/broadcastGroups.routes';
 import { groupMonitoringRoutes } from '../modules/automation/presentation/routes/groupMonitoring.routes';
@@ -127,6 +128,7 @@ export async function registerRoutes(app: AnyFastifyInstance): Promise<void> {
   await app.register(withProduct('AFFILIATES', offerRoutes), { prefix: `${env.API_PREFIX}/campaigns/offers` });
   await app.register(withProduct('AFFILIATES', offerHuntRoutes), { prefix: `${env.API_PREFIX}/offer-hunts` });
   await app.register(withProduct('AFFILIATES', offerHuntAiSuggestRoutes), { prefix: `${env.API_PREFIX}/offer-hunts` });
+  await app.register(withProduct('AFFILIATES', offerWatermarkRoutes), { prefix: `${env.API_PREFIX}/offer-watermark` });
   await app.register(withProduct('AFFILIATES', sendQueueRoutes), { prefix: `${env.API_PREFIX}/campaigns/send-queue` });
   await app.register(withProduct('AFFILIATES', broadcastGroupsRoutes), { prefix: `${env.API_PREFIX}/campaigns/broadcast-groups` });
   await app.register(withProduct('AFFILIATES', groupMonitoringRoutes), { prefix: `${env.API_PREFIX}/automation/group-monitoring` });

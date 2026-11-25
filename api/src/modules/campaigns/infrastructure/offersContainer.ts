@@ -1,3 +1,4 @@
+import { promises as fs } from 'node:fs';
 import { prisma } from '../../../shared/database/prisma.client';
 import { featureUsageRecorder } from '../../metrics/infrastructure/featureUsageContainer';
 import { currentWorkerId } from '../../../shared/config/workerIdentity';
@@ -38,6 +39,12 @@ import { OfferWatermarkMediaStore } from './adapters/OfferWatermarkMediaStore';
 import { SharpOfferWatermarkCompositor } from './adapters/SharpOfferWatermarkCompositor';
 import { PrismaOfferWatermarkRepository } from './repositories/PrismaOfferWatermarkRepository';
 import { TenantOfferImageDecorator } from '../application/services/TenantOfferImageDecorator';
+import { SharpOfferWatermarkLogoProcessor } from './adapters/SharpOfferWatermarkLogoProcessor';
+import type { OfferWatermarkUseCaseDeps } from '../application/use-cases/offerWatermarkUseCaseDeps';
+import { GetOfferWatermarkUseCase } from '../application/use-cases/GetOfferWatermarkUseCase';
+import { UpdateOfferWatermarkSettingsUseCase } from '../application/use-cases/UpdateOfferWatermarkSettingsUseCase';
+import { SetOfferWatermarkImageUseCase } from '../application/use-cases/SetOfferWatermarkImageUseCase';
+import { RemoveOfferWatermarkImageUseCase } from '../application/use-cases/RemoveOfferWatermarkImageUseCase';
 import { GenerateOfferUseCase } from '../application/use-cases/GenerateOfferUseCase';
 import { GetOfferUseCase } from '../application/use-cases/GetOfferUseCase';
 import { GetOfferUsageUseCase } from '../application/use-cases/GetOfferUsageUseCase';
@@ -117,6 +124,26 @@ const offerImageDecorator = lazy(() => new TenantOfferImageDecorator({
   logos:        offerWatermarkLogos(),
   compositor:   new SharpOfferWatermarkCompositor(),
 }));
+// Tela da marca d'água: ajustes, upload do logo (`chunkedUpload`) e remoção; audiência lida a cada pedido
+const offerWatermarkAudience = lazy(() => new FeatureAudienceGate(featureAudienceReader()));
+const offerWatermarkDeps = lazy((): OfferWatermarkUseCaseDeps => ({
+  watermarks:   offerWatermarks(),
+  entitlements: entitlements(),
+  logos:        offerWatermarkLogos(),
+  processor:    new SharpOfferWatermarkLogoProcessor(),
+  // Getter do container: o store de upload só nasce no 1º uso
+  uploads: {
+    beginConsume:   (...a) => mediaContainer.uploadStore.beginConsume(...a),
+    releaseConsume: (...a) => mediaContainer.uploadStore.releaseConsume(...a),
+    discard:        (...a) => mediaContainer.uploadStore.discard(...a),
+    binPath:        (...a) => mediaContainer.uploadStore.binPath(...a),
+  },
+  readFile: (path) => fs.readFile(path),
+}));
+const getOfferWatermark            = lazy(() => new GetOfferWatermarkUseCase(offerWatermarkDeps()));
+const updateOfferWatermarkSettings = lazy(() => new UpdateOfferWatermarkSettingsUseCase(offerWatermarkDeps()));
+const setOfferWatermarkImage       = lazy(() => new SetOfferWatermarkImageUseCase(offerWatermarkDeps()));
+const removeOfferWatermarkImage    = lazy(() => new RemoveOfferWatermarkImageUseCase(offerWatermarkDeps()));
 // Prévia de link da oferta: imagens geradas da foto já armazenada (com a marca, quando aplicável)
 const previewImage = lazy(
   () => new OfferPreviewImage({
@@ -234,4 +261,10 @@ export const offersContainer = {
   riskGate:             riskGate,
   // Audiência por loja (Resolve, monitoramento, credenciais, assinatura)
   marketplaceAudience:  marketplaceAudience,
+  // Marca d'água própria (rotas /offer-watermark)
+  offerWatermarkAudience,
+  getOfferWatermark,
+  updateOfferWatermarkSettings,
+  setOfferWatermarkImage,
+  removeOfferWatermarkImage,
 };
