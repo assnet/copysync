@@ -46,6 +46,12 @@ Ordem, após expandir (allowlist por salto): plano (na URL colada e de novo se o
 produto reconhecido (cupom/lista sem produto → `OFFER_URL_UNSUPPORTED`, mesmo sem loja conectada) → credencial
 (`resolveState` nos 4 marketplaces) → aceite de risco (Shein) → etiqueta da conta ML não vinculada → manter ou recriar.
 
+**Audiência das lojas novas (api 0.105.0)**: o Resolve exige `caller: { kind: 'user'; isSuperAdmin } | { kind:
+'background' }` (o `tsc` obriga todo chamador). Gerador, vitrine, story e ações do caçador passam `user` com
+`tenantContext.isSuperAdmin`; jobs passam `background`. Com `user` e loja oculta pela flag "Só super admin" (Kabum,
+Magalu, AliExpress) → `OFFER_URL_UNSUPPORTED` logo após `detectMarketplace`, antes do plano e de qualquer rede;
+repetido após a expansão. `background` não lê a audiência (o monitoramento decide no builder).
+
 | Caso | Resultado |
 | --- | --- |
 | Link curto oficial já do tenant (`meli.la`, `onelink`…; `shouldKeepPastedLink` = `isShortLink` + `verifyAffiliateLink` = `verified`) | mantido, `linkRebuilt: false`; dados do produto pelo caminho de sempre (Shein: 1 `detailNew` só para dados) |
@@ -54,6 +60,7 @@ produto reconhecido (cupom/lista sem produto → `OFFER_URL_UNSUPPORTED`, mesmo 
 | Shopee | `generateShortLink` com AppID/secret do tenant (sem secret = sem credencial utilizável) |
 | Mercado Livre | `createAffiliateLinks` com a sessão da extensão; etiqueta **vinculada efetiva** do link é mantida (`mlTag`), senão a principal |
 | Shein | `getProductShare` (`detailNew`) com a sessão; link e dados da mesma chamada |
+| Kabum (api 0.105.0) | `awin1.com/cread.php?awinmid=17729&awinaffid=<Publisher ID>&ued=<canônica>`, sem rede; link Awin colado do próprio tenant é mantido; dados pelo catálogo ([`afiliado-kabum.md`](afiliado-kabum.md)) |
 | Sem credencial utilizável | 422 `AFFILIATE_CREDENTIAL_REQUIRED` (`meta.provider`); nunca passa o link colado |
 | Credencial recusada (registro `rejected`) | 422 `AFFILIATE_CREDENTIAL_REJECTED` sem chamar a loja (não pausa a loja: só o builder do monitoramento chama `markRejected`) |
 | Loja não devolveu link ou link fora da allowlist (`isSupportedShareLink`, nos 4) | 422 `OFFER_LINK_REBUILD_FAILED` (`meta { provider, reason }`, ex. `ML_100`, `NOT_ALLOWED`) |
@@ -109,7 +116,10 @@ redirect cair em `shopee.com.br` — encurtador de terceiro novo entra assim, co
 `amazon.com.br`, `amzn.to`, `a.co` (Compartilhar do app Amazon), `link.amazon` (gTLD da Amazon, salta por `amzlinks.in`)
 e `amzlinks.in`; encurtador só vale se o redirect cair em `amazon.com.br`. Shein: `br.shein.com`, `m.shein.com` (só `/br/`) e
 `onelink.shein.com` (nunca `shein.com` inteiro); o `onelink` é lido por GET e o `input#url` do HTML vira a URL final sem
-abrir a página do produto. `link.amazon` responde 404 ao HEAD: o expansor
+abrir a página do produto. Kabum: `kabum.com.br` e `awin1.com` só com `awinmid=17729` + `ued`
+em `kabum.com.br`. Magalu (`magazineluiza.com.br`, `magazinevoce.com.br`) e AliExpress (`aliexpress.com`,
+`s.click.`/`a.aliexpress.com`) já são detectados, mas o composer ainda recusa (planejadas,
+[`marketplaces-pesquisa.md`](marketplaces-pesquisa.md)). `link.amazon` responde 404 ao HEAD: o expansor
 repete com GET sempre que o HEAD vier ≥ 400.
 Encurtadores que vão à rede (`isShortLink`): os mesmos curtos + `mercadolivre.com/sec|social` + `click1.mercadolivre.com.br`
 (rastreio). Pesquisa de variantes 2026-11-02: `collshp.com` (coleção Shopee, vários itens), `invl.io` (rede Involve Asia),
@@ -143,6 +153,13 @@ expandir) → credencial → aceite do aviso de risco → chamada. Sem plano: `P
 sem aceite: `MARKETPLACE_RISK_NOT_ACCEPTED`. A página de produto Shein **nunca** é lida (`HttpProductPageReader`
 devolve `null`). Detalhes, riscos e o que não fazer: [`afiliado-shein.md`](afiliado-shein.md).
 
+## Kabum
+
+Programa Awin (anunciante 17729): link montado no servidor com o Publisher ID do tenant; produto, preço à vista/oferta
+ativa e foto (`images.kabum.com.br`) pela API pública de catálogo (`KabumCatalogClient`). `awin1.com` só com
+`awinmid=17729` e destino Kabum; `tidd.ly` não suportado. `HttpProductPageReader` devolve `null` sem rede. Só MAX
+(`marketplace_kabum_enabled`), só super admin por ora. Tudo: [`afiliado-kabum.md`](afiliado-kabum.md).
+
 ## Dados do produto
 
 - Shopee: Affiliate Open API (`productOfferV2`) quando há credencial com secret; erro na API cai para a leitura da página.
@@ -157,7 +174,7 @@ devolve `null`). Detalhes, riscos e o que não fazer: [`afiliado-shein.md`](afil
   logada é bloqueada bem menos. Rotas não documentadas do ML podem mudar sem aviso.
 - Faltou título, preço ou foto → `needsManualData: true` e o painel pede os campos.
 - Shein: título, preço, preço cheio e foto vêm do `detailNew` (mesma chamada do link). Sem conta conectada: preenchimento manual.
-- Fotos: `*.susercontent.com`, `*.shopee.com.br`, `*.mlstatic.com`, `*.media-amazon.com`, `*.ssl-images-amazon.com`, `*.ltwebstatic.com` (Shein).
+- Fotos: `*.susercontent.com`, `*.shopee.com.br`, `*.mlstatic.com`, `*.media-amazon.com`, `*.ssl-images-amazon.com`, `*.ltwebstatic.com` (Shein), `images.kabum.com.br` (Kabum).
 - Foto gravada (`MediaOfferStore.saveImage`, fetch/upload/foto do produto): JPEG lado ≤ 600 px, q75, sem metadados.
 
 ## Texto
@@ -252,7 +269,9 @@ Link do tenant (api 0.81.0, `.specs/features/tenant-affiliate-link/design.md`):
 - Chamar `markRejected` fora do `BuildTenantAffiliateLinkUseCase`.
 - Chamar builder ou clientes de loja direto em storefront/offer-story.
 - Logar URL colada, link gerado ou corpo da loja.
-- Ler página de produto Shein; instalar lib de prévia; criar tabela ou cache.
+- Ler página de produto Shein ou Kabum; instalar lib de prévia; criar tabela ou cache.
+- Aceitar `awin1.com` de anunciante ≠ 17729 ou `tidd.ly`; chamar o Resolve sem `caller` ou com `background` em ação
+  de usuário (pularia a audiência).
 - Reintroduzir `unverified` como resultado aceito.
 - Derivar `linkRebuilt` de `sourceUrl ≠ affiliateUrl`.
 - Ligar o worker com banco de produção fora da Render.

@@ -1,6 +1,7 @@
 # Credenciais de afiliado
 
-Por tenant, guarda a credencial de cada marketplace (Shopee, Mercado Livre, Amazon e Shein) para o
+Por tenant, guarda a credencial de cada marketplace (Shopee, Mercado Livre, Amazon, Shein e, só super admin por ora,
+Kabum, Magalu e AliExpress) para o
 Gerador de ofertas trocar o link do concorrente pelo do cliente. Spec, design e tasks ficam em
 `.specs/features/affiliate-credentials/`. Item 3 do roadmap.
 
@@ -28,8 +29,28 @@ verdade e o painel só repete as regras, para dar retorno ao operador.
 | Mercado Livre | Etiqueta de afiliado principal (`matt_word` no link); outras etiquetas da conta podem ser vinculadas até o limite do plano ([Várias etiquetas](#várias-etiquetas-do-mercado-livre)) | `^[A-Za-z0-9._-]{2,64}$` (vale também para cada item da lista da conta) | — (a sessão vem da extensão) |
 | Amazon Associados | ID de rastreamento (`?tag=`) | `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}-\d{2}$` | — |
 | Shein | ID de afiliado (`memberId`, `url_from=affiliate_koc_<id>`) | `^\d{6,15}$` | — (a sessão vem da extensão; o ID **segue a sessão**, não é editável) |
+| Kabum (Awin 17729) | Publisher ID da Awin (`awinaffid`) | `^\d{4,10}$` | — ([`afiliado-kabum.md`](afiliado-kabum.md)) |
+| Magalu (planejada) | Slug da loja Magazine Você; o campo aceita a URL `magazinevoce.com.br/<slug>` colada e normaliza para o slug | `^[a-z0-9_-]{3,64}$` | — |
+| AliExpress (planejada) | Tracking ID | `^[A-Za-z0-9_-]{1,64}$` | App Key (`^\d{5,12}$`, campo `appKey`) + App Secret, cifrados juntos como `appKey:appSecret` |
 
-Assim que houver valores reais do cliente, confira as regras com eles antes de restringi-las.
+Assim que houver valores reais do cliente, confira as regras com eles antes de restringi-las (Magalu e AliExpress:
+ajustar nos portões T0-MGL/T0-ALI).
+
+### Lojas novas: audiência e AliExpress (api 0.105.0)
+
+- **Audiência**: Kabum, Magalu e AliExpress têm flag "Só super admin" (`MarketplaceAudienceGate`, lida a cada pedido;
+  [`marketplaces-pesquisa.md`](marketplaces-pesquisa.md)). Loja oculta ao viewer some de `items` **e** de
+  `marketplaceAvailability` (`Partial`) no `GET /`; o painel esconde o card pela ausência. As 7 rotas por `:provider`
+  (`PUT`, `DELETE`, `PATCH …/status`, `PUT …/session`, `GET`/`PUT …/identifiers`, `POST …/risk-acceptance`) passam
+  pelo `marketplaceAudienceHook` (após o `tenantHook`), que responde **o mesmo 400** `HTTP_ERROR` e a mesma mensagem
+  do ajv de provider inexistente. Diferença residual aceita: sem token dá 401; corpo inválido dá erro de `body`.
+- **AliExpress**: `PUT /ALIEXPRESS` com `{ publicIdentifier, appKey, secret }`; o use case junta em `appKey:appSecret`
+  antes de cifrar (App Key nunca volta em resposta). Criação sem um dos dois → 422 com `field`; edição com os dois
+  vazios mantém o segredo; só um preenchido → 422. `appKey` para outro provider → 422 (`field: appKey`).
+- **Magalu**: URL da loja colada vira slug (`normalizePublicIdentifierInput`).
+- **Painel**: provider ausente de `marketplaceAvailability` = card não renderiza; sem o campo (API antiga) as 4 lojas
+  antigas aparecem sempre (deploy API antes do app). `Blurred` do identificador
+  (`affiliateCredentials.accountIdentifiers`) vale para **todas** as lojas, não só o ML.
 
 ### Diálogo de configuração (Shopee e Amazon)
 
@@ -39,7 +60,8 @@ guia "Onde encontrar" com passos (`strings.ts` → `guideSteps`) e botão para o
 (`spec.setup.url`, nova aba), sinal de formato válido no campo, prévia do link quando o spec tem
 `linkPreview` (Amazon) e nota de segurança (`dialogNote`). Marketplace novo: preencher `setup`,
 `guideSteps`, `dialogSubtitle` e `dialogNote`; sem eles o diálogo só mostra os campos.
-Sem `usePersistedState`: o Secret nunca vai para o storage.
+Sem `usePersistedState`: o Secret nunca vai para o storage (exceção mantida pelo dono em 2026-11-24, também para o
+campo extra `appKey` do AliExpress).
 
 ## Rotas
 
@@ -255,6 +277,8 @@ Testes só-Redis (`*.redis.int.test.ts`, projeto `redis`, sem banco): ver [arqui
 - Nunca gravar em `rejectedCode` (nem na auditoria) corpo da resposta da loja, cookie ou chave: só o código interno.
 - Não limpar a rejeição ao reativar (`setStatus`), nem em sync do mesmo token **sem** checagem `VALID` da loja.
 - Não aceitar ID da Shein digitado nem apagar credencial Shein pelo `DELETE` genérico.
+- Não responder 403/404 de plano para loja fora da audiência: é o 400 de provider inexistente.
+- Não guardar App Key/Secret do AliExpress em coluna nova nem devolvê-los; não usar app AliExpress da plataforma.
 - Não remover Mercado Livre pela lixeira só com o `DELETE` genérico: o consentimento da extensão fica e o próximo sync
   recria a credencial (visto em produção: removida 20:41, recriada 20:43). Nem só com
   `DELETE /api/extension/marketplaces/ml/session`: essa rota revoga o consentimento e limpa a sessão, mas **mantém a

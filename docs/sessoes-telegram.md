@@ -102,6 +102,12 @@ pede código de novo (como o pareamento do WhatsApp).
   do 1º link do texto; o cartão/miniatura montado por nós não é usado. Sem `linkPreview` → sem prévia (igual
   ao WhatsApp). **Menções** (`mentions`, "Marcar todos") são ignoradas sem erro; o `ChatOfferMessageSender`
   nem busca participantes em conversa `channel = telegram`.
+- **Oferta com marca d'água própria** (api 0.105.0, [`imagem-das-ofertas.md`](imagem-das-ofertas.md)): como a prévia
+  nativa descarta a nossa imagem, o `ChatOfferMessageSender` (nunca o adapter) envia a oferta como **foto marcada com
+  legenda** (ramo `MEDIA`) só quando a conversa é Telegram **e** `decorator.applies(tenantId)`. Legenda ≤ 1024
+  caracteres (`TELEGRAM_CAPTION_MAX`, conta sem Premium; o adapter não trata o limite), medida no texto cru antes de
+  escolher o ramo; acima, sem foto ou foto sumida → envio atual sem marca. Sem marca ativa nada muda.
+  `MEDIA_IMAGE_MODE_ENABLED` segue `false`; uso restrito autorizado pelo dono em 2026-11-24.
 - `createOutboundMessageId` devolve id provisório `tg-<hex>` (o Telegram atribui o id real no envio);
   `sendMediaMessage` devolve o id real composto (`<peer>_<msgId>`) e o registra em `sentIds` (eco descartado);
   o `DispatchOutboundMediaUseCase` troca o provisório pelo real na mesma escrita do `SENT`
@@ -189,6 +195,7 @@ num tenant: o par identifica a aplicação, não a conta.
 - Não mandar texto do WhatsApp cru ao Telegram nem com `parseMode` markdown: só `whatsappToTelegramHtml` + `html`.
 - Não baixar mídia de grupo sem `autoDownloadMedia` nem sem limite de bytes.
 - Não gravar `channel: 'whatsapp'` fixo ao criar conversa: usar `channelForEngine`.
+- Não enviar oferta como foto com legenda sem marca d'água ativa, nem decidir esse ramo no adapter.
 
 ## 8. Verificado × não verificado
 
@@ -198,5 +205,6 @@ num tenant: o par identifica a aplicação, não a conta.
   enfileirar e a mensagem fica `FAILED` com o envio `SENT` (mesmo limite da falha assíncrona de mídia);
   prévia de link recebida.
 - ❌ Não testado contra o Telegram real (sem `api_id`/`api_hash` no momento da entrega): envio do código,
-  2FA, QR, recepção em grupo, `FLOOD_WAIT`, download de foto recebida, HTML na legenda/texto, prévia nativa.
+  2FA, QR, recepção em grupo, `FLOOD_WAIT`, download de foto recebida, HTML na legenda/texto, prévia nativa,
+  oferta com marca como foto com legenda (T32).
   Primeiro teste real deve cobrir esses pontos.

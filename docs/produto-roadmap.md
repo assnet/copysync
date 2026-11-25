@@ -20,8 +20,8 @@ pelo do cliente, reescreve o texto com IA e reposta nos grupos dele, no horário
 |---|---|---|---|---|
 | 1 | 📱 Conexão WhatsApp | Conecta números do cliente à ferramenta (QR / pairing code) | `sessions`, `messaging` (Baileys) | ✅ existe |
 | 2 | ✈️ Conexão Telegram | Conecta conta Telegram para monitorar e postar | `messaging` engine `telegram` ([doc](sessoes-telegram.md)) | 🟡 conexão e limite por plano (api 0.51.0 · app 0.64.0); falta monitorar/disparar por Telegram |
-| 3 | 🔑 Credenciais de afiliado | Liga contas Shopee, Mercado Livre, Amazon e Shein para gerar links | `integrations/affiliate-credentials` | ✅ (Shein: api 0.78.0 · app 0.95.0 · extensão 3.4.0, só MAX, [doc](afiliado-shein.md); smoke T16 pendente). Desde api 0.81.0 a credencial é obrigatória para gerar oferta, vitrine e story da loja |
-| 4 | 👀 Monitoramento | Escuta grupos de concorrentes, troca o link pelo do cliente, reposta nos grupos dele | `automation/group-monitoring` (`docs/monitoramento-grupos.md`) | 🟡 WhatsApp, oferta montada e IA prontos; falta imagem e Telegram |
+| 3 | 🔑 Credenciais de afiliado | Liga contas Shopee, Mercado Livre, Amazon, Shein e Kabum para gerar links | `integrations/affiliate-credentials` | ✅ (Shein: api 0.78.0 · app 0.95.0 · extensão 3.4.0, só MAX, [doc](afiliado-shein.md); smoke T16 pendente). Desde api 0.81.0 a credencial é obrigatória para gerar oferta, vitrine e story da loja. Kabum (Awin): api 0.105.0 · app 0.128.0, MAX, só super admin ([doc](afiliado-kabum.md)); Magalu e AliExpress planejadas, Pichau e Netshoes só pesquisadas ([doc](marketplaces-pesquisa.md)) |
+| 4 | 👀 Monitoramento | Escuta grupos de concorrentes, troca o link pelo do cliente, reposta nos grupos dele | `automation/group-monitoring` (`docs/monitoramento-grupos.md`) | 🟡 WhatsApp, oferta montada e IA prontos; foto oficial no lugar da capturada (PRO/MAX) e marca d'água própria (MAX) em api 0.105.0, só super admin ([doc](imagem-das-ofertas.md)); falta Telegram |
 | 5 | 📤 Grupos de disparo | Grupos do cliente que recebem as ofertas | `campaigns/broadcast-groups` | ✅ ([doc](grupos-de-disparo-e-horario.md)) |
 | 6 | ⏰ Horário de postagem | Janela de horários em que as ofertas saem | `campaigns/posting-schedule` | ✅ ([doc](grupos-de-disparo-e-horario.md)) |
 | 7 | 🤖 Reescrita com IA | Reescreve o texto de cada oferta automaticamente | `assistants` (`docs/ia-provedores.md`) | ✅ gerador e monitoramento (`textMode: AI`) |
@@ -91,6 +91,10 @@ guarda o plano, não o preço.
 | Marketplaces (Shopee, Amazon, ML) | ✅ | ✅ | ✅ |
 | Etiquetas do Mercado Livre vinculadas (principal incluída) | 1 | 2 | 10 |
 | Marketplace Shein (sessão pela extensão, aviso de risco) | — | — | ✅ |
+| Marketplace Kabum (Awin) — só super admin por ora | — | — | ✅ |
+| Marketplaces Magalu e AliExpress — planejados | — | — | ✅ |
+| Foto oficial do produto no monitoramento — só super admin por ora | — | ✅ | ✅ |
+| Marca d'água própria (logo ou texto) — só super admin por ora | — | — | ✅ (exclusivo) |
 | Caçador de Ofertas Shein (ofertas garimpadas por dia, 1 grupo de destino) | — | — | 10/dia (exclusivo) |
 | Gerador de ofertas | ✅ | ✅ | ✅ |
 | Envio "digitando…" antes da oferta | ✅ | ✅ | ✅ |
@@ -147,7 +151,7 @@ Chaves de entitlement sugeridas (snake_case, estáveis):
 `telegram_monitored_groups`, `telegram_broadcast_groups`,
 `offer_generations_per_day` (`null` = ilimitado), `link_rotations`, `link_rotation_groups`,
 `telegram_link_rotations`, `telegram_link_rotation_groups`, `ai_rewrite_enabled`,
-`offer_story_enabled`, `marketplace_shein_enabled` (MAX; super admin libera por plano em `/admin/plan-entitlements`), `offer_hunter_enabled` (MAX; editável no mesmo admin), `offer_hunter_finds_per_day` (MAX 10; ausente = 0; número editável no mesmo admin), `storefront_enabled`, `enrich_link_only_enabled` (PRO/MAX), `capture_outside_window_enabled` (MAX), `mention_all_enabled`, `custom_domain_enabled`,
+`offer_story_enabled`, `marketplace_shein_enabled` (MAX; super admin libera por plano em `/admin/plan-entitlements`), `marketplace_kabum_enabled`/`marketplace_magalu_enabled`/`marketplace_aliexpress_enabled` (MAX), `offer_clean_image_enabled` (PRO/MAX), `offer_watermark_enabled` (MAX) — as cinco com flag "Só super admin" ligada de início, `offer_hunter_enabled` (MAX; editável no mesmo admin), `offer_hunter_finds_per_day` (MAX 10; ausente = 0; número editável no mesmo admin), `storefront_enabled`, `enrich_link_only_enabled` (PRO/MAX), `capture_outside_window_enabled` (MAX), `mention_all_enabled`, `custom_domain_enabled`,
 `support_tier` (`standard | priority | exclusive`).
 
 Billing: via API central, ver [`arquitetura-central-billing.md`](arquitetura-central-billing.md) (reaproveitar

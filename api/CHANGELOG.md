@@ -17,6 +17,56 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.105.0] — 2026-11-25 — Kabum, foto oficial e marca d'água própria das ofertas (app 0.128.0)
+
+Tudo nasce **só para super admin** (flag "Só super admin" em `/admin/plan-entitlements`, valor inicial ligado).
+Plano: `.specs/features/affiliate-marketplaces-expansion/`.
+
+### Added
+
+#### Backend — `integrations` / `tenants` ([`docs/integracoes-credenciais-afiliado.md`](../docs/integracoes-credenciais-afiliado.md))
+
+- **`AffiliateProvider.ts`**, **`schema.prisma`** — `KABUM`, `MAGALU`, `ALIEXPRESS` (Magalu e AliExpress só fundação: o composer ainda recusa).
+- **`entitlementKeys.ts`**, **`planPresets.ts`**, **`adminEditableEntitlements.ts`**, **`subscriptionLimits.ts`** — `marketplace_{kabum,magalu,aliexpress}_enabled` (só MAX), `offer_clean_image_enabled` (PRO/MAX), `offer_watermark_enabled` (MAX).
+- **`featureAudience.ts`** (domínio e infra), **`FeatureAudienceGate.ts`** (novo), **`MarketplaceAudienceGate.ts`** (novo) — as 5 chaves no catálogo de audiência, valor inicial constante `true`, lido a cada uso.
+- **`affiliateProviderFields.ts`**, **`UpsertAffiliateCredentialUseCase.ts`**, **`ListAffiliateCredentialsUseCase.ts`**, **`affiliateCredential.routes.ts`** + schema — campos das 3 lojas; Magalu aceita URL da loja (vira slug); AliExpress `appKey` + `secret` cifrados como `appKey:appSecret`; listagem omite loja oculta de `items` e de `marketplaceAvailability`; `marketplaceAudienceHook` nas 7 rotas por `:provider` responde o 400 de provider inexistente.
+- **`GetTenantSubscriptionUseCase.ts`** — item da loja/recurso oculto omitido da assinatura.
+
+#### Backend — `campaigns` ([`docs/afiliado-kabum.md`](../docs/afiliado-kabum.md), [`docs/gerador-de-ofertas.md`](../docs/gerador-de-ofertas.md))
+
+- **`detectMarketplace.ts`**, **`parseProductRef.ts`**, **`verifyAffiliateLink.ts`**, **`shouldKeepPastedLink.ts`**, **`isShortLink.ts`** — regras puras das 3 lojas; `awin1.com` só com `awinmid=17729` e `ued` em `kabum.com.br`; `tidd.ly` segue não suportado.
+- **`KabumCatalogClient.ts`** + **`IKabumCatalogClient.ts`** (novos) — catálogo público da Kabum (oferta ativa, preço à vista, original só se maior, foto `images.kabum.com.br`), 8 s, ≤ 256 KiB, `redirect: 'manual'`.
+- **`kabumAffiliateUrl.ts`** (novo), **`TenantAffiliateLinkComposer.ts`**, **`ResolveProductDataUseCase.ts`**, **`GenerateOfferUseCase.ts`**, **`HttpOfferImageFetcher.ts`**, **`HttpProductPageReader.ts`**, **`offersContainer.ts`** — Kabum de ponta a ponta: link Awin com o Publisher ID, link Awin do próprio tenant mantido; leitor de página devolve `null` sem rede para as 3 lojas.
+- **`ResolveAffiliateProductUseCase.ts`** + chamadores (gerador, vitrine, story, caçador) — `caller` obrigatório (`user` com `isSuperAdmin` | `background`); loja oculta → `OFFER_URL_UNSUPPORTED` antes de plano e rede.
+- **`BuildTenantAffiliateLinkUseCase.ts`**, **`GroupMonitorConfigUseCases.ts`** (`credentialAlerts`) — monitoramento: loja com flag ligada sem plano ou credencial = `unsupported`, sem alerta.
+
+#### Backend — imagem das ofertas ([`docs/imagem-das-ofertas.md`](../docs/imagem-das-ofertas.md))
+
+- **`GroupMonitor.ts`**, **`monitorSettings.ts`**, **`GroupMonitorDTO.ts`**, **`PrismaGroupMonitorMapper.ts`**, **`groupMonitoring.schema.ts`**/**`.routes.ts`**, **`ProcessPendingCapturedOffersUseCase.ts`** — `useProductImage`: foto oficial do produto no lugar da capturada (plano + opção; sem foto oficial segue a capturada); gravação exige plano e audiência.
+- **`OfferWatermark.ts`**, **`offerWatermarkRules.ts`**, **`computeWatermarkPlacement.ts`**, **`PrismaOfferWatermarkRepository.ts`** + mapper (novos) — marca por tenant: logo OU texto, posição, tamanho, opacidade.
+- **`SharpOfferWatermarkCompositor.ts`**, **`TenantOfferImageDecorator.ts`**, **`OfferWatermarkMediaStore.ts`** (novos), **`OfferPreviewImage.ts`**, **`IOfferPreviewImage.ts`** (`build(tenantId, imageUrl)`) — marca aplicada no envio (texto por satori + resvg, Inter 800); falha → foto sem marca + log.
+- **`ChatOfferMessageSender.ts`**, **`SendStoredMediaMessageUseCase.ts`**, **`chatMediaContainer.ts`** — Telegram com marca sai como foto marcada com legenda (≤ 1024 caracteres); decoração opcional no `copyAndPromote`. `MEDIA_IMAGE_MODE_ENABLED` segue `false`.
+- **`offerWatermark.routes.ts`**, **`offerWatermarkAudienceHook.ts`**, **`OfferWatermarkPresenter.ts`**, schema, **`{Get,UpdateOfferWatermarkSettings,SetOfferWatermarkImage,RemoveOfferWatermarkImage}UseCase.ts`**, **`SharpOfferWatermarkLogoProcessor.ts`**, **`OfferWatermarkErrors.ts`** (novos), **`app/routes.ts`**, **`app/productRoutes.ts`** — `/api/offer-watermark` (`GET /access` nunca 403; `GET`/`PUT /`; `PUT`/`DELETE /image` por `chunkedUpload`); audiência = 404, plano = 403, operador só lê.
+
+#### Frontend — app 0.128.0
+
+- **`features/settings/*`** (`affiliateProviders.ts`, card, diálogo, hook, `strings.ts`), **`services/affiliateCredential.service.ts`**, **`public/assets/marketplaces/kabum.svg`** — card Kabum (Publisher ID, guia, regras do programa); card só renderiza para loja em `marketplaceAvailability` (API antiga: 4 lojas antigas); campo extra opcional no diálogo, ainda sem `usePersistedState`; `Blurred` do identificador em todas as lojas.
+- **`plans/planGate.ts`**, **`PlansHero.tsx`**, **`offers/utils/offerErrors.ts`**, **`storefront/*`**, **`offerStory/*`**, **`subscription/strings.ts`**, **`planEntitlementsAdmin/strings.ts`** — bloqueio de plano com texto próprio, lojas novas fora de `/plans`, rótulos das 5 chaves.
+- **`supportChat/routes.ts`** — `/affiliates/credentials` em `SUPPORT_CHAT_HIDDEN_PATHS` (botão cobria lixeira e "Ativa" no celular).
+- Switch da foto oficial e página "Marca d'água" (T31): a confirmar no commit do painel.
+
+### Migrations (rodam no boot da Render, `start:migrate`)
+
+- `20261124090000_add_kabum_affiliate_provider`, `…090100_add_magalu_affiliate_provider`, `…090200_add_aliexpress_affiliate_provider` (enum).
+- `…090300_add_marketplace_expansion_entitlements`, `…090400_add_offer_image_entitlements` (dados: presets + backfill `ON CONFLICT DO NOTHING`).
+- `…090500_add_monitor_use_product_image` (coluna `useProductImage`, padrão `false`), `…090600_create_offer_watermarks` (tabela + enums).
+
+### Breaking Changes
+
+- Nenhuma de contrato público: campos e rotas novos são aditivos. `marketplaceAvailability` passa a omitir loja oculta (já era opcional no app). Deploy: API antes do app.
+
+---
+
 ## [0.104.1] — 2026-11-21 — Monitoramento desligado descarta a fila (app 0.127.1)
 
 ### Fixed

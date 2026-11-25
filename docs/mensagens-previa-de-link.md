@@ -66,6 +66,15 @@ adapter (`buildBaileysLinkPreview.ts` + `sendTextMessage`).
   falhar depois do envio, a mensagem fica fora do chat (o eco é ignorado e não regrava) e a oferta pode ser
   reenviada no retry — mesmo comportamento do texto puro hoje.
 
+### Marca d'água própria (api 0.105.0)
+
+Com a marca do tenant ativa ([`imagem-das-ofertas.md`](imagem-das-ofertas.md)), `OfferPreviewImage` lê a foto limpa,
+aplica a marca (`TenantOfferImageDecorator`) e só então gera a grande (600 px) e a miniatura (192 px, derivada da
+já marcada). `_lp.jpg` sai marcado; `Offer.imageUrl` nunca. Falha → prévia sem marca, envio segue.
+**Telegram com marca**: em vez de `LINK_PREVIEW` (prévia nativa, que descarta a nossa imagem), sai foto marcada com
+legenda pelo ramo `MEDIA`, só quando a marca se aplica e o texto cabe em 1024 caracteres. `MEDIA_IMAGE_MODE_ENABLED`
+continua `false`: WhatsApp e Telegram sem marca não mudam.
+
 ## Recebimento (adapter)
 
 `pickInboundLinkPreview` (função pura, `engines/baileys/`) lê só `extendedTextMessage`:
@@ -103,7 +112,9 @@ adapter (`buildBaileysLinkPreview.ts` + `sendTextMessage`).
 - Gravar miniatura de histórico antigo (> 30 min) ou baixar a grande ignorando `autoDownloadMedia`.
 - `Buffer.concat` do download antes de checar o teto.
 - Guardar a miniatura de 192 px ou criar mídia `PENDING` no modo `LINK_PREVIEW`.
-- Religar `MEDIA` só em uma das pontas (API e painel andam juntos).
+- Religar `MEDIA` só em uma das pontas (API e painel andam juntos). O ramo `MEDIA` do Telegram com marca não é
+  religar: é decisão do sender, restrita a esse caso.
+- Gravar a marca d'água em `Offer.imageUrl` ou aplicá-la fora do envio.
 
 ## Validação em aparelhos (P3)
 

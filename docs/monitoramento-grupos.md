@@ -87,6 +87,13 @@ tenant. Nada da origem (`tag`, `matt_word`, `matt_tool`, `af_*`, `utm_*`…) sob
 | Amazon | `https://www.amazon.com.br/dp/<ASIN>` | `?tag=<ID de rastreamento do tenant>` |
 | Shopee | `https://shopee.com.br/product/<shop>/<item>` | `generateShortLink` com AppID/secret do tenant |
 | Mercado Livre | `/p/MLB…` ou `produto.mercadolivre.com.br/MLB-…` | `createAffiliateLinks` com a sessão (cookies) e etiqueta do tenant |
+| Kabum (api 0.105.0) | `https://www.kabum.com.br/produto/<id>` | `awin1.com/cread.php` com o Publisher ID ([`afiliado-kabum.md`](afiliado-kabum.md)) |
+
+**Lojas com flag "Só super admin"** (Kabum, Magalu, AliExpress; api 0.105.0): o builder roda em segundo plano e não
+olha quem vê. Flag ligada e (plano ≠ `true` ou sem credencial) → `unsupported`, como antes da feature, sem
+`plan_unavailable`/`credential_missing` nem alerta novo. `credentialAlerts` filtra pela audiência do viewer (credencial
+recusada de loja oculta não vira alerta para usuário comum). Flag desligada → regras atuais. `awin1.com` de outro
+anunciante = `unsupported` sempre (só perde o link, a captura segue).
 
 Mercado Livre "social" (vitrine `meli.la` → `/social/<etiqueta>?…&ref=…`): o produto vem do 1º card da
 página (com o `ref` da query a ML põe o produto do link em primeiro). Dois formatos de card
@@ -132,6 +139,14 @@ explícito; ausente = liberado). Save com `textMode` AI no LITE grava `TEMPLATE`
 config AI salva no LITE é composta como Modelo (`textSource` TEMPLATE, sem `aiErrorCode`); GET devolve
 `limits.aiRewriteEnabled` e o painel trava o card "Reescrita com IA" com selos PRO MAX. Limite diário de IA: o mesmo
 `ai_usage_logs`, purpose `offer.text`.
+
+### 2.1.2 Imagem das ofertas (api 0.105.0)
+
+Opção `useProductImage` ("Usar a foto oficial do produto", padrão desligada; chave `offer_clean_image_enabled`
+PRO/MAX, só super admin por ora): troca a foto capturada (com marca d'água de terceiros) pela foto oficial do produto
+no storage; sem foto oficial ou erro → segue a capturada. Marca d'água própria do tenant (MAX) é aplicada no envio,
+nunca na captura. Regras, 3 pontos de `buildMonitorText` e o que não fazer:
+[`imagem-das-ofertas.md`](imagem-das-ofertas.md).
 
 ### 2.2 Janela de operação
 
@@ -328,6 +343,8 @@ texto e imagens capturados). Credenciais: só nome da loja e data, sem flag.
 ## 6. O que não fazer
 
 - Repassar link ou parâmetro de afiliado do grupo monitorado. Sempre a URL canônica + tenant.
+- Editar a foto capturada para tirar marca de terceiros (a troca é pela foto oficial); deixar de enviar por falta dela.
+- Alertar credencial/plano de loja oculta pela audiência.
 - Enviar oferta vencida; cupom nunca ganha validade maior que oferta sem cupom.
 - Anexar mídia que não seja JPEG/PNG/WebP do media store.
 - Guardar grupos monitorados em memória para decidir captura.
