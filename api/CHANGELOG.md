@@ -17,6 +17,17 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.105.1] — 2026-11-25 — Gerador reconhece link da Kabum (app 0.128.1)
+
+### Fixed
+
+#### Painel (app/) — `offers`
+
+- **`features/offers/utils/offerStore.ts`** — o detector de loja do gerador não tinha a Kabum: link `kabum.com.br` (ou Awin 17729 com destino Kabum) caía em "Loja não reconhecida" antes de chegar à API. Agora reconhece, mas só quando a loja está nas lojas visíveis da conta (audiência "Só super admin" aplicada); fora dela segue desconhecida.
+- **`features/offers/hooks/useVisibleOfferStores.ts`**, **`pages/offers/OfferGeneratorPage.tsx`**, **`components/OfferGeneratorForm.tsx`** — lojas visíveis lidas de `visibleProviders` da lista de credenciais; carregando ou em erro = as 4 de sempre.
+
+---
+
 ## [0.105.0] — 2026-11-25 — Kabum, foto oficial e marca d'água própria das ofertas (app 0.128.0)
 
 Tudo nasce **só para super admin** (flag "Só super admin" em `/admin/plan-entitlements`, valor inicial ligado).

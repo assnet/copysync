@@ -6,7 +6,7 @@ import LinkIcon from '@mui/icons-material/Link';
 import CloseIcon from '@mui/icons-material/Close';
 import BoltOutlinedIcon from '@mui/icons-material/BoltOutlined';
 import { SectionCard } from '@/components';
-import type { GenerateOfferRequest, OfferAudience } from '@/types/api.types';
+import type { AffiliateProvider, GenerateOfferRequest, OfferAudience } from '@/types/api.types';
 import { AFFILIATE_PROVIDERS } from '@/features/settings/affiliateProviders';
 import { MarketplaceLogo } from '@/features/settings/components/MarketplaceLogo';
 import { offerStrings } from '../strings';
@@ -46,11 +46,13 @@ interface Props {
   onCancel?: () => void;
   /** "Reescrita com IA" no plano; `false` = só o público Padrão. */
   aiRewriteEnabled?: boolean;
+  /** Lojas visíveis para a conta; ausente = as de sempre. */
+  visibleStores?: readonly AffiliateProvider[];
 }
 
 /** Card "Gerar nova oferta": link próprio + cupom opcional + público-alvo + início agendado. */
 export function OfferGeneratorForm({
-  generating, serverError, disabled, disabledReason, onGenerate, onChange, onCancel, aiRewriteEnabled = true,
+  generating, serverError, disabled, disabledReason, onGenerate, onChange, onCancel, aiRewriteEnabled = true, visibleStores,
 }: Props) {
   // Sobrevive a reload (padrão do painel): link colado, cupom e público ficam na aba
   const [form, setForm] = usePersistedState<FormDraft>('offers.form', EMPTY_FORM, { scope: 'device' });
@@ -72,7 +74,7 @@ export function OfferGeneratorForm({
   };
   const setScheduleAt = (v: string) => { setForm((f) => ({ ...f, scheduleAt: v })); setScheduleError(null); };
 
-  const store = detectStore(url);
+  const store = detectStore(url, visibleStores);
   const spec = store ? AFFILIATE_PROVIDERS.find((p) => p.provider === store) : undefined;
   const error = linkError ?? serverError;
   const busy = disabled || generating;
@@ -85,7 +87,7 @@ export function OfferGeneratorForm({
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const problem = linkProblem(url);
+    const problem = linkProblem(url, visibleStores);
     const linkMsg = problem === 'required' ? t.linkRequired : problem === 'invalid' ? t.linkInvalid : problem ? t.linkUnknownStore : null;
     const couponMsg = hasCoupon && !coupon.trim() ? t.couponRequired : null;
     const when = scheduleOn ? scheduleProblem(scheduleAt) : null;

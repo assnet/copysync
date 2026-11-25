@@ -20,6 +20,27 @@ describe('detectStore', () => {
   });
 });
 
+describe('detectStore com Kabum', () => {
+  const visible = ['SHOPEE', 'MERCADO_LIVRE', 'AMAZON', 'SHEIN', 'KABUM'] as const;
+  const awin = (mid: string, ued: string) =>
+    `https://www.awin1.com/cread.php?awinmid=${mid}&awinaffid=1&ued=${encodeURIComponent(ued)}`;
+
+  it('reconhece Kabum só quando a loja está visível', () => {
+    const url = 'https://www.kabum.com.br/produto/1078267/placa';
+    expect(detectStore(url, visible)).toBe('KABUM');
+    expect(detectStore(url)).toBeNull();
+    expect(linkProblem(url)).toBe('unknownStore');
+    expect(linkProblem(url, visible)).toBeNull();
+  });
+
+  it('link Awin só vale com anunciante 17729 e destino Kabum', () => {
+    expect(detectStore(awin('17729', 'https://www.kabum.com.br/produto/1'), visible)).toBe('KABUM');
+    expect(detectStore(awin('99999', 'https://www.kabum.com.br/produto/1'), visible)).toBeNull();
+    expect(detectStore(awin('17729', 'https://evil.io/x'), visible)).toBeNull();
+    expect(detectStore('https://www.awin1.com/cread.php?awinmid=17729', visible)).toBeNull();
+  });
+});
+
 describe('linkProblem', () => {
   it('classifica o link', () => {
     expect(linkProblem('')).toBe('required');

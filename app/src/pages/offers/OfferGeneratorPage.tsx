@@ -9,6 +9,7 @@ import { isAffiliateLinkErrorCode } from '@/features/affiliateLinks/linkErrors';
 import { useOfferConfig } from '@/features/offers/hooks/useOfferConfig';
 import { useOfferGenerator } from '@/features/offers/hooks/useOfferGenerator';
 import { useOfferDraft } from '@/features/offers/hooks/useOfferDraft';
+import { useVisibleOfferStores } from '@/features/offers/hooks/useVisibleOfferStores';
 import { OfferConfigWizard } from '@/features/offers/components/config/OfferConfigWizard';
 import { PlanLimitBanner } from '@/features/linkRotation/components/PlanLimitBanner';
 import { OfferConfigSummary } from '@/features/offers/components/OfferConfigSummary';
@@ -33,6 +34,7 @@ export function OfferGeneratorPage() {
   const gen = useOfferGenerator();
   const { offer } = gen;
   const form = useOfferDraft(offer);
+  const visibleStores = useVisibleOfferStores();
   const [wizardOpen, setWizardOpen] = usePersistedState('offers.wizardOpen', false, { scope: 'device' });
   // "+ Novo" com oferta aberta: o card de geração volta; a oferta atual só sai quando outra é gerada
   const [composing, setComposing] = usePersistedState('offers.composing', false, { scope: 'device' });
@@ -162,6 +164,7 @@ export function OfferGeneratorPage() {
                   onChange={() => { if (gen.error?.isLinkField) gen.clearError(); }}
                   onCancel={offer ? () => { gen.clearError(); setComposing(false); } : undefined}
                   aiRewriteEnabled={cfg.aiRewriteEnabled}
+                  visibleStores={visibleStores}
                 />
                 {limitReached && gen.usage?.limit != null && <Alert severity="warning">{t.planLimit(gen.usage.limit)}</Alert>}
                 {!offer && alertError && (

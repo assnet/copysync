@@ -9,26 +9,57 @@ const STORE_HOSTS: ReadonlyArray<[AffiliateProvider, readonly string[]]> = [
   ['MERCADO_LIVRE', ['mercadolivre.com.br', 'mercadolivre.com', 'meli.la']],
   ['AMAZON', ['amazon.com.br', 'amzn.to', 'a.co', 'link.amazon', 'amzlinks.in']],
   ['SHEIN', ['br.shein.com', 'm.shein.com', 'onelink.shein.com']],
+  ['KABUM', ['kabum.com.br']],
 ];
+
+/** Lojas que todo tenant vê; as novas só entram quando a API diz que estão visíveis. */
+export const DEFAULT_OFFER_STORES: readonly AffiliateProvider[] = ['SHOPEE', 'MERCADO_LIVRE', 'AMAZON', 'SHEIN'];
+
+const AWIN_HOST = 'awin1.com';
+const KABUM_AWIN_ADVERTISER = '17729';
 
 /** Host igual ou subdomínio (`produto.mercadolivre.com.br`). */
 const matchesHost = (host: string, base: string) => host === base || host.endsWith(`.${base}`);
 
-export function detectStore(raw: string): AffiliateProvider | null {
-  let host: string;
+/** Link Awin só é Kabum com anunciante 17729 e destino `ued` na Kabum (a API confere de novo). */
+function isKabumAwin(url: URL): boolean {
+  const mids = url.searchParams.getAll('awinmid');
+  const dests = url.searchParams.getAll('ued');
+  if (mids.length !== 1 || mids[0] !== KABUM_AWIN_ADVERTISER || dests.length !== 1) return false;
   try {
-    host = new URL(raw.trim()).hostname.toLowerCase().replace(/\.$/, '');
+    const dest = new URL(dests[0]);
+    return dest.protocol === 'https:' && matchesHost(dest.hostname.toLowerCase(), 'kabum.com.br');
   } catch {
-    return null;
+    return false;
   }
+}
+
+function storeOf(url: URL): AffiliateProvider | null {
+  const host = url.hostname.toLowerCase().replace(/\.$/, '');
+  if (matchesHost(host, AWIN_HOST)) return isKabumAwin(url) ? 'KABUM' : null;
   for (const [provider, hosts] of STORE_HOSTS) {
     if (hosts.some((h) => matchesHost(host, h))) return provider;
   }
   return null;
 }
 
+/** `visible`: lojas da conta (audiência "Só super admin" já aplicada); loja fora dela = desconhecida. */
+export function detectStore(raw: string, visible: readonly AffiliateProvider[] = DEFAULT_OFFER_STORES): AffiliateProvider | null {
+  let url: URL;
+  try {
+    url = new URL(raw.trim());
+  } catch {
+    return null;
+  }
+  const store = storeOf(url);
+  return store && visible.includes(store) ? store : null;
+}
+
 /** Erro local do link ou `null`. Sem `https://` ou fora das lojas conhecidas não vale a ida ao servidor. */
-export function linkProblem(raw: string): 'required' | 'invalid' | 'unknownStore' | null {
+export function linkProblem(
+  raw: string,
+  visible: readonly AffiliateProvider[] = DEFAULT_OFFER_STORES,
+): 'required' | 'invalid' | 'unknownStore' | null {
   const value = raw.trim();
   if (!value) return 'required';
   try {
@@ -36,5 +67,5 @@ export function linkProblem(raw: string): 'required' | 'invalid' | 'unknownStore
   } catch {
     return 'invalid';
   }
-  return detectStore(value) ? null : 'unknownStore';
+  return detectStore(value, visible) ? null : 'unknownStore';
 }
