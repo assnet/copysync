@@ -86,19 +86,19 @@
           else setTimeout(window.csLoadClarity, 1)
         })
     </script>
-    <!-- Repasse de UTMs/gclid/fbclid/src/sck para o checkout ANTES do bundle carregar (o JS principal entra atrasado).
+    <!-- Repasse de TODOS os parâmetros da URL (exceto os internos da LP) para o checkout ANTES do bundle carregar (o JS principal entra atrasado).
          Reescreve os links da Cakto no DOMContentLoaded e de novo no clique/toque/menu (nova aba, copiar link).
          Mesma regra de lib/track.ts (withCampaignParams): mudou lá, muda aqui. -->
     <script>
       (function () {
-        var P = /^(utm_|gclid$|gbraid$|wbraid$|fbclid$|src$|sck$)/
+        var SKIP = /^(borrao)$/
         function fix(a) {
           try {
             var u = new URL(a.href)
             if (u.hostname !== 'pay.cakto.com.br') return
             var ch = false
             new URLSearchParams(location.search).forEach(function (v, k) {
-              if (P.test(k) && !u.searchParams.has(k)) { u.searchParams.set(k, v); ch = true }
+              if (!SKIP.test(k) && !u.searchParams.has(k)) { u.searchParams.set(k, v); ch = true }
             })
             if (ch) a.setAttribute('href', u.toString())
           } catch (e) {}

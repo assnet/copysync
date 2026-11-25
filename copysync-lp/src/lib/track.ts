@@ -14,14 +14,15 @@ export function track(event: TrackEvent, params: Record<string, unknown> = {}) {
   window.dataLayer.push({ event, ...params })
 }
 
-const PASS_THROUGH = /^(utm_|gclid$|gbraid$|wbraid$|fbclid$|src$|sck$)/
+/** Parâmetros só da LP (não vão ao checkout). Todo o resto da URL é repassado. Mesma regra no index.html. */
+const LP_ONLY = /^(borrao)$/
 
-/** Anexa os parâmetros de campanha da URL atual ao link do checkout. */
+/** Anexa os parâmetros da URL atual ao link do checkout (UTMs, gclid, fbclid, src, sck e quaisquer outros). */
 export function withCampaignParams(url: string) {
   if (typeof window === 'undefined') return url
   const target = new URL(url)
   new URLSearchParams(window.location.search).forEach((value, key) => {
-    if (PASS_THROUGH.test(key) && !target.searchParams.has(key)) target.searchParams.set(key, value)
+    if (!LP_ONLY.test(key) && !target.searchParams.has(key)) target.searchParams.set(key, value)
   })
   return target.toString()
 }
