@@ -30,6 +30,40 @@
       gtag('config', 'G-C0DJZKPX9S')
       gtag('config', 'AW-18410182876')
     </script>
+    <!-- Meta Pixel · CopySync (respeita o banner de cookies cs-consent) -->
+    <script>
+      !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
+      (function () {
+        var ok = false
+        try { ok = localStorage.getItem('cs-consent') === 'granted' } catch (e) {}
+        if (!ok) fbq('consent', 'revoke')
+        fbq('init', '1099628143057964')
+        fbq('track', 'PageView')
+        // quando o visitante aceitar/recusar no banner (que chama gtag('consent','update')), repassa ao pixel
+        var og = window.gtag
+        window.gtag = function () {
+          var a = arguments
+          if (a[0] === 'consent' && a[1] === 'update' && a[2]) fbq('consent', a[2].ad_storage === 'granted' ? 'grant' : 'revoke')
+          return og.apply(this, a)
+        }
+        // ViewContent quando a seção de planos aparece na tela
+        var vc = false
+        function checkPlanos() {
+          if (vc) return
+          var el = document.getElementById('planos')
+          if (!el) return
+          var r = el.getBoundingClientRect()
+          if (r.top < innerHeight * 0.7 && r.bottom > 0) { vc = true; fbq('track', 'ViewContent', { content_name: 'Planos CopySync' }); removeEventListener('scroll', checkPlanos) }
+        }
+        addEventListener('scroll', checkPlanos, { passive: true })
+        addEventListener('hashchange', function () { setTimeout(checkPlanos, 400) })
+        // clique em "Assinar" (evento próprio, não duplica o InitiateCheckout da Cakto)
+        document.addEventListener('click', function (e) {
+          var a = e.target.closest && e.target.closest('a[href*="pay.cakto.com.br"]')
+          if (a) fbq('trackCustom', 'CliqueAssinar', { destino: a.pathname })
+        }, true)
+      })()
+    </script>
     <!-- Microsoft Clarity (zgmja8fnyk): só é baixado com consentimento, e sempre depois que a página terminou de carregar.
          Mesmo no "modo sem cookies" o download do Clarity já grava cookies da Microsoft (CLID, MUID…), por isso
          nada do Clarity é pedido antes do "Aceitar". Quem já aceitou: carrega após o "load". No "Aceitar": CookieBanner.tsx. -->
@@ -51,6 +85,35 @@
           if ('requestIdleCallback' in window) requestIdleCallback(window.csLoadClarity, { timeout: 3000 })
           else setTimeout(window.csLoadClarity, 1)
         })
+    </script>
+    <!-- Repasse de UTMs/gclid/fbclid/src/sck para o checkout ANTES do bundle carregar (o JS principal entra atrasado).
+         Reescreve os links da Cakto no DOMContentLoaded e de novo no clique/toque/menu (nova aba, copiar link).
+         Mesma regra de lib/track.ts (withCampaignParams): mudou lá, muda aqui. -->
+    <script>
+      (function () {
+        var P = /^(utm_|gclid$|gbraid$|wbraid$|fbclid$|src$|sck$)/
+        function fix(a) {
+          try {
+            var u = new URL(a.href)
+            if (u.hostname !== 'pay.cakto.com.br') return
+            var ch = false
+            new URLSearchParams(location.search).forEach(function (v, k) {
+              if (P.test(k) && !u.searchParams.has(k)) { u.searchParams.set(k, v); ch = true }
+            })
+            if (ch) a.setAttribute('href', u.toString())
+          } catch (e) {}
+        }
+        function on(e) {
+          var a = e.target && e.target.closest && e.target.closest('a[href]')
+          if (a) fix(a)
+        }
+        ;['pointerdown', 'touchstart', 'keydown', 'click', 'auxclick', 'contextmenu'].forEach(function (t) {
+          document.addEventListener(t, on, { capture: true, passive: true })
+        })
+        document.addEventListener('DOMContentLoaded', function () {
+          document.querySelectorAll('a[href*="pay.cakto.com.br"]').forEach(fix)
+        })
+      })()
     </script>
     <!-- Teste do borrão: só com ?borrao=1 na URL (sem o parâmetro, nada muda) -->
     <script>
