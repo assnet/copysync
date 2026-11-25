@@ -13,10 +13,12 @@ import { REDIRECT_PUBLIC_PATH } from '@/features/redirectLinks/strings';
  * - `/admin/workers/capacity`: cobria o botão de tabela do gráfico no fim da aba; só super admin.
  * - `/admin/workers/scale`: cobria a coluna "Quando" do histórico; só super admin.
  * - `/admin/costs/prices`: "Revisar e salvar" no fim do formulário de preços; só super admin.
+ * - `/affiliates/credentials`: no celular cobria a lixeira e o "Ativa" do rodapé do card (não sticky:
+ *   subir só cobriria outro campo).
  */
 export const SUPPORT_CHAT_HIDDEN_PATHS: readonly string[] = [
   REDIRECT_PUBLIC_PATH, '/chat', '/admin/workers/settings', '/admin/workers/capacity',
-  '/admin/workers/scale', '/admin/costs/prices',
+  '/admin/workers/scale', '/admin/costs/prices', '/affiliates/credentials',
 ];
 
 /**

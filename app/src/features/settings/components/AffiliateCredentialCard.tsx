@@ -101,7 +101,7 @@ export function AffiliateCredentialCard({ spec, item, availability, busy, onConf
             </Stack>
             <Box component="ul" sx={{ m: 0, pl: 2.25, display: 'grid', gap: 0.5 }}>
               {spec.programRules.map((rule) => (
-                <Typography component="li" key={rule} variant="caption" color="text.secondary">{rule}</Typography>
+                <Typography component="li" key={rule} variant="body2" color="text.secondary">{rule}</Typography>
               ))}
             </Box>
           </Box>

@@ -97,7 +97,8 @@ export function AdminPlanEntitlementsPage() {
                 aria-label={t.listTitle}
                 sx={{
                   '& .MuiTableCell-root': { px: { xs: 0.75, sm: 2 } },
-                  '& .MuiTableCell-root:first-of-type': { overflowWrap: 'anywhere' },
+                  // Celular: sem largura mínima a coluna "Recurso" quebrava letra a letra; a tabela rola no container.
+                  '& .MuiTableCell-root:first-of-type': { overflowWrap: 'anywhere', minWidth: { xs: 176, sm: 'auto' } },
                 }}
               >
                 <TableHead>
