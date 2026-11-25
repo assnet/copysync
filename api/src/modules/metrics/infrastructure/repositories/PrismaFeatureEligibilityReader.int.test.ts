@@ -6,7 +6,7 @@ import { createReadBudget, type UsageReadPrisma } from './featureUsageReadTimeou
 
 /** Direito ao recurso por conta (P3): regra de acesso de `tenants` + entitlement (conta, senão preset do plano). */
 /** Audiência liberada (as asserções de direito abaixo); a audiência "Só super admin" tem caso próprio. */
-const reader = new PrismaFeatureEligibilityReader(prisma, () => ({ offer_hunter_enabled: false, saver: false }));
+const reader = new PrismaFeatureEligibilityReader(prisma, () => ({ offer_hunter_enabled: false, saver: false, marketplace_kabum_enabled: true, marketplace_magalu_enabled: true, marketplace_aliexpress_enabled: true }));
 const s = `fel${Date.now().toString(36)}`;
 const T = {
   legacyMax: `${s}-legacymax`, // sem linha em tenant_products, plano MAX sem entitlements gravados
@@ -93,7 +93,7 @@ describe('PrismaFeatureEligibilityReader', () => {
   });
 
   it('audiência "Só super admin": gravada vence o valor inicial; conta comum sai, interna fica', async () => {
-    const onlyAdmin = new PrismaFeatureEligibilityReader(prisma, () => ({ offer_hunter_enabled: true, saver: true }));
+    const onlyAdmin = new PrismaFeatureEligibilityReader(prisma, () => ({ offer_hunter_enabled: true, saver: true, marketplace_kabum_enabled: true, marketplace_magalu_enabled: true, marketplace_aliexpress_enabled: true }));
     let out = await onlyAdmin.read(FEATURE_USAGE_CATALOG, createReadBudget());
     expect(only(out.get('offer_hunter'))).toEqual([T.internal]);
     expect(only(out.get('saver_export'))).toEqual([]);

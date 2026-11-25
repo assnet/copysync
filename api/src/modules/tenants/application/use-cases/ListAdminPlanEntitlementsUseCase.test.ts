@@ -10,7 +10,8 @@ function fakeRepo(rows: Awaited<ReturnType<IPlanEntitlementPresetRepository['lis
   return { listByKeys: vi.fn(async () => rows), setForPlan: vi.fn() } satisfies IPlanEntitlementPresetRepository;
 }
 
-const audience = { all: async () => ({ offer_hunter_enabled: true, saver: true }) };
+const STORES = { marketplace_kabum_enabled: true, marketplace_magalu_enabled: true, marketplace_aliexpress_enabled: true };
+const audience = { all: async () => ({ offer_hunter_enabled: true, saver: true, ...STORES }) };
 
 describe('ListAdminPlanEntitlementsUseCase', () => {
   it('consulta só a allowlist e devolve chave × plano; sem preset = null', async () => {
@@ -54,15 +55,15 @@ describe('ListAdminPlanEntitlementsUseCase', () => {
   });
 
   it('superAdminOnly só na chave com audiência (flag efetiva); demais null', async () => {
-    const out = await new ListAdminPlanEntitlementsUseCase(fakeRepo([]), { all: async () => ({ offer_hunter_enabled: false, saver: true }) }).execute();
+    const out = await new ListAdminPlanEntitlementsUseCase(fakeRepo([]), { all: async () => ({ offer_hunter_enabled: false, saver: true, ...STORES, marketplace_magalu_enabled: false }) }).execute();
     expect(Object.fromEntries(out.map((r) => [r.key, r.superAdminOnly]))).toEqual({
-      marketplace_shein_enabled: null, marketplace_kabum_enabled: null, marketplace_magalu_enabled: null,
-      marketplace_aliexpress_enabled: null, offer_hunter_enabled: false, offer_hunter_finds_per_day: null, saver: true,
+      marketplace_shein_enabled: null, marketplace_kabum_enabled: true, marketplace_magalu_enabled: false,
+      marketplace_aliexpress_enabled: true, offer_hunter_enabled: false, offer_hunter_finds_per_day: null, saver: true,
     });
   });
 
   it('audiência fora da allowlist (Saver): linha só com a flag, plans vazio e sem type', async () => {
-    const out = await new ListAdminPlanEntitlementsUseCase(fakeRepo([]), { all: async () => ({ offer_hunter_enabled: true, saver: false }) }).execute();
+    const out = await new ListAdminPlanEntitlementsUseCase(fakeRepo([]), { all: async () => ({ offer_hunter_enabled: true, saver: false, ...STORES }) }).execute();
     const row = out.find((r) => r.key === 'saver');
     expect(row).toEqual({ key: 'saver', plans: {}, product: 'SAVER', editablePlans: [], superAdminOnly: false });
     expect(row).not.toHaveProperty('type');

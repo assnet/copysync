@@ -3,12 +3,19 @@ import { ENTITLEMENT_KEYS } from './entitlementKeys';
 /**
  * Audiência por recurso (flag do admin em `/admin/plan-entitlements`, coluna "Só super admin"): `true` = só super
  * admin vê/usa; `false` = todo tenant com o entitlement (ou com o produto). Só as chaves daqui têm audiência: o caçador
- * (chave de entitlement) e o Saver (`saver`, audiência de produto, não entitlement nem preset).
+ * (chave de entitlement), o Saver (`saver`, audiência de produto, não entitlement nem preset) e as lojas Kabum, Magalu
+ * e AliExpress (chave de entitlement da loja).
  * Persistida em `platform_settings["feature_audience"]` como `{ <chave>: boolean }`; chave nunca gravada = valor
- * inicial da env (`OFFER_HUNTER_AUDIENCE`, `SAVER_AUDIENCE`).
+ * inicial: env (`OFFER_HUNTER_AUDIENCE`, `SAVER_AUDIENCE`) ou, nas lojas, `true` fixo (só super admin, sem env).
  */
 export const SAVER_AUDIENCE_KEY = 'saver' as const;
-export const FEATURE_AUDIENCE_KEYS = [ENTITLEMENT_KEYS.OFFER_HUNTER_ENABLED, SAVER_AUDIENCE_KEY] as const;
+export const FEATURE_AUDIENCE_KEYS = [
+  ENTITLEMENT_KEYS.OFFER_HUNTER_ENABLED,
+  SAVER_AUDIENCE_KEY,
+  ENTITLEMENT_KEYS.MARKETPLACE_KABUM_ENABLED,
+  ENTITLEMENT_KEYS.MARKETPLACE_MAGALU_ENABLED,
+  ENTITLEMENT_KEYS.MARKETPLACE_ALIEXPRESS_ENABLED,
+] as const;
 export type FeatureAudienceKey = (typeof FEATURE_AUDIENCE_KEYS)[number];
 /** Só as chaves gravadas (ausente = valor inicial). */
 export type FeatureAudienceSettings = Partial<Record<FeatureAudienceKey, boolean>>;

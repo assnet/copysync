@@ -7,10 +7,16 @@ import { ENTITLEMENT_KEYS } from '../domain/entitlementKeys';
 import { SAVER_AUDIENCE_KEY } from '../domain/featureAudience';
 import { PrismaFeatureAudienceRepository } from './repositories/PrismaFeatureAudienceRepository';
 
-/** Valor inicial (chave nunca gravada): `OFFER_HUNTER_AUDIENCE`/`SAVER_AUDIENCE`, lidas a cada uso. `super_admin` = só super admin. */
+/**
+ * Valor inicial (chave nunca gravada): `OFFER_HUNTER_AUDIENCE`/`SAVER_AUDIENCE`, lidas a cada uso (`super_admin` = só
+ * super admin). Lojas Kabum/Magalu/AliExpress: `true` fixo, sem env; liberar só pela flag em `/admin/plan-entitlements`.
+ */
 export const featureAudienceDefaults: FeatureAudienceDefaults = () => ({
   [ENTITLEMENT_KEYS.OFFER_HUNTER_ENABLED]: env.OFFER_HUNTER_AUDIENCE !== 'entitled',
   [SAVER_AUDIENCE_KEY]: env.SAVER_AUDIENCE !== 'entitled',
+  [ENTITLEMENT_KEYS.MARKETPLACE_KABUM_ENABLED]: true,
+  [ENTITLEMENT_KEYS.MARKETPLACE_MAGALU_ENABLED]: true,
+  [ENTITLEMENT_KEYS.MARKETPLACE_ALIEXPRESS_ENABLED]: true,
 });
 
 let reader: FeatureAudienceReader | null = null;

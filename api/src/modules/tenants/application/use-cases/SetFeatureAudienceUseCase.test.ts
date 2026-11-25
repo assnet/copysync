@@ -29,6 +29,15 @@ describe('SetFeatureAudienceUseCase', () => {
     expect(calls).toEqual(['begin', 'set', 'audit', 'commit']);
   });
 
+  it('lojas Kabum/Magalu/AliExpress têm audiência: grava e audita', async () => {
+    const { uc, audience, audit } = setup();
+    for (const key of ['marketplace_kabum_enabled', 'marketplace_magalu_enabled', 'marketplace_aliexpress_enabled']) {
+      expect(await uc.execute({ key, superAdminOnly: false, actorUserId: 'admin-1' })).toEqual({ key, superAdminOnly: false });
+      expect(audience.set).toHaveBeenCalledWith(key, false, 'admin-1');
+      expect(audit.create).toHaveBeenCalledWith({ userId: 'admin-1', action: 'PLAN_ENTITLEMENT_CHANGED', meta: { key, audience: { superAdminOnly: false } } });
+    }
+  });
+
   it('chave sem audiência → ValidationError (400), sem transação', async () => {
     const { uc, calls } = setup();
     for (const key of ['marketplace_shein_enabled', 'offer_hunter_finds_per_day', 'x']) {
@@ -42,7 +51,10 @@ describe('FeatureAudienceReader', () => {
   it('gravado vence; ausente = valor inicial (env) lido a cada uso', async () => {
     let saved = {};
     let initial = true;
-    const reader = new FeatureAudienceReader({ get: async () => saved }, () => ({ offer_hunter_enabled: initial, saver: true }));
+    const reader = new FeatureAudienceReader({ get: async () => saved }, () => ({
+      offer_hunter_enabled: initial, saver: true,
+      marketplace_kabum_enabled: true, marketplace_magalu_enabled: true, marketplace_aliexpress_enabled: true,
+    }));
     expect(await reader.superAdminOnly('offer_hunter_enabled')).toBe(true);
     initial = false;
     expect(await reader.superAdminOnly('offer_hunter_enabled')).toBe(false);

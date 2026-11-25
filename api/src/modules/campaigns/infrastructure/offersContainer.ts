@@ -11,6 +11,9 @@ import type { IAffiliateCredentialGateway } from '../domain/contracts/IAffiliate
 import type { IMarketplaceRiskGate } from '../domain/contracts/IMarketplaceRiskGate';
 import { createMarketplaceRiskAcceptanceRepository } from '../../integrations/infrastructure/marketplaceRiskTransaction';
 import { isMarketplaceRiskAccepted } from '../../integrations/application/services/requireMarketplaceRiskAccepted';
+import { featureAudienceReader } from '../../tenants/infrastructure/featureAudience';
+import { FeatureAudienceGate } from '../../tenants/application/services/FeatureAudienceGate';
+import { MarketplaceAudienceGate } from '../application/services/MarketplaceAudienceGate';
 import { PrismaOfferRepository } from './repositories/PrismaOfferRepository';
 import { PrismaOfferDispatchRepository } from './repositories/PrismaOfferDispatchRepository';
 import { PrismaOfferGeneratorConfigRepository } from './repositories/PrismaOfferGeneratorConfigRepository';
@@ -84,6 +87,8 @@ const credentialGateway = lazy((): IAffiliateCredentialGateway => {
   };
 });
 // Aceite do aviso de risco (versão vigente do escopo) pelo repositório de integrations
+/** Audiência "Só super admin" por loja (Kabum/Magalu/AliExpress); flag lida a cada uso. */
+const marketplaceAudience = lazy(() => new MarketplaceAudienceGate(new FeatureAudienceGate(featureAudienceReader())));
 const riskGate = lazy((): IMarketplaceRiskGate => {
   const repo = createMarketplaceRiskAcceptanceRepository();
   return { isAccepted: (t, p, scope) => isMarketplaceRiskAccepted(repo, t, p, scope) };
@@ -203,4 +208,6 @@ export const offersContainer = {
   credentialRepo:       credentialRepo,
   // Alerta de aceite pendente do monitoramento (módulo automation)
   riskGate:             riskGate,
+  // Audiência por loja (Resolve, monitoramento, credenciais, assinatura)
+  marketplaceAudience:  marketplaceAudience,
 };

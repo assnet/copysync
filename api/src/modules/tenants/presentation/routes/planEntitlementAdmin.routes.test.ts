@@ -183,4 +183,10 @@ describe('PUT /admin/plan-entitlements/:key/audience', () => {
     expect(plan).not.toHaveBeenCalled();
     expect(res.json()).toEqual({ success: true, data: { key: 'offer_hunter_enabled', superAdminOnly: false } });
   });
+  it('loja com audiência (Kabum) → 200 e chama o use case', async () => {
+    const spy = vi.spyOn(SetFeatureAudienceUseCase.prototype, 'execute').mockResolvedValue({ key: 'marketplace_kabum_enabled', superAdminOnly: false });
+    const res = await app.inject({ method: 'PUT', url: `${URL}/marketplace_kabum_enabled/audience`, payload: { superAdminOnly: false } });
+    expect(res.statusCode).toBe(200);
+    expect(spy).toHaveBeenCalledWith({ key: 'marketplace_kabum_enabled', superAdminOnly: false, actorUserId: 'admin-1' });
+  });
 });
