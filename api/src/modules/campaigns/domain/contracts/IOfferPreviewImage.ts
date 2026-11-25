@@ -8,6 +8,9 @@ export interface OfferPreviewImages {
 }
 
 export interface IOfferPreviewImage {
-  /** `null` = URL fora do store, arquivo sumido ou foto ilegível: a oferta sai como texto puro. Nunca lança. */
-  build(imageUrl: string): Promise<OfferPreviewImages | null>;
+  /**
+   * Imagem e miniatura com a marca d'água do tenant, quando aplicável (a foto de origem nunca muda).
+   * `null` = URL fora do store, arquivo sumido ou foto ilegível: a oferta sai como texto puro. Nunca lança.
+   */
+  build(tenantId: string, imageUrl: string): Promise<OfferPreviewImages | null>;
 }

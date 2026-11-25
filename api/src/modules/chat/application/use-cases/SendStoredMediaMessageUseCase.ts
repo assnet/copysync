@@ -29,6 +29,12 @@ export interface SendStoredMediaMessageInput {
   caption?: string | null;
   /** Telefones a mencionar; só seguem no job da fila (não são gravados — ver OutboundMediaJob). */
   mentions?: string[] | null;
+  /**
+   * Passo opcional sobre os bytes da origem antes da promoção (ex.: marca d'água da oferta, passada
+   * pelo chamador — o chat não conhece quem decora). Com ele a cópia sai sempre JPEG; a origem
+   * continua intacta. Ausente: comportamento de sempre (cópia ou WebP→JPEG).
+   */
+  decorate?: (bytes: Buffer) => Promise<Buffer>;
 }
 
 export interface SendStoredMediaMessageOutput {
@@ -49,7 +55,14 @@ export interface SendStoredMediaMessageDeps {
   images: IImageTranscoder;
   /** Remove um arquivo temporário; não falha se ele já não existir. */
   removeTmp: (filePath: string) => Promise<void>;
+  /** Leitura/escrita de arquivo, só usadas com `decorate`. */
+  readFile: (filePath: string) => Promise<Buffer>;
+  writeFile: (filePath: string, data: Buffer) => Promise<void>;
 }
+
+/** Cópia decorada: lado maior limitado (nunca amplia) e JPEG de boa qualidade. */
+const DECORATED_MAX_SIDE = 2048;
+const DECORATED_QUALITY = 85;
 
 /** Só imagem: é o que o gerador de ofertas envia; outros tipos exigem classificação/probe. */
 const IMAGE_EXT: Record<string, string> = {
@@ -75,9 +88,11 @@ export class SendStoredMediaMessageUseCase {
     // 1. Tipo antes de qualquer I/O
     const sourceMime = input.mimeType.toLowerCase();
     if (!IMAGE_EXT[sourceMime]) throw new UnsupportedMediaTypeError('Only JPEG, PNG or WebP images can be sent');
-    // A cópia já sai no formato que vai ao WhatsApp; a origem continua como está
-    const transcode = needsInlineImageTranscode(sourceMime);
-    const mimeType = transcode ? INLINE_IMAGE_TARGET_MIME : sourceMime;
+    // A cópia já sai no formato que vai ao WhatsApp; a origem continua como está.
+    // Com decoração a cópia é sempre JPEG (o passo regrava os bytes)
+    const decorate = input.decorate ?? null;
+    const transcode = !decorate && needsInlineImageTranscode(sourceMime);
+    const mimeType = decorate ? 'image/jpeg' : transcode ? INLINE_IMAGE_TARGET_MIME : sourceMime;
     const ext = IMAGE_EXT[mimeType]!;
 
     // 2. Conversa do tenant com destino válido
@@ -92,7 +107,9 @@ export class SendStoredMediaMessageUseCase {
     const externalMessageId = await engine.createOutboundMessageId(sessionId);
 
     // 4. Cópia própria da origem → promoção
-    const file = await this.copyAndPromote(sourceMediaUrl, { sessionId, externalMessageId, mimeType }, ext, transcode);
+    const file = await this.copyAndPromote(
+      sourceMediaUrl, { sessionId, externalMessageId, mimeType }, ext, transcode, decorate,
+    );
 
     // 5. Grava PENDING; falha de banco apaga o arquivo promovido
     const caption = input.caption || null;
@@ -142,23 +159,28 @@ export class SendStoredMediaMessageUseCase {
   }
 
   /**
-   * Materializa a origem, copia (ou converte para JPEG) para um temporário e promove a cópia.
-   * Sempre libera a origem.
+   * Materializa a origem, copia (ou converte para JPEG; ou decora e grava JPEG) para um
+   * temporário e promove a cópia. Sempre libera a origem.
    */
   private async copyAndPromote(
     sourceMediaUrl: string,
     target: { sessionId: string; externalMessageId: string; mimeType: string },
     ext: string,
     transcode: boolean,
+    decorate: ((bytes: Buffer) => Promise<Buffer>) | null,
   ): Promise<PromotedMediaFile> {
-    const { files, tmpPathFor, copyFile, removeTmp, images } = this.deps;
+    const { files, tmpPathFor, copyFile, removeTmp, images, readFile, writeFile } = this.deps;
     const acquired = await files.acquireLocalFile(sourceMediaUrl);
     // Código próprio: não confundir com conversa ausente (NOT_FOUND)
     if (!acquired) throw new MediaNotFoundError();
 
     const tmpPath = tmpPathFor(ext);
     try {
-      if (transcode) await images.toJpeg(acquired.filePath, tmpPath);
+      if (decorate) {
+        const decorated = await decorate(await readFile(acquired.filePath));
+        const jpeg = await images.resizeJpeg(decorated, DECORATED_MAX_SIDE, DECORATED_QUALITY);
+        await writeFile(tmpPath, jpeg.buffer);
+      } else if (transcode) await images.toJpeg(acquired.filePath, tmpPath);
       else await copyFile(acquired.filePath, tmpPath);
       return await files.promote({ srcPath: tmpPath, ...target });
     } finally {

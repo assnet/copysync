@@ -71,8 +71,10 @@ function makeDeps(o: {
   const tmpPathFor = vi.fn((ext: string) => TMP.replace(/jpg$/, ext));
   const images = {
     toJpeg: vi.fn(async () => { if (o.transcodeError) throw o.transcodeError; }),
-    resizeJpeg: vi.fn(),
+    resizeJpeg: vi.fn(async (input: Buffer) => ({ buffer: Buffer.concat([input, Buffer.from('|jpeg')]), width: 1, height: 1 })),
   };
+  const readFile = vi.fn(async () => Buffer.from('origem'));
+  const writeFile = vi.fn(async () => undefined);
 
   const useCase = new SendStoredMediaMessageUseCase({
     messageRepo: messageRepo as unknown as IChatMessageRepository,
@@ -85,12 +87,17 @@ function makeDeps(o: {
     copyFile,
     removeTmp,
     images,
+    readFile,
+    writeFile,
   });
-  return { useCase, messageRepo, conversationRepo, files, queue, copyFile, removeTmp, release, images };
+  return { useCase, messageRepo, conversationRepo, files, queue, copyFile, removeTmp, release, images, readFile, writeFile };
 }
 
 type Deps = ReturnType<typeof makeDeps>;
-const enviar = (d: Deps, over: { mimeType?: string; caption?: string | null; mentions?: string[] | null } = {}) =>
+const enviar = (
+  d: Deps,
+  over: { mimeType?: string; caption?: string | null; mentions?: string[] | null; decorate?: (b: Buffer) => Promise<Buffer> } = {},
+) =>
   d.useCase.execute({
     tenantId: TENANT, conversationId: CONVERSA, sourceMediaUrl: SRC_URL,
     mimeType: 'image/jpeg', caption: 'Oferta!', ...over,
@@ -210,5 +217,38 @@ describe('SendStoredMediaMessageUseCase', () => {
     expect(d.messageRepo.create).not.toHaveBeenCalled();
     expect(d.removeTmp).toHaveBeenCalledWith(TMP);
     expect(d.release).toHaveBeenCalledOnce();
+  });
+
+  it('sem decoração: nada é lido nem regravado (comportamento de sempre)', async () => {
+    const d = makeDeps();
+    await enviar(d, { mimeType: 'image/png' });
+    expect(d.readFile).not.toHaveBeenCalled();
+    expect(d.writeFile).not.toHaveBeenCalled();
+    expect(d.images.resizeJpeg).not.toHaveBeenCalled();
+    expect(d.copyFile).toHaveBeenCalledWith(SRC_PATH, TMP.replace(/jpg$/, 'png'));
+  });
+
+  it.each(['image/jpeg', 'image/png', 'image/webp'])('com decoração (%s): lê a origem, decora, grava JPEG e não toca a origem', async (mime) => {
+    const d = makeDeps();
+    const decorate = vi.fn(async (b: Buffer) => Buffer.concat([b, Buffer.from('+marca')]));
+    await enviar(d, { mimeType: mime, decorate });
+
+    expect(d.readFile).toHaveBeenCalledWith(SRC_PATH);
+    expect(decorate).toHaveBeenCalledWith(Buffer.from('origem'));
+    expect(d.images.resizeJpeg).toHaveBeenCalledWith(Buffer.from('origem+marca'), 2048, 85);
+    expect(d.writeFile).toHaveBeenCalledWith(TMP, Buffer.from('origem+marca|jpeg'));
+    expect(d.copyFile).not.toHaveBeenCalled();
+    expect(d.images.toJpeg).not.toHaveBeenCalled();
+    expect(d.files.promote).toHaveBeenCalledWith(expect.objectContaining({ srcPath: TMP, mimeType: 'image/jpeg' }));
+    expect(d.messageRepo.create).toHaveBeenCalledWith(expect.objectContaining({ mimeType: 'image/jpeg' }));
+    expect(d.files.remove).not.toHaveBeenCalledWith(SRC_PATH);
+    expect(d.release).toHaveBeenCalledOnce();
+  });
+
+  it('com decoração e origem ausente: MediaNotFoundError, decoração não roda', async () => {
+    const d = makeDeps({ acquired: false });
+    const decorate = vi.fn();
+    await expect(enviar(d, { decorate })).rejects.toBeInstanceOf(MediaNotFoundError);
+    expect(decorate).not.toHaveBeenCalled();
   });
 });

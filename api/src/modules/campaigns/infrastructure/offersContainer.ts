@@ -34,6 +34,10 @@ import { TenantAffiliateLinkComposer } from '../application/services/TenantAffil
 import { ChatOfferMessageSender } from './adapters/ChatOfferMessageSender';
 import { MediaOfferStore } from './adapters/MediaOfferStore';
 import { OfferPreviewImage } from './adapters/OfferPreviewImage';
+import { OfferWatermarkMediaStore } from './adapters/OfferWatermarkMediaStore';
+import { SharpOfferWatermarkCompositor } from './adapters/SharpOfferWatermarkCompositor';
+import { PrismaOfferWatermarkRepository } from './repositories/PrismaOfferWatermarkRepository';
+import { TenantOfferImageDecorator } from '../application/services/TenantOfferImageDecorator';
 import { GenerateOfferUseCase } from '../application/use-cases/GenerateOfferUseCase';
 import { GetOfferUseCase } from '../application/use-cases/GetOfferUseCase';
 import { GetOfferUsageUseCase } from '../application/use-cases/GetOfferUsageUseCase';
@@ -104,12 +108,26 @@ const mediaStore   = lazy(
     images:  () => mediaContainer.imageTranscoder,
   }),
 );
-// Prévia de link da oferta: imagens geradas da foto já armazenada
+// Marca d'água própria aplicada no envio (prévia e Telegram); registro e logo lidos a cada envio
+const offerWatermarks = lazy(() => new PrismaOfferWatermarkRepository(prisma));
+const offerWatermarkLogos = lazy(() => new OfferWatermarkMediaStore({ files: () => mediaContainer.mediaFileStore }));
+const offerImageDecorator = lazy(() => new TenantOfferImageDecorator({
+  entitlements: entitlements(),
+  watermarks:   offerWatermarks(),
+  logos:        offerWatermarkLogos(),
+  compositor:   new SharpOfferWatermarkCompositor(),
+}));
+// Prévia de link da oferta: imagens geradas da foto já armazenada (com a marca, quando aplicável)
 const previewImage = lazy(
-  () => new OfferPreviewImage({ files: () => mediaContainer.mediaFileStore, images: () => mediaContainer.imageTranscoder }),
+  () => new OfferPreviewImage({
+    files:     () => mediaContainer.mediaFileStore,
+    images:    () => mediaContainer.imageTranscoder,
+    decorator: offerImageDecorator,
+  }),
 );
 const sender       = lazy(() => new ChatOfferMessageSender(undefined, {
   previewImage: previewImage,
+  decorator:    offerImageDecorator,
   files:        () => mediaContainer.mediaFileStore,
   usage:        featureUsageRecorder,
 }));

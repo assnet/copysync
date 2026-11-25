@@ -100,6 +100,8 @@ export const chatMediaContainer = {
       copyFile:   (src, dest) => fs.copyFile(src, dest),
       removeTmp:  (filePath) => fs.rm(filePath, { force: true }),
       images:     mediaContainer.imageTranscoder,
+      readFile:   (filePath) => fs.readFile(filePath),
+      writeFile:  (filePath, data) => fs.writeFile(filePath, data),
     });
   },
 };

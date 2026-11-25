@@ -22,7 +22,9 @@ vi.mock('../../../chat/application/use-cases/SendMessageUseCase', () => ({
   },
 }));
 
-import { ChatOfferMessageSender } from './ChatOfferMessageSender';
+import { ChatOfferMessageSender, TELEGRAM_CAPTION_MAX } from './ChatOfferMessageSender';
+import { MediaNotFoundError } from '../../../../shared/errors/internal/MediaErrors';
+import { MEDIA_IMAGE_MODE_ENABLED } from '../../domain/enums/OfferImageMode';
 
 const base = {
   tenantId: 't1', conversationId: 'c1', text: 'oferta', imageUrl: null as string | null, mentionAll: true,
@@ -134,7 +136,7 @@ describe('ChatOfferMessageSender — formato da imagem', () => {
 
   it('LINK_PREVIEW completo: texto com prévia, sem mídia armazenada', async () => {
     await expect(sender().send(lp)).resolves.toEqual({ chatMessageId: 'm1' });
-    expect(build).toHaveBeenCalledWith('https://cdn/media/offer-1.jpg');
+    expect(build).toHaveBeenCalledWith('t1', 'https://cdn/media/offer-1.jpg');
     expect(h.sendStored).not.toHaveBeenCalled();
     expect(h.sendText).toHaveBeenCalledWith(expect.objectContaining({
       content: lp.text,
@@ -159,5 +161,126 @@ describe('ChatOfferMessageSender — formato da imagem', () => {
     await sender().send(lp);
     expect(h.sendStored).not.toHaveBeenCalled();
     expect(h.sendText.mock.calls[0][0]).not.toHaveProperty('linkPreview');
+  });
+});
+
+describe('ChatOfferMessageSender — marca d\'água e Telegram (IMG-15)', () => {
+  const img = { imageJpeg: Buffer.from('big'), thumbnailJpeg: Buffer.from('thumb') };
+  const build = vi.fn();
+  const applies = vi.fn();
+  const decorate = vi.fn(async (_t: string, b: Buffer) => Buffer.concat([b, Buffer.from('+marca')]));
+  const files = {} as never;
+  const sender = (withDecorator = true) => new ChatOfferMessageSender(undefined, {
+    previewImage: () => ({ build }), files: () => files,
+    ...(withDecorator ? { decorator: () => ({ applies, decorate }) } : {}),
+  });
+  const lp = {
+    ...base, mentionAll: false, imageMode: 'LINK_PREVIEW' as const, title: 'Fone X',
+    text: 'Fone X por R$ 10\n🛒https://amzn.to/x', imageUrl: 'https://cdn/media/offer-1.jpg' as string | null,
+  };
+  const telegram = { ...group, channel: 'telegram' };
+  const whatsapp = { ...group, channel: 'whatsapp' };
+
+  beforeEach(() => {
+    build.mockReset().mockResolvedValue(img);
+    applies.mockReset().mockResolvedValue(true);
+    decorate.mockClear();
+  });
+
+  /** O que o envio de hoje faz em LINK_PREVIEW (sem decorador nenhum). */
+  async function todayCalls(conv: Record<string, unknown>, input: typeof lp) {
+    h.conv = { ...conv };
+    await sender(false).send(input);
+    const calls = { text: h.sendText.mock.calls, stored: h.sendStored.mock.calls, build: build.mock.calls };
+    h.sendText.mockClear(); h.sendStored.mockClear(); build.mockClear();
+    return JSON.stringify(calls);
+  }
+
+  it('MEDIA_IMAGE_MODE_ENABLED segue false', () => {
+    expect(MEDIA_IMAGE_MODE_ENABLED).toBe(false);
+  });
+
+  it('Telegram + marca aplicável: foto marcada com o texto na legenda, ignorando LINK_PREVIEW', async () => {
+    h.conv = { ...telegram };
+    await expect(sender().send(lp)).resolves.toEqual({ chatMessageId: 'm2' });
+    expect(applies).toHaveBeenCalledWith('t1');
+    expect(h.sendText).not.toHaveBeenCalled();
+    expect(build).not.toHaveBeenCalled();
+    const call = h.sendStored.mock.calls[0]![0];
+    expect(call).toMatchObject({ tenantId: 't1', conversationId: 'c1', sourceMediaUrl: lp.imageUrl, caption: lp.text, mentions: null });
+    // A função passada ao chat é a decoração do tenant
+    await expect(call.decorate(Buffer.from('foto'))).resolves.toEqual(Buffer.from('foto+marca'));
+    expect(decorate).toHaveBeenCalledWith('t1', Buffer.from('foto'));
+  });
+
+  it('Telegram com texto no limite (1024 caracteres, emoji conta 1) ainda vai como legenda', async () => {
+    h.conv = { ...telegram };
+    await sender().send({ ...lp, text: '🛒'.repeat(TELEGRAM_CAPTION_MAX) });
+    expect(h.sendStored).toHaveBeenCalledOnce();
+  });
+
+  it('Telegram com texto acima de 1024: envio atual (mesmas chamadas de hoje)', async () => {
+    const long = { ...lp, text: `${'a'.repeat(TELEGRAM_CAPTION_MAX)}\n🛒https://amzn.to/x` };
+    const ref = await todayCalls(telegram, long);
+    h.conv = { ...telegram };
+    await sender().send(long);
+    expect(h.sendStored).not.toHaveBeenCalled();
+    expect(JSON.stringify({ text: h.sendText.mock.calls, stored: h.sendStored.mock.calls, build: build.mock.calls })).toBe(ref);
+  });
+
+  it('Telegram sem marca: chamadas idênticas às de hoje', async () => {
+    applies.mockResolvedValue(false);
+    const ref = await todayCalls(telegram, lp);
+    h.conv = { ...telegram };
+    await sender().send(lp);
+    expect(JSON.stringify({ text: h.sendText.mock.calls, stored: h.sendStored.mock.calls, build: build.mock.calls })).toBe(ref);
+    expect(decorate).not.toHaveBeenCalled();
+  });
+
+  it('WhatsApp com marca aplicável: chamadas idênticas às de hoje (marca entra na prévia), sem consultar o ramo', async () => {
+    const ref = await todayCalls(whatsapp, lp);
+    h.conv = { ...whatsapp };
+    await sender().send(lp);
+    expect(JSON.stringify({ text: h.sendText.mock.calls, stored: h.sendStored.mock.calls, build: build.mock.calls })).toBe(ref);
+    expect(applies).not.toHaveBeenCalled();
+  });
+
+  it('Telegram + marca, oferta sem foto: texto como hoje', async () => {
+    const noPhoto = { ...lp, imageUrl: null };
+    const ref = await todayCalls(telegram, noPhoto);
+    h.conv = { ...telegram };
+    await sender().send(noPhoto);
+    expect(h.sendStored).not.toHaveBeenCalled();
+    expect(JSON.stringify({ text: h.sendText.mock.calls, stored: h.sendStored.mock.calls, build: build.mock.calls })).toBe(ref);
+  });
+
+  it('Telegram + marca, foto sumida do storage: cai no envio atual sem falhar', async () => {
+    h.conv = { ...telegram };
+    h.sendStored.mockRejectedValueOnce(new MediaNotFoundError());
+    build.mockResolvedValue(null); // a prévia também não acha a foto
+    await expect(sender().send(lp)).resolves.toEqual({ chatMessageId: 'm1' });
+    expect(h.sendText).toHaveBeenCalledOnce();
+    expect(h.sendText.mock.calls[0][0]).toMatchObject({ content: lp.text });
+    expect(h.sendText.mock.calls[0][0]).not.toHaveProperty('linkPreview');
+  });
+
+  it('Telegram + marca, outro erro no envio da mídia: propaga', async () => {
+    h.conv = { ...telegram };
+    h.sendStored.mockRejectedValueOnce(new Error('db'));
+    await expect(sender().send(lp)).rejects.toThrow('db');
+    expect(h.sendText).not.toHaveBeenCalled();
+  });
+
+  it('MEDIA sem marca aplicável: sem decoração (igual a hoje)', async () => {
+    applies.mockResolvedValue(false);
+    h.conv = { ...whatsapp };
+    await sender().send({ ...lp, imageMode: 'MEDIA' });
+    expect(h.sendStored.mock.calls[0]![0]).not.toHaveProperty('decorate');
+  });
+
+  it('MEDIA com marca aplicável (se religado): mídia decorada (IMG-08)', async () => {
+    h.conv = { ...whatsapp };
+    await sender().send({ ...lp, imageMode: 'MEDIA' });
+    expect(typeof h.sendStored.mock.calls[0]![0].decorate).toBe('function');
   });
 });
