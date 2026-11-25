@@ -44,6 +44,15 @@ export const OFFER_WATERMARK_SIZE_RATIO: Readonly<Record<OfferWatermarkSize, num
   MEDIUM: 0.22,
   LARGE: 0.3,
 };
+/**
+ * Marca de texto: altura das letras desenhadas (tinta, sem sombra) como fração do lado menor da foto. A
+ * largura acompanha a frase, então medir pela largura (como o logo) deixava frase longa minúscula.
+ */
+export const OFFER_WATERMARK_TEXT_HEIGHT_RATIO: Readonly<Record<OfferWatermarkSize, number>> = {
+  SMALL: 0.05,
+  MEDIUM: 0.07,
+  LARGE: 0.09,
+};
 /** Margem até a borda, fração do lado menor da foto. */
 export const OFFER_WATERMARK_MARGIN_RATIO = 0.04;
 

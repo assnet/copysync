@@ -35,8 +35,27 @@ describe('computeWatermarkPlacement (espelho da API)', () => {
   });
 
   it('texto: medida do canvas quando houver; senão estimativa', () => {
-    expect(textMarkDimensions('Ana', () => 300).width).toBe(340);
+    const ink = { x: -2, y: -90, width: 300, height: 92 };
+    expect(textMarkDimensions('Ana', () => ink)).toEqual(ink);
     expect(textMarkDimensions('Ana').width).toBeGreaterThan(textMarkDimensions('A').width);
+  });
+
+  // Mesmos números da API (modo `height`): altura das letras = lado menor × 5/7/9 %, margem 4 %
+  const FRASE = { width: 1180, height: 118 };
+  it.each(WATERMARK_SIZES.map((s, i) => [s, [30, 42, 54][i]] as const))('texto %s → altura %i em foto 600', (size, height) => {
+    const p = computeWatermarkPlacement({ width: 600, height: 600 }, FRASE, 'CENTER', size, 'height');
+    expect(p.height).toBe(height);
+    expect(p.width).toBe(height * 10);
+  });
+
+  it('texto 600×600 MEDIUM no canto: 420 × 42 com margem 24 (igual à API)', () => {
+    expect(computeWatermarkPlacement({ width: 600, height: 600 }, FRASE, 'BOTTOM_RIGHT', 'MEDIUM', 'height'))
+      .toEqual({ width: 420, height: 42, left: 156, top: 534 });
+  });
+
+  it('texto mais largo que a área útil: reduz mantendo a proporção (igual à API)', () => {
+    const p = computeWatermarkPlacement({ width: 600, height: 600 }, { width: 3000, height: 100 }, 'TOP_LEFT', 'LARGE', 'height');
+    expect(p).toEqual({ width: 552, height: 18, left: 24, top: 24 });
   });
 });
 

@@ -38,12 +38,23 @@ async function packagedTextFont(): Promise<WatermarkTextFont> {
   return { name: inter.name, weight: 800, data: Buffer.isBuffer(inter.data) ? inter.data : Buffer.from(inter.data) };
 }
 
-/**
- * Texto da marca em PNG transparente, recortado ao conteúdo (texto + sombra). Satori converte os
- * glifos em contornos a partir dos bytes da fonte recebida e o resvg rasteriza: não existe fonte
- * do sistema nesse caminho (o `text` do sharp com `.woff` caía no fallback do sistema).
- */
-export async function renderWatermarkText(text: string, font: WatermarkTextFont): Promise<Buffer> {
+/** Caixa das letras (tinta, sem sombra) dentro do PNG da marca de texto, em pixels. */
+export interface WatermarkTextInk {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+export interface RenderedWatermarkText {
+  /** Texto + sombra, recortado ao conteúdo. */
+  png: Buffer;
+  /** Onde ficam as letras sem a sombra dentro de `png`: é por essa caixa que a marca é medida. */
+  ink: WatermarkTextInk;
+}
+
+/** Uma linha de texto no satori, com ou sem sombra (mesmo layout: a sombra não move as letras). */
+async function rasterizeText(text: string, font: WatermarkTextFont, shadow: boolean): Promise<Buffer> {
   const node = {
     type: 'div',
     props: {
@@ -54,7 +65,7 @@ export async function renderWatermarkText(text: string, font: WatermarkTextFont)
         fontWeight: font.weight,
         fontSize: TEXT_FONT_SIZE,
         color: TEXT_COLOR,
-        textShadow: TEXT_SHADOW,
+        ...(shadow ? { textShadow: TEXT_SHADOW } : {}),
         whiteSpace: 'nowrap',
       },
       children: text,
@@ -65,8 +76,27 @@ export async function renderWatermarkText(text: string, font: WatermarkTextFont)
     height: TEXT_FONT_SIZE + TEXT_PADDING * 2 + 24,
     fonts: [{ name: font.name, weight: font.weight, style: 'normal', data: font.data }],
   });
-  const png = new Resvg(svg).render().asPng();
-  return sharp(png).trim().png().toBuffer();
+  return new Resvg(svg).render().asPng();
+}
+
+/** Recorta ao conteúdo e devolve onde o recorte começava na tela original. */
+async function trimWithOffset(png: Buffer): Promise<{ data: Buffer; left: number; top: number; width: number; height: number }> {
+  const { data, info } = await sharp(png).trim().png().toBuffer({ resolveWithObject: true });
+  return { data, left: -(info.trimOffsetLeft ?? 0), top: -(info.trimOffsetTop ?? 0), width: info.width, height: info.height };
+}
+
+/**
+ * Texto da marca em PNG transparente, recortado ao conteúdo (texto + sombra), com a caixa das letras sem
+ * sombra. Satori converte os glifos em contornos a partir dos bytes da fonte recebida e o resvg rasteriza:
+ * não existe fonte do sistema nesse caminho (o `text` do sharp com `.woff` caía no fallback do sistema).
+ */
+export async function renderWatermarkText(text: string, font: WatermarkTextFont): Promise<RenderedWatermarkText> {
+  const [withShadow, inkOnly] = await Promise.all([rasterizeText(text, font, true), rasterizeText(text, font, false)]);
+  const [full, ink] = await Promise.all([trimWithOffset(withShadow), trimWithOffset(inkOnly)]);
+  return {
+    png: full.data,
+    ink: { left: ink.left - full.left, top: ink.top - full.top, width: ink.width, height: ink.height },
+  };
 }
 
 /** Multiplica o canal alfa por `opacity` (20–100 %), preservando o recorte da marca. */
@@ -93,21 +123,60 @@ export class SharpOfferWatermarkCompositor implements IOfferWatermarkCompositor 
     const swap = (meta.orientation ?? 1) >= 5;
     const dims = swap ? { width: meta.height, height: meta.width } : { width: meta.width, height: meta.height };
 
-    const source = mark.kind === 'IMAGE'
-      ? mark.logo
-      : await renderWatermarkText(mark.text, await (this.deps.textFont ?? packagedTextFont)());
-    const markMeta = await sharp(source, { limitInputPixels: PHOTO_MAX_PIXELS }).metadata();
-    if (!markMeta.width || !markMeta.height) throw new Error('Watermark without dimensions');
-
-    const place = computeWatermarkPlacement(dims, { width: markMeta.width, height: markMeta.height }, layout.position, layout.size);
-    const resized = await sharp(source).ensureAlpha().resize(place.width, place.height, { fit: 'fill' }).png().toBuffer();
-    const overlay = await withOpacity(resized, layout.opacity);
+    const placed = mark.kind === 'IMAGE'
+      ? await this.placeLogo(mark.logo, dims, layout)
+      : await this.placeText(mark.text, dims, layout);
+    const overlay = await withOpacity(placed.png, layout.opacity);
 
     return sharp(photo, { limitInputPixels: PHOTO_MAX_PIXELS })
       .rotate()
-      .composite([{ input: overlay, left: place.left, top: place.top }])
+      .composite([{ input: overlay, left: placed.left, top: placed.top }])
       .flatten({ background: '#ffffff' })
       .jpeg({ quality: OUTPUT_QUALITY, mozjpeg: true })
       .toBuffer();
   }
+
+  /** Logo: medido pela largura (`computeWatermarkPlacement` modo `width`). */
+  private async placeLogo(logo: Buffer, dims: Dimensions, layout: OfferWatermarkLayout): Promise<PlacedMark> {
+    const meta = await sharp(logo, { limitInputPixels: PHOTO_MAX_PIXELS }).metadata();
+    if (!meta.width || !meta.height) throw new Error('Watermark without dimensions');
+    const place = computeWatermarkPlacement(dims, { width: meta.width, height: meta.height }, layout.position, layout.size);
+    const png = await sharp(logo).ensureAlpha().resize(place.width, place.height, { fit: 'fill' }).png().toBuffer();
+    return { png, left: place.left, top: place.top };
+  }
+
+  /**
+   * Texto: medido pela altura das letras sem sombra (modo `height`); a sombra acompanha na mesma escala em
+   * volta da caixa das letras e é cortada se passar da borda da foto (cabe na margem de 4 % na prática).
+   */
+  private async placeText(text: string, dims: Dimensions, layout: OfferWatermarkLayout): Promise<PlacedMark> {
+    const { png, ink } = await renderWatermarkText(text, await (this.deps.textFont ?? packagedTextFont)());
+    const meta = await sharp(png).metadata();
+    if (!meta.width || !meta.height) throw new Error('Watermark without dimensions');
+    const place = computeWatermarkPlacement(dims, ink, layout.position, layout.size, 'height');
+    const sx = place.width / ink.width;
+    const sy = place.height / ink.height;
+    const w = Math.max(1, Math.round(meta.width * sx));
+    const h = Math.max(1, Math.round(meta.height * sy));
+    const left = place.left - Math.round(ink.left * sx);
+    const top = place.top - Math.round(ink.top * sy);
+    const resized = sharp(await sharp(png).ensureAlpha().resize(w, h, { fit: 'fill' }).png().toBuffer());
+
+    const cut = { l: Math.max(0, -left), t: Math.max(0, -top), r: Math.max(0, left + w - dims.width), b: Math.max(0, top + h - dims.height) };
+    if (cut.l || cut.t || cut.r || cut.b) {
+      resized.extract({ left: cut.l, top: cut.t, width: w - cut.l - cut.r, height: h - cut.t - cut.b });
+    }
+    return { png: await resized.png().toBuffer(), left: Math.max(0, left), top: Math.max(0, top) };
+  }
+}
+
+interface Dimensions {
+  width: number;
+  height: number;
+}
+
+interface PlacedMark {
+  png: Buffer;
+  left: number;
+  top: number;
 }

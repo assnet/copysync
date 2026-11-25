@@ -26,9 +26,14 @@ liberação. Specs: `.specs/features/affiliate-marketplaces-expansion/` (IMG-01.
 - Chave `offer_watermark_enabled`: só MAX `true`; rótulo "Marca d'água própria"; flag "Só super admin" ligada de
   início.
 - Tabela `offer_watermarks` (uma linha por tenant): `kind` `IMAGE` | `TEXT`, `imageKey`, `text` (1–32 caracteres, uma
-  linha, sem controle), `enabled`, `position` (4 cantos ou `CENTER`), `size` `SMALL`/`MEDIUM`/`LARGE` (15/22/30 % do
-  lado menor da foto, margem 4 %, `computeWatermarkPlacement`), `opacity` 20–100. Padrão: desligada, `IMAGE`,
-  `BOTTOM_RIGHT`, `MEDIUM`, 80.
+  linha, sem controle), `enabled`, `position` (4 cantos ou `CENTER`), `size` `SMALL`/`MEDIUM`/`LARGE`, `opacity`
+  20–100. Padrão: desligada, `IMAGE`, `BOTTOM_RIGHT`, `MEDIUM`, 80.
+- **Tamanho** (`computeWatermarkPlacement`, margem 4 % do lado menor nos dois tipos):
+  - Logo (`IMAGE`, modo `width`): largura = lado menor da foto × 15/22/30 %, altura proporcional.
+  - Texto (`TEXT`, modo `height`): **altura das letras desenhadas, sem sombra** = lado menor × 5/7/9 %, largura
+    proporcional; passou da largura útil (foto − 2 margens) → reduz mantendo a proporção. A sombra acompanha na mesma
+    escala em volta das letras. Não medir o texto pela largura: frase longa ficava minúscula. A caixa das letras é a
+    tinta real do texto (acento e cedilha contam), medida no render sem sombra (`renderWatermarkText` → `ink`).
 - **Logo OU texto, nunca os dois**: `kind` escolhe a fonte; trocar o tipo guarda o outro dado sem aplicá-lo.
 - Logo: upload só por `chunkedUpload`; PNG ou WebP validado pelo conteúdo, ≤ 1 MiB, mínimo 100×100, normalizado para
   PNG com lado maior ≤ 512 px (`SharpOfferWatermarkLogoProcessor`). Trocar apaga o anterior do storage.
@@ -63,7 +68,7 @@ chega é foto com legenda. A página da marca avisa isso.
 
 | Método | Path | Faz |
 |---|---|---|
-| GET | `/access` | Só `authHook`: `{ visible }` = audiência **e** plano; nunca 403 (some o item de menu) |
+| GET | `/access` | Só `authHook`: `{ visible }` = **só a audiência** (flag "Só super admin" desligada ou super admin), nunca o plano; nunca 403. PRO vê o item e a página com selo MAX (403 do `GET /`), como o Story |
 | GET | `/` | Ajustes do tenant (padrões sem registro) |
 | PUT | `/` | Ajustes parciais (`enabled`, `kind`, `text`, `position`, `size`, `opacity`); fora da regra → 422 `OFFER_WATERMARK_INVALID_INPUT` com `meta.field` |
 | PUT | `/image` | `{ uploadId }` de upload concluído; erros de mídia padrão (`MEDIA_TOO_LARGE`, `UNSUPPORTED_MEDIA_TYPE`…) |
@@ -87,7 +92,10 @@ chave do storage. Hooks: `authHook` + `tenantHook` + `withProduct` + `offerWater
 - Rascunho dos ajustes em `usePersistedState` (escopo `tab`), limpo ao salvar; logo nunca no storage do navegador.
   Privacidade: flag `offerWatermark.logo` borra logo e texto na página e na prévia.
 - Prévia: `features/offerWatermark/rules.ts` é cópia de `computeWatermarkPlacement` (teste fixa os números da API nas
-  5 posições). Mudou a regra na API → mude a cópia. Texto: altura estimada pela fonte, pode diferir alguns pixels.
+  5 posições e o modo texto). Mudou a regra na API → mude a cópia. Texto: caixa das letras medida pelo canvas
+  (`actualBoundingBox*`), posta pela altura; pode diferir alguns pixels da fonte do servidor.
+- Botão de suporte sobe em `/offer-watermark` (`SUPPORT_CHAT_RAISED_PATHS`, barra "Salvar" presa ao rodapé); a página
+  tem folga inferior para o botão não cobrir o aviso do Telegram no celular.
 - Tela sem contagem em `/admin/usage` (exigiria mudar `contracts/feature-usage/catalog.json`).
 
 ## Migrations

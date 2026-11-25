@@ -93,9 +93,8 @@ describe('SharpOfferWatermarkCompositor — texto', () => {
 
   it('legível sobre foto clara e escura (texto claro + sombra escura)', async () => {
     const mark = { kind: 'TEXT' as const, text: TEXT };
-    const markPng = await renderWatermarkText(TEXT, await font('inter-latin-800-normal.woff', 'Inter', 800));
-    const mm = await sharp(markPng).metadata();
-    const place = computeWatermarkPlacement({ width: W, height: H }, { width: mm.width!, height: mm.height! }, 'BOTTOM_RIGHT', 'LARGE');
+    const { ink } = await renderWatermarkText(TEXT, await font('inter-latin-800-normal.woff', 'Inter', 800));
+    const place = computeWatermarkPlacement({ width: W, height: H }, ink, 'BOTTOM_RIGHT', 'LARGE', 'height');
     const layout: OfferWatermarkLayout = { position: 'BOTTOM_RIGHT', size: 'LARGE', opacity: 100 };
 
     const onWhite = await compositor.compose(await photo('jpeg', { r: 255, g: 255, b: 255 }), mark, layout);
@@ -109,8 +108,8 @@ describe('SharpOfferWatermarkCompositor — texto', () => {
   it('fonte empacotada carregada de fato: Inter × Pacifico geram imagens diferentes', async () => {
     const inter = await renderWatermarkText(TEXT, await font('inter-latin-800-normal.woff', 'Inter', 800));
     const pacifico = await renderWatermarkText(TEXT, await font('pacifico-latin-400-normal.woff', 'Pacifico', 400));
-    const a = await sharp(inter).metadata();
-    const b = await sharp(pacifico).metadata();
+    const a = await sharp(inter.png).metadata();
+    const b = await sharp(pacifico.png).metadata();
     expect([a.width, a.height]).not.toEqual([b.width, b.height]);
   });
 
@@ -132,10 +131,38 @@ describe('SharpOfferWatermarkCompositor — texto', () => {
     const f = await font('inter-latin-800-normal.woff', 'Inter', 800);
     const withAccents = await renderWatermarkText('São João', f);
     const without = await renderWatermarkText('Sao Joao', f);
-    const a = await raw(withAccents);
-    const b = await raw(without);
+    const a = await raw(withAccents.png);
+    const b = await raw(without.png);
     // Mesma largura de avanço, mas o til sobe a altura do recorte (ou muda os pixels)
     expect(a.info.height !== b.info.height || !a.data.equals(b.data)).toBe(true);
     expect(a.info.height).toBeGreaterThan(b.info.height);
+  });
+
+  it('altura das letras = lado menor × 7 % (MEDIUM), sombra em volta, em 600×600 e 1080×1350', async () => {
+    const f = await font('inter-latin-800-normal.woff', 'Inter', 800);
+    const { png, ink } = await renderWatermarkText(TEXT, f);
+    const pm = await sharp(png).metadata();
+    // Caixa das letras dentro do recorte com sombra
+    expect(ink.left).toBeGreaterThan(0);
+    expect(ink.top).toBeGreaterThanOrEqual(0);
+    expect(ink.left + ink.width).toBeLessThan(pm.width!);
+    expect(ink.top + ink.height).toBeLessThanOrEqual(pm.height!);
+
+    const explicit = new SharpOfferWatermarkCompositor({ textFont: async () => f });
+    for (const [w, h] of [[600, 600], [1080, 1350]] as const) {
+      const src = await sharp({ create: { width: w, height: h, channels: 3, background: { r: 0, g: 0, b: 0 } } }).png().toBuffer();
+      const out = await raw(await explicit.compose(src, { kind: 'TEXT', text: TEXT }, { position: 'BOTTOM_RIGHT', size: 'MEDIUM', opacity: 100 }));
+      // Linhas com letra (pixel bem claro) sobre fundo preto = altura das letras
+      let first = -1;
+      let last = -1;
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          if (out.at(x, y).r > 200) { if (first < 0) first = y; last = y; break; }
+        }
+      }
+      const expected = Math.round(Math.min(w, h) * 0.07);
+      expect(Math.abs(last - first + 1 - expected)).toBeLessThanOrEqual(3);
+      expect(last).toBeLessThanOrEqual(h - Math.floor(Math.min(w, h) * 0.04));
+    }
   });
 });

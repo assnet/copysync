@@ -1,5 +1,4 @@
 import type { FastifyRequest } from 'fastify';
-import { resolveMembership } from '../../../../shared/http/hooks/resolveMembership';
 import { NotFoundError } from '../../../../shared/errors/internal/ResourceErrors';
 import { ENTITLEMENT_KEYS } from '../../../tenants/domain/entitlementKeys';
 import { offersContainer } from '../../infrastructure/offersContainer';
@@ -18,19 +17,10 @@ export async function offerWatermarkAudienceHook(request: FastifyRequest): Promi
 }
 
 /**
- * `GET /access` (só `authHook`): visível = audiência E plano. Nunca 403: audiência fora, `X-Tenant-Id` ausente,
- * membro inválido ou plano sem a chave = `false`. Tenant validado como no `tenantHook` (padrão do caçador).
+ * `GET /access` (só `authHook`): visível = audiência, nunca o plano (spec IMG-12, critério 8; mesmo critério do
+ * Story). O PRO vê o item e a página, que mostra o selo de plano a partir do 403 `PLAN_FEATURE_UNAVAILABLE` do
+ * `GET /`. Nunca 403: flag "Só super admin" ligada e usuário comum = `false`.
  */
 export async function isOfferWatermarkVisible(request: FastifyRequest): Promise<boolean> {
-  const isSuperAdmin = request.user?.isSuperAdmin === true;
-  if (!(await offersContainer.offerWatermarkAudience().isVisible(KEY, { isSuperAdmin }))) return false;
-  const header = request.headers['x-tenant-id'];
-  if (typeof header !== 'string' || !header) return false;
-  let tenantId: string;
-  try {
-    tenantId = (await resolveMembership(request.user.userId, header, isSuperAdmin)).tenantId;
-  } catch {
-    return false;
-  }
-  return (await offersContainer.entitlements().getBoolean(tenantId, KEY)) === true;
+  return offersContainer.offerWatermarkAudience().isVisible(KEY, { isSuperAdmin: request.user?.isSuperAdmin === true });
 }

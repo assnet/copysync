@@ -214,7 +214,9 @@ export function OfferWatermarkPage() {
   const s = useOfferWatermarkPage();
 
   return (
-    <Box>
+    // Folga no fim: o botão de suporte sobe nesta rota (barra "Salvar" presa ao rodapé) e não pode cobrir o
+    // aviso do Telegram, último bloco no celular (botão a 132 px + 52 px no xs; 88 px + 56 px do sm em diante).
+    <Box sx={{ pb: { xs: '168px', sm: '120px' } }}>
       <PageHeader title={t.page.title} subtitle={t.page.subtitle} />
 
       {s.status === 'loading' && (

@@ -19,6 +19,8 @@ export const WATERMARK_LOGO_MAX_BYTES = 1024 * 1024;
 
 /** Largura da marca como fração do lado menor da foto. */
 export const WATERMARK_SIZE_RATIO: Readonly<Record<WatermarkSize, number>> = { SMALL: 0.15, MEDIUM: 0.22, LARGE: 0.3 };
+/** Marca de texto: altura das letras (sem sombra) como fração do lado menor da foto. */
+export const WATERMARK_TEXT_HEIGHT_RATIO: Readonly<Record<WatermarkSize, number>> = { SMALL: 0.05, MEDIUM: 0.07, LARGE: 0.09 };
 /** Margem até a borda, fração do lado menor da foto. */
 export const WATERMARK_MARGIN_RATIO = 0.04;
 
@@ -29,9 +31,13 @@ export const WATERMARK_DEFAULTS: WatermarkDraft = {
 
 export interface Dimensions { width: number; height: number }
 export interface WatermarkPlacement { width: number; height: number; left: number; top: number }
+/** `width`: logo (largura pelo tamanho). `height`: texto (altura das letras pelo tamanho). */
+export type WatermarkSizing = 'width' | 'height';
 
 /** Cópia fiel de `computeWatermarkPlacement` da API (pixels inteiros, marca sempre dentro da foto). */
-export function computeWatermarkPlacement(photo: Dimensions, mark: Dimensions, position: WatermarkPosition, size: WatermarkSize): WatermarkPlacement {
+export function computeWatermarkPlacement(
+  photo: Dimensions, mark: Dimensions, position: WatermarkPosition, size: WatermarkSize, sizing: WatermarkSizing = 'width',
+): WatermarkPlacement {
   const photoW = Math.max(1, Math.floor(photo.width));
   const photoH = Math.max(1, Math.floor(photo.height));
   const minSide = Math.min(photoW, photoH);
@@ -40,11 +46,22 @@ export function computeWatermarkPlacement(photo: Dimensions, mark: Dimensions, p
 
   const maxW = Math.max(1, photoW - 2 * margin);
   const maxH = Math.max(1, photoH - 2 * margin);
-  let width = Math.min(maxW, Math.max(1, Math.round(minSide * WATERMARK_SIZE_RATIO[size])));
-  let height = Math.max(1, Math.round(width * aspect));
-  if (height > maxH) {
-    height = maxH;
-    width = Math.min(maxW, Math.max(1, Math.round(height / aspect)));
+  let width: number;
+  let height: number;
+  if (sizing === 'height') {
+    height = Math.min(maxH, Math.max(1, Math.round(minSide * WATERMARK_TEXT_HEIGHT_RATIO[size])));
+    width = Math.max(1, Math.round(height / aspect));
+    if (width > maxW) {
+      width = maxW;
+      height = Math.min(maxH, Math.max(1, Math.round(width * aspect)));
+    }
+  } else {
+    width = Math.min(maxW, Math.max(1, Math.round(minSide * WATERMARK_SIZE_RATIO[size])));
+    height = Math.max(1, Math.round(width * aspect));
+    if (height > maxH) {
+      height = maxH;
+      width = Math.min(maxW, Math.max(1, Math.round(height / aspect)));
+    }
   }
 
   const right = photoW - margin - width;
@@ -64,27 +81,33 @@ export function computeWatermarkPlacement(photo: Dimensions, mark: Dimensions, p
 }
 
 /**
- * Proporção aproximada do texto como a API o desenha (Inter 800 a 120 px, sombra, recorte ao conteúdo).
- * No navegador mede pelo canvas; sem canvas (testes) estima pela média de largura dos caracteres.
+ * Caixa das letras (tinta, sem sombra) como a API mede a marca de texto: Inter 800 a 120 px, origem na
+ * linha de base (`x`/`y` = canto superior esquerdo da tinta). No navegador mede pelo canvas; sem canvas
+ * (testes) estima pela média de largura dos caracteres e pela altura das maiúsculas.
  */
-const TEXT_FONT_PX = 120;
-const TEXT_SHADOW_PX = 20;
-const TEXT_INK_HEIGHT = TEXT_FONT_PX * 0.95 + TEXT_SHADOW_PX * 2;
+export const TEXT_FONT_PX = 120;
 
-export function textMarkDimensions(text: string, measure?: (text: string) => number | null): Dimensions {
+export interface TextInk { x: number; y: number; width: number; height: number }
+
+export function textMarkDimensions(text: string, measure?: (text: string) => TextInk | null): TextInk {
   const value = text.trim() || ' ';
   const measured = measure?.(value);
-  const glyphs = measured && measured > 0 ? measured : [...value].length * TEXT_FONT_PX * 0.62;
-  return { width: glyphs + TEXT_SHADOW_PX * 2, height: TEXT_INK_HEIGHT };
+  if (measured && measured.width > 0 && measured.height > 0) return measured;
+  return { x: 0, y: -TEXT_FONT_PX * 0.73, width: [...value].length * TEXT_FONT_PX * 0.62, height: TEXT_FONT_PX * 0.73 };
 }
 
-/** Largura do texto na fonte da marca pelo canvas; null sem canvas. */
-export function measureWatermarkText(text: string): number | null {
+/** Caixa das letras na fonte da marca pelo canvas; null sem canvas. */
+export function measureWatermarkText(text: string): TextInk | null {
   try {
     const ctx = document.createElement('canvas').getContext('2d');
     if (!ctx) return null;
     ctx.font = `800 ${TEXT_FONT_PX}px Inter, system-ui, sans-serif`;
-    return ctx.measureText(text).width;
+    ctx.textBaseline = 'alphabetic';
+    ctx.textAlign = 'left';
+    const m = ctx.measureText(text);
+    const width = m.actualBoundingBoxLeft + m.actualBoundingBoxRight;
+    const height = m.actualBoundingBoxAscent + m.actualBoundingBoxDescent;
+    return width > 0 && height > 0 ? { x: -m.actualBoundingBoxLeft, y: -m.actualBoundingBoxAscent, width, height } : null;
   } catch {
     return null;
   }

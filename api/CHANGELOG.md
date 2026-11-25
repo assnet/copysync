@@ -56,6 +56,8 @@ Plano: `.specs/features/affiliate-marketplaces-expansion/`.
 - **`features/monitoring/*`** (`MonitoringSettingsForm.tsx`, `utils/settingsDraft.ts` v7, `strings.ts`) — switch "Usar a foto oficial do produto", oculto fora da audiência, travado com selo PRO fora do plano.
 - **`features/offerWatermark/*`**, **`navigation/*`**, **`AppLayout.tsx`**, **`AppRoutes.tsx`**, **`privacyFlags.ts`** — página `/offer-watermark` (logo ou texto, posição, tamanho, opacidade, prévia ao vivo, aviso do Telegram); item "Marca d'água" em Afiliados só com acesso; flag de privacidade `offerWatermark.logo`.
 
+- **`offerWatermarkAudienceHook.ts`**, **`computeWatermarkPlacement.ts`** (modo `height`), **`SharpOfferWatermarkCompositor.ts`**, **`offerWatermark/rules.ts`** + **`WatermarkPreview.tsx`**, **`supportChat/routes.ts`** — correções do QA: `GET /access` = só audiência (PRO vê a página com selo MAX); texto medido pela altura das letras sem sombra (5/7/9 % do lado menor), frase longa não fica minúscula; botão de suporte sobe em `/offer-watermark`.
+
 ### Migrations (rodam no boot da Render, `start:migrate`)
 
 - `20261124090000_add_kabum_affiliate_provider`, `…090100_add_magalu_affiliate_provider`, `…090200_add_aliexpress_affiliate_provider` (enum).

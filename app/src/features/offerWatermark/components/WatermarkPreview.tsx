@@ -3,7 +3,7 @@ import { Box, Typography } from '@mui/material';
 import { Headphones } from 'lucide-react';
 import { AppIcon } from '@/components';
 import { Blurred, useBlur } from '@/features/privacy';
-import { computeWatermarkPlacement, measureWatermarkText, textMarkDimensions, type Dimensions } from '../rules';
+import { TEXT_FONT_PX, computeWatermarkPlacement, measureWatermarkText, textMarkDimensions, type Dimensions } from '../rules';
 import { offerWatermarkStrings } from '../strings';
 import type { WatermarkDraft } from '../types';
 
@@ -20,7 +20,7 @@ interface Props {
 
 /**
  * Prévia ao vivo: foto de exemplo gerada (fundo neutro + produto em ícone) e a marca por cima, com
- * lugar e tamanho de `computeWatermarkPlacement` (cópia da regra da API) em % da foto e a mesma
+ * lugar e tamanho de `computeWatermarkPlacement` (cópia da regra da API; texto pela altura das letras) em % da foto e a mesma
  * opacidade. Logo esticado no retângulo calculado, como o `resize(fit: fill)` do servidor.
  */
 export function WatermarkPreview({ value, imageUrl }: Props) {
@@ -30,10 +30,12 @@ export function WatermarkPreview({ value, imageUrl }: Props) {
   const isImage = value.kind === 'IMAGE';
   const text = value.text.trim();
   const hasMark = isImage ? Boolean(imageUrl) : text !== '';
+  // Texto medido pela caixa das letras (sem sombra) e posto pela altura, como o servidor (modo `height`)
+  const ink = textMarkDimensions(text || t.emptyText, measureWatermarkText);
   const markDims: Dimensions = isImage
     ? (logoDims && logoDims.url === imageUrl ? logoDims.dims : { width: 1, height: 1 })
-    : textMarkDimensions(text || t.emptyText, measureWatermarkText);
-  const place = computeWatermarkPlacement(PHOTO, markDims, value.position, value.size);
+    : ink;
+  const place = computeWatermarkPlacement(PHOTO, markDims, value.position, value.size, isImage ? 'width' : 'height');
 
   return (
     <Box>
@@ -78,19 +80,19 @@ export function WatermarkPreview({ value, imageUrl }: Props) {
                 />
               ) : (
                 <svg
-                  viewBox={`0 0 ${markDims.width} ${markDims.height}`}
+                  viewBox={`${ink.x} ${ink.y} ${ink.width} ${ink.height}`}
                   width="100%"
                   height="100%"
                   aria-hidden
                   style={{ display: 'block', overflow: 'visible', filter: 'drop-shadow(0 0 2px rgba(0,0,0,0.9)) drop-shadow(0 1px 3px rgba(0,0,0,0.7))' }}
                 >
                   <text
-                    x="50%"
-                    y="50%"
-                    dominantBaseline="central"
-                    textAnchor="middle"
+                    x={0}
+                    y={0}
+                    dominantBaseline="alphabetic"
+                    textAnchor="start"
                     fill="#FFFFFF"
-                    fontSize={120}
+                    fontSize={TEXT_FONT_PX}
                     fontWeight={800}
                     fontFamily="Inter, system-ui, sans-serif"
                   >

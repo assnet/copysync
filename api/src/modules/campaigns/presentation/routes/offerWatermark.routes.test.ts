@@ -268,16 +268,23 @@ describe('GET /offer-watermark/access (nunca 403)', () => {
 
   it.each([
     ['flag desligada + plano', () => {}, AUTH, true],
-    ['flag desligada + sem plano', () => { s.plan = false; }, AUTH, false],
+    ['flag desligada + sem plano (PRO): visível, a página mostra o selo', () => { s.plan = false; }, AUTH, true],
     ['flag ligada + usuário comum', () => { s.superAdminOnly = true; }, AUTH, false],
     ['flag ligada + super admin com plano', () => { s.superAdminOnly = true; }, SUPER, true],
-    ['flag ligada + super admin sem plano', () => { s.superAdminOnly = true; s.plan = false; }, SUPER, false],
-    ['sem X-Tenant-Id', () => {}, { authorization: 'Bearer x' }, false],
-    ['tenant de que não é membro', () => {}, { authorization: 'Bearer x', 'x-tenant-id': 'tenant-b' }, false],
+    ['flag ligada + super admin sem plano', () => { s.superAdminOnly = true; s.plan = false; }, SUPER, true],
+    ['sem X-Tenant-Id (plano não entra)', () => {}, { authorization: 'Bearer x' }, true],
   ] as const)('%s → visible %s', async (_n, arrange, headers, visible) => {
     arrange();
     const res = await access(headers as Record<string, string>);
     expect(res.statusCode).toBe(200);
     expect(res.json().data).toEqual({ visible });
+  });
+
+  it('PRO com flag desligada: /access visível e GET / 403 PLAN_FEATURE_UNAVAILABLE (selo na página)', async () => {
+    s.plan = false;
+    expect((await access(AUTH)).json().data).toEqual({ visible: true });
+    const res = await app.inject({ method: 'GET', url: PREFIX, headers: AUTH });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe('PLAN_FEATURE_UNAVAILABLE');
   });
 });

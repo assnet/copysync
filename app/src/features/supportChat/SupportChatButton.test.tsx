@@ -48,6 +48,7 @@ describe('SupportChatButton', () => {
     expect(isSupportChatRaised('/offer-story/')).toBe(true);
     expect(isSupportChatRaised('/offers')).toBe(false);
     expect(isSupportChatRaised('/saver')).toBe(true);
+    expect(isSupportChatRaised('/offer-watermark')).toBe(true);
   });
 
   it('branco sobre a superfície tem contraste de texto (≥ 4.5:1)', () => {

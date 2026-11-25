@@ -57,3 +57,45 @@ describe('computeWatermarkPlacement', () => {
     expect(w('MEDIUM')).toBeLessThan(w('LARGE'));
   });
 });
+
+describe('computeWatermarkPlacement — texto (altura das letras)', () => {
+  const HEIGHT = { SMALL: 0.05, MEDIUM: 0.07, LARGE: 0.09 } as const;
+  /** Caixa das letras de "Promoções São João" em Inter 800 a 120 px (ordem de grandeza). */
+  const FRASE = { width: 1180, height: 118 };
+
+  for (const [photoName, photo] of Object.entries(PHOTOS)) {
+    for (const position of OFFER_WATERMARK_POSITIONS) {
+      for (const size of OFFER_WATERMARK_SIZES) {
+        it(`${photoName} × ${position} × ${size}: altura = lado menor × ${HEIGHT[size]}, dentro da foto`, () => {
+          const p = computeWatermarkPlacement(photo, FRASE, position, size, 'height');
+          const minSide = Math.min(photo.width, photo.height);
+          const margin = Math.floor(minSide * 0.04);
+          expect(p.height).toBe(Math.round(minSide * HEIGHT[size]));
+          expect(p.width).toBe(Math.round((p.height * FRASE.width) / FRASE.height));
+          expect(p.left).toBeGreaterThanOrEqual(margin);
+          expect(p.top).toBeGreaterThanOrEqual(margin);
+          expect(p.left + p.width).toBeLessThanOrEqual(photo.width - margin);
+          expect(p.top + p.height).toBeLessThanOrEqual(photo.height - margin);
+        });
+      }
+    }
+  }
+
+  it('600×600 MEDIUM: 42 px de letra, largura proporcional', () => {
+    expect(computeWatermarkPlacement({ width: 600, height: 600 }, FRASE, 'BOTTOM_RIGHT', 'MEDIUM', 'height'))
+      .toEqual({ width: 420, height: 42, left: 600 - 24 - 420, top: 600 - 24 - 42 });
+  });
+
+  it('frase mais larga que a área útil: reduz mantendo a proporção', () => {
+    const p = computeWatermarkPlacement({ width: 600, height: 600 }, { width: 3000, height: 100 }, 'TOP_LEFT', 'LARGE', 'height');
+    expect(p.width).toBe(600 - 2 * 24);
+    expect(p.height).toBe(Math.round(552 / 30));
+  });
+
+  it('frase longa não encolhe com o número de letras (diferente do modo largura)', () => {
+    const curta = computeWatermarkPlacement(PHOTOS.quadrada, { width: 300, height: 118 }, 'CENTER', 'MEDIUM', 'height');
+    const longa = computeWatermarkPlacement(PHOTOS.quadrada, FRASE, 'CENTER', 'MEDIUM', 'height');
+    expect(longa.height).toBe(curta.height);
+    expect(longa.width).toBeGreaterThan(curta.width);
+  });
+});
