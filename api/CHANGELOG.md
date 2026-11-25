@@ -53,7 +53,8 @@ Plano: `.specs/features/affiliate-marketplaces-expansion/`.
 - **`features/settings/*`** (`affiliateProviders.ts`, card, diálogo, hook, `strings.ts`), **`services/affiliateCredential.service.ts`**, **`public/assets/marketplaces/kabum.svg`** — card Kabum (Publisher ID, guia, regras do programa); card só renderiza para loja em `marketplaceAvailability` (API antiga: 4 lojas antigas); campo extra opcional no diálogo, ainda sem `usePersistedState`; `Blurred` do identificador em todas as lojas.
 - **`plans/planGate.ts`**, **`PlansHero.tsx`**, **`offers/utils/offerErrors.ts`**, **`storefront/*`**, **`offerStory/*`**, **`subscription/strings.ts`**, **`planEntitlementsAdmin/strings.ts`** — bloqueio de plano com texto próprio, lojas novas fora de `/plans`, rótulos das 5 chaves.
 - **`supportChat/routes.ts`** — `/affiliates/credentials` em `SUPPORT_CHAT_HIDDEN_PATHS` (botão cobria lixeira e "Ativa" no celular).
-- Switch da foto oficial e página "Marca d'água" (T31): a confirmar no commit do painel.
+- **`features/monitoring/*`** (`MonitoringSettingsForm.tsx`, `utils/settingsDraft.ts` v7, `strings.ts`) — switch "Usar a foto oficial do produto", oculto fora da audiência, travado com selo PRO fora do plano.
+- **`features/offerWatermark/*`**, **`navigation/*`**, **`AppLayout.tsx`**, **`AppRoutes.tsx`**, **`privacyFlags.ts`** — página `/offer-watermark` (logo ou texto, posição, tamanho, opacidade, prévia ao vivo, aviso do Telegram); item "Marca d'água" em Afiliados só com acesso; flag de privacidade `offerWatermark.logo`.
 
 ### Migrations (rodam no boot da Render, `start:migrate`)
 

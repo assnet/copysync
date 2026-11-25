@@ -76,13 +76,19 @@ chave do storage. Hooks: `authHook` + `tenantHook` + `withProduct` + `offerWater
 - Sem plano → **403** `PLAN_FEATURE_UNAVAILABLE` (use case).
 - Operador só lê: gravar exige `ADMIN` ou super admin (403 `FORBIDDEN`).
 
-## Painel (a confirmar na T31)
+## Painel
 
-Switch "Usar a foto oficial do produto" no `MonitoringSettingsForm` (com tooltip e `PlanAvailabilityBadges`) e página
-"Marca d'água" no produto Afiliados (`features/offerWatermark/`, item via `GET /access`, guard de rota, rascunho dos
-ajustes em `usePersistedState` escopo `tab` limpo ao salvar, logo com `Blurred` em `offerWatermark.logo`, prévia ao
-vivo com as proporções de `computeWatermarkPlacement`, aviso do Telegram). Revisar nome de rota e menu quando a T31
-for commitada.
+- Monitoramento: switch "Usar a foto oficial do produto" no `MonitoringSettingsForm` (padrão `ToggleOption`, tooltip).
+  Campo ausente na resposta → switch não aparece. `limits.cleanImageEnabled: false` → travado, desligado, selo PRO.
+  Rascunho do monitor: `SETTINGS_DRAFT_VERSION` 7.
+- Página `/offer-watermark` (`features/offerWatermark/`), item "Marca d'água" no produto Afiliados, depois do Caçador
+  de Ofertas. Aparece só com `watermarkVisible` (`useOfferWatermarkAccess` → `GET /access`, em `AppLayout`); guard
+  `OfferWatermarkRoute`. 403 de plano = estado na página com selo MAX e "Ver planos"; `canEdit=false` = só leitura.
+- Rascunho dos ajustes em `usePersistedState` (escopo `tab`), limpo ao salvar; logo nunca no storage do navegador.
+  Privacidade: flag `offerWatermark.logo` borra logo e texto na página e na prévia.
+- Prévia: `features/offerWatermark/rules.ts` é cópia de `computeWatermarkPlacement` (teste fixa os números da API nas
+  5 posições). Mudou a regra na API → mude a cópia. Texto: altura estimada pela fonte, pode diferir alguns pixels.
+- Tela sem contagem em `/admin/usage` (exigiria mudar `contracts/feature-usage/catalog.json`).
 
 ## Migrations
 
