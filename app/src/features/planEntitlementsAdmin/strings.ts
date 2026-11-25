@@ -20,6 +20,14 @@ export const planEntitlementsAdminStrings = {
       label: 'Afiliado Shein',
       description: 'Gerar ofertas com links de afiliado da Shein.',
     },
+    offer_clean_image_enabled: {
+      label: 'Foto oficial do produto',
+      description: 'Trocar a foto capturada do grupo monitorado pela foto oficial da loja.',
+    },
+    offer_watermark_enabled: {
+      label: "Marca d'água própria",
+      description: 'Aplicar o logo ou o nome da marca do cliente nas fotos das ofertas enviadas.',
+    },
     marketplace_kabum_enabled: {
       label: 'Afiliado Kabum',
       description: 'Gerar ofertas com links de afiliado da Kabum (Awin).',
