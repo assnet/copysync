@@ -8,7 +8,7 @@ import type {
   SetAffiliateIdentifiersRequest,
   UpsertAffiliateCredentialRequest,
 } from '@/types/api.types';
-import { AFFILIATE_PROVIDERS, type AffiliateProviderSpec } from '../affiliateProviders';
+import { AFFILIATE_PROVIDERS, LEGACY_AFFILIATE_PROVIDERS, type AffiliateProviderSpec } from '../affiliateProviders';
 import { affiliateErrorMessage } from '../strings';
 
 export interface AffiliateCredentialEntry {
@@ -33,6 +33,7 @@ function isNotFound(err: unknown): boolean {
 export function useAffiliateCredentials() {
   const [items, setItems] = useState<ItemsByProvider>({});
   const [availability, setAvailability] = useState<Partial<Record<AffiliateProvider, MarketplaceAvailability>>>({});
+  const [visible, setVisible] = useState<readonly AffiliateProvider[]>(LEGACY_AFFILIATE_PROVIDERS);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -58,6 +59,7 @@ export function useAffiliateCredentials() {
       if (seq !== loadSeqRef.current) return;
       setItems(Object.fromEntries(list.items.map((i) => [i.provider, i])) as ItemsByProvider);
       setAvailability(list.marketplaceAvailability);
+      setVisible(list.visibleProviders);
     } catch (err) {
       if (seq !== loadSeqRef.current) return;
       if (silent) setActionError(affiliateErrorMessage(err));
@@ -145,11 +147,13 @@ export function useAffiliateCredentials() {
     void load({ silent: true });
   }, [load]);
 
+  // Loja fora de `visibleProviders` (audiência "Só super admin" para quem não é) não tem card.
+  // O painel não decide audiência: só segue a lista da API.
   const entries: AffiliateCredentialEntry[] = useMemo(
-    () => AFFILIATE_PROVIDERS.map((spec) => ({
+    () => AFFILIATE_PROVIDERS.filter((spec) => visible.includes(spec.provider)).map((spec) => ({
       spec, item: items[spec.provider], availability: availability[spec.provider],
     })),
-    [items, availability],
+    [items, availability, visible],
   );
 
   return {

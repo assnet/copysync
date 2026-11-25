@@ -20,6 +20,18 @@ export const planEntitlementsAdminStrings = {
       label: 'Afiliado Shein',
       description: 'Gerar ofertas com links de afiliado da Shein.',
     },
+    marketplace_kabum_enabled: {
+      label: 'Afiliado Kabum',
+      description: 'Gerar ofertas com links de afiliado da Kabum (Awin).',
+    },
+    marketplace_magalu_enabled: {
+      label: 'Afiliado Magalu',
+      description: 'Gerar ofertas com links da loja Magazine Você do cliente.',
+    },
+    marketplace_aliexpress_enabled: {
+      label: 'Afiliado AliExpress',
+      description: 'Gerar ofertas com links de afiliado do AliExpress.',
+    },
     offer_hunter_enabled: {
       label: 'Caçador de Ofertas',
       description: 'Buscar ofertas automaticamente no catálogo da Shein.',
@@ -47,7 +59,7 @@ export const planEntitlementsAdminStrings = {
   switchTooltip: (feature: string, plan: string, on: boolean) =>
     on ? `${feature} liberado no ${plan}. Clique para bloquear.` : `${feature} bloqueado no ${plan}. Clique para liberar.`,
 
-  /** Coluna "Só super admin": audiência do recurso (hoje só o Caçador de Ofertas). */
+  /** Coluna "Só super admin": audiência do recurso (Caçador de Ofertas, Saver e as lojas Kabum, Magalu e AliExpress). */
   audience: {
     none: '—',
     noneAria: 'Não se aplica a este recurso',

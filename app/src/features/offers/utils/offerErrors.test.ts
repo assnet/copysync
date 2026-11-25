@@ -30,6 +30,14 @@ describe('toOfferError — limite por canal', () => {
   });
 });
 
+describe('toOfferError — lojas novas fora do plano', () => {
+  it('Kabum fora do plano: texto da Kabum, não o genérico', () => {
+    const v = toOfferError({ code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: 'marketplace_kabum_enabled' } });
+    expect(v.message).toContain('Kabum');
+    expect(v.isLinkField).toBe(true);
+  });
+});
+
 describe('toOfferError — Shein', () => {
   it('Shein fora do plano: texto da Shein, não o de outra função', () => {
     const v = toOfferError({ code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: 'marketplace_shein_enabled' } });

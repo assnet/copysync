@@ -4,14 +4,26 @@ import {
   InputAdornment, Link, Stack, TextField, Tooltip, Typography,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
-import { Check, CircleCheck, Eye, EyeOff, ExternalLink, Info, Link2, Lock, X } from 'lucide-react';
+import { Check, CircleCheck, CircleHelp, Eye, EyeOff, ExternalLink, Info, Link2, Lock, X } from 'lucide-react';
 import { AppIcon } from '@/components/AppIcon';
 import type { AffiliateCredentialItem, UpsertAffiliateCredentialRequest } from '@/types/api.types';
-import { validateAffiliateField, type AffiliateProviderSpec } from '../affiliateProviders';
+import { validateAffiliateField, type AffiliateFieldSpec, type AffiliateProviderSpec } from '../affiliateProviders';
 import { affiliateErrorMessage, settingsStrings } from '../strings';
 import { MarketplaceLogo } from './MarketplaceLogo';
 
 const t = settingsStrings.affiliate;
+
+/** Ícone de ajuda com o tooltip do campo (só quando a spec traz `tooltip`). */
+function FieldInfo({ field }: { field: AffiliateFieldSpec }) {
+  if (!field.tooltip) return null;
+  return (
+    <Tooltip title={field.tooltip} arrow>
+      <Box component="span" tabIndex={0} sx={{ display: 'inline-flex', color: 'text.secondary', cursor: 'help', borderRadius: '50%' }}>
+        <AppIcon icon={CircleHelp} size="md" label={t.fieldInfo(field.label)} />
+      </Box>
+    </Tooltip>
+  );
+}
 
 interface Props {
   open: boolean;
@@ -27,12 +39,13 @@ interface Props {
  * Formulário de credencial de um marketplace. Não é otimista: fica aberto até a API
  * responder 2xx e, em erro, mantém o que o usuário digitou.
  *
- * Sem `usePersistedState` de propósito: o diálogo tem o Secret, que nunca vai para o storage,
+ * Sem `usePersistedState` de propósito: o diálogo tem o Secret (e a App Key), que nunca vão para o storage,
  * e o identificador é curto e volta da API na edição.
  */
 export function AffiliateCredentialDialog({ open, spec, item, onSubmit, onClose }: Props) {
   const [publicValue, setPublicValue] = useState('');
   const [secretValue, setSecretValue] = useState('');
+  const [extraValue, setExtraValue] = useState('');
   const [showSecret, setShowSecret] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -45,6 +58,7 @@ export function AffiliateCredentialDialog({ open, spec, item, onSubmit, onClose 
     if (!open) return;
     setPublicValue(item?.publicIdentifier ?? '');
     setSecretValue('');
+    setExtraValue('');
     setShowSecret(false);
     setSubmitted(false);
     setApiError(null);
@@ -57,6 +71,10 @@ export function AffiliateCredentialDialog({ open, spec, item, onSubmit, onClose 
   const publicField = spec.publicField;
   const publicError = publicField ? validateAffiliateField(publicField, publicValue, true) : null;
   const secretError = secretField ? validateAffiliateField(secretField, secretValue, secretRequired) : null;
+  // Campo extra (App Key) anda junto do segredo: obrigatório sem segredo salvo ou ao trocar o segredo.
+  const extraField = secretField ? spec.extraField : undefined;
+  const extraRequired = Boolean(extraField) && (secretRequired || secretValue.trim() !== '');
+  const extraError = extraField ? validateAffiliateField(extraField, extraValue, extraRequired) : null;
   const publicValid = !publicError && apiField !== 'publicIdentifier';
   const steps = t.guideSteps[spec.provider];
   const help = t.guideHelp[spec.provider];
@@ -65,11 +83,13 @@ export function AffiliateCredentialDialog({ open, spec, item, onSubmit, onClose 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setSubmitted(true);
-    if (publicError || secretError || saving) return;
+    if (publicError || secretError || extraError || saving) return;
 
     const body: UpsertAffiliateCredentialRequest = { publicIdentifier: publicValue.trim() };
     const secret = secretValue.trim();
     if (secretField && secret) body.secret = secret;
+    const extra = extraValue.trim();
+    if (extraField && extra) body.appKey = extra;
 
     setSaving(true);
     setApiError(null);
@@ -197,14 +217,17 @@ export function AffiliateCredentialDialog({ open, spec, item, onSubmit, onClose 
             spellCheck={false}
             error={(submitted && Boolean(publicError)) || apiField === 'publicIdentifier'}
             helperText={(submitted && publicError) || publicField.helper}
-            InputProps={publicValid ? {
+            InputProps={publicValid || publicField.tooltip ? {
               endAdornment: (
-                <InputAdornment position="end">
-                  <Tooltip title={t.fieldValid}>
-                    <Box component="span" sx={{ display: 'inline-flex', color: 'success.main' }}>
-                      <AppIcon icon={CircleCheck} size="md" label={t.fieldValid} />
-                    </Box>
-                  </Tooltip>
+                <InputAdornment position="end" sx={{ gap: 0.75 }}>
+                  {publicValid && (
+                    <Tooltip title={t.fieldValid}>
+                      <Box component="span" sx={{ display: 'inline-flex', color: 'success.main' }}>
+                        <AppIcon icon={CircleCheck} size="md" label={t.fieldValid} />
+                      </Box>
+                    </Tooltip>
+                  )}
+                  <FieldInfo field={publicField} />
                 </InputAdornment>
               ),
             } : undefined}
@@ -240,7 +263,8 @@ export function AffiliateCredentialDialog({ open, spec, item, onSubmit, onClose 
               InputLabelProps={secretRequired ? undefined : { shrink: true }}
               InputProps={{
                 endAdornment: (
-                  <InputAdornment position="end">
+                  <InputAdornment position="end" sx={{ gap: 0.5 }}>
+                    <FieldInfo field={secretField} />
                     <Tooltip title={showSecret ? t.hideSecret : t.showSecret}>
                       <IconButton
                         onClick={() => setShowSecret((v) => !v)}
@@ -254,6 +278,25 @@ export function AffiliateCredentialDialog({ open, spec, item, onSubmit, onClose 
                   </InputAdornment>
                 ),
               }}
+            />
+          )}
+
+          {extraField && (
+            <TextField
+              label={extraField.label}
+              value={extraValue}
+              onChange={(e) => { setExtraValue(e.target.value); setApiField(null); }}
+              placeholder={extraRequired ? extraField.placeholder : t.secretKeepPlaceholder}
+              required={extraRequired}
+              fullWidth
+              autoComplete="off"
+              spellCheck={false}
+              error={(submitted && Boolean(extraError)) || apiField === 'appKey'}
+              helperText={(submitted && extraError) || extraField.helper}
+              InputLabelProps={extraRequired ? undefined : { shrink: true }}
+              InputProps={extraField.tooltip ? {
+                endAdornment: <InputAdornment position="end"><FieldInfo field={extraField} /></InputAdornment>,
+              } : undefined}
             />
           )}
 

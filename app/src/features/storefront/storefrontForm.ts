@@ -5,7 +5,7 @@
  */
 import { finalizeSlug, previewUrl } from '@/features/linkRotation/slug';
 import { plansAbove } from '@/features/linkRotation/planUpsell';
-import { isMercadoLivreTagLimit, isSheinUnavailable, planLimitOf } from '@/features/plans/planGate';
+import { isMercadoLivreTagLimit, isSheinUnavailable, planLimitOf, unavailableMarketplaceOf } from '@/features/plans/planGate';
 import { AFFILIATE_LINK_ERROR_CODES, describeAffiliateLinkError } from '@/features/affiliateLinks/linkErrors';
 import { storefrontStrings } from './strings';
 import type {
@@ -249,6 +249,8 @@ export function errorMessage(err: unknown): string {
   const code = (STOREFRONT_OWN_ERROR_CODES as readonly string[]).includes(e.code ?? '') ? (e.code as StorefrontOwnErrorCode) : null;
   if (!code) return t.errors.generic;
   if (isSheinUnavailable(e)) return t.errors.sheinUnavailable;
+  const gated = unavailableMarketplaceOf(e);
+  if (gated) return t.marketplaceUnavailable[gated];
   if (isMercadoLivreTagLimit(e)) {
     const limit = planLimitOf(e);
     return t.errors.mercadoLivreTagLimit(limit, canUpgradeTags(limit));

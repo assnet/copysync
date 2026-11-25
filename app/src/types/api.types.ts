@@ -280,6 +280,8 @@ export interface UpsertAffiliateCredentialRequest {
   publicIdentifier: string;
   /** Ausente na edição = mantém o segredo já salvo. */
   secret?: string;
+  /** Só loja com campo extra na spec (App Key do AliExpress); vai junto do `secret` e nunca volta da API. */
+  appKey?: string;
 }
 
 // ── Offer generator ──────────────────────────────────────────────────────────

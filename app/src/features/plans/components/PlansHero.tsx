@@ -17,6 +17,13 @@ const visuallyHidden = {
  * Selo por marketplace no banner: só para o que é exclusivo de um plano (Shein = MAX). Marketplace
  * liberado em todos os planos não leva selo, mesmo com limite diferente (ex.: etiquetas do ML).
  */
+/**
+ * Lojas com audiência "Só super admin" ainda fechada: fora do banner de `/plans` até a liberação.
+ * A T24 (plano affiliate-marketplaces-expansion) tira cada loja daqui junto com o `catalog.ts`.
+ */
+const HIDDEN_IN_PLANS: ReadonlySet<AffiliateProvider> = new Set<AffiliateProvider>(['KABUM', 'MAGALU', 'ALIEXPRESS']);
+const ADVERTISED_PROVIDERS = AFFILIATE_PROVIDERS.filter((spec) => !HIDDEN_IN_PLANS.has(spec.provider));
+
 const PROVIDER_SEAL: Partial<Record<AffiliateProvider, { label: string; tooltip: string }>> = {
   SHEIN: { label: t.hero.sheinPlan, tooltip: t.hero.sheinTooltip },
 };
@@ -81,7 +88,7 @@ export function PlansHero({ period, onPeriodChange }: Props) {
         aria-label={t.hero.marketplaces}
         sx={{ listStyle: 'none', m: 0, p: 0, mt: 2.5, display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 1.5 }}
       >
-        {AFFILIATE_PROVIDERS.map((spec) => {
+        {ADVERTISED_PROVIDERS.map((spec) => {
           const seal = PROVIDER_SEAL[spec.provider];
           const label = seal?.tooltip ?? spec.name;
           return (

@@ -27,8 +27,11 @@ const amazon: AffiliateCredentialItem = {
   updatedAt: '2026-10-22T10:00:00.000Z',
 };
 
+// API antiga (sem `marketplaceAvailability`): o serviço devolve as 4 lojas antigas como visíveis.
+const LEGACY = ['SHOPEE', 'MERCADO_LIVRE', 'AMAZON', 'SHEIN'];
+
 async function setup() {
-  service.list.mockResolvedValue({ items: [amazon], marketplaceAvailability: {} });
+  service.list.mockResolvedValue({ items: [amazon], marketplaceAvailability: {}, visibleProviders: LEGACY });
   const hook = renderHook(() => useAffiliateCredentials());
   await waitFor(() => expect(hook.result.current.loading).toBe(false));
   return hook;
@@ -38,11 +41,27 @@ const itemOf = (h: Awaited<ReturnType<typeof setup>>, p: string) =>
   h.result.current.entries.find((e) => e.spec.provider === p)?.item;
 
 describe('useAffiliateCredentials', () => {
-  it('mescla a lista com o catálogo dos três marketplaces', async () => {
+  it('API antiga: mescla a lista com as 4 lojas antigas e nenhuma loja nova', async () => {
     const h = await setup();
     expect(h.result.current.entries.map((e) => e.spec.provider)).toEqual(['SHOPEE', 'MERCADO_LIVRE', 'AMAZON', 'SHEIN']);
     expect(itemOf(h, 'AMAZON')).toEqual(amazon);
     expect(itemOf(h, 'SHOPEE')).toBeUndefined();
+  });
+
+  it('loja nova só tem card quando a API a lista em marketplaceAvailability', async () => {
+    const open = { enabled: true, plans: [], riskNotice: null };
+    service.list.mockResolvedValue({
+      items: [], marketplaceAvailability: { SHOPEE: open, KABUM: open }, visibleProviders: ['SHOPEE', 'KABUM'],
+    });
+    const h = renderHook(() => useAffiliateCredentials());
+    await waitFor(() => expect(h.result.current.loading).toBe(false));
+    expect(h.result.current.entries.map((e) => e.spec.provider)).toEqual(['SHOPEE', 'KABUM']);
+
+    service.list.mockResolvedValue({
+      items: [], marketplaceAvailability: { SHOPEE: open }, visibleProviders: ['SHOPEE'],
+    });
+    await act(() => h.result.current.reload());
+    expect(h.result.current.entries.map((e) => e.spec.provider)).toEqual(['SHOPEE']);
   });
 
   it('remoção que falha devolve a credencial e expõe o erro', async () => {
@@ -130,8 +149,8 @@ describe('useAffiliateCredentials', () => {
     let second!: Promise<void>;
     act(() => { first = h.result.current.reload(); });
     act(() => { second = h.result.current.refreshSilently(); });
-    await act(async () => { resolveSecond({ items: [fresh], marketplaceAvailability: {} }); await second; });
-    await act(async () => { resolveFirst({ items: [], marketplaceAvailability: {} }); await first; });
+    await act(async () => { resolveSecond({ items: [fresh], marketplaceAvailability: {}, visibleProviders: LEGACY }); await second; });
+    await act(async () => { resolveFirst({ items: [], marketplaceAvailability: {}, visibleProviders: LEGACY }); await first; });
 
     expect(itemOf(h, 'AMAZON')).toEqual(fresh);
     expect(h.result.current.loading).toBe(false);
@@ -140,7 +159,7 @@ describe('useAffiliateCredentials', () => {
 
   it('refreshSilently não liga o spinner e atualiza os dados', async () => {
     const seen: boolean[] = [];
-    service.list.mockResolvedValue({ items: [amazon], marketplaceAvailability: {} });
+    service.list.mockResolvedValue({ items: [amazon], marketplaceAvailability: {}, visibleProviders: LEGACY });
     const h = renderHook(() => {
       const r = useAffiliateCredentials();
       seen.push(r.loading);
@@ -149,7 +168,7 @@ describe('useAffiliateCredentials', () => {
     await waitFor(() => expect(h.result.current.loading).toBe(false));
     seen.length = 0;
     const updated = { ...amazon, status: 'INACTIVE' as const };
-    service.list.mockResolvedValue({ items: [updated], marketplaceAvailability: {} });
+    service.list.mockResolvedValue({ items: [updated], marketplaceAvailability: {}, visibleProviders: LEGACY });
 
     await act(() => h.result.current.refreshSilently());
 
@@ -161,7 +180,7 @@ describe('useAffiliateCredentials', () => {
     const ml: AffiliateCredentialItem = {
       ...amazon, provider: 'MERCADO_LIVRE', publicIdentifier: 'tag_a', accountIdentifiers: ['tag_a', 'tag_b'], linkedIdentifiers: [], identifierLimit: 2,
     };
-    service.list.mockResolvedValue({ items: [ml], marketplaceAvailability: {} });
+    service.list.mockResolvedValue({ items: [ml], marketplaceAvailability: {}, visibleProviders: LEGACY });
     const h = renderHook(() => useAffiliateCredentials());
     await waitFor(() => expect(h.result.current.loading).toBe(false));
     service.list.mockClear();

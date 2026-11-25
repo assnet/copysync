@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { PLAN_FEATURE_KEYS, isMercadoLivreTagLimit, isPlanFeatureUnavailable, isSheinUnavailable, planLimitOf } from './planGate';
+import {
+  PLAN_FEATURE_KEYS, isMercadoLivreTagLimit, isPlanFeatureUnavailable, isSheinUnavailable, planLimitOf, unavailableMarketplaceOf,
+} from './planGate';
 
 const err = (key?: string) => ({ status: 403, code: 'PLAN_FEATURE_UNAVAILABLE', ...(key ? { meta: { key } } : {}) });
 
@@ -30,6 +32,17 @@ describe('planGate', () => {
     expect(isSheinUnavailable(err('marketplace_shein_enabled'))).toBe(true);
     expect(isSheinUnavailable(err('storefront_enabled'))).toBe(false);
     expect(isSheinUnavailable(err())).toBe(false);
+  });
+});
+
+describe('unavailableMarketplaceOf', () => {
+  it('reconhece só as lojas novas pela chave do 403', () => {
+    expect(unavailableMarketplaceOf(err(PLAN_FEATURE_KEYS.kabum))).toBe('KABUM');
+    expect(unavailableMarketplaceOf(err(PLAN_FEATURE_KEYS.magalu))).toBe('MAGALU');
+    expect(unavailableMarketplaceOf(err(PLAN_FEATURE_KEYS.aliexpress))).toBe('ALIEXPRESS');
+    expect(unavailableMarketplaceOf(err(PLAN_FEATURE_KEYS.shein))).toBeNull();
+    expect(unavailableMarketplaceOf(err())).toBeNull();
+    expect(unavailableMarketplaceOf({ code: 'PLAN_LIMIT_REACHED', meta: { key: PLAN_FEATURE_KEYS.kabum } })).toBeNull();
   });
 });
 

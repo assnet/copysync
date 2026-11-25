@@ -66,6 +66,10 @@ describe('mapRenderError', () => {
       .toEqual({ field: 'url', message: al.errors.rebuildFailed('MERCADO_LIVRE'), backToTemplates: false });
   });
 
+  it('Kabum fora do plano vai para o campo do link com texto próprio', () => {
+    expect(mapRenderError({ code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: 'marketplace_kabum_enabled' } })).toEqual({ field: 'url', message: t.marketplaceUnavailable.KABUM, backToTemplates: false });
+  });
+
   it('Shein fora do plano e aceite pendente vão para o campo do link', () => {
     expect(mapRenderError({ code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: 'marketplace_shein_enabled' } })).toEqual({ field: 'url', message: t.errors.sheinUnavailable, backToTemplates: false });
     expect(mapRenderError({ code: 'MARKETPLACE_RISK_NOT_ACCEPTED' })).toEqual({

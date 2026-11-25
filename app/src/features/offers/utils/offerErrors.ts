@@ -1,5 +1,5 @@
 import { plansAbove, type PlanLimitKind } from '@/features/linkRotation/planUpsell';
-import { isMercadoLivreTagLimit } from '@/features/plans/planGate';
+import { isMercadoLivreTagLimit, unavailableMarketplaceOf } from '@/features/plans/planGate';
 import { describeAffiliateLinkError } from '@/features/affiliateLinks/linkErrors';
 import type { LimitChannel } from '@/types/api.types';
 import { offerStrings as t } from '../strings';
@@ -86,6 +86,10 @@ export function toOfferError(err: unknown, fallbackLimit?: number | null): Offer
   if (code === 'PLAN_FEATURE_UNAVAILABLE' && e?.meta?.key === 'marketplace_shein_enabled') {
     return { code, message: t.sheinUnavailable, action: 'none', isLinkField: true };
   }
+
+  // Loja nova fora do plano (Kabum, Magalu, AliExpress): texto próprio da loja (MKT-06)
+  const gated = unavailableMarketplaceOf(err);
+  if (gated) return { code, message: t.marketplaceUnavailable[gated], action: 'none', isLinkField: true };
 
   if (code === 'OFFER_INVALID_INPUT' && e?.meta?.field === 'scheduledAt') {
     return { code, message: t.schedule.invalid, action: 'none', isLinkField: false };

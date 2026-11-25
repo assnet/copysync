@@ -192,6 +192,10 @@ describe('slugStatusView', () => {
 });
 
 describe('errorMessage', () => {
+  it('Kabum fora do plano tem texto próprio (não o da Página de Ofertas)', () => {
+    expect(errorMessage({ code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: 'marketplace_kabum_enabled' } })).toBe(t.marketplaceUnavailable.KABUM);
+  });
+
   it('Shein fora do plano e aceite pendente têm texto próprio', () => {
     expect(errorMessage({ code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: 'marketplace_shein_enabled' } })).toBe(t.errors.sheinUnavailable);
     expect(errorMessage({ code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: 'storefront_enabled' } })).toBe(t.errors.PLAN_FEATURE_UNAVAILABLE);

@@ -23,7 +23,45 @@ const savedShopee: AffiliateCredentialItem = {
   updatedAt: '2026-10-22T10:00:00.000Z',
 };
 
+const kabum = AFFILIATE_PROVIDERS.find((p) => p.provider === 'KABUM')!;
+// Spec de teste com campo extra (formato do AliExpress, fase F3): App Key vai como `appKey`.
+const withExtra = {
+  ...shopee,
+  extraField: { label: 'App Key', helper: 'Número do app.', pattern: /^\d{5,12}$/ },
+};
+
 describe('AffiliateCredentialDialog', () => {
+  it('Kabum: guia da Awin, tooltip no campo e envio só do Publisher ID', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderWithTheme(<AffiliateCredentialDialog open spec={kabum} onSubmit={onSubmit} onClose={vi.fn()} />, 'dark');
+    expect(screen.getByText(/Publisher ID aparece no canto superior direito/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Sobre Publisher ID da Awin')).toBeInTheDocument();
+    await userEvent.type(screen.getByRole('textbox', { name: /Publisher ID da Awin/ }), '123456');
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+    expect(onSubmit).toHaveBeenCalledWith({ publicIdentifier: '123456' });
+  });
+
+  it('campo extra: obrigatório na criação e enviado como appKey junto do segredo', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderWithTheme(<AffiliateCredentialDialog open spec={withExtra} onSubmit={onSubmit} onClose={vi.fn()} />);
+    await userEvent.type(screen.getByRole('textbox', { name: /App ID/ }), '1234567');
+    await userEvent.type(screen.getByLabelText(/^Secret/), 'abcdefghijklmnop1234');
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByText('Informe app key.')).toBeInTheDocument();
+
+    await userEvent.type(screen.getByRole('textbox', { name: /App Key/ }), '98765');
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+    expect(onSubmit).toHaveBeenCalledWith({ publicIdentifier: '1234567', secret: 'abcdefghijklmnop1234', appKey: '98765' });
+  });
+
+  it('campo extra vazio na edição mantém o salvo (sem appKey no corpo)', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderWithTheme(<AffiliateCredentialDialog open spec={withExtra} item={savedShopee} onSubmit={onSubmit} onClose={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+    expect(onSubmit).toHaveBeenCalledWith({ publicIdentifier: '1234567' });
+  });
+
   it('não envia quando os campos obrigatórios estão vazios', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     renderWithTheme(<AffiliateCredentialDialog open spec={shopee} onSubmit={onSubmit} onClose={vi.fn()} />, 'dark');

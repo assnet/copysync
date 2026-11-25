@@ -1,4 +1,5 @@
 import { apiClient } from './apiClient';
+import { LEGACY_AFFILIATE_PROVIDERS } from '@/features/settings/affiliateProviders';
 import type {
   AcceptMarketplaceRiskRequest,
   AcceptMarketplaceRiskResponse,
@@ -17,16 +18,25 @@ const BASE = '/integrations/affiliate-credentials';
 
 export interface AffiliateCredentialList {
   items: AffiliateCredentialItem[];
+  /** `{}` com API antiga: sem restrição de plano/aviso. */
   marketplaceAvailability: Partial<Record<AffiliateProvider, MarketplaceAvailability>>;
+  /** Lojas com card: as chaves de `marketplaceAvailability`, ou as 4 antigas com API antiga. */
+  visibleProviders: readonly AffiliateProvider[];
 }
 
 export const affiliateCredentialService = {
   async list(): Promise<AffiliateCredentialList> {
     const res = await apiClient.get<ApiSuccess<AffiliateCredentialListResponse>>(BASE);
     const data = res.data.data;
-    return { items: data.items, marketplaceAvailability: data.marketplaceAvailability ?? {} };
+    const availability = data.marketplaceAvailability;
+    return {
+      items: data.items,
+      marketplaceAvailability: availability ?? {},
+      visibleProviders: availability ? (Object.keys(availability) as AffiliateProvider[]) : LEGACY_AFFILIATE_PROVIDERS,
+    };
   },
 
+  /** `appKey` só vai quando o diálogo o preenche (loja com `extraField`, ex.: AliExpress). */
   async upsert(provider: AffiliateProvider, body: UpsertAffiliateCredentialRequest): Promise<AffiliateCredentialItem> {
     const res = await apiClient.put<ApiSuccess<AffiliateCredentialItem>>(`${BASE}/${provider}`, body);
     return res.data.data;

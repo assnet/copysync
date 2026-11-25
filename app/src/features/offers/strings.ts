@@ -7,6 +7,7 @@
  */
 import type { LimitChannel, OfferAudience, OfferDispatchStatus, PostBlockedReason } from '@/types/api.types';
 import { broadcastGroupsStrings } from '@/features/broadcastGroups/strings';
+import type { PlanGatedMarketplace } from '@/features/plans/planGate';
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 const groupsLabel = (n: number) => `${n} ${plural(n, 'grupo', 'grupos')}`;
@@ -468,6 +469,12 @@ export const offerStrings = {
     `Você atingiu o limite de ${limit} ${plural(limit, 'oferta', 'ofertas')} por dia do seu plano. Ele renova à meia-noite (horário de Brasília).`,
   planLimitNoValue: 'Você atingiu o limite diário de ofertas do seu plano.',
   sheinUnavailable: 'A Shein não está liberada no seu plano. Os planos com Shein estão em Afiliados › Planos.',
+  /** Loja nova fora do plano (403 com a chave da loja, MKT-06): texto próprio, nunca o genérico. */
+  marketplaceUnavailable: {
+    KABUM: 'A Kabum não está liberada no seu plano. Os planos com Kabum estão em Afiliados › Planos.',
+    MAGALU: 'O Magalu não está liberado no seu plano. Os planos com Magalu estão em Afiliados › Planos.',
+    ALIEXPRESS: 'O AliExpress não está liberado no seu plano. Os planos com AliExpress estão em Afiliados › Planos.',
+  } satisfies Record<PlanGatedMarketplace, string>,
   /** Etiqueta da conta do ML não vinculada e sem vaga no plano (`PLAN_LIMIT_REACHED` de etiquetas). */
   mercadoLivreTagLimit: (limit: number | null, canUpgrade: boolean) =>
     !canUpgrade && limit != null

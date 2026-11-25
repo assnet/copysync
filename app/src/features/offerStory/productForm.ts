@@ -4,7 +4,7 @@
  */
 import { AFFILIATE_LINK_ERROR_CODES, describeAffiliateLinkError } from '@/features/affiliateLinks/linkErrors';
 import { plansAbove } from '@/features/linkRotation/planUpsell';
-import { isMercadoLivreTagLimit, isSheinUnavailable, planLimitOf } from '@/features/plans/planGate';
+import { isMercadoLivreTagLimit, isSheinUnavailable, planLimitOf, unavailableMarketplaceOf } from '@/features/plans/planGate';
 import { OFFER_STORY_RULES as R } from './productForm.rules';
 import { offerStoryStrings } from './strings';
 import type { OfferStoryApiError, RenderOfferStoryInput } from './types';
@@ -147,6 +147,8 @@ export type OfferStoryErrorAction = 'credentials' | 'plans';
 export function mapRenderError(err: unknown): OfferStoryErrorView {
   const e = (err ?? {}) as OfferStoryApiError;
   if (isSheinUnavailable(e)) return { field: 'url', message: t.errors.sheinUnavailable, backToTemplates: false };
+  const gated = unavailableMarketplaceOf(e);
+  if (gated) return { field: 'url', message: t.marketplaceUnavailable[gated], backToTemplates: false };
   // Etiqueta da conta do ML sem vaga: planos; no maior plano, credenciais para desvincular outra
   if (isMercadoLivreTagLimit(e)) {
     const limit = planLimitOf(e);

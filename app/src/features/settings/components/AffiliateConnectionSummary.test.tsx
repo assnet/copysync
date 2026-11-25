@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { screen } from '@testing-library/react';
 import { renderWithTheme } from '@/test/renderWithTheme';
 import type { AffiliateCredentialItem } from '@/types/api.types';
-import { AFFILIATE_PROVIDERS } from '../affiliateProviders';
+import { AFFILIATE_PROVIDERS as ALL, LEGACY_AFFILIATE_PROVIDERS } from '../affiliateProviders';
+
+// Usuário comum: o hook só entrega as lojas antigas (as novas ficam ocultas pela audiência).
+const AFFILIATE_PROVIDERS = ALL.filter((s) => LEGACY_AFFILIATE_PROVIDERS.includes(s.provider));
 import { AffiliateConnectionSummary } from './AffiliateConnectionSummary';
 
 const item = (provider: AffiliateCredentialItem['provider'], status: AffiliateCredentialItem['status']) =>

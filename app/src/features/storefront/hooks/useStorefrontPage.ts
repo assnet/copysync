@@ -4,7 +4,7 @@ import { usePersistedState } from '@/hooks/usePersistedState';
 import { storefrontService } from '@/services/storefront.service';
 import { serverNow } from '@/services/serverClock';
 import type { AddOfferDraft } from '../components/AddOfferCard';
-import { PLAN_FEATURE_KEYS, isPlanFeatureUnavailable, isSheinUnavailable } from '@/features/plans/planGate';
+import { PLAN_FEATURE_KEYS, isPlanFeatureUnavailable, isSheinUnavailable, unavailableMarketplaceOf } from '@/features/plans/planGate';
 import { storefrontUpgradePath } from '../planGate';
 import { lockedUntilFrom } from '../deleteLock';
 import type { StorefrontOfferTab } from '../reorder';
@@ -264,7 +264,7 @@ export function useStorefrontPage() {
       notify(t.addOffer.added);
     } catch (err) {
       if (redirectIfNoPlan(err)) return;
-      if (isSheinUnavailable(err) || ADD_FIELD_CODES.includes(codeOf(err) ?? '')) {
+      if (isSheinUnavailable(err) || unavailableMarketplaceOf(err) || ADD_FIELD_CODES.includes(codeOf(err) ?? '')) {
         const e = err as StorefrontApiError;
         setAddError(errorMessage(err));
         setAddErrorAction(errorAction(err));

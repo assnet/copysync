@@ -4,6 +4,7 @@
  * sem nome de marca (white label).
  */
 import { OFFER_STORY_RULES } from './productForm.rules';
+import type { PlanGatedMarketplace } from '@/features/plans/planGate';
 
 export const offerStoryStrings = {
   page: {
@@ -102,6 +103,13 @@ export const offerStoryStrings = {
   },
 
   /** Erros de link de afiliado (credencial, loja fora, aceite de risco) vêm de `features/affiliateLinks`. */
+  /** Loja nova fora do plano (403 com a chave da loja, MKT-06): texto próprio, nunca o genérico. */
+  marketplaceUnavailable: {
+    KABUM: 'A Kabum não está liberada no seu plano. Os planos com Kabum estão em Afiliados › Planos.',
+    MAGALU: 'O Magalu não está liberado no seu plano. Os planos com Magalu estão em Afiliados › Planos.',
+    ALIEXPRESS: 'O AliExpress não está liberado no seu plano. Os planos com AliExpress estão em Afiliados › Planos.',
+  } satisfies Record<PlanGatedMarketplace, string>,
+
   errors: {
     generic: 'Algo deu errado. Tente de novo.',
     OFFER_URL_UNSUPPORTED: 'Link não suportado. Use o link do produto da Shopee, do Mercado Livre ou da Amazon.',

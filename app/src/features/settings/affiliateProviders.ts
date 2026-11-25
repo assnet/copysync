@@ -1,6 +1,6 @@
 import type { SvgIconComponent } from '@mui/icons-material';
 import type { LucideIcon } from 'lucide-react';
-import { Link2, Puzzle, UserCheck } from 'lucide-react';
+import { BadgeCheck, KeyRound, Link2, Puzzle, Share2, UserCheck } from 'lucide-react';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import VpnKeyOutlinedIcon from '@mui/icons-material/VpnKeyOutlined';
 import PaidOutlinedIcon from '@mui/icons-material/PaidOutlined';
@@ -22,6 +22,8 @@ export interface AffiliateFieldSpec {
   helper: string;
   pattern: RegExp;
   placeholder?: string;
+  /** Explicação curta mostrada no ícone de ajuda ao lado do campo (tooltip). */
+  tooltip?: string;
 }
 
 /**
@@ -58,6 +60,13 @@ export interface AffiliateProviderSpec {
   publicField?: AffiliateFieldSpec;
   /** Ausente quando o programa não tem chave secreta. */
   secretField?: AffiliateFieldSpec;
+  /**
+   * Segundo dado secreto que acompanha o `secretField` (App Key do AliExpress, fase F3): vai no
+   * corpo como `appKey`, só quando preenchido, e nunca volta da API. Exige `secretField`.
+   */
+  extraField?: AffiliateFieldSpec;
+  /** Regras do programa do anunciante exibidas no card (textos em `strings.ts`, ex.: Kabum). */
+  programRules?: readonly string[];
   /** Sessão vem da extensão do navegador (Mercado Livre, Shein). */
   usesBrowserSession: boolean;
   /**
@@ -73,7 +82,13 @@ export interface AffiliateProviderSpec {
   linkPreview?: (publicIdentifier: string) => string;
 }
 
-const { fields, providerDescriptions, providerHighlights: hl } = settingsStrings.affiliate;
+/**
+ * Lojas que a API antiga (sem `marketplaceAvailability`) sempre mostrava. As novas (Kabum, Magalu,
+ * AliExpress) só têm card quando a API as lista: ausente = loja oculta para este usuário (MKT-04).
+ */
+export const LEGACY_AFFILIATE_PROVIDERS: readonly AffiliateProvider[] = ['SHOPEE', 'MERCADO_LIVRE', 'AMAZON', 'SHEIN'];
+
+const { fields, providerDescriptions, providerHighlights: hl, programRules } = settingsStrings.affiliate;
 
 export const AFFILIATE_PROVIDERS: readonly AffiliateProviderSpec[] = [
   {
@@ -150,6 +165,31 @@ export const AFFILIATE_PROVIDERS: readonly AffiliateProviderSpec[] = [
     usesBrowserSession: true,
     identifierFromSession: true,
     extensionMarketplace: 'shein',
+  },
+  // Lojas novas: card só quando a API lista a loja em `marketplaceAvailability` (audiência).
+  // Magalu entra na T15 e AliExpress na T21: sem spec aqui não há card, nem para o super admin.
+  {
+    provider: 'KABUM',
+    name: 'Kabum',
+    description: providerDescriptions.KABUM,
+    logo: '/assets/marketplaces/kabum.svg',
+    brandColor: '#0060B1',
+    highlights: [
+      { icon: BadgeCheck, text: hl.KABUM[0] },
+      { icon: KeyRound, text: hl.KABUM[1] },
+      { icon: Share2, text: hl.KABUM[2] },
+    ],
+    publicField: {
+      label: fields.kabumPublisherId,
+      helper: fields.kabumPublisherIdHelp,
+      tooltip: fields.kabumPublisherIdTooltip,
+      pattern: /^\d{4,10}$/,
+      placeholder: '123456',
+    },
+    usesBrowserSession: false,
+    setup: { program: 'Awin', url: 'https://ui.awin.com/' },
+    programRules: programRules.KABUM,
+    linkPreview: (id) => `awin1.com/cread.php?awinmid=17729&awinaffid=${id}&ued=https://www.kabum.com.br/produto/…`,
   },
 ];
 

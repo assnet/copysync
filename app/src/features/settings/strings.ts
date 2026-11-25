@@ -70,6 +70,7 @@ export const settingsStrings = {
       SHOPEE: 'Salve um Secret novo (ou corrija o App ID) para liberar a loja de novo.',
       AMAZON: 'Confira o ID de rastreamento e salve de novo.',
       SHEIN: 'Entre de novo na sua conta da Shein (m.shein.com) neste navegador e clique em Sincronizar agora.',
+      KABUM: 'Confira o Publisher ID e se a Kabum aprovou você no programa dela na Awin.',
     } as Record<string, string>,
     backToMonitoring: 'Voltar ao monitoramento',
     back: 'Voltar',
@@ -108,9 +109,12 @@ export const settingsStrings = {
     fieldInvalid: (label: string) => `${label} em formato inválido.`,
     closeDialog: 'Fechar',
     fieldValid: 'Formato válido',
+    /** Rótulo do ícone de ajuda ao lado do campo (o texto vem no tooltip). */
+    fieldInfo: (label: string) => `Sobre ${label}`,
     dialogSubtitle: {
       SHOPEE: 'Informe o App ID e o Secret da Open API para gerar links curtos com a sua comissão.',
       AMAZON: 'Informe o seu ID de rastreamento para os links da Amazon saírem com a sua comissão.',
+      KABUM: 'Informe o seu Publisher ID da Awin para os links da Kabum saírem com a sua comissão.',
     } as Record<string, string>,
     guideTitle: (marketplace: string) => `Onde encontrar na ${marketplace}`,
     guideSteps: {
@@ -126,6 +130,12 @@ export const settingsStrings = {
         'Para usar outro, abra Gerenciar IDs de rastreamento.',
         'Copie o ID (formato minhaloja-20) e cole abaixo.',
       ],
+      KABUM: [
+        'Entre no painel da Awin com a sua conta de publisher.',
+        'O Publisher ID aparece no canto superior direito, ao lado do nome da conta.',
+        'Confira em Anunciantes › Meus programas se a Kabum já aprovou você.',
+        'Copie só os números e cole abaixo.',
+      ],
     } as Record<string, readonly string[]>,
     guideOpen: (program: string) => `Abrir ${program}`,
     guideOpenTooltip: 'Abre em uma nova aba',
@@ -137,6 +147,7 @@ export const settingsStrings = {
     dialogNote: {
       SHOPEE: 'O Secret só é usado no servidor, para assinar cada chamada à API da Shopee.',
       AMAZON: 'Não precisa de chave secreta: o ID só é adicionado aos links que você publica.',
+      KABUM: 'Não precisa de chave secreta: o Publisher ID só é adicionado aos links que você publica.',
     } as Record<string, string>,
 
     fields: {
@@ -148,6 +159,9 @@ export const settingsStrings = {
       mercadoLivreTagHelp: 'Valor que aparece em matt_word nos seus links de afiliado.',
       amazonTag: 'ID de rastreamento',
       amazonTagHelp: 'Termina com hífen e dois dígitos, por exemplo minhaloja-20.',
+      kabumPublisherId: 'Publisher ID da Awin',
+      kabumPublisherIdHelp: 'Só números, de 4 a 10 dígitos.',
+      kabumPublisherIdTooltip: 'Número da sua conta de publisher na Awin, a rede que paga as comissões da Kabum.',
       /** Rótulo do ID quando ele vem da sessão (sem campo editável). */
       sessionAffiliateId: 'ID de afiliado',
     },
@@ -190,6 +204,11 @@ export const settingsStrings = {
         'Sem chave secreta para cadastrar',
         'Links prontos para compartilhar nos grupos',
       ],
+      KABUM: [
+        'Programa oficial da Kabum na Awin',
+        'Sem chave secreta para cadastrar',
+        'Links prontos para compartilhar nos grupos',
+      ],
     },
 
     providerDescriptions: {
@@ -197,6 +216,28 @@ export const settingsStrings = {
       MERCADO_LIVRE: 'Usa a sua etiqueta e a sessão sincronizada pela extensão do navegador.',
       AMAZON: 'Adiciona o seu ID de rastreamento do programa de associados aos links.',
       SHEIN: 'Gera links de afiliado com a sessão da sua conta Shein, sincronizada pela extensão.',
+      KABUM: 'Adiciona o seu Publisher ID da Awin aos links da Kabum.',
+    },
+
+    /** Regras do programa exibidas no card (hoje só Kabum, KBM-06). */
+    programRulesTitle: 'Regras do programa',
+    programRulesTooltip: 'Condições do anunciante. Seguir evita comissão recusada.',
+    programRules: {
+      KABUM: [
+        'Cookie de 1 dia: só conta a compra feita até 24 horas depois do clique.',
+        'Cupom: divulgue só os enviados pela Awin.',
+        'Oferta com "De/Por" leva a frase "Oferta válida enquanto durarem os estoques".',
+        'Produto de vendedor parceiro paga comissão menor.',
+      ],
+    } as Record<string, readonly string[]>,
+
+    /** Card de loja fora do plano (loja com chave de plano e sem fluxo próprio, ex.: Kabum). */
+    locked: {
+      chip: 'Fora do seu plano',
+      title: 'Disponível em outros planos',
+      hint: (marketplace: string) => `A integração com a ${marketplace} faz parte dos planos abaixo. Faça upgrade para conectar.`,
+      action: 'Ver planos',
+      tooltip: 'Abre a comparação de planos',
     },
 
     /** Card Shein: 6 estados + reaceite. Texto do aviso em `marketplaceRiskNotice`. */
@@ -339,6 +380,7 @@ export const settingsStrings = {
     errors: {
       AFFILIATE_CREDENTIAL_INVALID: 'Algum campo não foi aceito. Confira os valores e tente de novo.',
       AFFILIATE_CREDENTIAL_NOT_FOUND: 'Esta credencial não existe mais. Atualize a página.',
+      PLAN_FEATURE_UNAVAILABLE: 'Esta loja não está liberada no seu plano. Veja os planos em Afiliados › Planos.',
       SECRET_CIPHER_UNAVAILABLE:
         'O armazenamento seguro de chaves está indisponível no momento. Tente mais tarde ou fale com o suporte.',
       generic: 'Não foi possível concluir a ação. Tente de novo.',

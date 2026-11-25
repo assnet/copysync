@@ -15,6 +15,7 @@ import { useExtension } from '@/features/extension/hooks/useExtension';
 import { useTenant } from '@/contexts/TenantContext';
 import { settingsStrings } from '@/features/settings/strings';
 import { returnButtonLabel } from '@/features/settings/utils/returnButtonLabel';
+import { PRODUCT_PLANS_PATH } from '@/features/products/productAccess';
 
 const t = settingsStrings.affiliate;
 
@@ -99,6 +100,8 @@ export function AffiliateCredentialsPage() {
                 <AffiliateCredentialCard
                   spec={spec}
                   item={item}
+                  availability={availability}
+                  onOpenPlans={() => navigate(PRODUCT_PLANS_PATH.AFFILIATES)}
                   busy={busy[spec.provider]}
                   onConfigure={() => setEditing(spec.provider)}
                   // Provider com `identifierFromSession` sempre cai no SheinCredentialCard (desconecta lá).

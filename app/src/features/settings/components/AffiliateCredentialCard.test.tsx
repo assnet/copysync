@@ -169,6 +169,42 @@ describe('AffiliateCredentialCard sem publicField', () => {
     expect(screen.queryByTestId('linked-identifiers-count')).not.toBeInTheDocument();
   });
 
+  it('flag de privacidade borra o identificador de qualquer loja (Publisher ID da Kabum)', () => {
+    localStorage.setItem('privacy.blur', JSON.stringify(['affiliateCredentials.accountIdentifiers']));
+    renderWithTheme(
+      <PrivacyProvider>
+        <AffiliateCredentialCard spec={spec('KABUM')} item={item({ provider: 'KABUM', hasSecret: false })} {...handlers()} />
+      </PrivacyProvider>,
+    );
+    expect(screen.getByText('••••4567').closest('[data-blurred="true"]')).not.toBeNull();
+    localStorage.removeItem('privacy.blur');
+  });
+
+  it('Kabum mostra as regras do programa (cookie, cupom, frase de estoque, terceiros)', () => {
+    renderWithTheme(<AffiliateCredentialCard spec={spec('KABUM')} {...handlers()} />, 'dark');
+    const rules = screen.getByRole('region', { name: 'Regras do programa' });
+    expect(within(rules).getByText(/Cookie de 1 dia/)).toBeInTheDocument();
+    expect(within(rules).getByText(/enviados pela Awin/)).toBeInTheDocument();
+    expect(within(rules).getByText(/Oferta válida enquanto durarem os estoques/)).toBeInTheDocument();
+    expect(within(rules).getByText(/comissão menor/)).toBeInTheDocument();
+  });
+
+  it('loja fora do plano: chip travado, selo dos planos e "Ver planos" no lugar de conectar', async () => {
+    const onOpenPlans = vi.fn();
+    renderWithTheme(
+      <AffiliateCredentialCard
+        spec={spec('KABUM')}
+        availability={{ enabled: false, plans: ['COPYSYNC_MAX'], riskNotice: null }}
+        onOpenPlans={onOpenPlans}
+        {...handlers()}
+      />,
+    );
+    expect(screen.getByText('Fora do seu plano')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Conectar Kabum' })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Ver planos' }));
+    expect(onOpenPlans).toHaveBeenCalled();
+  });
+
   it('flag de privacidade borra a etiqueta mascarada do Mercado Livre', () => {
     localStorage.setItem('privacy.blur', JSON.stringify(['affiliateCredentials.accountIdentifiers']));
     renderWithTheme(

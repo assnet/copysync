@@ -113,7 +113,7 @@ export const PRIVACY_SCREENS = [
     label: 'Credenciais de afiliado',
     flags: [
       { id: 'affiliateCredentials.sessionAffiliateId', label: 'ID de afiliado vindo da sessão (Shein)' },
-      { id: 'affiliateCredentials.accountIdentifiers', label: 'Etiquetas da conta (Mercado Livre)' },
+      { id: 'affiliateCredentials.accountIdentifiers', label: 'Identificadores da conta de afiliado' },
     ],
   },
   {

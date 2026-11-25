@@ -6,6 +6,7 @@
  * - sem nome de marca do produto
  */
 import { PREMIUM_SLUG_OFFER } from '@/features/plans/catalog';
+import type { PlanGatedMarketplace } from '@/features/plans/planGate';
 import type { StorefrontOfferProvider } from './types';
 import { STOREFRONT_RANGES } from './types';
 
@@ -276,6 +277,13 @@ export const storefrontStrings = {
       generic: 'Não foi possível excluir a página. Tente de novo.',
     },
   },
+
+  /** Loja nova fora do plano (403 com a chave da loja, MKT-06): texto próprio, nunca o genérico. */
+  marketplaceUnavailable: {
+    KABUM: 'A Kabum não está liberada no seu plano. Os planos com Kabum estão em Afiliados › Planos.',
+    MAGALU: 'O Magalu não está liberado no seu plano. Os planos com Magalu estão em Afiliados › Planos.',
+    ALIEXPRESS: 'O AliExpress não está liberado no seu plano. Os planos com AliExpress estão em Afiliados › Planos.',
+  } satisfies Record<PlanGatedMarketplace, string>,
 
   errors: {
     generic: 'Algo deu errado. Tente de novo.',

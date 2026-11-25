@@ -3,6 +3,9 @@ export const PLAN_FEATURE_KEYS = {
   storefront: 'storefront_enabled',
   offerStory: 'offer_story_enabled',
   shein: 'marketplace_shein_enabled',
+  kabum: 'marketplace_kabum_enabled',
+  magalu: 'marketplace_magalu_enabled',
+  aliexpress: 'marketplace_aliexpress_enabled',
 } as const;
 
 /** `meta.key` do erro, quando vier como texto. */
@@ -28,6 +31,25 @@ export function isPlanFeatureUnavailable(err: unknown, featureKey?: string): boo
 /** Shein fora do plano (403 ao usar link da Shein). */
 export const isSheinUnavailable = (err: unknown): boolean =>
   typeof err === 'object' && err !== null && (err as { code?: unknown }).code === 'PLAN_FEATURE_UNAVAILABLE' && planFeatureKeyOf(err) === PLAN_FEATURE_KEYS.shein;
+
+/** Lojas novas com chave de plano própria (MKT-06). A Shein segue com `isSheinUnavailable` e texto fixo. */
+export type PlanGatedMarketplace = 'KABUM' | 'MAGALU' | 'ALIEXPRESS';
+
+const MARKETPLACE_BY_PLAN_KEY: Record<string, PlanGatedMarketplace> = {
+  [PLAN_FEATURE_KEYS.kabum]: 'KABUM',
+  [PLAN_FEATURE_KEYS.magalu]: 'MAGALU',
+  [PLAN_FEATURE_KEYS.aliexpress]: 'ALIEXPRESS',
+};
+
+/**
+ * Loja nova fora do plano (403 `PLAN_FEATURE_UNAVAILABLE` com a chave da loja) → qual loja; senão `null`.
+ * Cada tela mostra o texto próprio da loja (Record por loja nas `strings.ts`), nunca o genérico.
+ */
+export function unavailableMarketplaceOf(err: unknown): PlanGatedMarketplace | null {
+  if (typeof err !== 'object' || err === null || (err as { code?: unknown }).code !== 'PLAN_FEATURE_UNAVAILABLE') return null;
+  const key = planFeatureKeyOf(err);
+  return (key && MARKETPLACE_BY_PLAN_KEY[key]) || null;
+}
 
 /** Chaves de limite (`meta.key` do 403 `PLAN_LIMIT_REACHED`) com tratamento próprio nas telas. */
 export const PLAN_LIMIT_KEYS = {
