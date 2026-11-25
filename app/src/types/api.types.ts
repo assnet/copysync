@@ -190,7 +190,14 @@ export interface ChangePasswordRequest {
 
 // ── Affiliate credentials ────────────────────────────────────────────────────
 
-export type AffiliateProvider = 'SHOPEE' | 'MERCADO_LIVRE' | 'AMAZON' | 'SHEIN';
+export type AffiliateProvider =
+  | 'SHOPEE'
+  | 'MERCADO_LIVRE'
+  | 'AMAZON'
+  | 'SHEIN'
+  | 'KABUM'
+  | 'MAGALU'
+  | 'ALIEXPRESS';
 
 export type AffiliateCredentialStatus = 'ACTIVE' | 'INACTIVE';
 

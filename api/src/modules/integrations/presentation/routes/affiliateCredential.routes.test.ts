@@ -96,6 +96,10 @@ describe('GET / — marketplaceAvailability', () => {
         MERCADO_LIVRE: open,
         AMAZON: open,
         SHEIN: { enabled: false, plans: ['COPYSYNC_MAX'], riskNotice: { version: VERSION, acceptedAt: AT.toISOString(), acceptedByMe: true } },
+        // provisório até T2/T6: lojas novas listadas sem chave de plano nem audiência
+        KABUM: open,
+        MAGALU: open,
+        ALIEXPRESS: open,
       },
     });
   });

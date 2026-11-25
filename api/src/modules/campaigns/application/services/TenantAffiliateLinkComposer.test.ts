@@ -4,7 +4,9 @@ import type { AffiliateProvider } from '../../../integrations/domain/enums/Affil
 import type { OfferAffiliateCredential } from '../../domain/contracts/IAffiliateCredentialResolver';
 import { AppError } from '../../../../shared/errors/AppError';
 
-const CREDS: Record<AffiliateProvider, OfferAffiliateCredential> = {
+/** Só as 4 lojas já suportadas; as novas entram com as tasks de cada loja. */
+type CurrentProvider = Exclude<AffiliateProvider, 'KABUM' | 'MAGALU' | 'ALIEXPRESS'>;
+const CREDS: Record<CurrentProvider, OfferAffiliateCredential> = {
   AMAZON: { provider: 'AMAZON', publicIdentifier: 'meu-20', secret: null },
   SHOPEE: { provider: 'SHOPEE', publicIdentifier: '123456', secret: 's3cr3t' },
   MERCADO_LIVRE: { provider: 'MERCADO_LIVRE', publicIdentifier: 'minhaetq', secret: null, session: { cookies: { ssid: 'x' } } },
@@ -29,7 +31,7 @@ function setup(accepted = true) {
     riskGate: { isAccepted: vi.fn(async (_t: string, _p: AffiliateProvider, _scope?: string) => accepted) },
   };
   const composer = new TenantAffiliateLinkComposer(deps);
-  const compose = (provider: AffiliateProvider, href: string, cred: OfferAffiliateCredential = CREDS[provider], mlTag?: string) =>
+  const compose = (provider: CurrentProvider, href: string, cred: OfferAffiliateCredential = CREDS[provider], mlTag?: string) =>
     composer.compose({ tenantId: 't1', provider, final: new URL(href), cred, ...(mlTag ? { mlTag } : {}) });
   return { deps, compose, composer };
 }

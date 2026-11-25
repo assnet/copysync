@@ -896,6 +896,9 @@ enum AffiliateProvider {
   MERCADO_LIVRE
   AMAZON
   SHEIN
+  KABUM
+  MAGALU
+  ALIEXPRESS
 }
 
 enum AffiliateCredentialStatus {

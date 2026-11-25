@@ -38,6 +38,10 @@ export const AFFILIATE_PROVIDER_FIELDS: Record<AffiliateProvider, AffiliateProvi
     secret: null,
     usesSession: true,
   },
+  // provisório até T4: `(?!)` nunca casa, então nenhum valor é aceito
+  KABUM: { publicIdentifier: { pattern: /(?!)/, maxLength: 0 }, secret: null, usesSession: false },
+  MAGALU: { publicIdentifier: { pattern: /(?!)/, maxLength: 0 }, secret: null, usesSession: false },
+  ALIEXPRESS: { publicIdentifier: { pattern: /(?!)/, maxLength: 0 }, secret: null, usesSession: false },
 };
 
 export function providerRequiresSecret(provider: AffiliateProvider): boolean {

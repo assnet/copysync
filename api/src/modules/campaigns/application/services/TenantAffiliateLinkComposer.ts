@@ -11,6 +11,7 @@ import { requiresRiskAcceptance } from '../../../integrations/domain/services/ma
 import { isSupportedShareLink } from '../../domain/services/isSupportedShareLink';
 import { parseProductRef, type ProductRef } from '../../domain/services/parseProductRef';
 import { logger } from '../../../../shared/logger/logger';
+import { OfferUrlUnsupportedError } from '../../../../shared/errors/internal/OfferErrors';
 
 /**
  * Dados do produto que já vieram na página lida para achar o id (vitrine social do ML). Quem
@@ -141,6 +142,11 @@ export class TenantAffiliateLinkComposer {
           product: { title: share.title, priceCents: share.priceCents, originalPriceCents: share.originalPriceCents, imageUrl: share.imageUrl },
         };
       }
+      // provisório até T8/T14/T20: lojas ainda não suportadas
+      case 'KABUM':
+      case 'MAGALU':
+      case 'ALIEXPRESS':
+        throw new OfferUrlUnsupportedError();
     }
   }
 

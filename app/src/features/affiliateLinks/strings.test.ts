@@ -7,7 +7,7 @@ describe('isAffiliateProvider', () => {
   });
 
   it('recusa chave herdada, desconhecida e não-string', () => {
-    for (const v of ['toString', '__proto__', 'constructor', 'hasOwnProperty', 'ALIEXPRESS', '', 1, null, undefined]) {
+    for (const v of ['toString', '__proto__', 'constructor', 'hasOwnProperty', 'LOJA_INEXISTENTE', '', 1, null, undefined]) {
       expect(isAffiliateProvider(v)).toBe(false);
     }
   });

@@ -97,7 +97,9 @@ interface Case {
   /** Marcas de identificador alheio que nunca podem sair no link. */
   foreign: string[];
 }
-const MATRIX: Record<AffiliateProvider, Case> = {
+/** Só as 4 lojas já suportadas; as novas entram com as tasks de cada loja. */
+type CurrentProvider = Exclude<AffiliateProvider, 'KABUM' | 'MAGALU' | 'ALIEXPRESS'>;
+const MATRIX: Record<CurrentProvider, Case> = {
   SHOPEE: {
     links: {
       outro_curto: 'https://s.shopee.com.br/outro',
@@ -167,7 +169,7 @@ const SHAPES: Shape[] = ['outro_curto', 'outro_longo', 'limpo', 'tenant_curto', 
 // Só o link curto oficial já do tenant é mantido; Amazon e Shopee (sem prova de dono) sempre recriam
 const KEEPS = (p: AffiliateProvider, shape: Shape) => shape === 'tenant_curto' && (p === 'MERCADO_LIVRE' || p === 'SHEIN');
 
-const CELLS = (Object.keys(MATRIX) as AffiliateProvider[]).flatMap((p) => SHAPES.map((shape) => [p, shape] as const));
+const CELLS = (Object.keys(MATRIX) as CurrentProvider[]).flatMap((p) => SHAPES.map((shape) => [p, shape] as const));
 
 describe('ResolveAffiliateProductUseCase — matriz (credencial ok)', () => {
   it.each(CELLS)('%s · %s → link do tenant, nunca o de terceiro', async (provider, shape) => {

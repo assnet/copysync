@@ -28,7 +28,7 @@ const PAGE: ProductPageData = {
   productRef: null,
 };
 
-const CREDS: Record<AffiliateProvider, OfferAffiliateCredential> = {
+const CREDS: Partial<Record<AffiliateProvider, OfferAffiliateCredential>> = {
   SHOPEE: { provider: 'SHOPEE', publicIdentifier: '18301234567', secret: 'S3CR3T' },
   AMAZON: { provider: 'AMAZON', publicIdentifier: 'loja-20', secret: null },
   MERCADO_LIVRE: { provider: 'MERCADO_LIVRE', publicIdentifier: 'minhaetq', secret: null, session: { cookies: { ssid: 'SSID-TOKEN' } } },

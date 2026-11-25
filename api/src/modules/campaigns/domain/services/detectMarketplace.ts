@@ -12,6 +12,10 @@ const MARKETPLACE_HOSTS: Readonly<Record<AffiliateProvider, readonly string[]>> 
   AMAZON: ['amazon.com.br', 'amzn.to', 'a.co', 'link.amazon', 'amzlinks.in'],
   // Nunca `shein.com` inteiro: `us.shein.com` e afins são outras lojas (outro programa de afiliados)
   SHEIN: ['br.shein.com', 'm.shein.com', 'onelink.shein.com'],
+  // provisório até T4: lista vazia = loja nunca detectada (segue não suportada)
+  KABUM: [],
+  MAGALU: [],
+  ALIEXPRESS: [],
 };
 
 const IPV4_LITERAL = /^\d{1,3}(?:\.\d{1,3}){3}$/;

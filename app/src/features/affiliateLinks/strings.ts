@@ -13,6 +13,9 @@ const ARTICLE: Record<AffiliateProvider, 'a' | 'o'> = {
   MERCADO_LIVRE: 'o',
   AMAZON: 'a',
   SHEIN: 'a',
+  KABUM: 'a',
+  MAGALU: 'a',
+  ALIEXPRESS: 'o',
 };
 
 export function isAffiliateProvider(value: unknown): value is AffiliateProvider {
@@ -35,6 +38,9 @@ const credentialRequired: Record<AffiliateProvider, string> = {
   SHEIN: 'Conecte sua conta da Shein pela extensão do navegador para gerar o link com a sua comissão.',
   SHOPEE: 'Cadastre o AppID e a senha da API de afiliados da Shopee para gerar o link com a sua comissão.',
   AMAZON: 'Cadastre seu ID de rastreamento da Amazon para gerar o link com a sua comissão.',
+  KABUM: 'Cadastre seu ID de afiliado da Kabum para gerar o link com a sua comissão.',
+  MAGALU: 'Cadastre o endereço da sua loja Magalu para gerar o link com a sua comissão.',
+  ALIEXPRESS: 'Cadastre as chaves da API de afiliados do AliExpress para gerar o link com a sua comissão.',
 };
 
 /** O que revisar quando a loja recusa a conexão. */
@@ -43,6 +49,9 @@ const rejectedHint: Record<AffiliateProvider, string> = {
   SHEIN: 'Conecte a conta de novo pela extensão do navegador.',
   SHOPEE: 'Revise o AppID e a senha da API de afiliados.',
   AMAZON: 'Revise o ID de rastreamento.',
+  KABUM: 'Revise o ID de afiliado da Kabum.',
+  MAGALU: 'Revise o endereço da sua loja Magalu.',
+  ALIEXPRESS: 'Revise as chaves da API de afiliados do AliExpress.',
 };
 
 export const affiliateLinkStrings = {
