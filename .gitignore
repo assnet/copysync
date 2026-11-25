@@ -11,6 +11,8 @@ legadoML/
 legadoAmazonNode/
 legadoSheinA/
 
+copysync-lp.zip
+
 # Cache incremental do tsc (`tsc -b`) — regenerado a cada build, não versionar
 *.tsbuildinfo
 
