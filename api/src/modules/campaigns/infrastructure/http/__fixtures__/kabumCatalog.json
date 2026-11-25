@@ -1,0 +1,98 @@
+{
+  "productWithOffer": {
+    "type": "product",
+    "id": 112948,
+    "attributes": {
+      "title": "Mouse Gamer Logitech G203 LIGHTSYNC RGB, Efeito de Ondas de Cores, 6 Botões Programáveis e Até 8.000 DPI, Preto - 910-005793",
+      "price": 199.99,
+      "old_price": 0.0,
+      "discount_percentage": 15,
+      "price_with_discount": 169.99,
+      "offer": {
+        "id": "1044727",
+        "name": "ESQUENTA BLACK DAS BLACKS",
+        "reference_banner": "esquentablackdasblacks",
+        "starts_at": 1795434804,
+        "ends_at": 1795698000,
+        "quantity_available": 255,
+        "price": 117.64,
+        "price_with_discount": 99.99,
+        "discount_percentage": 41,
+        "is_logged_user_exclusive": false
+      },
+      "available": true,
+      "stock": 447,
+      "photos": {
+        "p": [
+          "https://images.kabum.com.br/produtos/fotos/112948/mouse-gamer-logitech-g203-lightsync-rgb-efeito-de-ondas-de-cores-6-botoes-programaveis-e-ate-8-000-dpi-preto-910-005793_1781792020_p.jpg",
+          "https://images.kabum.com.br/produtos/fotos/112948/mouse-gamer-logitech-g203-lightsync-rgb-efeito-de-ondas-de-cores-6-botoes-programaveis-e-ate-8-000-dpi-preto-910-005793_1781792021_p.jpg"
+        ],
+        "m": [
+          "https://images.kabum.com.br/produtos/fotos/112948/mouse-gamer-logitech-g203-lightsync-rgb-efeito-de-ondas-de-cores-6-botoes-programaveis-e-ate-8-000-dpi-preto-910-005793_1781792020_m.jpg",
+          "https://images.kabum.com.br/produtos/fotos/112948/mouse-gamer-logitech-g203-lightsync-rgb-efeito-de-ondas-de-cores-6-botoes-programaveis-e-ate-8-000-dpi-preto-910-005793_1781792021_m.jpg"
+        ],
+        "g": [
+          "https://images.kabum.com.br/produtos/fotos/112948/mouse-gamer-logitech-g203-lightsync-rgb-efeito-de-ondas-de-cores-6-botoes-programaveis-e-ate-8-000-dpi-preto-910-005793_1781792020_g.jpg",
+          "https://images.kabum.com.br/produtos/fotos/112948/mouse-gamer-logitech-g203-lightsync-rgb-efeito-de-ondas-de-cores-6-botoes-programaveis-e-ate-8-000-dpi-preto-910-005793_1781792021_g.jpg"
+        ],
+        "gg": [
+          "https://images.kabum.com.br/produtos/fotos/112948/mouse-gamer-logitech-g203-lightsync-rgb-efeito-de-ondas-de-cores-6-botoes-programaveis-e-ate-8-000-dpi-preto-910-005793_1781792020_gg.jpg",
+          "https://images.kabum.com.br/produtos/fotos/112948/mouse-gamer-logitech-g203-lightsync-rgb-efeito-de-ondas-de-cores-6-botoes-programaveis-e-ate-8-000-dpi-preto-910-005793_1781792021_gg.jpg"
+        ]
+      },
+      "images": [
+        "https://images.kabum.com.br/produtos/fotos/112948/mouse-gamer-logitech-g203-lightsync-rgb-efeito-de-ondas-de-cores-6-botoes-programaveis-e-ate-8-000-dpi-preto-910-005793_1781792020_original.jpg",
+        "https://images.kabum.com.br/produtos/fotos/112948/mouse-gamer-logitech-g203-lightsync-rgb-efeito-de-ondas-de-cores-6-botoes-programaveis-e-ate-8-000-dpi-preto-910-005793_1781792021_original.jpg"
+      ],
+      "seller_type": "1P",
+      "product_link": "mouse-gamer-logitech-g203-lightsync-rgb-efeito-de-ondas-de-cores-6-botoes-programaveis-e-ate-8-000-dpi-preto-910-005793"
+    }
+  },
+  "productUnavailable3P": {
+    "type": "product",
+    "id": 480581,
+    "attributes": {
+      "title": "Fone de Ouvido Baseus Bowie M2, Sem Fio, Cancelamento De Ruído",
+      "price": 398.9,
+      "old_price": 0.0,
+      "discount_percentage": 0,
+      "price_with_discount": 398.9,
+      "offer": null,
+      "available": false,
+      "stock": 0,
+      "photos": {
+        "p": [
+          "https://images.kabum.com.br/produtos/fotos/sync_mirakl/480581/Fone-de-Ouvido-Baseus-Bowie-M2-Sem-Fio-Cancelamento-De-Ru-do_1692298141_p.jpg",
+          "https://images.kabum.com.br/produtos/fotos/sync_mirakl/480581/Fone-de-Ouvido-Baseus-Bowie-M2-Sem-Fio-Cancelamento-De-Ru-do_1692298153_p.jpg"
+        ],
+        "m": [
+          "https://images.kabum.com.br/produtos/fotos/sync_mirakl/480581/Fone-de-Ouvido-Baseus-Bowie-M2-Sem-Fio-Cancelamento-De-Ru-do_1692298140_m.jpg",
+          "https://images.kabum.com.br/produtos/fotos/sync_mirakl/480581/Fone-de-Ouvido-Baseus-Bowie-M2-Sem-Fio-Cancelamento-De-Ru-do_1692298151_m.jpg"
+        ],
+        "g": [
+          "https://images.kabum.com.br/produtos/fotos/sync_mirakl/480581/Fone-de-Ouvido-Baseus-Bowie-M2-Sem-Fio-Cancelamento-De-Ru-do_1692298138_g.jpg",
+          "https://images.kabum.com.br/produtos/fotos/sync_mirakl/480581/Fone-de-Ouvido-Baseus-Bowie-M2-Sem-Fio-Cancelamento-De-Ru-do_1692298149_g.jpg"
+        ],
+        "gg": [
+          "https://images.kabum.com.br/produtos/fotos/sync_mirakl/480581/Fone-de-Ouvido-Baseus-Bowie-M2-Sem-Fio-Cancelamento-De-Ru-do_1692298134_gg.jpg",
+          "https://images.kabum.com.br/produtos/fotos/sync_mirakl/480581/Fone-de-Ouvido-Baseus-Bowie-M2-Sem-Fio-Cancelamento-De-Ru-do_1692298146_gg.jpg"
+        ]
+      },
+      "images": [
+        "https://images.kabum.com.br/produtos/fotos/sync_mirakl/480581/Fone-de-Ouvido-Baseus-Bowie-M2-Sem-Fio-Cancelamento-De-Ru-do_1692298134_gg.jpg",
+        "https://images.kabum.com.br/produtos/fotos/sync_mirakl/480581/Fone-de-Ouvido-Baseus-Bowie-M2-Sem-Fio-Cancelamento-De-Ru-do_1692298146_gg.jpg"
+      ],
+      "seller_type": "3P",
+      "product_link": "fone-de-ouvido-baseus-bowie-m2-sem-fio-cancelamento-de-ruido"
+    }
+  },
+  "notFound": {
+    "errors": [
+      {
+        "code": "CATALOG_NOT_MATCH",
+        "detail": "No matching data have been found."
+      }
+    ]
+  },
+  "_source": "GET https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products/{112948,480581,999999999} em 2026-11-24, reduzido aos campos usados"
+}
