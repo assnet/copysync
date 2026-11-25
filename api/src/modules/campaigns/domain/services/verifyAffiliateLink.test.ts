@@ -114,3 +114,32 @@ describe('verifyAffiliateLink — ML: matt_word tem precedência sobre /social/<
     expect(verifyAffiliateLink('MERCADO_LIVRE', two, ['principal', 'segunda'])).toBe('not_owned');
   });
 });
+
+const awinLink = (aff: string, mid = '17729', ued = 'https://www.kabum.com.br/produto/123456/x') =>
+  `https://www.awin1.com/cread.php?awinmid=${mid}&awinaffid=${aff}&ued=${encodeURIComponent(ued)}`;
+
+describe('verifyAffiliateLink — Kabum, Magalu e AliExpress', () => {
+  it.each([
+    ['Kabum awinaffid do tenant', 'KABUM', awinLink('1234567'), '1234567', 'verified'],
+    ['Kabum awinaffid de outro', 'KABUM', awinLink('7654321'), '1234567', 'not_owned'],
+    ['Kabum sem credencial', 'KABUM', awinLink('1234567'), null, 'unverified'],
+    ['Kabum link direto', 'KABUM', 'https://www.kabum.com.br/produto/123456', '1234567', 'not_affiliate'],
+    ['Kabum awinaffid duplicado', 'KABUM', `${awinLink('1234567')}&awinaffid=7654321`, '1234567', 'not_owned'],
+    ['Kabum outro anunciante', 'KABUM', awinLink('1234567', '99999'), '1234567', 'not_affiliate'],
+    ['Kabum ued fora da Kabum', 'KABUM', awinLink('1234567', '17729', 'https://exemplo.com/produto/1'), '1234567', 'not_affiliate'],
+    ['Magalu slug do tenant', 'MAGALU', 'https://www.magazinevoce.com.br/minhaloja/x/p/240552500/', 'minhaloja', 'verified'],
+    ['Magalu slug do tenant, caixa', 'MAGALU', 'https://www.magazinevoce.com.br/MinhaLoja/x/p/240552500/', 'minhaloja', 'verified'],
+    ['Magalu outro slug', 'MAGALU', 'https://www.magazinevoce.com.br/outraloja/x/p/240552500/', 'minhaloja', 'not_owned'],
+    ['Magalu magazineluiza', 'MAGALU', 'https://www.magazineluiza.com.br/x/p/240552500/', 'minhaloja', 'not_affiliate'],
+    ['AliExpress curto', 'ALIEXPRESS', 'https://s.click.aliexpress.com/e/_abc', 'track', 'unverified'],
+    ['AliExpress com tracking igual', 'ALIEXPRESS', 'https://pt.aliexpress.com/item/1.html?aff_fcid=track&aff_trace_key=track', 'track', 'unverified'],
+  ] as const)('%s → %s', (_label, provider, url, cred, expected) => {
+    expect(verifyAffiliateLink(provider, u(url), cred)).toBe(expected);
+  });
+
+  it('identificadores expostos por loja', () => {
+    expect(affiliateIdentifierOf('KABUM', u(awinLink('1234567')))).toBe('1234567');
+    expect(affiliateIdentifierOf('MAGALU', u('https://magazinevoce.com.br/minhaloja/x/p/1/'))).toBe('minhaloja');
+    expect(ownershipIdentifiersOf('ALIEXPRESS', [u('https://pt.aliexpress.com/item/1.html')])).toEqual([]);
+  });
+});

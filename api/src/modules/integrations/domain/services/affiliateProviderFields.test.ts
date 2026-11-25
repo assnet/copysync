@@ -60,3 +60,38 @@ describe('affiliateProviderFields — Shein', () => {
     expect(providerIdentifierFollowsSession('AMAZON')).toBe(false);
   });
 });
+
+describe('affiliateProviderFields — Kabum, Magalu e AliExpress', () => {
+  it('Kabum: Publisher ID numérico da Awin, sem segredo', () => {
+    expect(validatePublicIdentifier('KABUM', ' 1234567 ')).toBe('1234567');
+    expect(validatePublicIdentifier('KABUM', '123')).toBeNull();
+    expect(validatePublicIdentifier('KABUM', '12345678901')).toBeNull();
+    expect(validatePublicIdentifier('KABUM', 'abc1234')).toBeNull();
+    expect(providerRequiresSecret('KABUM')).toBe(false);
+    expect(validateSecret('KABUM', '12345:abcdefabcdefabcdef')).toBeNull();
+    expect(providerUsesSession('KABUM')).toBe(false);
+  });
+
+  it('Magalu: slug da loja em minúsculas, sem segredo', () => {
+    expect(validatePublicIdentifier('MAGALU', 'minha-loja_1')).toBe('minha-loja_1');
+    expect(validatePublicIdentifier('MAGALU', 'ab')).toBeNull();
+    expect(validatePublicIdentifier('MAGALU', 'MinhaLoja')).toBeNull();
+    expect(validatePublicIdentifier('MAGALU', 'loja/x')).toBeNull();
+    expect(validatePublicIdentifier('MAGALU', 'x'.repeat(65))).toBeNull();
+    expect(providerRequiresSecret('MAGALU')).toBe(false);
+    expect(providerUsesSession('MAGALU')).toBe(false);
+  });
+
+  it('AliExpress: Tracking ID e segredo appKey:appSecret', () => {
+    expect(validatePublicIdentifier('ALIEXPRESS', 'meu_track-1')).toBe('meu_track-1');
+    expect(validatePublicIdentifier('ALIEXPRESS', 'com espaço')).toBeNull();
+    expect(validatePublicIdentifier('ALIEXPRESS', 'x'.repeat(65))).toBeNull();
+    expect(providerRequiresSecret('ALIEXPRESS')).toBe(true);
+    expect(validateSecret('ALIEXPRESS', ' 501234:AbCdEf0123456789AbCd ')).toBe('501234:AbCdEf0123456789AbCd');
+    expect(validateSecret('ALIEXPRESS', 'AbCdEf0123456789AbCd')).toBeNull();
+    expect(validateSecret('ALIEXPRESS', 'abc:AbCdEf0123456789AbCd')).toBeNull();
+    expect(validateSecret('ALIEXPRESS', '501234:curto')).toBeNull();
+    expect(providerUsesSession('ALIEXPRESS')).toBe(false);
+    expect(providerIdentifierFollowsSession('ALIEXPRESS')).toBe(false);
+  });
+});

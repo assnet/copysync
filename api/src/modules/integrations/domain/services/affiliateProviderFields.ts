@@ -9,6 +9,9 @@ import type { AffiliateProvider } from '../enums/AffiliateProvider';
  * - Amazon Associados: "ID de rastreamento" (`?tag=`, ex. `minhaloja-20`); sem segredo
  * - Shein: ID de afiliado (`memberId`, numérico; `url_from=affiliate_koc_<id>`); sem segredo — vem da
  *   sessão da extensão e acompanha a conta logada (não é digitado)
+ * - Kabum (Awin, anunciante 17729): Publisher ID da Awin (`awinaffid`, numérico); sem segredo
+ * - Magalu (Influenciador Magalu): slug da loja (`magazinevoce.com.br/<slug>`); sem segredo
+ * - AliExpress (Affiliates API do próprio cliente): Tracking ID; segredo `appKey:appSecret`
  */
 export interface AffiliateProviderFields {
   publicIdentifier: { pattern: RegExp; maxLength: number };
@@ -38,10 +41,22 @@ export const AFFILIATE_PROVIDER_FIELDS: Record<AffiliateProvider, AffiliateProvi
     secret: null,
     usesSession: true,
   },
-  // provisório até T4: `(?!)` nunca casa, então nenhum valor é aceito
-  KABUM: { publicIdentifier: { pattern: /(?!)/, maxLength: 0 }, secret: null, usesSession: false },
-  MAGALU: { publicIdentifier: { pattern: /(?!)/, maxLength: 0 }, secret: null, usesSession: false },
-  ALIEXPRESS: { publicIdentifier: { pattern: /(?!)/, maxLength: 0 }, secret: null, usesSession: false },
+  KABUM: {
+    publicIdentifier: { pattern: /^\d{4,10}$/, maxLength: 10 },
+    secret: null,
+    usesSession: false,
+  },
+  MAGALU: {
+    publicIdentifier: { pattern: /^[a-z0-9_-]{3,64}$/, maxLength: 64 },
+    secret: null,
+    usesSession: false,
+  },
+  ALIEXPRESS: {
+    publicIdentifier: { pattern: /^[A-Za-z0-9_-]{1,64}$/, maxLength: 64 },
+    // `appKey:appSecret` num campo só: a chave é numérica, o segredo alfanumérico
+    secret: { pattern: /^\d{5,12}:[A-Za-z0-9]{16,64}$/, maxLength: 77 },
+    usesSession: false,
+  },
 };
 
 export function providerRequiresSecret(provider: AffiliateProvider): boolean {

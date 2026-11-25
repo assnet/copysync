@@ -1,9 +1,10 @@
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
+import { kabumDestinationOf } from './detectMarketplace';
 
 /**
  * Resultado da checagem de dono do link colado:
  * - `verified`: identificador do link = credencial do tenant
- * - `unverified`: sem como confirmar (Shopee, ou tenant sem credencial do marketplace)
+ * - `unverified`: sem como confirmar (Shopee, AliExpress, ou tenant sem credencial do marketplace)
  * - `not_owned`: identificador de outra conta, ou identificadores divergentes no link
  * - `not_affiliate`: link sem identificador de afiliado
  */
@@ -30,10 +31,25 @@ function socialTag(url: URL): string | null {
   }
 }
 
+/** Loja do afiliado em `magazinevoce.com.br/<loja>/…` (1º segmento do caminho). */
+function magaluStore(url: URL): string | null {
+  const host = url.hostname.toLowerCase().replace(/\.$/, '');
+  if (host !== 'magazinevoce.com.br' && !host.endsWith('.magazinevoce.com.br')) return null;
+  const seg = /^\/([^/]+)/.exec(url.pathname)?.[1];
+  if (!seg) return null;
+  try {
+    return decodeURIComponent(seg);
+  } catch {
+    return seg;
+  }
+}
+
 /**
  * Todos os identificadores de afiliado presentes no link, na ordem em que aparecem (Amazon:
  * cada `tag`; ML: cada `matt_word` e `/social/<etiqueta>`; Shein: o `<id>` de cada
- * `url_from=affiliate_koc_<id>`, outro formato não conta). Repetidos ficam: quem decide é o chamador.
+ * `url_from=affiliate_koc_<id>`, outro formato não conta; Kabum: cada `awinaffid` de link Awin
+ * válido da Kabum; Magalu: a loja de `magazinevoce.com.br/<loja>`; AliExpress: nenhum, o link não
+ * expõe o dono). Repetidos ficam: quem decide é o chamador.
  */
 export function affiliateIdentifiersOf(provider: AffiliateProvider, url: URL): string[] {
   switch (provider) {
@@ -45,6 +61,12 @@ export function affiliateIdentifiersOf(provider: AffiliateProvider, url: URL): s
     }
     case 'SHEIN':
       return params(url, 'url_from').flatMap((v) => SHEIN_URL_FROM.exec(v)?.[1] ?? []);
+    case 'KABUM':
+      return kabumDestinationOf(url) ? params(url, 'awinaffid') : [];
+    case 'MAGALU': {
+      const store = magaluStore(url);
+      return store ? [store] : [];
+    }
     default:
       return [];
   }
@@ -80,7 +102,8 @@ export function verifyAffiliateLink(
   urls: URL | readonly URL[],
   credentialIdentifier: string | readonly string[] | null,
 ): AffiliateLinkCheck {
-  if (provider === 'SHOPEE') return 'unverified';
+  // Shopee e AliExpress: o link não prova o dono, nunca `verified` (sempre recriado)
+  if (provider === 'SHOPEE' || provider === 'ALIEXPRESS') return 'unverified';
   const list = Array.isArray(urls) ? urls : [urls as URL];
   const found = new Set(ownershipIdentifiersOf(provider, list).map((v) => v.toLowerCase()));
   if (found.size === 0) return 'not_affiliate';

@@ -36,6 +36,11 @@ export function productRefOf(ref: ProductRef): string {
       return ref.itemId;
     case 'SHEIN':
       return ref.goodsId;
+    case 'KABUM':
+    case 'ALIEXPRESS':
+      return ref.productId;
+    case 'MAGALU':
+      return ref.sku;
   }
 }
 

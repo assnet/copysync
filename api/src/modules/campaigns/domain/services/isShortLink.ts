@@ -12,6 +12,9 @@ export const SHORT_HOSTS: ReadonlySet<string> = new Set([
   'meli.la',
   'click1.mercadolivre.com.br',
   'onelink.shein.com',
+  // `awin1.com` e `magazinevoce.com.br` não são curtos: o destino/dono já está na URL, nada a expandir
+  's.click.aliexpress.com',
+  'a.aliexpress.com',
 ]);
 
 /**

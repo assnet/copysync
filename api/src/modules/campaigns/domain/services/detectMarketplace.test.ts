@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { detectMarketplace, isSupportedProductUrl } from './detectMarketplace';
+import { detectMarketplace, isSupportedProductUrl, kabumDestinationOf } from './detectMarketplace';
 
 const u = (s: string) => new URL(s);
 
@@ -62,5 +62,61 @@ describe('detectMarketplace — Shein', () => {
     ['https://br.shein.com.evil.com/x', null],
   ] as const)('%s → %s', (url, expected) => {
     expect(detectMarketplace(u(url))).toBe(expected);
+  });
+});
+
+const awin = (mid: string, ued: string, extra = '') =>
+  `https://www.awin1.com/cread.php?awinmid=${mid}&awinaffid=1234567${extra}&ued=${encodeURIComponent(ued)}`;
+const KABUM_PRODUCT = 'https://www.kabum.com.br/produto/123456/notebook-x';
+
+describe('detectMarketplace — Kabum, Magalu e AliExpress', () => {
+  it.each([
+    [KABUM_PRODUCT, 'KABUM'],
+    ['https://kabum.com.br/produto/123456', 'KABUM'],
+    ['https://m.kabum.com.br/produto/123456', 'KABUM'],
+    ['https://evilkabum.com.br/produto/123456', null],
+    ['https://kabum.com.br.evil.com/produto/123456', null],
+    [awin('17729', KABUM_PRODUCT), 'KABUM'],
+    [awin('17729', KABUM_PRODUCT).replace('www.awin1.com', 'awin1.com'), 'KABUM'],
+    [awin('99999', KABUM_PRODUCT), null],
+    [awin('17729', 'https://www.exemplo.com.br/produto/1'), null],
+    [awin('17729', 'https://evilkabum.com.br/produto/1'), null],
+    [awin('17729', 'http://www.kabum.com.br/produto/1'), null],
+    [awin('17729', 'nao-e-url'), null],
+    [awin('17729', KABUM_PRODUCT, '&awinmid=99999'), null],
+    ['https://www.awin1.com/cread.php?awinmid=17729&awinaffid=1', null],
+    [awin('17729', KABUM_PRODUCT).replace('/cread.php', '/outra.php'), null],
+    ['https://tidd.ly/3abcXYZ', null],
+    ['https://www.magazineluiza.com.br/produto-x/p/240552500/cat/sub/', 'MAGALU'],
+    ['https://www.magazinevoce.com.br/minhaloja/produto-x/p/dd90eh0e9b/cat/sub/', 'MAGALU'],
+    ['https://evilmagazineluiza.com.br/x/p/1/', null],
+    ['https://pt.aliexpress.com/item/1005001234567890.html', 'ALIEXPRESS'],
+    ['https://aliexpress.com/item/1005001234567890.html', 'ALIEXPRESS'],
+    ['https://s.click.aliexpress.com/e/_abc', 'ALIEXPRESS'],
+    ['https://a.aliexpress.com/_abc', 'ALIEXPRESS'],
+    ['https://www.aliexpress.us/item/1005001234567890.html', null],
+    ['https://aliexpress.ru/item/1005001234567890.html', null],
+    ['https://evilaliexpress.com/item/1.html', null],
+  ] as const)('%s → %s', (url, expected) => {
+    expect(detectMarketplace(u(url))).toBe(expected);
+  });
+
+  it('lê o destino do `ued` só da query, sem rede', () => {
+    const before = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = (() => { calls += 1; throw new Error('sem rede'); }) as typeof fetch;
+    try {
+      expect(detectMarketplace(u(awin('17729', KABUM_PRODUCT)))).toBe('KABUM');
+      expect(kabumDestinationOf(u(awin('17729', KABUM_PRODUCT)))?.toString()).toBe(KABUM_PRODUCT);
+    } finally {
+      globalThis.fetch = before;
+    }
+    expect(calls).toBe(0);
+  });
+
+  it('isSupportedProductUrl segue a mesma regra', () => {
+    expect(isSupportedProductUrl(u(awin('17729', KABUM_PRODUCT)))).toBe(true);
+    expect(isSupportedProductUrl(u(awin('99999', KABUM_PRODUCT)))).toBe(false);
+    expect(isSupportedProductUrl(u('https://www.aliexpress.us/item/1.html'))).toBe(false);
   });
 });

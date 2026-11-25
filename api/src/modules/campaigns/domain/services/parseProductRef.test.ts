@@ -82,3 +82,67 @@ describe('parseProductRef — Shein', () => {
     expect(parseProductRef('SHEIN', u(url))).toBeNull();
   });
 });
+
+const awin = (mid: string, ued: string) =>
+  `https://www.awin1.com/cread.php?awinmid=${mid}&awinaffid=1234567&ued=${encodeURIComponent(ued)}`;
+
+describe('parseProductRef — Kabum', () => {
+  it.each([
+    ['https://www.kabum.com.br/produto/123456/notebook-x', '123456'],
+    ['https://www.kabum.com.br/produto/123456', '123456'],
+    [awin('17729', 'https://www.kabum.com.br/produto/987654/placa-y?x=1'), '987654'],
+  ])('%s → %s', (url, productId) => {
+    expect(parseProductRef('KABUM', u(url))).toEqual({ provider: 'KABUM', productId });
+  });
+
+  it.each([
+    'https://www.kabum.com.br/hardware/placa-de-video',
+    'https://www.kabum.com.br/busca/produto/123',
+    awin('99999', 'https://www.kabum.com.br/produto/987654'),
+    awin('17729', 'https://www.exemplo.com.br/produto/987654'),
+    awin('17729', 'https://evilkabum.com.br/produto/987654'),
+    'https://www.awin1.com/cread.php?awinmid=17729&awinaffid=1',
+  ])('recusa %s', (url) => {
+    expect(parseProductRef('KABUM', u(url))).toBeNull();
+  });
+});
+
+describe('parseProductRef — Magalu', () => {
+  it('magazineluiza: SKU e caminho inteiro', () => {
+    expect(parseProductRef('MAGALU', u('https://www.magazineluiza.com.br/geladeira-x/p/240552500/ed/refr/?seller_id=a'))).toEqual({
+      provider: 'MAGALU', sku: '240552500', path: '/geladeira-x/p/240552500/ed/refr/',
+    });
+  });
+
+  it('magazinevoce: caminho sem o segmento da loja', () => {
+    expect(parseProductRef('MAGALU', u('https://www.magazinevoce.com.br/minhaloja/tenis-y/p/dd90eh0e9b/es/tens'))).toEqual({
+      provider: 'MAGALU', sku: 'dd90eh0e9b', path: '/tenis-y/p/dd90eh0e9b/es/tens',
+    });
+  });
+
+  it.each([
+    'https://www.magazinevoce.com.br/minhaloja/',
+    'https://www.magazinevoce.com.br/p/240552500/',
+    'https://www.magazineluiza.com.br/busca/geladeira/',
+    'https://www.exemplo.com.br/x/p/240552500/',
+  ])('recusa %s', (url) => {
+    expect(parseProductRef('MAGALU', u(url))).toBeNull();
+  });
+});
+
+describe('parseProductRef — AliExpress', () => {
+  it.each([
+    'https://pt.aliexpress.com/item/1005001234567890.html?spm=x',
+    'https://www.aliexpress.com/item/1005001234567890.html',
+  ])('%s', (url) => {
+    expect(parseProductRef('ALIEXPRESS', u(url))).toEqual({ provider: 'ALIEXPRESS', productId: '1005001234567890' });
+  });
+
+  it.each([
+    'https://pt.aliexpress.com/store/123',
+    'https://s.click.aliexpress.com/e/_abc',
+    'https://www.aliexpress.us/item/1005001234567890.html',
+  ])('recusa %s', (url) => {
+    expect(parseProductRef('ALIEXPRESS', u(url))).toBeNull();
+  });
+});

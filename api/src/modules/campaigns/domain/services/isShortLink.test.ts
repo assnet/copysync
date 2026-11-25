@@ -15,6 +15,12 @@ describe('isShortLink', () => {
     ['https://produto.mercadolivre.com.br/MLB-1-x', false],
     ['https://www.amazon.com.br/dp/B0ABCDEFGH', false],
     ['https://shopee.com.br/x-i.1.2', false],
+    ['https://s.click.aliexpress.com/e/_abc', true],
+    ['https://a.aliexpress.com/_abc', true],
+    ['https://pt.aliexpress.com/item/1005001234567890.html', false],
+    ['https://www.awin1.com/cread.php?awinmid=17729&awinaffid=1&ued=x', false],
+    ['https://www.magazinevoce.com.br/loja/x/p/240552500/', false],
+    ['https://www.kabum.com.br/produto/123456', false],
   ] as const)('%s → %s', (url, expected) => {
     expect(isShortLink(new URL(url))).toBe(expected);
   });
