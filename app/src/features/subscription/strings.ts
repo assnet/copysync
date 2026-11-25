@@ -42,6 +42,8 @@ export const SUBSCRIPTION_LIMIT_KEYS = [
   'mercado_livre_affiliate_tags',
   'offer_hunter_enabled',
   'offer_hunter_finds_per_day',
+  'offer_clean_image_enabled',
+  'offer_watermark_enabled',
   'saver_groups',
   'saver_contacts',
   'saver_group_scans_per_day',
@@ -83,6 +85,8 @@ const FIXED_MIN_PLAN: Partial<Record<SubscriptionLimitKey, PlanSlug>> = {
   marketplace_aliexpress_enabled: 'max',
   offer_hunter_enabled: 'max',
   offer_hunter_finds_per_day: 'max',
+  offer_clean_image_enabled: 'pro',
+  offer_watermark_enabled: 'max',
   ai_rewrite_enabled: 'pro',
   marketplace_extension: 'lite',
   offer_generations_per_day: 'lite',
@@ -238,6 +242,14 @@ export const subscriptionStrings = {
     offer_hunter_finds_per_day: {
       label: 'Ofertas garimpadas',
       hint: 'Ofertas escolhidas pelo Caçador de Ofertas por dia. O contador zera à meia-noite.',
+    },
+    offer_clean_image_enabled: {
+      label: 'Foto oficial do produto',
+      hint: 'No monitoramento, a foto que veio do grupo é trocada pela foto oficial do produto na loja.',
+    },
+    offer_watermark_enabled: {
+      label: "Marca d'água própria",
+      hint: 'Seu logo ou o nome da sua marca sobre a foto de toda oferta enviada aos grupos.',
     },
     mercado_livre_affiliate_tags: {
       label: 'Etiquetas do Mercado Livre',

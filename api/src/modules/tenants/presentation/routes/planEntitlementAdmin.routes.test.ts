@@ -189,4 +189,12 @@ describe('PUT /admin/plan-entitlements/:key/audience', () => {
     expect(res.statusCode).toBe(200);
     expect(spy).toHaveBeenCalledWith({ key: 'marketplace_kabum_enabled', superAdminOnly: false, actorUserId: 'admin-1' });
   });
+  it('foto oficial e marca d\'água têm audiência → 200 e chamam o use case', async () => {
+    for (const key of ['offer_clean_image_enabled', 'offer_watermark_enabled']) {
+      const spy = vi.spyOn(SetFeatureAudienceUseCase.prototype, 'execute').mockResolvedValue({ key, superAdminOnly: false });
+      const res = await app.inject({ method: 'PUT', url: `${URL}/${key}/audience`, payload: { superAdminOnly: false } });
+      expect(res.statusCode).toBe(200);
+      expect(spy).toHaveBeenCalledWith({ key, superAdminOnly: false, actorUserId: 'admin-1' });
+    }
+  });
 });

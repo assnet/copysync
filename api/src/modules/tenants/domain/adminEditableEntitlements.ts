@@ -19,6 +19,8 @@ export const ADMIN_EDITABLE_ENTITLEMENTS = {
   [ENTITLEMENT_KEYS.MARKETPLACE_KABUM_ENABLED]: { kind: 'boolean' },
   [ENTITLEMENT_KEYS.MARKETPLACE_MAGALU_ENABLED]: { kind: 'boolean' },
   [ENTITLEMENT_KEYS.MARKETPLACE_ALIEXPRESS_ENABLED]: { kind: 'boolean' },
+  [ENTITLEMENT_KEYS.OFFER_CLEAN_IMAGE_ENABLED]: { kind: 'boolean' },
+  [ENTITLEMENT_KEYS.OFFER_WATERMARK_ENABLED]: { kind: 'boolean' },
   [ENTITLEMENT_KEYS.OFFER_HUNTER_ENABLED]: { kind: 'boolean' },
   [ENTITLEMENT_KEYS.OFFER_HUNTER_FINDS_PER_DAY]: { kind: 'integer', min: 0, max: 100 },
 } as const satisfies Partial<Record<EntitlementKey, AdminEntitlementValueType>>;
@@ -33,14 +35,16 @@ export function isAdminEditableEntitlementKey(key: string): key is AdminEditable
 }
 
 /**
- * Produto dono de cada chave editável: a chave só é editável nos planos desse produto (lojas e Caçador
- * são recursos de Afiliados). Plano de outro produto = 400 na rota admin e célula sem controle na tela.
+ * Produto dono de cada chave editável: a chave só é editável nos planos desse produto (lojas, Caçador,
+ * foto oficial e marca d'água são recursos de Afiliados). Plano de outro produto = 400 na rota admin e célula sem controle na tela.
  */
 export const ADMIN_ENTITLEMENT_PRODUCT: Readonly<Record<AdminEditableEntitlementKey, ProductKey>> = {
   [ENTITLEMENT_KEYS.MARKETPLACE_SHEIN_ENABLED]: 'AFFILIATES',
   [ENTITLEMENT_KEYS.MARKETPLACE_KABUM_ENABLED]: 'AFFILIATES',
   [ENTITLEMENT_KEYS.MARKETPLACE_MAGALU_ENABLED]: 'AFFILIATES',
   [ENTITLEMENT_KEYS.MARKETPLACE_ALIEXPRESS_ENABLED]: 'AFFILIATES',
+  [ENTITLEMENT_KEYS.OFFER_CLEAN_IMAGE_ENABLED]: 'AFFILIATES',
+  [ENTITLEMENT_KEYS.OFFER_WATERMARK_ENABLED]: 'AFFILIATES',
   [ENTITLEMENT_KEYS.OFFER_HUNTER_ENABLED]: 'AFFILIATES',
   [ENTITLEMENT_KEYS.OFFER_HUNTER_FINDS_PER_DAY]: 'AFFILIATES',
 };

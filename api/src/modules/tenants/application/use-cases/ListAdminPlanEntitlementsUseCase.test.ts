@@ -10,7 +10,10 @@ function fakeRepo(rows: Awaited<ReturnType<IPlanEntitlementPresetRepository['lis
   return { listByKeys: vi.fn(async () => rows), setForPlan: vi.fn() } satisfies IPlanEntitlementPresetRepository;
 }
 
-const STORES = { marketplace_kabum_enabled: true, marketplace_magalu_enabled: true, marketplace_aliexpress_enabled: true };
+const STORES = {
+  marketplace_kabum_enabled: true, marketplace_magalu_enabled: true, marketplace_aliexpress_enabled: true,
+  offer_clean_image_enabled: true, offer_watermark_enabled: true,
+};
 const audience = { all: async () => ({ offer_hunter_enabled: true, saver: true, ...STORES }) };
 
 describe('ListAdminPlanEntitlementsUseCase', () => {
@@ -31,7 +34,7 @@ describe('ListAdminPlanEntitlementsUseCase', () => {
     });
     expect(out.map((r) => r.key)).toEqual([
       'marketplace_shein_enabled', 'marketplace_kabum_enabled', 'marketplace_magalu_enabled', 'marketplace_aliexpress_enabled',
-      'offer_hunter_enabled', 'offer_hunter_finds_per_day', 'saver']);
+      'offer_clean_image_enabled', 'offer_watermark_enabled', 'offer_hunter_enabled', 'offer_hunter_finds_per_day', 'saver']);
   });
 
   it('chave numérica devolve tipo inteiro com faixa e o valor do preset', async () => {
@@ -50,15 +53,16 @@ describe('ListAdminPlanEntitlementsUseCase', () => {
     const out = await new ListAdminPlanEntitlementsUseCase(fakeRepo([]), audience).execute();
     expect(out).toHaveLength(ADMIN_EDITABLE_ENTITLEMENT_KEYS.length + 1);
     expect(out[0].plans).toEqual({ COPYSYNC_LITE: null, COPYSYNC_PRO: null, COPYSYNC_MAX: null, ...SAVER_NULL });
-    // Lojas e Caçador são de Afiliados: nenhum plano Saver editável
+    // Lojas, imagem das ofertas e Caçador são de Afiliados: nenhum plano Saver editável
     for (const row of out.filter((r) => r.type)) expect(row).toMatchObject(AFFILIATES_OWNED);
   });
 
   it('superAdminOnly só na chave com audiência (flag efetiva); demais null', async () => {
-    const out = await new ListAdminPlanEntitlementsUseCase(fakeRepo([]), { all: async () => ({ offer_hunter_enabled: false, saver: true, ...STORES, marketplace_magalu_enabled: false }) }).execute();
+    const out = await new ListAdminPlanEntitlementsUseCase(fakeRepo([]), { all: async () => ({ offer_hunter_enabled: false, saver: true, ...STORES, marketplace_magalu_enabled: false, offer_watermark_enabled: false }) }).execute();
     expect(Object.fromEntries(out.map((r) => [r.key, r.superAdminOnly]))).toEqual({
       marketplace_shein_enabled: null, marketplace_kabum_enabled: true, marketplace_magalu_enabled: false,
-      marketplace_aliexpress_enabled: true, offer_hunter_enabled: false, offer_hunter_finds_per_day: null, saver: true,
+      marketplace_aliexpress_enabled: true, offer_clean_image_enabled: true, offer_watermark_enabled: false,
+      offer_hunter_enabled: false, offer_hunter_finds_per_day: null, saver: true,
     });
   });
 

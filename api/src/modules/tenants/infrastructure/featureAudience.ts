@@ -9,7 +9,7 @@ import { PrismaFeatureAudienceRepository } from './repositories/PrismaFeatureAud
 
 /**
  * Valor inicial (chave nunca gravada): `OFFER_HUNTER_AUDIENCE`/`SAVER_AUDIENCE`, lidas a cada uso (`super_admin` = só
- * super admin). Lojas Kabum/Magalu/AliExpress: `true` fixo, sem env; liberar só pela flag em `/admin/plan-entitlements`.
+ * super admin). Lojas Kabum/Magalu/AliExpress, foto oficial e marca d'água: `true` fixo, sem env; liberar só pela flag em `/admin/plan-entitlements`.
  */
 export const featureAudienceDefaults: FeatureAudienceDefaults = () => ({
   [ENTITLEMENT_KEYS.OFFER_HUNTER_ENABLED]: env.OFFER_HUNTER_AUDIENCE !== 'entitled',
@@ -17,6 +17,8 @@ export const featureAudienceDefaults: FeatureAudienceDefaults = () => ({
   [ENTITLEMENT_KEYS.MARKETPLACE_KABUM_ENABLED]: true,
   [ENTITLEMENT_KEYS.MARKETPLACE_MAGALU_ENABLED]: true,
   [ENTITLEMENT_KEYS.MARKETPLACE_ALIEXPRESS_ENABLED]: true,
+  [ENTITLEMENT_KEYS.OFFER_CLEAN_IMAGE_ENABLED]: true,
+  [ENTITLEMENT_KEYS.OFFER_WATERMARK_ENABLED]: true,
 });
 
 let reader: FeatureAudienceReader | null = null;

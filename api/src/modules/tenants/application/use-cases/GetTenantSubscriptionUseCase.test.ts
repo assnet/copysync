@@ -124,3 +124,25 @@ describe('GetTenantSubscriptionUseCase — audiência das lojas', () => {
     for (const k of KEYS) expect(item(out, k)).toBeDefined();
   });
 });
+
+describe('GetTenantSubscriptionUseCase — audiência de qualquer chave', () => {
+  const IMAGE = ['offer_clean_image_enabled', 'offer_watermark_enabled'];
+
+  it('foto oficial e marca d\'água com flag ligada: somem para usuário comum, ficam para super admin', async () => {
+    const user = await build(tenant(), {}, USAGE, [], IMAGE).uc.execute('t1', USER);
+    for (const k of IMAGE) expect(item(user, k)).toBeUndefined();
+    const admin = await build(tenant(), {}, USAGE, [], IMAGE).uc.execute('t1', { isSuperAdmin: true });
+    for (const k of IMAGE) expect(item(admin, k)).toBeDefined();
+  });
+
+  it('flag desligada: itens de imagem presentes para usuário comum', async () => {
+    const out = await build(tenant(), {}, USAGE, [], []).uc.execute('t1', USER);
+    for (const k of IMAGE) expect(item(out, k)).toBeDefined();
+  });
+
+  it('caçador com flag ligada também some; audiência sem item (saver) não remove nada', async () => {
+    const shown = await build(tenant(), {}, USAGE, [], []).uc.execute('t1', USER);
+    const out = await build(tenant(), {}, USAGE, [], ['offer_hunter_enabled', 'saver']).uc.execute('t1', USER);
+    expect(out.limits.map((l) => l.key)).toEqual(shown.limits.map((l) => l.key).filter((k) => k !== 'offer_hunter_enabled'));
+  });
+});

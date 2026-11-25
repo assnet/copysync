@@ -53,6 +53,16 @@ export const ENTITLEMENT_KEYS = {
   MARKETPLACE_MAGALU_ENABLED: 'marketplace_magalu_enabled',
   MARKETPLACE_ALIEXPRESS_ENABLED: 'marketplace_aliexpress_enabled',
   /**
+   * Monitoramento: trocar a foto capturada do grupo pela foto oficial do produto. Só `true` libera; ausente =
+   * bloqueado. Preset: PRO e MAX; editável pelo super admin (`adminEditableEntitlements.ts`).
+   */
+  OFFER_CLEAN_IMAGE_ENABLED: 'offer_clean_image_enabled',
+  /**
+   * Marca d'água própria (logo ou texto) sobre a foto de toda oferta enviada. Só `true` libera; ausente =
+   * bloqueado. Preset: só MAX; editável pelo super admin (`adminEditableEntitlements.ts`).
+   */
+  OFFER_WATERMARK_ENABLED: 'offer_watermark_enabled',
+  /**
    * Etiquetas da conta do Mercado Livre vinculadas ao tenant (principal incluída). LITE 1, PRO 2, MAX 10.
    * Exceção à regra acima: ausente/`null` vale 1, nunca ilimitado (`services/affiliateIdentifierLimit.ts`).
    */

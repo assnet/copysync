@@ -6,6 +6,7 @@ import type { FeatureAudienceSettings } from '../../domain/featureAudience';
 const defaults = () => ({
   offer_hunter_enabled: true, saver: true,
   marketplace_kabum_enabled: true, marketplace_magalu_enabled: true, marketplace_aliexpress_enabled: true,
+  offer_clean_image_enabled: true, offer_watermark_enabled: true,
 });
 const SUPER = { isSuperAdmin: true };
 const TENANT = { isSuperAdmin: false };

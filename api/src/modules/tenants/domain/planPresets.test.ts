@@ -63,6 +63,17 @@ describe('PLAN_PRESETS', () => {
         ['COPYSYNC_MAX', true],
       ]);
     }
+    // Foto oficial no PRO e MAX; marca d'água própria só no MAX (false explícito onde não libera)
+    expect(rows.filter((r) => r.key === K.OFFER_CLEAN_IMAGE_ENABLED).map((r) => [r.planSlug, r.value])).toEqual([
+      ['COPYSYNC_LITE', false],
+      ['COPYSYNC_PRO', true],
+      ['COPYSYNC_MAX', true],
+    ]);
+    expect(rows.filter((r) => r.key === K.OFFER_WATERMARK_ENABLED).map((r) => [r.planSlug, r.value])).toEqual([
+      ['COPYSYNC_LITE', false],
+      ['COPYSYNC_PRO', false],
+      ['COPYSYNC_MAX', true],
+    ]);
     // Caçador de Ofertas só no MAX (10 achados/dia), com false/0 explícitos nos outros dois
     expect(rows.filter((r) => r.key === K.OFFER_HUNTER_ENABLED).map((r) => [r.planSlug, r.value])).toEqual([
       ['COPYSYNC_LITE', false],
