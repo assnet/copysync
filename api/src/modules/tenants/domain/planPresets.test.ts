@@ -55,6 +55,14 @@ describe('PLAN_PRESETS', () => {
       ['COPYSYNC_PRO', false],
       ['COPYSYNC_MAX', true],
     ]);
+    // Kabum, Magalu e AliExpress só no MAX por preset, com `false` explícito nos outros dois
+    for (const key of [K.MARKETPLACE_KABUM_ENABLED, K.MARKETPLACE_MAGALU_ENABLED, K.MARKETPLACE_ALIEXPRESS_ENABLED]) {
+      expect(rows.filter((r) => r.key === key).map((r) => [r.planSlug, r.value])).toEqual([
+        ['COPYSYNC_LITE', false],
+        ['COPYSYNC_PRO', false],
+        ['COPYSYNC_MAX', true],
+      ]);
+    }
     // Caçador de Ofertas só no MAX (10 achados/dia), com false/0 explícitos nos outros dois
     expect(rows.filter((r) => r.key === K.OFFER_HUNTER_ENABLED).map((r) => [r.planSlug, r.value])).toEqual([
       ['COPYSYNC_LITE', false],

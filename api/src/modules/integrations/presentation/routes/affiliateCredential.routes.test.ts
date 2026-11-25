@@ -80,6 +80,10 @@ describe('GET / — marketplaceAvailability', () => {
       { planSlug: 'COPYSYNC_MAX', key: 'marketplace_shein_enabled', value: true },
       { planSlug: 'COPYSYNC_PRO', key: 'marketplace_shein_enabled', value: false },
       { planSlug: 'COPYSYNC_LITE', key: 'marketplace_shein_enabled', value: null },
+      { planSlug: 'COPYSYNC_MAX', key: 'marketplace_kabum_enabled', value: true },
+      { planSlug: 'COPYSYNC_MAX', key: 'marketplace_magalu_enabled', value: true },
+      { planSlug: 'COPYSYNC_PRO', key: 'marketplace_aliexpress_enabled', value: false },
+      { planSlug: 'COPYSYNC_MAX', key: 'marketplace_aliexpress_enabled', value: true },
     ]);
     vi.spyOn(PrismaMarketplaceRiskAcceptanceRepository.prototype, 'findCurrent').mockResolvedValue({
       id: 'a1', tenantId: 't1', provider: 'SHEIN', scope: 'AFFILIATE_LINK', noticeVersion: VERSION, acceptedByUserId: 'u1', locale: 'pt-BR', acceptedAt: AT,
@@ -87,8 +91,11 @@ describe('GET / — marketplaceAvailability', () => {
 
     const res = await call('GET', '/');
     expect(res.statusCode).toBe(200);
-    expect(presets).toHaveBeenCalledWith(['marketplace_shein_enabled']);
+    expect(presets).toHaveBeenCalledWith([
+      'marketplace_shein_enabled', 'marketplace_kabum_enabled', 'marketplace_magalu_enabled', 'marketplace_aliexpress_enabled',
+    ]);
     const open = { enabled: true, plans: [], riskNotice: null };
+    const maxOnly = { enabled: false, plans: ['COPYSYNC_MAX'], riskNotice: null };
     expect(res.json().data).toEqual({
       items: [],
       marketplaceAvailability: {
@@ -96,10 +103,10 @@ describe('GET / — marketplaceAvailability', () => {
         MERCADO_LIVRE: open,
         AMAZON: open,
         SHEIN: { enabled: false, plans: ['COPYSYNC_MAX'], riskNotice: { version: VERSION, acceptedAt: AT.toISOString(), acceptedByMe: true } },
-        // provisório até T2/T6: lojas novas listadas sem chave de plano nem audiência
-        KABUM: open,
-        MAGALU: open,
-        ALIEXPRESS: open,
+        // chave de plano igual à da Shein (só MAX); audiência/viewer na T6
+        KABUM: maxOnly,
+        MAGALU: maxOnly,
+        ALIEXPRESS: maxOnly,
       },
     });
   });

@@ -46,6 +46,13 @@ export const ENTITLEMENT_KEYS = {
    */
   MARKETPLACE_SHEIN_ENABLED: 'marketplace_shein_enabled',
   /**
+   * Kabum, Magalu e AliExpress como marketplaces (links, captura). Só `true` libera; ausente = bloqueado.
+   * Preset: só MAX. O super admin libera outro plano pela rota admin (`adminEditableEntitlements.ts`).
+   */
+  MARKETPLACE_KABUM_ENABLED: 'marketplace_kabum_enabled',
+  MARKETPLACE_MAGALU_ENABLED: 'marketplace_magalu_enabled',
+  MARKETPLACE_ALIEXPRESS_ENABLED: 'marketplace_aliexpress_enabled',
+  /**
    * Etiquetas da conta do Mercado Livre vinculadas ao tenant (principal incluída). LITE 1, PRO 2, MAX 10.
    * Exceção à regra acima: ausente/`null` vale 1, nunca ilimitado (`services/affiliateIdentifierLimit.ts`).
    */
