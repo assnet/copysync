@@ -1,0 +1,28 @@
+# Apache local para testar o .htaccess e ver o registro de acesso (como no cPanel). Troque SCRATCH e DIST
+# por caminhos reais e rode: /usr/sbin/httpd -f <este arquivo> -k start  (parar: -k stop). Depois: node scripts/funnel-test.mjs
+ServerRoot "/usr"
+Listen 127.0.0.1:8088
+PidFile "SCRATCH/httpd.pid"
+LoadModule mpm_prefork_module libexec/apache2/mod_mpm_prefork.so
+LoadModule authz_core_module libexec/apache2/mod_authz_core.so
+LoadModule mime_module libexec/apache2/mod_mime.so
+LoadModule log_config_module libexec/apache2/mod_log_config.so
+LoadModule headers_module libexec/apache2/mod_headers.so
+LoadModule rewrite_module libexec/apache2/mod_rewrite.so
+LoadModule deflate_module libexec/apache2/mod_deflate.so
+LoadModule filter_module libexec/apache2/mod_filter.so
+LoadModule dir_module libexec/apache2/mod_dir.so
+LoadModule unixd_module libexec/apache2/mod_unixd.so
+LoadModule env_module libexec/apache2/mod_env.so
+ServerName localhost
+TypesConfig /private/etc/apache2/mime.types
+ErrorLog "SCRATCH/logs/error.log"
+LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\" cookie=\"%{Cookie}i\"" combinedc
+CustomLog "SCRATCH/logs/access.log" combinedc
+# simula o HTTPS da hospedagem (senão o .htaccess redireciona para https)
+RequestHeader set X-Forwarded-Proto https early
+DocumentRoot "DIST"
+<Directory "DIST">
+  AllowOverride All
+  Require all granted
+</Directory>

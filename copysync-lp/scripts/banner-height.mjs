@@ -1,0 +1,11 @@
+import puppeteer from 'puppeteer-core'
+const b = await puppeteer.launch({ executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true })
+const p = await b.newPage()
+await p.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true })
+await p.goto(process.argv[2], { waitUntil: 'networkidle0' })
+await p.waitForSelector('[role="dialog"][aria-label="Aviso de cookies"]', { timeout: 8000 })
+await new Promise((r) => setTimeout(r, 4100))
+const r = await p.evaluate(() => { const e = document.querySelector('[role="dialog"][aria-label="Aviso de cookies"]').getBoundingClientRect(); return { top: Math.round(e.top), height: Math.round(e.height) } })
+await p.screenshot({ path: process.argv[3] })
+console.log(JSON.stringify(r))
+await b.close()
