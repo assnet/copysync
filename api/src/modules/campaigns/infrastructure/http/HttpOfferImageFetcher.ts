@@ -4,8 +4,12 @@ import type { FetchedOfferImage, IOfferImageFetcher } from '../../domain/contrac
 const log = logger.child({ module: 'HttpOfferImageFetcher' });
 const TIMEOUT_MS = 8_000;
 const MAX_BYTES = 5 * 1024 * 1024;
-// Shopee, Mercado Livre, Amazon e Shein (`ltwebstatic.com`, ex.: `img.ltwebstatic.com`): CDNs de foto de produto
-const HOST_SUFFIXES = ['susercontent.com', 'shopee.com.br', 'mlstatic.com', 'media-amazon.com', 'ssl-images-amazon.com', 'ltwebstatic.com'];
+// Shopee, Mercado Livre, Amazon, Shein (`ltwebstatic.com`, ex.: `img.ltwebstatic.com`) e Kabum (`images.kabum.com.br`,
+// só o host das fotos, não o domínio da loja): CDNs de foto de produto
+const HOST_SUFFIXES = [
+  'susercontent.com', 'shopee.com.br', 'mlstatic.com', 'media-amazon.com', 'ssl-images-amazon.com', 'ltwebstatic.com',
+  'images.kabum.com.br',
+];
 
 /** https, sem porta/userinfo, host igual ou subdomínio de um sufixo permitido. */
 export function isAllowedImageUrl(url: URL): boolean {

@@ -39,6 +39,7 @@ function setup(creds = CREDS, opts: { ent?: Record<string, unknown>; accepted?: 
       getBoolean: vi.fn(async (_t: string, k: string) => (typeof ent[k] === 'boolean' ? (ent[k] as boolean) : null)),
     },
     riskGate: { isAccepted: vi.fn(async () => opts.accepted ?? true) },
+    kabum: { getProduct: vi.fn().mockResolvedValue({ title: 'Mouse Gamer G203', priceCents: 16999, originalPriceCents: null, imageUrl: 'https://images.kabum.com.br/produtos/fotos/112948/mouse_g.jpg', available: true }) },
     audience: { superAdminOnly: vi.fn(async (p: AffiliateProvider) => opts.superAdminOnly?.includes(p) ?? false) },
   };
   return { deps, uc: new BuildTenantAffiliateLinkUseCase({ ...deps, composer: new TenantAffiliateLinkComposer(deps) }) };
@@ -268,5 +269,37 @@ describe('BuildTenantAffiliateLinkUseCase — audiência "Só super admin" da lo
     expect(await s.uc.execute('t1', 'https://www.amazon.com.br/dp/B0ABCDEFGH')).toMatchObject({ kind: 'ok' });
     expect(await s.uc.execute('t1', 'https://br.shein.com/Vestido-Midi-p-12345678.html')).toEqual({ kind: 'plan_unavailable', provider: 'SHEIN' });
     expect(s.deps.audience.superAdminOnly).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('BuildTenantAffiliateLinkUseCase — Kabum', () => {
+  const KABUM = 'https://www.kabum.com.br/produto/112948/mouse-gamer?utm_source=x';
+  const KCRED: OfferAffiliateCredential = { provider: 'KABUM', publicIdentifier: '1234567', secret: null };
+  const ENT = { ent: { marketplace_kabum_enabled: true } };
+
+  it('ok: link Awin do tenant a partir da URL canônica, produto do catálogo', async () => {
+    const s = setup({ ...CREDS, KABUM: KCRED }, ENT);
+    const out = await s.uc.execute('t1', KABUM);
+    expect(out).toMatchObject({
+      kind: 'ok', provider: 'KABUM', sourceUrl: 'https://www.kabum.com.br/produto/112948',
+      affiliateUrl: 'https://www.awin1.com/cread.php?awinmid=17729&awinaffid=1234567&ued=https%3A%2F%2Fwww.kabum.com.br%2Fproduto%2F112948',
+      product: { title: 'Mouse Gamer G203', priceCents: 16999 },
+    });
+    expect(s.deps.kabum.getProduct).toHaveBeenCalledWith('112948');
+  });
+
+  it('tidd.ly segue unsupported, sem rede: a captura não cai', async () => {
+    const s = setup({ ...CREDS, KABUM: KCRED }, ENT);
+    expect(await s.uc.execute('t1', 'https://tidd.ly/3AbCdEf')).toEqual({ kind: 'unsupported' });
+    expect(s.deps.expander.expand).not.toHaveBeenCalled();
+  });
+
+  it('catálogo fora → failed AFFILIATE_API_UNAVAILABLE sem pausar; produto indisponível → failed OFFER_PRODUCT_NOT_FOUND', async () => {
+    const s = setup({ ...CREDS, KABUM: KCRED }, ENT);
+    s.deps.kabum.getProduct.mockRejectedValueOnce(new AppError('AFFILIATE_API_UNAVAILABLE', 'x', 503));
+    expect(await s.uc.execute('t1', KABUM)).toEqual({ kind: 'failed', provider: 'KABUM', code: 'AFFILIATE_API_UNAVAILABLE' });
+    s.deps.kabum.getProduct.mockResolvedValueOnce(null);
+    expect(await s.uc.execute('t1', KABUM)).toEqual({ kind: 'failed', provider: 'KABUM', code: 'OFFER_PRODUCT_NOT_FOUND' });
+    expect(s.deps.credentials.markRejected).not.toHaveBeenCalled();
   });
 });

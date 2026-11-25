@@ -2,6 +2,7 @@ import type { IOfferImageFetcher } from '../../domain/contracts/IOfferImageFetch
 import type { IOfferMediaStore } from '../../domain/contracts/IOfferMediaStore';
 import type { IProductPageReader } from '../../domain/contracts/IProductPageReader';
 import type { IShopeeAffiliateClient } from '../../domain/contracts/IShopeeAffiliateClient';
+import type { IKabumCatalogClient } from '../../domain/contracts/IKabumCatalogClient';
 import type { OfferAffiliateCredential } from '../../domain/contracts/IAffiliateCredentialResolver';
 import type { AffiliateProvider } from '../../../integrations/domain/enums/AffiliateProvider';
 import type { ProductRef } from '../../domain/services/parseProductRef';
@@ -24,6 +25,7 @@ export interface ResolveProductDataDeps {
   pageReader: IProductPageReader;
   imageFetcher: IOfferImageFetcher;
   mediaStore: IOfferMediaStore;
+  kabum: IKabumCatalogClient;
 }
 
 export function productRefOf(ref: ProductRef): string {
@@ -46,7 +48,7 @@ export function productRefOf(ref: ProductRef): string {
 
 /**
  * Dados do produto (título, preços, foto) a partir da URL final, melhor esforço: Shopee pela API de
- * afiliados (com credencial), o resto pela página (`IProductPageReader`; ML vitrine social pelo 1º
+ * afiliados (com credencial), Kabum pelo catálogo (sem credencial; link Awin mantido), o resto pela página (`IProductPageReader`; ML vitrine social pelo 1º
  * card, página de produto ML pode cair no captcha). Nunca lança por falta de dado: campo ausente =
  * null. Usado pelo gerador e pelo monitoramento (oferta montada / reescrita com IA).
  */
@@ -81,6 +83,27 @@ export class ResolveProductDataUseCase {
         if (!(err instanceof AppError)) throw err;
         logger.warn({ code: err.code, provider }, 'offer product API failed, reading page');
       }
+    }
+
+    // Kabum: só o catálogo (a página nunca é lida). Indisponível/sem estoque/erro = vazio (preenchimento manual)
+    if (provider === 'KABUM') {
+      if (ref?.provider !== 'KABUM') return { ...EMPTY_PRODUCT_DATA, productRef: refId };
+      try {
+        const product = await this.deps.kabum.getProduct(ref.productId);
+        if (product) {
+          return {
+            productRef: refId,
+            title: product.title,
+            priceCents: product.priceCents,
+            originalPriceCents: product.originalPriceCents,
+            imageSourceUrl: product.imageUrl,
+          };
+        }
+      } catch (err) {
+        if (!(err instanceof AppError)) throw err;
+        logger.warn({ code: err.code, provider }, 'offer product API failed');
+      }
+      return { ...EMPTY_PRODUCT_DATA, productRef: refId };
     }
 
     // Shein nunca é lida por página: cai em desafio anti-bot

@@ -75,3 +75,18 @@ describe('isAllowedImageUrl — CDNs de ML e Amazon', () => {
     expect(isAllowedImageUrl(new URL(url))).toBe(ok);
   });
 });
+
+describe('isAllowedImageUrl — Kabum', () => {
+  it.each([
+    ['https://images.kabum.com.br/produtos/fotos/112948/mouse_g.jpg', true],
+    ['https://IMAGES.kabum.com.br/a.jpg', true],
+    ['http://images.kabum.com.br/a.jpg', false],
+    ['https://images.kabum.com.br:8443/a.jpg', false],
+    ['https://www.kabum.com.br/a.jpg', false],
+    ['https://images4.kabum.com.br/a.png', false],
+    ['https://evilimages.kabum.com.br/a.jpg', false],
+    ['https://images.kabum.com.br.evil.com/a.jpg', false],
+  ])('%s → %s', (url, ok) => {
+    expect(isAllowedImageUrl(new URL(url))).toBe(ok);
+  });
+});

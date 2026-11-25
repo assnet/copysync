@@ -31,6 +31,7 @@ const SHARE = {
   affiliateUrl: 'https://onelink.shein.com/1/gerado', title: 'Vestido Midi', priceCents: 2999, originalPriceCents: 5000,
   imageUrl: 'https://img.ltwebstatic.com/images3/v.jpg',
 };
+const KABUM_PRODUCT = { title: 'Mouse Gamer G203', priceCents: 16999, originalPriceCents: null, imageUrl: 'https://images.kabum.com.br/produtos/fotos/112948/mouse_g.jpg', available: true };
 const ML_LINK = 'https://meli.la/gerado';
 const SHOPEE_LINK = 'https://s.shopee.com.br/dotenant';
 
@@ -49,6 +50,7 @@ function setup(
     listAccountTags: vi.fn(),
   };
   const shein = { getProductShare: vi.fn().mockResolvedValue(SHARE) };
+  const kabum = { getProduct: vi.fn().mockResolvedValue(KABUM_PRODUCT) };
   const riskGate = { isAccepted: vi.fn(async (_t: string, _p: AffiliateProvider, _scope?: string) => opts.accepted ?? true) };
   const credentials = {
     resolveState: vi.fn<(t: string, p: AffiliateProvider) => Promise<AffiliateCredentialState>>(async (_t, p) => {
@@ -58,12 +60,12 @@ function setup(
     // Só para provar que o resolver nunca pausa a loja (não faz parte do tipo da dep)
     markRejected: vi.fn().mockResolvedValue(undefined),
   };
-  const composer = new TenantAffiliateLinkComposer({ shopee, mercadoLivre, pageReader, shein, riskGate });
+  const composer = new TenantAffiliateLinkComposer({ shopee, mercadoLivre, pageReader, shein, riskGate, kabum });
   const deps = {
     expander: { expand: vi.fn(async (u: URL) => (opts.expand?.[u.toString()] ? new URL(opts.expand[u.toString()]) : u)) },
     credentials,
     composer,
-    products: new ResolveProductDataUseCase({ shopee, pageReader, imageFetcher, mediaStore }),
+    products: new ResolveProductDataUseCase({ shopee, pageReader, imageFetcher, mediaStore, kabum }),
     shein,
     entitlements: {
       getNumber: vi.fn(async (_t: string, _k: string): Promise<number | null> => null),
@@ -74,7 +76,7 @@ function setup(
   };
   vi.spyOn(deps.products, 'resolve');
   vi.spyOn(composer, 'compose');
-  return { deps, pageReader, imageFetcher, mediaStore, shopee, mercadoLivre, uc: new ResolveAffiliateProductUseCase(deps) };
+  return { deps, pageReader, imageFetcher, mediaStore, shopee, mercadoLivre, kabum, uc: new ResolveAffiliateProductUseCase(deps) };
 }
 
 const AMAZON = 'https://www.amazon.com.br/Fone/dp/B0ABCDEFGH/ref=sr_1?tag=loja-20';
@@ -688,5 +690,68 @@ describe('ResolveAffiliateProductUseCase — audiência da loja', () => {
     const out = await s.uc.execute(TENANT, AMAZON, USER);
     expect(out).toMatchObject({ provider: 'AMAZON', affiliateUrl: AMAZON_TENANT });
     expect(isVisible).toHaveBeenCalledWith('AMAZON', { isSuperAdmin: false });
+  });
+});
+
+// ---------- Kabum (Awin) ----------
+
+describe('ResolveAffiliateProductUseCase — Kabum', () => {
+  const KCRED: OfferAffiliateCredential = { provider: 'KABUM', publicIdentifier: '1234567', secret: null };
+  const PRODUCT = 'https://www.kabum.com.br/produto/112948/mouse-gamer';
+  const awin = (mid: string, aff: string, dest = PRODUCT) =>
+    `https://www.awin1.com/cread.php?awinmid=${mid}&awinaffid=${aff}&ued=${encodeURIComponent(dest)}`;
+  const LINK = 'https://www.awin1.com/cread.php?awinmid=17729&awinaffid=1234567&ued=https%3A%2F%2Fwww.kabum.com.br%2Fproduto%2F112948';
+  const kabumSetup = (creds: Partial<Record<AffiliateProvider, OfferAffiliateCredential>> = { ...CREDS, KABUM: KCRED }) => setup(creds, { ent: { marketplace_kabum_enabled: true } });
+
+  it('URL de produto: recriado no formato Awin exato, produto do catálogo (sem página)', async () => {
+    const s = kabumSetup();
+    const out = await s.uc.execute(TENANT, PRODUCT, USER);
+    expect(out).toMatchObject({
+      provider: 'KABUM', affiliateUrl: LINK, linkRebuilt: true,
+      product: { productRef: '112948', title: 'Mouse Gamer G203', priceCents: 16999, imageSourceUrl: KABUM_PRODUCT.imageUrl },
+    });
+    expect(s.pageReader.read).not.toHaveBeenCalled();
+    expect(s.deps.products.resolve).not.toHaveBeenCalled();
+  });
+
+  it('link Awin do próprio tenant colado: mantido, dados pelo catálogo', async () => {
+    const s = kabumSetup();
+    const mine = awin('17729', '1234567');
+    const out = await s.uc.execute(TENANT, mine, USER);
+    expect(out).toMatchObject({ affiliateUrl: mine, linkRebuilt: false, product: { productRef: '112948', title: 'Mouse Gamer G203' } });
+    expect(s.deps.composer.compose).not.toHaveBeenCalled();
+    expect(s.kabum.getProduct).toHaveBeenCalledWith('112948');
+    expect(s.pageReader.read).not.toHaveBeenCalled();
+  });
+
+  it('link Awin de outro afiliado (awinaffid diferente): recriado com o do tenant', async () => {
+    const s = kabumSetup();
+    const out = await s.uc.execute(TENANT, awin('17729', '999999'), USER);
+    expect(out).toMatchObject({ affiliateUrl: LINK, linkRebuilt: true });
+    expect(out.affiliateUrl).not.toContain('999999');
+  });
+
+  it('awin1.com de outro anunciante e tidd.ly: OFFER_URL_UNSUPPORTED sem rede', async () => {
+    const s = kabumSetup();
+    for (const url of [awin('99999', '1234567'), 'https://tidd.ly/3AbCdEf']) {
+      await expect(s.uc.execute(TENANT, url, USER)).rejects.toMatchObject({ code: 'OFFER_URL_UNSUPPORTED' });
+    }
+    expect(s.deps.expander.expand).not.toHaveBeenCalled();
+    expect(s.kabum.getProduct).not.toHaveBeenCalled();
+  });
+
+  it('sem credencial → AFFILIATE_CREDENTIAL_REQUIRED sem chamar o catálogo', async () => {
+    const s = kabumSetup(CREDS);
+    await expect(s.uc.execute(TENANT, PRODUCT, USER)).rejects.toMatchObject({ code: 'AFFILIATE_CREDENTIAL_REQUIRED', meta: { provider: 'KABUM' } });
+    expect(s.kabum.getProduct).not.toHaveBeenCalled();
+  });
+
+  it('catálogo indisponível → AFFILIATE_API_UNAVAILABLE; produto indisponível → OFFER_PRODUCT_NOT_FOUND', async () => {
+    const s = kabumSetup();
+    s.kabum.getProduct.mockRejectedValueOnce(new AppError('AFFILIATE_API_UNAVAILABLE', 'x', 503, { provider: 'KABUM' }));
+    await expect(s.uc.execute(TENANT, PRODUCT, USER)).rejects.toMatchObject({ code: 'AFFILIATE_API_UNAVAILABLE' });
+    s.kabum.getProduct.mockResolvedValueOnce(null);
+    await expect(s.uc.execute(TENANT, PRODUCT, USER)).rejects.toMatchObject({ code: 'OFFER_PRODUCT_NOT_FOUND', statusCode: 404 });
+    expect(s.deps.credentials.markRejected).not.toHaveBeenCalled();
   });
 });

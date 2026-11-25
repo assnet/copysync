@@ -7,11 +7,13 @@ import type { IProductPageReader } from '../../domain/contracts/IProductPageRead
 import type { IShopeeAffiliateClient } from '../../domain/contracts/IShopeeAffiliateClient';
 import type { ISheinAffiliateClient } from '../../domain/contracts/ISheinAffiliateClient';
 import type { IMarketplaceRiskGate } from '../../domain/contracts/IMarketplaceRiskGate';
+import type { IKabumCatalogClient } from '../../domain/contracts/IKabumCatalogClient';
+import { kabumAffiliateUrl, kabumProductUrl } from '../../domain/services/kabumAffiliateUrl';
 import { requiresRiskAcceptance } from '../../../integrations/domain/services/marketplaceRiskNotice';
 import { isSupportedShareLink } from '../../domain/services/isSupportedShareLink';
 import { parseProductRef, type ProductRef } from '../../domain/services/parseProductRef';
 import { logger } from '../../../../shared/logger/logger';
-import { OfferUrlUnsupportedError } from '../../../../shared/errors/internal/OfferErrors';
+import { OfferProductNotFoundError, OfferUrlUnsupportedError } from '../../../../shared/errors/internal/OfferErrors';
 
 /**
  * Dados do produto que já vieram na página lida para achar o id (vitrine social do ML). Quem
@@ -62,6 +64,7 @@ export interface TenantAffiliateLinkComposerDeps {
   pageReader: IProductPageReader;
   shein: ISheinAffiliateClient;
   riskGate: IMarketplaceRiskGate;
+  kabum: IKabumCatalogClient;
 }
 
 const AMAZON_DEFAULT_HOST = 'www.amazon.com.br';
@@ -142,8 +145,20 @@ export class TenantAffiliateLinkComposer {
           product: { title: share.title, priceCents: share.priceCents, originalPriceCents: share.originalPriceCents, imageUrl: share.imageUrl },
         };
       }
-      // provisório até T8/T14/T20: lojas ainda não suportadas
-      case 'KABUM':
+      case 'KABUM': {
+        const ref = parseProductRef(provider, final);
+        if (ref?.provider !== 'KABUM') return { kind: 'unsupported' };
+        if (!cred.publicIdentifier) return { kind: 'credential_missing', provider };
+        // Indisponibilidade do catálogo (AffiliateApiUnavailableError) sobe; produto inexistente/sem estoque = erro de produto
+        const product = await this.deps.kabum.getProduct(ref.productId);
+        if (!product) throw new OfferProductNotFoundError(provider);
+        return {
+          kind: 'ok', provider, sourceUrl: kabumProductUrl(ref.productId), productRef: ref.productId,
+          affiliateUrl: kabumAffiliateUrl(cred.publicIdentifier, ref.productId),
+          product: { title: product.title, priceCents: product.priceCents, originalPriceCents: product.originalPriceCents, imageUrl: product.imageUrl },
+        };
+      }
+      // provisório até T14/T20: lojas ainda não suportadas
       case 'MAGALU':
       case 'ALIEXPRESS':
         throw new OfferUrlUnsupportedError();

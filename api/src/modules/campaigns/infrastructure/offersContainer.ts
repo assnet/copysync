@@ -22,6 +22,7 @@ import { PrismaEntitlementReader } from './repositories/PrismaEntitlementReader'
 import { ShopeeAffiliateClient } from './http/ShopeeAffiliateClient';
 import { MercadoLivreAffiliateClient } from './http/MercadoLivreAffiliateClient';
 import { SheinAffiliateClient } from './http/SheinAffiliateClient';
+import { KabumCatalogClient } from './http/KabumCatalogClient';
 import { HttpShortLinkExpander } from './http/HttpShortLinkExpander';
 import { HttpOfferImageFetcher } from './http/HttpOfferImageFetcher';
 import { HttpProductPageReader } from './http/HttpProductPageReader';
@@ -95,6 +96,7 @@ const riskGate = lazy((): IMarketplaceRiskGate => {
 });
 // Uma instância para os três use cases (gerador, monitoramento, vitrine/story)
 const shein        = lazy(() => new SheinAffiliateClient());
+const kabum        = lazy(() => new KabumCatalogClient());
 const mediaStore   = lazy(
   () => new MediaOfferStore({
     files:   () => mediaContainer.mediaFileStore,
@@ -121,6 +123,7 @@ const generate = lazy(() => new GenerateOfferUseCase({
   pageReader:   new HttpProductPageReader(),
   imageFetcher: new HttpOfferImageFetcher(),
   mediaStore:   mediaStore(),
+  kabum:        kabum(),
   texts:        texts(),
 }));
 const get       = lazy(() => new GetOfferUseCase(offers(), dispatches()));
@@ -152,6 +155,7 @@ const tenantLinkComposer = lazy(() => new TenantAffiliateLinkComposer({
   pageReader: new HttpProductPageReader(),
   shein: shein(),
   riskGate: riskGate(),
+  kabum: kabum(),
 }));
 const tenantLinks = lazy(() => new BuildTenantAffiliateLinkUseCase({
   expander: new HttpShortLinkExpander(),
@@ -163,6 +167,7 @@ const tenantLinks = lazy(() => new BuildTenantAffiliateLinkUseCase({
 const enqueue     = lazy(() => new EnqueueOfferUseCase({ offers: offers(), dispatches: dispatches() }));
 const products    = lazy(() => new ResolveProductDataUseCase({
   shopee: new ShopeeAffiliateClient(), pageReader: new HttpProductPageReader(), imageFetcher: new HttpOfferImageFetcher(), mediaStore: mediaStore(),
+  kabum: kabum(),
 }));
 // Link colado → marketplace, dono e dados do produto, sem foto (página de ofertas)
 const affiliateProduct = lazy(() => new ResolveAffiliateProductUseCase({

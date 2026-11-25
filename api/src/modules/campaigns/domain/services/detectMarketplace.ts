@@ -23,7 +23,7 @@ const MARKETPLACE_HOSTS: Readonly<Record<AffiliateProvider, readonly string[]>> 
 
 /** Rede Awin: o host sozinho não diz a loja; vale só o anunciante da Kabum. */
 const AWIN_HOST = 'awin1.com';
-const KABUM_AWIN_ADVERTISER = '17729';
+export const KABUM_AWIN_ADVERTISER = '17729';
 
 const IPV4_LITERAL = /^\d{1,3}(?:\.\d{1,3}){3}$/;
 

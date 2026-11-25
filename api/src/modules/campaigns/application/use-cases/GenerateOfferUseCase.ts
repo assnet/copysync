@@ -1,6 +1,7 @@
 import type { IEntitlementReader } from '../../domain/contracts/IEntitlementReader';
 import type { IOfferRepository, CreateOfferInput } from '../../domain/contracts/IOfferRepository';
 import type { IShopeeAffiliateClient } from '../../domain/contracts/IShopeeAffiliateClient';
+import type { IKabumCatalogClient } from '../../domain/contracts/IKabumCatalogClient';
 import type { IOfferImageFetcher } from '../../domain/contracts/IOfferImageFetcher';
 import type { IOfferMediaStore } from '../../domain/contracts/IOfferMediaStore';
 import type { IProductPageReader } from '../../domain/contracts/IProductPageReader';
@@ -50,6 +51,7 @@ export interface GenerateOfferDeps {
   pageReader: IProductPageReader;
   imageFetcher: IOfferImageFetcher;
   mediaStore: IOfferMediaStore;
+  kabum: IKabumCatalogClient;
   texts: OfferTextComposer;
   now?: () => Date;
 }
@@ -68,6 +70,7 @@ export class GenerateOfferUseCase {
     this.now = deps.now ?? (() => new Date());
     this.products = new ResolveProductDataUseCase({
       shopee: deps.shopee, pageReader: deps.pageReader, imageFetcher: deps.imageFetcher, mediaStore: deps.mediaStore,
+      kabum: deps.kabum,
     });
   }
 

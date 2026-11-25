@@ -45,6 +45,7 @@ function setup(opts: { limit?: number | null; creds?: Partial<Record<AffiliatePr
   const entitlements = new FakeEntitlementReader(opts.limit != null ? { offer_generations_per_day: opts.limit } : {});
   const pageReader = { read: vi.fn().mockResolvedValue(PAGE) };
   const imageFetcher = { fetch: vi.fn().mockResolvedValue({ buffer: Buffer.from('img'), mimeType: 'image/jpeg' }) };
+  const kabum = { getProduct: vi.fn().mockResolvedValue({ title: 'Mouse Gamer G203', priceCents: 16999, originalPriceCents: null, imageUrl: 'https://images.kabum.com.br/produtos/fotos/112948/mouse_g.jpg', available: true }) };
   const mediaStore = { saveImage: vi.fn().mockResolvedValue('store://offers/1.jpg'), consumeUploadedImage: vi.fn(), removeImage: vi.fn() };
   // Deps do Resolve: o gerador recebe a instância pronta, como no container
   const resolveFakes = {
@@ -62,8 +63,8 @@ function setup(opts: { limit?: number | null; creds?: Partial<Record<AffiliatePr
   const { expander, credentials, mercadoLivre, shein, riskGate } = resolveFakes;
   const affiliateProducts = new ResolveAffiliateProductUseCase({
     expander, credentials, shein, entitlements, riskGate, audience: { isVisible: async () => true },
-    composer: new TenantAffiliateLinkComposer({ shopee, mercadoLivre, pageReader, shein, riskGate }),
-    products: new ResolveProductDataUseCase({ shopee, pageReader, imageFetcher, mediaStore }),
+    composer: new TenantAffiliateLinkComposer({ shopee, mercadoLivre, pageReader, shein, riskGate, kabum }),
+    products: new ResolveProductDataUseCase({ shopee, pageReader, imageFetcher, mediaStore, kabum }),
   });
   const deps = {
     offers,
@@ -73,6 +74,7 @@ function setup(opts: { limit?: number | null; creds?: Partial<Record<AffiliatePr
     pageReader,
     imageFetcher,
     mediaStore,
+    kabum,
     texts: new OfferTextComposer(ai),
     now: () => NOW,
   } satisfies GenerateOfferDeps;
@@ -292,6 +294,19 @@ describe('GenerateOfferUseCase — dados do produto', () => {
     expect(s.deps.pageReader.read).toHaveBeenCalledWith({ url: new URL(AMAZON), mercadoLivreCookies: null });
     expect(s.deps.imageFetcher.fetch).toHaveBeenCalledWith(PAGE.imageUrl);
     expect(out.offer.imageUrl).toBe('store://offers/1.jpg');
+  });
+
+  it('Kabum: link Awin do tenant, produto do catálogo; foto baixada e guardada no storage', async () => {
+    const s = setup({ creds: { ...CREDS, KABUM: { provider: 'KABUM', publicIdentifier: '1234567', secret: null } } });
+    s.deps.entitlements.values.marketplace_kabum_enabled = true;
+    const out = await run(s, 'https://www.kabum.com.br/produto/112948/mouse-gamer');
+    expect(s.deps.imageFetcher.fetch).toHaveBeenCalledWith('https://images.kabum.com.br/produtos/fotos/112948/mouse_g.jpg');
+    expect(s.deps.pageReader.read).not.toHaveBeenCalled();
+    expect(out.offer).toMatchObject({
+      provider: 'KABUM', productRef: '112948', title: 'Mouse Gamer G203', priceCents: 16999, imageUrl: 'store://offers/1.jpg',
+      affiliateUrl: 'https://www.awin1.com/cread.php?awinmid=17729&awinaffid=1234567&ued=https%3A%2F%2Fwww.kabum.com.br%2Fproduto%2F112948',
+    });
+    expect(out.linkRebuilt).toBe(true);
   });
 
   it('foto não baixa ou store falha → oferta sem foto, needsManualData', async () => {

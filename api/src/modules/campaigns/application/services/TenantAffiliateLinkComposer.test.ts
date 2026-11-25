@@ -16,6 +16,7 @@ const SHARE = {
   affiliateUrl: 'https://onelink.shein.com/1/meu', title: 'Vestido Midi', priceCents: 2999, originalPriceCents: 5000,
   imageUrl: 'https://img.ltwebstatic.com/images3/v.jpg',
 };
+const KABUM_PRODUCT = { title: 'Mouse Gamer G203', priceCents: 16999, originalPriceCents: null, imageUrl: 'https://images.kabum.com.br/produtos/fotos/112948/mouse_g.jpg', available: true };
 const SHEIN_URL = 'https://m.shein.com/br/Vestido-Midi-p-12345678-cat-1727.html?url_from=affiliate_koc_999999';
 
 function setup(accepted = true) {
@@ -29,6 +30,7 @@ function setup(accepted = true) {
     pageReader: { read: vi.fn().mockResolvedValue({ title: 'Kit', imageUrl: null, priceCents: 1990, originalPriceCents: null, productRef: 'MLB998877' }) },
     shein: { getProductShare: vi.fn().mockResolvedValue(SHARE) },
     riskGate: { isAccepted: vi.fn(async (_t: string, _p: AffiliateProvider, _scope?: string) => accepted) },
+    kabum: { getProduct: vi.fn().mockResolvedValue(KABUM_PRODUCT) },
   };
   const composer = new TenantAffiliateLinkComposer(deps);
   const compose = (provider: CurrentProvider, href: string, cred: OfferAffiliateCredential = CREDS[provider], mlTag?: string) =>
@@ -168,5 +170,56 @@ describe('TenantAffiliateLinkComposer — sem link', () => {
     await expect(s.compose('SHOPEE', 'https://shopee.com.br/product/1/2')).rejects.toBe(rejected);
     s.deps.shein.getProductShare.mockRejectedValueOnce(new AppError('AFFILIATE_API_UNAVAILABLE', 'x', 503));
     await expect(s.compose('SHEIN', SHEIN_URL)).rejects.toMatchObject({ code: 'AFFILIATE_API_UNAVAILABLE' });
+  });
+});
+
+describe('TenantAffiliateLinkComposer — Kabum', () => {
+  const KCRED: OfferAffiliateCredential = { provider: 'KABUM', publicIdentifier: '1234567', secret: null };
+  const LINK = 'https://www.awin1.com/cread.php?awinmid=17729&awinaffid=1234567&ued=https%3A%2F%2Fwww.kabum.com.br%2Fproduto%2F112948';
+  const kabum = (s: ReturnType<typeof setup>, href: string, cred: OfferAffiliateCredential = KCRED) =>
+    s.composer.compose({ tenantId: 't1', provider: 'KABUM', final: new URL(href), cred });
+
+  it('URL de produto: link Awin exato, ref = id, produto do catálogo', async () => {
+    const s = setup();
+    const out = await kabum(s, 'https://www.kabum.com.br/produto/112948/mouse-gamer?utm_source=x');
+    expect(s.deps.kabum.getProduct).toHaveBeenCalledWith('112948');
+    expect(out).toEqual({
+      kind: 'ok', provider: 'KABUM', productRef: '112948', sourceUrl: 'https://www.kabum.com.br/produto/112948', affiliateUrl: LINK,
+      product: { title: KABUM_PRODUCT.title, priceCents: 16999, originalPriceCents: null, imageUrl: KABUM_PRODUCT.imageUrl },
+    });
+  });
+
+  it('link Awin de outro afiliado: recriado com o Publisher ID do tenant', async () => {
+    const other = `https://www.awin1.com/cread.php?awinmid=17729&awinaffid=999999&clickref=x&ued=${encodeURIComponent('https://www.kabum.com.br/produto/112948/slug?x=1')}`;
+    const out = await kabum(setup(), other);
+    expect(out).toMatchObject({ kind: 'ok', affiliateUrl: LINK });
+  });
+
+  it('sem Publisher ID: credential_missing sem chamar o catálogo', async () => {
+    const s = setup();
+    expect(await kabum(s, 'https://www.kabum.com.br/produto/112948', { ...KCRED, publicIdentifier: '' })).toEqual({ kind: 'credential_missing', provider: 'KABUM' });
+    expect(s.deps.kabum.getProduct).not.toHaveBeenCalled();
+  });
+
+  it('sem produto reconhecível: unsupported, sem rede', async () => {
+    const s = setup();
+    expect(await kabum(s, 'https://www.kabum.com.br/hardware')).toEqual({ kind: 'unsupported' });
+    expect(s.deps.kabum.getProduct).not.toHaveBeenCalled();
+  });
+
+  it('produto indisponível (null) → OFFER_PRODUCT_NOT_FOUND; catálogo fora → AFFILIATE_API_UNAVAILABLE sobe', async () => {
+    const s = setup();
+    s.deps.kabum.getProduct.mockResolvedValueOnce(null);
+    await expect(kabum(s, 'https://www.kabum.com.br/produto/112948')).rejects.toMatchObject({ code: 'OFFER_PRODUCT_NOT_FOUND', meta: { provider: 'KABUM' } });
+    s.deps.kabum.getProduct.mockRejectedValueOnce(new AppError('AFFILIATE_API_UNAVAILABLE', 'x', 503));
+    await expect(kabum(s, 'https://www.kabum.com.br/produto/112948')).rejects.toMatchObject({ code: 'AFFILIATE_API_UNAVAILABLE' });
+  });
+
+  it('Magalu e AliExpress seguem não suportados (provisório)', async () => {
+    const s = setup();
+    for (const provider of ['MAGALU', 'ALIEXPRESS'] as const) {
+      await expect(s.composer.compose({ tenantId: 't1', provider, final: new URL('https://www.magazineluiza.com.br/p/abc/'), cred: KCRED }))
+        .rejects.toMatchObject({ code: 'OFFER_URL_UNSUPPORTED' });
+    }
   });
 });
