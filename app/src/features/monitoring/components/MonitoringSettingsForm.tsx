@@ -296,8 +296,12 @@ export function MonitoringSettingsForm({ sessionId, config, onSave, telegramInvo
   const captureOutsideEnabled = config.limits.captureOutsideWindowEnabled === true;
   // Chave "só false bloqueia": ausente (API anterior) = liberado
   const aiRewriteEnabled = config.limits.aiRewriteEnabled !== false;
+  // Foto oficial: campo ausente = opção oculta pela audiência (não aparece nem é enviada); só `false` trava
+  const cleanImageVisible = config.settings.useProductImage !== undefined;
+  const cleanImageEnabled = config.limits.cleanImageEnabled !== false;
   const gates = {
     mentionAll: mentionAllEnabled, enrichLinkOnly: enrichLinkOnlyEnabled, captureOutsideWindow: captureOutsideEnabled, aiRewrite: aiRewriteEnabled,
+    cleanImage: cleanImageEnabled, cleanImageVisible,
   };
   // Valor efetivo na tela: IA travada aparece (e salva) como Modelo
   const value = effectiveDraft(draft ?? settingsToDraft(config.settings), gates);
@@ -458,6 +462,20 @@ export function MonitoringSettingsForm({ sessionId, config, onSave, telegramInvo
             <AudiencePicker value={value.audience} onChange={(audience) => patch({ audience })} label={t.audienceLabel} />
           )}
           <ImageModePicker value={value.imageMode} onChange={(imageMode) => patch({ imageMode })} />
+          {cleanImageVisible && (
+            <Tooltip title={cleanImageEnabled ? t.productImageTooltip : `${t.productImageTooltip} ${t.productImageLocked}`} arrow placement="top">
+              <Box data-testid="product-image-option">
+                <ToggleOption
+                  checked={cleanImageEnabled && value.useProductImage === true}
+                  onChange={(useProductImage) => patch({ useProductImage })}
+                  title={t.productImageTitle}
+                  badge={cleanImageEnabled ? undefined : <PlanAvailabilityBadges from="pro" />}
+                  description={cleanImageEnabled ? t.productImageHelp : `${t.productImageHelp} ${t.productImageLocked}`}
+                  disabled={!cleanImageEnabled}
+                />
+              </Box>
+            </Tooltip>
+          )}
           <Tooltip title={enrichLinkOnlyEnabled ? '' : t.enrichLocked} arrow placement="top">
             <Box>
               <ToggleOption

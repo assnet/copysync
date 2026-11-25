@@ -49,7 +49,7 @@ describe('MonitoringSettingsForm', () => {
     expect(screen.getByText('Alterações não salvas')).toHaveAttribute('role', 'status');
 
     const stored = JSON.parse(sessionStorage.getItem('ui.monitoring.settings.s1')!) as { v: number; d: { textMode: string } };
-    expect(stored).toMatchObject({ v: 6, d: { textMode: 'TEMPLATE' } });
+    expect(stored).toMatchObject({ v: 7, d: { textMode: 'TEMPLATE' } });
   });
 
   it('clique em IA mostra o público; Descartar volta ao salvo', () => {
@@ -93,14 +93,14 @@ describe('MonitoringSettingsForm', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Domingo' }));
     expect(screen.getByRole('checkbox', { name: /Capturar fora do horário/ })).toBeEnabled();
     const stored = JSON.parse(sessionStorage.getItem('ui.monitoring.settings.s1')!) as { v: number; d: { weekdaysMask: number } };
-    expect(stored).toMatchObject({ v: 6, d: { weekdaysMask: 126 } });
+    expect(stored).toMatchObject({ v: 7, d: { weekdaysMask: 126 } });
     fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect(onSave.mock.calls[0]![0]).toMatchObject({ weekdays: [1, 2, 3, 4, 5, 6], windowStartMinute: 0, windowEndMinute: 1440 });
   });
 
   it('"mencionar todos" travado: rascunho com true não mostra "não salvo"; salvar envia false', async () => {
-    sessionStorage.setItem('ui.monitoring.settings.s1', JSON.stringify({ v: 6, d: { ...settingsToDraft(config.settings), mentionAll: true } }));
+    sessionStorage.setItem('ui.monitoring.settings.s1', JSON.stringify({ v: 7, d: { ...settingsToDraft(config.settings), mentionAll: true } }));
     const onSave = vi.fn().mockResolvedValue(config);
     renderWithTheme(<MonitoringSettingsForm sessionId="s1" config={config} onSave={onSave} />);
     expect(screen.queryByText('Alterações não salvas')).not.toBeInTheDocument();
@@ -209,5 +209,50 @@ describe('MonitoringSettingsForm', () => {
     fireEvent.click(ai);
     expect(ai).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByRole('radiogroup', { name: 'Público-alvo' })).toBeInTheDocument();
+  });
+
+  describe('foto oficial do produto', () => {
+    const name = /Usar a foto oficial do produto/;
+
+    it('campo ausente na resposta: switch não aparece e o envio não leva o campo', async () => {
+      const onSave = vi.fn().mockResolvedValue(config);
+      renderWithTheme(<MonitoringSettingsForm sessionId="s1" config={config} onSave={onSave} />);
+      expect(screen.queryByRole('checkbox', { name })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Monitoramento ativo' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+      await waitFor(() => expect(onSave).toHaveBeenCalled());
+      expect(onSave.mock.calls[0]![0]).not.toHaveProperty('useProductImage');
+    });
+
+    it('com plano: liga, sem selo, e envia useProductImage', async () => {
+      const withField = {
+        ...config,
+        settings: { ...config.settings, useProductImage: false },
+        limits: { ...config.limits, cleanImageEnabled: true },
+      };
+      const onSave = vi.fn().mockResolvedValue(withField);
+      renderWithTheme(<MonitoringSettingsForm sessionId="s1" config={withField} onSave={onSave} />);
+      const option = screen.getByTestId('product-image-option');
+      expect(within(option).queryByRole('img', { name: /PRO/ })).not.toBeInTheDocument();
+      const toggle = screen.getByRole('checkbox', { name });
+      expect(toggle).toBeEnabled();
+      fireEvent.click(toggle);
+      fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+      await waitFor(() => expect(onSave).toHaveBeenCalled());
+      expect(onSave.mock.calls[0]![0]).toMatchObject({ useProductImage: true });
+    });
+
+    it('fora do plano (cleanImageEnabled false): travado, desligado e com selo PRO', () => {
+      const locked = {
+        ...config,
+        settings: { ...config.settings, useProductImage: true },
+        limits: { ...config.limits, cleanImageEnabled: false },
+      };
+      renderWithTheme(<MonitoringSettingsForm sessionId="s1" config={locked} onSave={vi.fn()} />);
+      const toggle = screen.getByRole('checkbox', { name });
+      expect(toggle).toBeDisabled();
+      expect(toggle).not.toBeChecked();
+      expect(within(screen.getByTestId('product-image-option')).getByRole('img', { name: /PRO/ })).toBeInTheDocument();
+    });
   });
 });

@@ -684,6 +684,11 @@ export interface GroupMonitorSettings {
   enrichLinkOnly: boolean;
   /** Fora do horário de operação: true = captura e enfileira para a janela abrir; false = ignora. Padrão true. */
   captureOutsideWindow: boolean;
+  /**
+   * Troca a foto capturada pela foto oficial do produto (sem foto oficial, segue a capturada). Ausente na
+   * resposta = opção oculta para quem pede (audiência): o painel não mostra nem envia.
+   */
+  useProductImage?: boolean;
 }
 
 /** `MEDIA` = foto com legenda; `LINK_PREVIEW` = texto com cartão de prévia do link. */
@@ -746,6 +751,8 @@ export interface GroupMonitorConfigResponse {
     captureOutsideWindowEnabled?: boolean;
     /** Entitlement `ai_rewrite_enabled` (PRO/MAX). Só `false` trava; ausente = liberado. */
     aiRewriteEnabled?: boolean;
+    /** Entitlement `offer_clean_image_enabled` (PRO/MAX). Ausente quando a opção está oculta; `false` = selo de plano. */
+    cleanImageEnabled?: boolean;
     whatsapp: ChannelGroupLimits;
     telegram: ChannelGroupLimits;
   };

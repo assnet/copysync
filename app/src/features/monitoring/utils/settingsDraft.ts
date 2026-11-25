@@ -28,10 +28,12 @@ export interface MonitorSettingsDraft {
   audience: OfferAudience;
   enrichLinkOnly: boolean;
   captureOutsideWindow: boolean;
+  /** "Usar a foto oficial do produto". Ausente = opção oculta (a API não devolveu o campo): nunca é enviado. */
+  useProductImage?: boolean;
 }
 
 /** Mude ao alterar `MonitorSettingsDraft`: rascunho salvo em outro formato é descartado. */
-export const SETTINGS_DRAFT_VERSION = 6;
+export const SETTINGS_DRAFT_VERSION = 7;
 
 export const LIMITS = {
   intervalMinutes: { min: 0, max: 60 },
@@ -81,6 +83,7 @@ export function settingsToDraft(s: GroupMonitorSettings): MonitorSettingsDraft {
     audience: s.audience,
     enrichLinkOnly: s.enrichLinkOnly,
     captureOutsideWindow: s.captureOutsideWindow,
+    ...(s.useProductImage !== undefined && { useProductImage: s.useProductImage }),
   };
 }
 
@@ -103,6 +106,8 @@ export function draftToSettings(d: MonitorSettingsDraft): GroupMonitorSettings {
     audience: d.textMode === 'AI' ? d.audience : 'STANDARD',
     enrichLinkOnly: d.enrichLinkOnly,
     captureOutsideWindow: d.captureOutsideWindow,
+    // Só vai quando a opção existe na tela (campo veio da API)
+    ...(d.useProductImage !== undefined && { useProductImage: d.useProductImage }),
   };
 }
 
@@ -113,6 +118,10 @@ export interface PlanGates {
   captureOutsideWindow?: boolean;
   /** "Reescrita com IA" (PRO/MAX): travada, o modo IA vale como Modelo. */
   aiRewrite?: boolean;
+  /** "Foto oficial do produto" (PRO/MAX): `false` = travada, vale desligada. */
+  cleanImage?: boolean;
+  /** Opção da foto oficial visível (campo veio da API). `false` = some do rascunho e do envio. */
+  cleanImageVisible?: boolean;
 }
 
 /**
@@ -125,10 +134,17 @@ export function effectiveDraft(d: MonitorSettingsDraft, gates: PlanGates = {}): 
   const captureOutsideWindow = gates.captureOutsideWindow !== false && d.captureOutsideWindow;
   // IA travada pelo plano: o servidor monta pelo Modelo, então a tela mostra e salva Modelo
   const textMode: MonitorTextMode = gates.aiRewrite === false && d.textMode === 'AI' ? 'TEMPLATE' : d.textMode;
-  return mentionAll === d.mentionAll && enrichLinkOnly === d.enrichLinkOnly && captureOutsideWindow === d.captureOutsideWindow
-    && textMode === d.textMode
-    ? d
-    : { ...d, mentionAll, enrichLinkOnly, captureOutsideWindow, textMode };
+  // Foto oficial: oculta → sai do rascunho; travada pelo plano → desligada
+  const useProductImage = gates.cleanImageVisible === false || d.useProductImage === undefined
+    ? undefined
+    : gates.cleanImage !== false && d.useProductImage;
+  if (
+    mentionAll === d.mentionAll && enrichLinkOnly === d.enrichLinkOnly && captureOutsideWindow === d.captureOutsideWindow
+    && textMode === d.textMode && useProductImage === d.useProductImage
+  ) return d;
+  const next: MonitorSettingsDraft = { ...d, mentionAll, enrichLinkOnly, captureOutsideWindow, textMode, useProductImage };
+  if (useProductImage === undefined) delete next.useProductImage;
+  return next;
 }
 
 /** Rascunho difere do salvo? Compara no formato da API, com os dois lados no valor efetivo. */

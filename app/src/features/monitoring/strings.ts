@@ -268,6 +268,12 @@ export const monitoringStrings = {
     enrichTitle: 'Montar a oferta quando chegar só o link',
     enrichHelp: 'Mensagem só com link, sem texto, vira oferta com título, preço e foto do produto mesmo no modo Original.',
 
+    productImageTitle: 'Usar a foto oficial do produto',
+    productImageHelp: 'Troca a foto que veio do grupo pela foto oficial da loja.',
+    productImageTooltip:
+      'A foto do grupo pode trazer a marca de outro afiliado. Ligado, a oferta sai com a foto oficial da loja; se a loja não tiver foto, segue a do grupo.',
+    productImageLocked: 'Disponível nos planos PRO e MAX.',
+
     upcomingInline: 'Imagem nova para a oferta quando a original não puder ser usada',
     soon: 'Em breve',
 

@@ -81,4 +81,13 @@ describe('settingsDraft', () => {
     expect(isDraftDirty(settingsToDraft(saved), weekdays)).toBe(true);
     expect(draftToSettings({ ...settingsToDraft(saved), weekdaysMask: 62 }).weekdays).toEqual([1, 2, 3, 4, 5]);
   });
+
+  it('foto oficial: ausente não vai; oculta sai do envio; travada vale desligada', () => {
+    expect(draftToSettings(settingsToDraft(saved))).not.toHaveProperty('useProductImage');
+    const on = settingsToDraft({ ...saved, useProductImage: true });
+    expect(draftToSettings(on).useProductImage).toBe(true);
+    expect(effectiveDraft(on, { cleanImage: false }).useProductImage).toBe(false);
+    expect(effectiveDraft(on, { cleanImageVisible: false })).not.toHaveProperty('useProductImage');
+    expect(isDraftDirty(on, { ...saved, useProductImage: true }, { cleanImage: false })).toBe(false);
+  });
 });
