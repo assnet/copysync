@@ -84,6 +84,20 @@ const telegramLinks = (links: number, groups: number): Benefit => ({
   telegram: { detail: `${links} ${links === 1 ? 'link' : 'links'} · até ${groups} grupos` },
 })
 
+/**
+ * Canal de venda do build. `meta` = LP exclusiva dos anúncios do Meta (afiliados.copysync.com.br, site da Render
+ * com VITE_CHECKOUT_CHANNEL=meta): usa as ofertas [M] da Cakto, assim toda venda delas vem dessa página.
+ * Sem a variável (Hostinger) ficam as ofertas padrão. Nunca misturar os dois conjuntos no mesmo build.
+ */
+const CHECKOUT_CHANNEL = import.meta.env.VITE_CHECKOUT_CHANNEL === 'meta' ? 'meta' : 'default'
+const META_ADS_CHECKOUT: Record<string, Record<Period, string>> = {
+  lite: { monthly: 'https://pay.cakto.com.br/6ots8ww', annual: 'https://pay.cakto.com.br/pao225i' },
+  pro: { monthly: 'https://pay.cakto.com.br/33cw69s', annual: 'https://pay.cakto.com.br/34g2gz4' },
+  max: { monthly: 'https://pay.cakto.com.br/3fqwten', annual: 'https://pay.cakto.com.br/w36zago' },
+}
+const checkoutFor = (slug: string, standard: Record<Period, string>) =>
+  CHECKOUT_CHANNEL === 'meta' ? META_ADS_CHECKOUT[slug] : standard
+
 export const PLANS: Plan[] = [
   {
     slug: 'lite',
@@ -93,10 +107,10 @@ export const PLANS: Plan[] = [
     price: 97,
     priceAnnualMonthly: 77,
     annualDetail: '12x de R$ 77 (R$ 924/ano) ou R$ 745,52 à vista',
-    checkout: {
+    checkout: checkoutFor('lite', {
       monthly: 'https://pay.cakto.com.br/8e4gepk_1291207',
       annual: 'https://pay.cakto.com.br/a92kn9k_1291217',
-    },
+    }),
     limits: {
       whatsappSessions: 1,
       telegramSessions: 0,
@@ -127,10 +141,10 @@ export const PLANS: Plan[] = [
     price: 167,
     priceAnnualMonthly: 133,
     annualDetail: '12x de R$ 133,01 (R$ 1.596,12/ano) ou R$ 1.287,72 à vista',
-    checkout: {
+    checkout: checkoutFor('pro', {
       monthly: 'https://pay.cakto.com.br/fronsgu_1291227',
       annual: 'https://pay.cakto.com.br/f34qfgh_1291232',
-    },
+    }),
     recommended: true,
     limits: {
       whatsappSessions: 1,
@@ -166,10 +180,10 @@ export const PLANS: Plan[] = [
     price: 247,
     priceAnnualMonthly: 197,
     annualDetail: '12x de R$ 197 (R$ 2.364/ano) ou R$ 1.907,37 à vista',
-    checkout: {
+    checkout: checkoutFor('max', {
       monthly: 'https://pay.cakto.com.br/kzoagvc_1291239',
       annual: 'https://pay.cakto.com.br/97nqcb8_1291245',
-    },
+    }),
     limits: {
       whatsappSessions: 2,
       telegramSessions: 2,
