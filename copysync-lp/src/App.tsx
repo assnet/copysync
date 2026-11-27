@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { CookieConsent } from './components/CookieBanner'
 import { StickyCta } from './components/StickyCta'
+import { SupportFloat } from './components/SupportFloat'
 import { Closing } from './sections/Closing'
 import { Cost } from './sections/Cost'
 import { Demo } from './sections/Demo'
@@ -33,6 +34,7 @@ export default function App() {
         <Closing />
       </main>
       <StickyCta visible={pastHero && !consentOpen} />
+      <SupportFloat raised={pastHero && !consentOpen} hidden={consentOpen} />
       <CookieConsent onVisibleChange={setConsentOpen} />
     </>
   )

@@ -7,7 +7,7 @@ declare global {
   }
 }
 
-export type TrackEvent = 'cta_click' | 'video_play' | 'video_50' | 'plan_select' | 'checkout_start'
+export type TrackEvent = 'cta_click' | 'support_click' | 'video_play' | 'video_50' | 'plan_select' | 'checkout_start'
 
 export function track(event: TrackEvent, params: Record<string, unknown> = {}) {
   window.dataLayer = window.dataLayer ?? []
