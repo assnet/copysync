@@ -130,10 +130,10 @@ describe('OfferWatermarkPage', () => {
     expect(await screen.findByText('Use um PNG ou WebP com fundo transparente.')).toHaveAttribute('role', 'alert');
   });
 
-  it('aviso do Telegram (foto com legenda; prévia do painel não mostra)', async () => {
+  it('aviso do Telegram (foto com legenda; prévia do gerador mostra a marca no cartão)', async () => {
     svc.get.mockResolvedValue(base);
     renderPage();
     expect(await screen.findByText('No Telegram, a oferta com marca chega como foto com legenda')).toBeInTheDocument();
-    expect(screen.getByText(/A prévia da oferta no painel continua mostrando o cartão de link/)).toBeInTheDocument();
+    expect(screen.getByText(/A prévia da oferta no gerador mostra a sua marca sobre a foto, mas no formato de cartão de link/)).toBeInTheDocument();
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectStore, linkProblem } from './offerStore';
+import { detectStore, linkProblem, storePlanNames, storeStatus } from './offerStore';
 import { intervalRisk, intervalValid } from './offerConfig';
 import { toOfferError } from './offerErrors';
 
@@ -84,5 +84,35 @@ describe('toOfferError v2', () => {
   it('configuração ausente leva à configuração', () => {
     expect(toOfferError({ code: 'OFFER_CONFIG_MISSING' }).action).toBe('config');
     expect(toOfferError({ code: 'SESSION_NOT_CONNECTED' }).action).toBe('sessions');
+  });
+});
+
+describe('storeStatus', () => {
+  const visible = ['SHOPEE', 'MERCADO_LIVRE', 'AMAZON', 'SHEIN', 'KABUM'] as const;
+  const kabum = 'https://www.kabum.com.br/produto/1';
+  const locked = { KABUM: { enabled: false, plans: ['COPYSYNC_MAX'], riskNotice: null } };
+
+  it('loja visível fora do plano = notInPlan com a loja', () => {
+    expect(storeStatus(kabum, visible, locked)).toEqual({ problem: 'notInPlan', store: 'KABUM' });
+  });
+
+  it('loja escondida pela audiência segue unknownStore, mesmo com disponibilidade', () => {
+    expect(storeStatus(kabum, ['SHOPEE'], locked)).toEqual({ problem: 'unknownStore', store: null });
+  });
+
+  it('loja sem entrada na disponibilidade (API antiga) = liberada', () => {
+    expect(storeStatus('https://amzn.to/abc', visible, locked)).toEqual({ problem: null, store: 'AMAZON' });
+    expect(storeStatus(kabum, visible)).toEqual({ problem: null, store: 'KABUM' });
+    expect(storeStatus(kabum, visible, { KABUM: { enabled: true, plans: ['COPYSYNC_MAX'], riskNotice: null } }).problem).toBeNull();
+  });
+
+  it('erros do link continuam antes do plano', () => {
+    expect(storeStatus('', visible, locked).problem).toBe('required');
+    expect(storeStatus('http://www.kabum.com.br/x', visible, locked).problem).toBe('invalid');
+  });
+
+  it('nomes dos planos na ordem da vitrine, sem desconhecidos', () => {
+    expect(storePlanNames({ KABUM: { enabled: false, plans: ['COPYSYNC_MAX', 'COPYSYNC_PRO', 'X'], riskNotice: null } }, 'KABUM')).toEqual(['PRO', 'MAX']);
+    expect(storePlanNames({}, 'KABUM')).toEqual([]);
   });
 });

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { effectiveImageMode } from '../utils/offerConfig';
 import { Avatar, Box, Stack, Typography, alpha, useTheme } from '@mui/material';
 import { OverflowTooltipText } from '@/components';
@@ -9,6 +10,10 @@ import { resolveMediaUrl } from '@/utils/resolveMediaUrl';
 import { offerStrings } from '../strings';
 import { renderWhatsAppText } from '../utils/whatsappText';
 import type { OfferImageMode } from '@/types/api.types';
+import { WatermarkOverlay } from '@/features/offerWatermark/components/WatermarkOverlay';
+import type { OfferWatermark } from '@/features/offerWatermark/types';
+import type { Dimensions } from '@/features/offerWatermark/rules';
+import { containedPhotoRect } from '../utils/containedPhotoRect';
 
 const t = offerStrings.preview;
 const timeFmt = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -25,6 +30,56 @@ interface Props {
   imageMode?: OfferImageMode;
   /** Link da oferta; dá o domínio do cartão de prévia. */
   linkUrl?: string | null;
+  /** Marca d'água ativa do tenant (`useOfferPreviewWatermark`); null/ausente = foto sem marca. */
+  watermark?: OfferWatermark | null;
+}
+
+/** Caixas fixas da foto (largura / altura): cartão de link 1.91:1, mídia quadrada. */
+const LINK_PREVIEW_RATIO = 1.91;
+const MEDIA_RATIO = 1;
+
+interface PhotoProps {
+  src: string;
+  alt: string;
+  blur: boolean;
+  boxRatio: number;
+  watermark: OfferWatermark | null;
+}
+
+/**
+ * Foto do produto (`contain`) e, com marca ativa, a mesma camada da página da marca (`WatermarkOverlay`) sobre a
+ * área real da foto, pela regra de `rules.ts` (cópia da API). Só a foto é borrada por `offers.productImages`; a marca
+ * segue a flag `offerWatermark.logo`. Sem marca o visual é o de sempre.
+ */
+function OfferPhoto({ src, alt, blur, boxRatio, watermark }: PhotoProps) {
+  const [natural, setNatural] = useState<{ src: string; dims: Dimensions } | null>(null);
+  const dims = natural?.src === src ? natural.dims : null;
+  const rect = watermark && dims ? containedPhotoRect(dims, boxRatio) : null;
+
+  return (
+    <>
+      <Box
+        component="img"
+        src={src}
+        alt={alt}
+        loading="lazy"
+        onLoad={(e) => {
+          const img = e.currentTarget as HTMLImageElement;
+          if (img.naturalWidth > 0 && img.naturalHeight > 0) setNatural({ src, dims: { width: img.naturalWidth, height: img.naturalHeight } });
+        }}
+        sx={{ width: '100%', height: '100%', objectFit: 'contain', ...(blur && { filter: 'blur(14px)' }) }}
+      />
+      {watermark && rect && dims && (
+        <Box
+          data-testid="offer-preview-watermark"
+          aria-hidden
+          sx={{ position: 'absolute', left: `${rect.left}%`, top: `${rect.top}%`, width: `${rect.width}%`, height: `${rect.height}%`, pointerEvents: 'none' }}
+        >
+          <WatermarkOverlay mark={watermark} logoUrl={resolveMediaUrl(watermark.imageUrl)} photo={dims} />
+        </Box>
+      )}
+    </>
+  );
 }
 
 function linkDomain(url: string | null | undefined): string | null {
@@ -40,7 +95,7 @@ function linkDomain(url: string | null | undefined): string | null {
  * Como a oferta chega no grupo: cabeçalho, foto e bolha de mensagem enviada.
  * Cores derivadas do tema (sucesso translúcido sobre o fundo) para funcionar no claro e no escuro.
  */
-export function OfferChatPreview({ groupTitle, groupCount, imageUrl, title, text, at, imageMode = 'LINK_PREVIEW', linkUrl = null }: Props) {
+export function OfferChatPreview({ groupTitle, groupCount, imageUrl, title, text, at, imageMode = 'LINK_PREVIEW', linkUrl = null, watermark = null }: Props) {
   const theme = useTheme();
   const dark = theme.palette.mode === 'dark';
   const src = resolveMediaUrl(imageUrl);
@@ -113,8 +168,8 @@ export function OfferChatPreview({ groupTitle, groupCount, imageUrl, title, text
                   bgcolor: alpha(theme.palette.text.primary, dark ? 0.08 : 0.05),
                 }}
               >
-                <Box sx={{ aspectRatio: '1.91 / 1', bgcolor: 'common.white', overflow: 'hidden' }}>
-                  <Box component="img" src={src} alt={t.imageAlt(title || t.noTitle)} loading="lazy" sx={{ width: '100%', height: '100%', objectFit: 'contain', ...(blurImages && { filter: 'blur(14px)' }) }} />
+                <Box sx={{ position: 'relative', aspectRatio: `${LINK_PREVIEW_RATIO} / 1`, bgcolor: 'common.white', overflow: 'hidden' }}>
+                  <OfferPhoto src={src} alt={t.imageAlt(title || t.noTitle)} blur={blurImages} boxRatio={LINK_PREVIEW_RATIO} watermark={watermark} />
                 </Box>
                 <Box sx={{ px: 1, py: 0.75, minWidth: 0 }}>
                   <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', wordBreak: 'break-word' }}>
@@ -129,9 +184,10 @@ export function OfferChatPreview({ groupTitle, groupCount, imageUrl, title, text
           ) : (
             <Box
               sx={{
+                position: 'relative',
                 borderRadius: 1.5,
                 overflow: 'hidden',
-                aspectRatio: '1 / 1',
+                aspectRatio: `${MEDIA_RATIO} / 1`,
                 bgcolor: src ? 'common.white' : 'action.hover',
                 display: 'flex',
                 alignItems: 'center',
@@ -139,7 +195,7 @@ export function OfferChatPreview({ groupTitle, groupCount, imageUrl, title, text
               }}
             >
               {src ? (
-                <Box component="img" src={src} alt={t.imageAlt(title || t.noTitle)} loading="lazy" sx={{ width: '100%', height: '100%', objectFit: 'contain', ...(blurImages && { filter: 'blur(14px)' }) }} />
+                <OfferPhoto src={src} alt={t.imageAlt(title || t.noTitle)} blur={blurImages} boxRatio={MEDIA_RATIO} watermark={watermark} />
               ) : (
                 <Stack alignItems="center" spacing={1} sx={{ color: 'text.disabled' }}>
                   <ImageNotSupportedOutlinedIcon sx={{ fontSize: 40 }} aria-hidden />

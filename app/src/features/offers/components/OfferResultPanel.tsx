@@ -18,6 +18,7 @@ import { OfferChatPreview } from './OfferChatPreview';
 import { OfferEditor } from './OfferEditor';
 import { Blurred, useBlur } from '@/features/privacy';
 import { LinkRebuiltNotice } from '@/features/affiliateLinks/components/LinkRebuiltNotice';
+import { useOfferPreviewWatermark } from '@/features/offerWatermark/hooks/useOfferPreviewWatermark';
 
 const t = offerStrings.actions;
 
@@ -61,6 +62,8 @@ export function OfferResultPanel(props: Props) {
   const [editing, setEditing] = useState(needsManualData);
   useEffect(() => { onEditingChange?.(editing); }, [editing, onEditingChange]);
   const aiLocked = props.aiRewriteEnabled === false;
+  // A prévia serve para testar: mostra a marca d'água ativa do tenant como o envio aplica.
+  const watermark = useOfferPreviewWatermark();
   const [pickedAudience, setAudience] = useState<OfferAudience>(offer.audience);
   const audience = effectiveAudience(pickedAudience, aiLocked);
   const blurAudience = useBlur('offers.audience');
@@ -137,6 +140,7 @@ export function OfferResultPanel(props: Props) {
             at={offer.updatedAt}
             imageMode={offer.imageMode}
             linkUrl={offer.affiliateUrl}
+            watermark={watermark}
           />
         </Box>
 

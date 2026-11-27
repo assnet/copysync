@@ -5,12 +5,16 @@ import {
 import LinkIcon from '@mui/icons-material/Link';
 import CloseIcon from '@mui/icons-material/Close';
 import BoltOutlinedIcon from '@mui/icons-material/BoltOutlined';
-import { SectionCard } from '@/components';
+import { Link as RouterLink } from 'react-router-dom';
+import { Crown, LifeBuoy } from 'lucide-react';
+import { AppIcon, SectionCard } from '@/components';
+import { AFFILIATE_PLANS_PATH } from '@/features/navigation';
+import { SUPPORT_CHAT_PATH } from '@/features/platformLinks/links';
 import type { AffiliateProvider, GenerateOfferRequest, OfferAudience } from '@/types/api.types';
 import { AFFILIATE_PROVIDERS } from '@/features/settings/affiliateProviders';
 import { MarketplaceLogo } from '@/features/settings/components/MarketplaceLogo';
 import { offerStrings } from '../strings';
-import { detectStore, linkProblem } from '../utils/offerStore';
+import { DEFAULT_OFFER_STORES, storePlanNames, storeStatus, type OfferStoreAvailability } from '../utils/offerStore';
 import { effectiveAudience } from '../utils/offerConfig';
 import { AudiencePicker } from './AudiencePicker';
 import { OfferScheduleField } from './OfferScheduleField';
@@ -48,11 +52,16 @@ interface Props {
   aiRewriteEnabled?: boolean;
   /** Lojas visíveis para a conta; ausente = as de sempre. */
   visibleStores?: readonly AffiliateProvider[];
+  /** Plano por loja; loja sem entrada = liberada. */
+  storeAvailability?: OfferStoreAvailability;
+  /** Loja que a API recusou por plano (defesa do 403): mostra o mesmo caminho de upgrade. */
+  serverPlanStore?: AffiliateProvider | null;
 }
 
 /** Card "Gerar nova oferta": link próprio + cupom opcional + público-alvo + início agendado. */
 export function OfferGeneratorForm({
-  generating, serverError, disabled, disabledReason, onGenerate, onChange, onCancel, aiRewriteEnabled = true, visibleStores,
+  generating, serverError, disabled, disabledReason, onGenerate, onChange, onCancel, aiRewriteEnabled = true,
+  visibleStores = DEFAULT_OFFER_STORES, storeAvailability = {}, serverPlanStore = null,
 }: Props) {
   // Sobrevive a reload (padrão do painel): link colado, cupom e público ficam na aba
   const [form, setForm] = usePersistedState<FormDraft>('offers.form', EMPTY_FORM, { scope: 'device' });
@@ -74,9 +83,14 @@ export function OfferGeneratorForm({
   };
   const setScheduleAt = (v: string) => { setForm((f) => ({ ...f, scheduleAt: v })); setScheduleError(null); };
 
-  const store = detectStore(url, visibleStores);
-  const spec = store ? AFFILIATE_PROVIDERS.find((p) => p.provider === store) : undefined;
+  const status = storeStatus(url, visibleStores, storeAvailability);
+  const specOf = (p: AffiliateProvider | null) => (p ? AFFILIATE_PROVIDERS.find((s) => s.provider === p) : undefined);
+  // Fora do plano: pela disponibilidade da lista ou pelo 403 da API (a loja do erro manda)
+  const planSpec = specOf(serverPlanStore ?? (status.problem === 'notInPlan' ? status.store : null));
+  const spec = planSpec ? undefined : specOf(status.problem ? null : status.store);
+  const storeNames = AFFILIATE_PROVIDERS.filter((p) => visibleStores.includes(p.provider)).map((p) => p.name);
   const error = linkError ?? serverError;
+  const planHint = !error && planSpec ? t.notInPlan.helper(planSpec.name) : null;
   const busy = disabled || generating;
 
   const changeUrl = (value: string) => {
@@ -87,8 +101,9 @@ export function OfferGeneratorForm({
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const problem = linkProblem(url, visibleStores);
-    const linkMsg = problem === 'required' ? t.linkRequired : problem === 'invalid' ? t.linkInvalid : problem ? t.linkUnknownStore : null;
+    if (planSpec) return;
+    const { problem } = status;
+    const linkMsg = problem === 'required' ? t.linkRequired : problem === 'invalid' ? t.linkInvalid : problem ? t.linkUnknownStore(storeNames) : null;
     const couponMsg = hasCoupon && !coupon.trim() ? t.couponRequired : null;
     const when = scheduleOn ? scheduleProblem(scheduleAt) : null;
     const scheduleMsg = when === 'required' ? ts.required : when === 'past' ? ts.past : when === 'too_far' ? ts.tooFar(SCHEDULE_MAX_DAYS) : null;
@@ -122,7 +137,7 @@ export function OfferGeneratorForm({
               disabled={busy}
               onChange={(e) => changeUrl(e.target.value)}
               error={Boolean(error)}
-              helperText={error ?? t.linkHelper}
+              helperText={error ?? planHint ?? t.linkHelper(storeNames)}
               inputMode="url"
               autoComplete="off"
               slotProps={{
@@ -142,8 +157,49 @@ export function OfferGeneratorForm({
                     </InputAdornment>
                   ) : undefined,
                 },
+                formHelperText: planHint ? { sx: { color: 'warning.main' } } : undefined,
               }}
             />
+            <Collapse in={Boolean(planSpec)} unmountOnExit>
+              {planSpec && (
+                <Box sx={{ mt: 1.25, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                  <Chip
+                    role="status"
+                    icon={<MarketplaceLogo src={planSpec.logo} size={20} sx={{ ml: 0.5, p: 0.25 }} />}
+                    label={t.notInPlan.chip(planSpec.name, storePlanNames(storeAvailability, planSpec.provider))}
+                    color="warning"
+                    variant="outlined"
+                    size="small"
+                    sx={{ fontWeight: 600 }}
+                  />
+                  <Tooltip title={t.notInPlan.plansTooltip} describeChild>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      color="warning"
+                      component={RouterLink}
+                      to={AFFILIATE_PLANS_PATH}
+                      startIcon={<AppIcon icon={Crown} size="sm" />}
+                    >
+                      {t.notInPlan.plans}
+                    </Button>
+                  </Tooltip>
+                  <Tooltip title={t.notInPlan.supportTooltip} describeChild>
+                    <Button
+                      size="small"
+                      color="inherit"
+                      component="a"
+                      href={SUPPORT_CHAT_PATH}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      startIcon={<AppIcon icon={LifeBuoy} size="sm" />}
+                    >
+                      {t.notInPlan.support}
+                    </Button>
+                  </Tooltip>
+                </Box>
+              )}
+            </Collapse>
             <Collapse in={Boolean(spec)} unmountOnExit>
               {spec && (
                 <Box sx={{ mt: 1.25, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
@@ -213,7 +269,7 @@ export function OfferGeneratorForm({
               size="large"
               disableElevation
               fullWidth
-              disabled={busy}
+              disabled={busy || Boolean(planSpec)}
               startIcon={generating ? <CircularProgress size={18} color="inherit" /> : <BoltOutlinedIcon />}
               aria-live="polite"
             >

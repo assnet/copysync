@@ -17,6 +17,26 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.105.2] — 2026-11-27 — Prévia da oferta com marca d'água e aviso de loja fora do plano (app 0.128.2)
+
+### Added
+
+#### Painel (app/) — `offers` ([`docs/gerador-de-ofertas.md`](../docs/gerador-de-ofertas.md))
+
+- **`features/offers/utils/offerStore.ts`**, **`hooks/useVisibleOfferStores.ts`**, **`components/OfferGeneratorForm.tsx`**, **`utils/offerErrors.ts`**, **`pages/offers/OfferGeneratorPage.tsx`** — link de loja visível mas fora do plano (`marketplaceAvailability[loja].enabled === false`) deixa de cair em "Loja não reconhecida": chip de aviso "{Loja} · disponível no plano X" (planos derivados de `plans` como o selo de Credenciais), geração bloqueada e ações "Ver planos" e "Falar com o suporte" (`/redirect/suporte`). Mesmo aviso no 403 `PLAN_FEATURE_UNAVAILABLE` de loja. Loja escondida pela audiência "Só super admin" segue desconhecida.
+- **`features/offers/strings.ts`** — ajuda e "Loja não reconhecida" listam só as lojas visíveis; `OFFER_URL_UNSUPPORTED` com texto neutro.
+
+### Fixed
+
+#### Painel (app/) — `offers` / `offerWatermark` ([`docs/imagem-das-ofertas.md`](../docs/imagem-das-ofertas.md))
+
+- **`features/offers/components/OfferChatPreview.tsx`**, **`OfferResultPanel.tsx`** — a prévia do gerador mostrava a foto sem a marca d'água, embora o envio a aplique; o dono não conseguia testar a marca antes de disparar. Agora, com marca ativa, a prévia desenha a marca sobre a área real da foto (`object-fit: contain` → `utils/containedPhotoRect.ts`) nos ramos cartão de link e mídia. Sem marca, visual igual.
+- **`features/offerWatermark/components/WatermarkOverlay.tsx`** (novo) — camada da marca extraída de `WatermarkPreview.tsx` e usada pelas duas prévias; posição por `computeWatermarkPlacement` (`rules.ts`) com x em % da largura e y em % da altura (antes só largura, certo apenas para foto quadrada).
+- **`features/offerWatermark/hooks/useOfferPreviewWatermark.ts`** (novo) — lê `GET /offer-watermark` a cada montagem só com a audiência visível; marca só se ligada e com logo/texto (espelha `applies(tenantId)`); 403/404/erro = sem marca. Nada guardado no navegador.
+- **`features/offerWatermark/strings.ts`** — aviso do Telegram passa a dizer que a prévia do gerador mostra a marca, no formato de cartão de link.
+
+---
+
 ## [0.105.1] — 2026-11-25 — Gerador reconhece link da Kabum (app 0.128.1)
 
 ### Fixed

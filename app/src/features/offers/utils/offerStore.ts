@@ -1,4 +1,6 @@
-import type { AffiliateProvider } from '@/types/api.types';
+import type { AffiliateProvider, MarketplaceAvailability } from '@/types/api.types';
+import { toPanelPlanSlugs } from '@/features/plans/planSlug';
+import { plansIn } from '@/features/plans/components/PlanAvailabilityBadges';
 
 /**
  * Loja pelo host do link, só para o aviso "X detectado" no painel. A API decide de verdade
@@ -68,4 +70,32 @@ export function linkProblem(
     return 'invalid';
   }
   return detectStore(value, visible) ? null : 'unknownStore';
+}
+
+/** Disponibilidade por loja (`marketplaceAvailability` da lista de credenciais). Loja sem entrada = liberada (API antiga). */
+export type OfferStoreAvailability = Partial<Record<AffiliateProvider, MarketplaceAvailability>>;
+
+export type OfferStoreProblem = 'required' | 'invalid' | 'unknownStore' | 'notInPlan';
+
+/**
+ * Situação do link no gerador. Loja escondida pela audiência (fora de `visible`) segue `unknownStore`;
+ * loja visível com `enabled === false` é `notInPlan` (orienta upgrade, nunca "não reconhecida").
+ */
+export function storeStatus(
+  raw: string,
+  visible: readonly AffiliateProvider[] = DEFAULT_OFFER_STORES,
+  availability: OfferStoreAvailability = {},
+): { problem: OfferStoreProblem | null; store: AffiliateProvider | null } {
+  const problem = linkProblem(raw, visible);
+  const store = problem ? null : detectStore(raw, visible);
+  if (store && availability[store]?.enabled === false) return { problem: 'notInPlan', store };
+  return { problem, store };
+}
+
+/**
+ * Nomes dos planos que liberam a loja, na ordem da vitrine (mesma derivação do selo do card em
+ * Credenciais de afiliado: `toPanelPlanSlugs` + `plansIn`). Vazio = a API não disse quais.
+ */
+export function storePlanNames(availability: OfferStoreAvailability, store: AffiliateProvider): string[] {
+  return plansIn(toPanelPlanSlugs(availability[store]?.plans ?? []));
 }

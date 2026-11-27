@@ -12,6 +12,9 @@ import type { PlanGatedMarketplace } from '@/features/plans/planGate';
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 const groupsLabel = (n: number) => `${n} ${plural(n, 'grupo', 'grupos')}`;
 const sessionsLabel = (n: number) => `${n} ${plural(n, 'sessão', 'sessões')}`;
+/** "Shopee, Amazon ou Mercado Livre"; vazio vira texto neutro. */
+const storeList = (names: readonly string[], last = 'ou') =>
+  names.length === 0 ? 'loja' : names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} ${last} ${names[names.length - 1]}`;
 const CHANNEL_NAME: Record<LimitChannel, string> = { whatsapp: 'WhatsApp', telegram: 'Telegram' };
 
 export const offerStrings = {
@@ -225,10 +228,24 @@ export const offerStrings = {
     title: 'Gerar nova oferta',
     linkLabel: 'Link do produto',
     linkPlaceholder: 'https://...',
-    linkHelper: 'Cole qualquer link do produto na Shopee, Amazon ou Mercado Livre. A ferramenta gera o link com a sua conta de afiliado, e a comissão vai para você.',
+    /** `stores`: nomes das lojas visíveis para a conta, na ordem das credenciais. */
+    linkHelper: (stores: readonly string[]) =>
+      `Cole qualquer link do produto na ${storeList(stores)}. A ferramenta gera o link com a sua conta de afiliado, e a comissão vai para você.`,
     linkRequired: 'Cole o link do produto.',
     linkInvalid: 'Isso não parece um link. Ele deve começar com https://',
-    linkUnknownStore: 'Loja não reconhecida. Use um link da Shopee, Amazon ou Mercado Livre.',
+    linkUnknownStore: (stores: readonly string[]) => `Loja não reconhecida. Use um link da ${storeList(stores)}.`,
+    /** Loja visível, mas fora do plano: chip de aviso, envio bloqueado e caminho para upgrade. */
+    notInPlan: {
+      chip: (store: string, plans: readonly string[]) =>
+        plans.length === 0
+          ? `${store} · fora do seu plano`
+          : `${store} · disponível ${plans.length === 1 ? `no plano ${plans[0]}` : `nos planos ${storeList(plans, 'e')}`}`,
+      helper: (store: string) => `${store} não está liberada no seu plano. Faça upgrade para gerar ofertas com links dessa loja.`,
+      plans: 'Ver planos',
+      plansTooltip: 'Ver os planos que liberam esta loja',
+      support: 'Falar com o suporte',
+      supportTooltip: 'Tirar dúvidas sobre os planos com o suporte (abre em nova aba)',
+    },
     clear: 'Limpar link',
     detected: (store: string) => `${store} detectado`,
     couponSwitch: 'Tem cupom',
@@ -445,7 +462,7 @@ export const offerStrings = {
   /** Erros de link de afiliado (credencial, loja, recriação) vêm de `features/affiliateLinks`. */
   errors: {
     GROUP_NOT_POSTABLE: 'Não dá para postar neste grupo. Escolha outro.',
-    OFFER_URL_UNSUPPORTED: 'Link não suportado. Use um link da Shopee, Amazon ou Mercado Livre.',
+    OFFER_URL_UNSUPPORTED: 'Link não suportado. Use o link do produto de uma das lojas aceitas pelo gerador.',
     OFFER_TEXT_FOREIGN_LINK: 'O texto tem um link de produto que não é o desta oferta. Remova esse link para salvar.',
     OFFER_PRODUCT_NOT_FOUND: 'A loja não encontrou este produto. Confira o link.',
     OFFER_NOT_FOUND: 'Esta oferta não existe mais. Gere uma nova.',

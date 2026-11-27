@@ -59,10 +59,19 @@ marcada com o texto na legenda. Uso restrito autorizado pelo dono em 2026-11-24;
 - Oferta sem foto → texto, como hoje. Foto sumida do storage → envio atual (sem marca), sem falhar.
 - Envio de mídia é assíncrono: falha depois de enfileirar deixa o envio `SENT` e a mensagem `FAILED`.
 
+### Prévia do gerador (app 0.128.2)
+
+A prévia da oferta no gerador (`OfferChatPreview`, em `OfferResultPanel`) mostra a marca ativa do tenant sobre a foto,
+desenhada no navegador (`WatermarkOverlay`) com a mesma regra de `rules.ts` (cópia de `computeWatermarkPlacement`)
+sobre as dimensões naturais da foto e na área que ela ocupa no `contain` (`containedPhotoRect`). Marca lida por
+`useOfferPreviewWatermark` (`GET /offer-watermark` a cada montagem, só com a audiência visível); vale só ligada e com
+logo/texto, como `applies(tenantId)`; 403/404/erro = prévia sem marca. É só desenho: `Offer.imageUrl` segue sem marca.
+Blur: foto por `offers.productImages`, marca por `offerWatermark.logo`.
+
 ### Limitação conhecida (R13)
 
-A prévia da oferta no painel (`OfferChatPreview`) sempre desenha cartão de link; para destino Telegram com marca o que
-chega é foto com legenda. A página da marca avisa isso.
+A prévia sempre desenha cartão de link (agora com a marca); para destino Telegram com marca o que chega é foto com
+legenda. A página da marca avisa isso.
 
 ## Rotas (`/api/offer-watermark`, produto `AFFILIATES`)
 
@@ -93,7 +102,8 @@ chave do storage. Hooks: `authHook` + `tenantHook` + `withProduct` + `offerWater
   Privacidade: flag `offerWatermark.logo` borra logo e texto na página e na prévia.
 - Prévia: `features/offerWatermark/rules.ts` é cópia de `computeWatermarkPlacement` (teste fixa os números da API nas
   5 posições e o modo texto). Mudou a regra na API → mude a cópia. Texto: caixa das letras medida pelo canvas
-  (`actualBoundingBox*`), posta pela altura; pode diferir alguns pixels da fonte do servidor.
+  (`actualBoundingBox*`), posta pela altura; pode diferir alguns pixels da fonte do servidor. A camada
+  `WatermarkOverlay` é a mesma da prévia do gerador (x em % da largura, y em % da altura da foto).
 - Botão de suporte sobe em `/offer-watermark` (`SUPPORT_CHAT_RAISED_PATHS`, barra "Salvar" presa ao rodapé); a página
   tem folga inferior para o botão não cobrir o aviso do Telegram no celular.
 - Tela sem contagem em `/admin/usage` (exigiria mudar `contracts/feature-usage/catalog.json`).
@@ -119,4 +129,5 @@ chave do storage. Hooks: `authHook` + `tenantHook` + `withProduct` + `offerWater
 - Ligar `MEDIA_IMAGE_MODE_ENABLED` ou mandar foto anexada no WhatsApp ou no Telegram sem marca ativa.
 - Decidir o ramo do Telegram dentro do adapter da engine; medir a legenda sobre o HTML convertido.
 - Responder 403 para quem está fora da audiência (é 404); devolver a chave do storage do logo.
-- Cache em memória do registro ou do logo.
+- Cache em memória do registro ou do logo (vale para a prévia do gerador: nada em storage do navegador).
+- Pôr a marca na prévia por arquivo gerado no servidor ou regravar a foto da oferta: a prévia só desenha por cima.

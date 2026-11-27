@@ -35,6 +35,7 @@ describe('toOfferError — lojas novas fora do plano', () => {
     const v = toOfferError({ code: 'PLAN_FEATURE_UNAVAILABLE', meta: { key: 'marketplace_kabum_enabled' } });
     expect(v.message).toContain('Kabum');
     expect(v.isLinkField).toBe(true);
+    expect(v.planStore).toBe('KABUM');
   });
 });
 
@@ -44,6 +45,7 @@ describe('toOfferError — Shein', () => {
     expect(v.message).toContain('Shein');
     expect(v.message).not.toContain('Marcar todos');
     expect(v.isLinkField).toBe(true);
+    expect(v.planStore).toBe('SHEIN');
   });
 
   it('aviso de risco não aceito: explica e leva às credenciais', () => {

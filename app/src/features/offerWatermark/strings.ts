@@ -118,7 +118,7 @@ export const offerWatermarkStrings = {
 
   telegram: {
     title: 'No Telegram, a oferta com marca chega como foto com legenda',
-    body: 'O Telegram monta a prévia do link sozinho e descartaria a sua marca. Por isso, com a marca ativa, a oferta vai como foto anexada e o texto na legenda. A prévia da oferta no painel continua mostrando o cartão de link.',
+    body: 'O Telegram monta a prévia do link sozinho e descartaria a sua marca. Por isso, com a marca ativa, a oferta vai como foto anexada e o texto na legenda. A prévia da oferta no gerador mostra a sua marca sobre a foto, mas no formato de cartão de link.',
   },
 
   save: {

@@ -127,6 +127,15 @@ Encurtadores que vão à rede (`isShortLink`): os mesmos curtos + `mercadolivre.
 Link curto que cai em página sem produto (ex.: `s.shopee.com.br/…` → `shopee.com.br/m/cupom-de-desconto`) é
 "não suportado" de propósito: não há item para afiliar. Host novo entra nos dois lugares + teste.
 
+Painel (`features/offers/utils/offerStore.ts`, `storeStatus`): loja fora de `visibleProviders` (audiência "Só super
+admin") = "Loja não reconhecida", sempre. Loja visível com `marketplaceAvailability[loja].enabled === false` = `notInPlan`:
+chip amarelo "{Loja} · disponível no plano X" (planos de `plans` via `toPanelPlanSlugs` + `plansIn`, a mesma derivação
+do selo do card em Credenciais; 1 plano "no plano MAX", vários "nos planos PRO e MAX", vazio "fora do seu plano";
+nunca nome fixo), "Gerar oferta" bloqueado, "Ver planos" (`AFFILIATE_PLANS_PATH`) e "Falar com o suporte"
+(`SUPPORT_CHAT_PATH`, nova aba). Loja sem entrada (API antiga) ou lista carregando/com erro = liberada. Defesa: 403
+`PLAN_FEATURE_UNAVAILABLE` com `meta.key` de loja (`marketplace_shein_enabled`, `marketplace_kabum_enabled`…) vira
+`OfferErrorView.planStore` e mostra o mesmo caminho. A ajuda do campo lista só as lojas visíveis. Sem preço nem checkout.
+
 ## Geração de link ML (F4)
 
 Todo link ML que não é o link curto oficial já do tenant é recriado com a sessão da extensão (sem sessão =

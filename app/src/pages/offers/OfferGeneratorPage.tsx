@@ -34,7 +34,7 @@ export function OfferGeneratorPage() {
   const gen = useOfferGenerator();
   const { offer } = gen;
   const form = useOfferDraft(offer);
-  const visibleStores = useVisibleOfferStores();
+  const stores = useVisibleOfferStores();
   const [wizardOpen, setWizardOpen] = usePersistedState('offers.wizardOpen', false, { scope: 'device' });
   // "+ Novo" com oferta aberta: o card de geração volta; a oferta atual só sai quando outra é gerada
   const [composing, setComposing] = usePersistedState('offers.composing', false, { scope: 'device' });
@@ -164,7 +164,9 @@ export function OfferGeneratorPage() {
                   onChange={() => { if (gen.error?.isLinkField) gen.clearError(); }}
                   onCancel={offer ? () => { gen.clearError(); setComposing(false); } : undefined}
                   aiRewriteEnabled={cfg.aiRewriteEnabled}
-                  visibleStores={visibleStores}
+                  visibleStores={stores.visible}
+                  storeAvailability={stores.availability}
+                  serverPlanStore={gen.error?.isLinkField ? gen.error.planStore ?? null : null}
                 />
                 {limitReached && gen.usage?.limit != null && <Alert severity="warning">{t.planLimit(gen.usage.limit)}</Alert>}
                 {!offer && alertError && (
