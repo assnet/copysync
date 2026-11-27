@@ -34,7 +34,7 @@ export default function App() {
         <Closing />
       </main>
       <StickyCta visible={pastHero && !consentOpen} />
-      <SupportFloat raised={pastHero && !consentOpen} hidden={consentOpen} />
+      <SupportFloat raised={pastHero && !consentOpen} aboveCookies={consentOpen} />
       <CookieConsent onVisibleChange={setConsentOpen} />
     </>
   )
